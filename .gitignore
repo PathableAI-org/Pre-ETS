@@ -147,3 +147,6 @@ build/
 
 # Fallow analysis cache
 .fallow/
+
+# Generated Husky hook launchers
+.husky/_/

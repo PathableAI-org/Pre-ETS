@@ -111,3 +111,10 @@ loads plugins from installed dependencies without fetching plugin versions. pnpm
 allows only dprint’s required executable installation script. Generated output
 and the pnpm lockfile are excluded. `renovate.json` uses JSONC-compatible syntax
 to retain policy comments while allowing dprint formatting.
+
+## Git hooks
+
+Husky is installed at the repository root. `pnpm install` runs the `prepare` script
+to configure Git to use `.husky/_`; hook definitions live in `.husky/`, and
+generated launchers stay ignored. Run `pnpm prepare` to reinstall the hooks when
+needed. No global Git configuration is changed.
