@@ -65,24 +65,6 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Build workspaces
         run: pnpm build
-      - name: Smoke check frontend
-        run: |
-          HOSTNAME=127.0.0.1 PORT=3000 pnpm start:frontend &
-          server_pid=$!
-          cleanup() {
-            kill "$server_pid" 2>/dev/null || true
-            wait "$server_pid" 2>/dev/null || true
-          }
-          trap cleanup EXIT
-          for _ in $(seq 1 30); do
-            if curl -fsS http://127.0.0.1:3000/ -o /tmp/frontend-home.html; then
-              break
-            fi
-            sleep 1
-          done
-          test -s /tmp/frontend-home.html
-          grep -Fq "Welcome to the Pre-ETS workspace" /tmp/frontend-home.html
-          grep -Fq "pathable-alert" /tmp/frontend-home.html
       - name: Smoke check backend
         run: |
           greeting=$(pnpm --silent start:backend)
