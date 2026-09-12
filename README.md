@@ -59,3 +59,32 @@ The configuration explicitly identifies workspace source entrypoints because
 start scripts run compiled output. ESLint configurations are discovered by
 Fallow’s ESLint integration. Generated output is excluded, and unused dependencies
 remain errors. No public-library exemptions or blanket suppressions are enabled.
+
+## Renovate
+
+`renovate.json5` follows the update policy in `next-level-preets`, including groups
+for the anticipated Effect, React/Next, PathAble, lint, test, Docker, and GitHub
+Actions dependencies. Rules for tools not yet installed remain inactive until
+those dependencies exist. Node pins, Node types, and package engines are grouped.
+
+Updates run outside office hours in America/New_York, with lockfile maintenance
+on Saturdays between midnight and 4 a.m. The policy enables PR/platform automerge
+for eligible updates; Effect, React/Next, PathAble, tests, Node, and major upgrades
+require review. TypeScript major upgrades are disabled pending lint compatibility.
+
+The Renovate GitHub App must have access to this repository. Platform automerge
+also requires GitHub repository support and permission, and follows configured
+branch protections and required checks. This tooling setup does not enable the
+App, change GitHub settings, or establish CI/required checks. Configuration alone
+does not activate Renovate or guarantee validated automatic merges.
+
+Validate configuration without adding Renovate as a project dependency:
+
+```sh
+pnpm --package=renovate@44.82.3 dlx renovate-config-validator --strict --no-global renovate.json5
+```
+
+On environments without Renovate’s optional native RE2 module, the validator
+falls back to JavaScript regular expressions and warns that regex validation may
+be less accurate. The initial strict repository-config validation passed using
+that fallback; the custom Node regex is unchanged from the reference repository.
