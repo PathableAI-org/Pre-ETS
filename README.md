@@ -15,9 +15,23 @@ Run `pnpm install` from the repository root. For a reproducible installation, us
 - `packages/frontend` (`@pathableai/pre-ets-frontend`): future user interface.
 - `packages/backend` (`@pathableai/pre-ets-backend`): future backend process.
 
-Both are currently independent plain Node.js hello-world programs. Run them with
+Both are currently independent plain Node.js hello-world programs. First run `pnpm build` to compile both programs into their workspace `dist` directories.
+Run them with
 `pnpm start:frontend` and `pnpm start:backend`; each prints a greeting and exits.
 All packages are private; the npm scope identifies ownership, not publication.
 
 Next.js with PathAble React components and an Effect v4 backend are planned.
 Frameworks and client workflows are not implemented yet.
+
+## TypeScript
+
+Run `pnpm typecheck` to check both packages without emitting files, and `pnpm build`
+to compile them. Each workspace also exposes `build`, `typecheck`, and `start`;
+for example, `pnpm --filter @pathableai/pre-ets-backend typecheck`. Rebuild after
+source changes before starting the programs.
+
+Both packages inherit `tsconfig.base.json`, modeled on the reference project's
+Effect-style configuration. Strict checks apply equally to non-Effect code. Use
+explicit `.js` extensions in relative imports for NodeNext compilation. Build
+configs enable emission and source maps without weakening type checks. Effect
+and its language-service plugin are not installed.

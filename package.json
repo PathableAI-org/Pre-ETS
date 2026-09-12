@@ -8,6 +8,12 @@
   },
   "scripts": {
     "start:frontend": "pnpm --filter @pathableai/pre-ets-frontend start",
-    "start:backend": "pnpm --filter @pathableai/pre-ets-backend start"
+    "start:backend": "pnpm --filter @pathableai/pre-ets-backend start",
+    "build": "pnpm --filter \"./packages/*\" run build",
+    "typecheck": "pnpm --filter \"./packages/*\" run typecheck"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.4",
+    "typescript": "6.0.3"
   }
 }
