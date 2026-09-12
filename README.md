@@ -163,8 +163,7 @@ Fallow’s hook installer. Builds and full typechecks remain separate checks.
 
 The `CI` workflow runs on every pull request, pushes to `main`, and manual dispatch.
 Three jobs run independently: **CI / Quality** checks formatting, lint, and types;
-**CI / Build** builds both packages, starts the frontend production server to
-assert the landing-page HTML, and verifies the backend greeting; **CI / Fallow**
+**CI / Build** builds both packages and verifies the backend greeting; **CI / Fallow**
 checks unused code across the repository and audits newly introduced findings.
 
 CI uses the pinned Node and pnpm versions, a frozen lockfile, and pnpm store caching.
