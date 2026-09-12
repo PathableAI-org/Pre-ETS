@@ -25,3 +25,7 @@
 - Husky runs lint-staged once at the root. Each workspace extends the root
   `lint-staged.config.js`; keep its tasks limited to the supplied staged filenames.
   Preserve default backup and partial-staging protections.
+- After lint-staged, the pre-commit hook runs `pnpm check:changes` once at the
+  root. This Fallow audit gates new findings against the automatically resolved
+  base and includes unstaged/untracked work. Keep `prepare` limited to Husky;
+  do not install or rewrite Fallow hooks during dependency installation.

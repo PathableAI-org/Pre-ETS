@@ -135,4 +135,14 @@ using the full-workspace lint and formatting scripts.
 Successful fixes are staged automatically. lint-staged’s default backup, rollback,
 and partial-staging protections remain enabled: unstaged changes to partially
 staged files are hidden during checks and restored afterward. A failing task
-blocks the commit. Builds, full typechecks, and Fallow remain separate checks.
+blocks the commit. After lint-staged succeeds, the hook runs `pnpm check:changes`
+once at the repository root. This Fallow audit uses the `new-only` gate and
+automatically resolves its comparison base from the upstream or default branch.
+It checks the working tree, including restored unstaged and untracked changes,
+so unfinished local work can block a commit. Error-severity findings and audit
+runtime errors block the commit; warnings remain advisory.
+
+Run `pnpm check:changes` to invoke the same audit manually. `prepare` remains
+`husky`: the tracked hook defines the audit step, and installation does not run
+Fallow’s hook installer. Builds and full typechecks remain separate checks.
+`pnpm check:unused` remains available for full-repository dead-code checks.

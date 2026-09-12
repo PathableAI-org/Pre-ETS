@@ -17,7 +17,8 @@
     "check:unused": "fallow dead-code",
     "format:check": "dprint check \"*\" && pnpm --filter \"./packages/*\" run format:check",
     "format:write": "dprint fmt \"*\" && pnpm --filter \"./packages/*\" run format:write",
-    "prepare": "husky"
+    "prepare": "husky",
+    "check:changes": "fallow audit --gate new-only --gate-marker pre-commit"
   },
   "devDependencies": {
     "@dprint/json": "0.23.0",
