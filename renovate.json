@@ -93,6 +93,8 @@
         "typescript-eslint",
         "/^@typescript-eslint\\//",
         "prettier",
+        "husky",
+        "lint-staged",
         "dprint",
         "/^@dprint\\//",
         "dprint-plugin-yaml",

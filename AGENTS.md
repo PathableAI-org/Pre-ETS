@@ -22,3 +22,6 @@
   formatting policy at the root and sorting in ESLint/Perfectionist.
 - Run `pnpm format:check` before committing. Apply lint fixes before
   `pnpm format:write`, then verify lint and formatting both pass.
+- Husky runs lint-staged once at the root. Each workspace extends the root
+  `lint-staged.config.js`; keep its tasks limited to the supplied staged filenames.
+  Preserve default backup and partial-staging protections.

@@ -118,3 +118,21 @@ Husky is installed at the repository root. `pnpm install` runs the `prepare` scr
 to configure Git to use `.husky/_`; hook definitions live in `.husky/`, and
 generated launchers stay ignored. Run `pnpm prepare` to reinstall the hooks when
 needed. No global Git configuration is changed.
+
+The pre-commit hook runs `pnpm exec lint-staged` once from the repository root.
+Each workspace’s `lint-staged.config.js` imports the root defaults. lint-staged
+selects the nearest configuration for each staged file and runs tasks in that
+configuration’s directory, so ESLint and dprint use the owning workspace’s settings.
+Do not force a root `--config` or `--cwd`, or run separate lint-staged processes
+per workspace.
+
+Staged JavaScript and TypeScript files run through ESLint fixes, then dprint.
+JSON/JSONC, Markdown, and YAML files run through dprint only; the generated pnpm
+lockfile is excluded. The patterns do not overlap, so different tasks cannot edit
+the same file concurrently. Tools receive staged filenames directly rather than
+using the full-workspace lint and formatting scripts.
+
+Successful fixes are staged automatically. lint-staged’s default backup, rollback,
+and partial-staging protections remain enabled: unstaged changes to partially
+staged files are hidden during checks and restored afterward. A failing task
+blocks the commit. Builds, full typechecks, and Fallow remain separate checks.
