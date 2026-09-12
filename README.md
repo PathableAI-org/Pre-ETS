@@ -48,3 +48,14 @@ TypeScript project directory. Shared rules include strict and stylistic typed
 checks, natural sorting, and consistent type imports. JavaScript configuration
 files are checked without a TypeScript project. Add package-specific extensions
 in the owning workspace; keep common rules at the root.
+
+## Fallow
+
+Run `pnpm check:unused` for dead-code and dependency checks, or `pnpm fallow`
+for full analysis including duplication and complexity. To compare changes with
+an available Git base, use `pnpm fallow audit --base origin/main`.
+
+The configuration explicitly identifies workspace source entrypoints because
+start scripts run compiled output. ESLint configurations are discovered by
+Fallow’s ESLint integration. Generated output is excluded, and unused dependencies
+remain errors. No public-library exemptions or blanket suppressions are enabled.

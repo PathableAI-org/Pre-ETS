@@ -15,3 +15,5 @@
   rules at the root and workspace-specific rules in that workspace. Root linting
   checks top-level files, then delegates to workspace lint scripts.
 - Validate with `pnpm typecheck`, `pnpm build`, and `pnpm lint`.
+- Run `pnpm check:unused` before committing; investigate findings rather than
+  adding blanket suppressions. `pnpm fallow` provides broader analysis.

@@ -144,3 +144,6 @@ vite.config.ts.timestamp-*
 
 # Workspace build output
 build/
+
+# Fallow analysis cache
+.fallow/
