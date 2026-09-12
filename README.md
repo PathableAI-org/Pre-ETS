@@ -94,7 +94,7 @@ that fallback; the custom Node regex is unchanged from the reference repository.
 ## Formatting
 
 Run `pnpm format:check` to verify formatting or `pnpm format:write` to apply it.
-Each root command checks or formats top-level files first, then delegates to the
+Each root command checks or formats top-level files and `.github` first, then delegates to the
 same script in every workspace. Each package owns a `dprint.json` with
 `extends: "../../dprint.json"`, inheriting the root settings and plugins while allowing local
 overrides. Run a package independently with
@@ -146,3 +146,23 @@ Run `pnpm check:changes` to invoke the same audit manually. `prepare` remains
 `husky`: the tracked hook defines the audit step, and installation does not run
 Fallow’s hook installer. Builds and full typechecks remain separate checks.
 `pnpm check:unused` remains available for full-repository dead-code checks.
+
+## Continuous integration
+
+The `CI` workflow runs on every pull request, pushes to `main`, and manual dispatch.
+Three jobs run independently: **CI / Quality** checks formatting, lint, and types;
+**CI / Build** builds both packages and verifies their greetings; **CI / Fallow**
+checks unused code across the repository and audits newly introduced findings.
+
+CI uses the pinned Node and pnpm versions, a frozen lockfile, and pnpm store caching.
+`HUSKY=0` skips local hook installation; CI invokes the full checks directly and
+never fixes files. Root formatting includes workflow YAML in `.github`.
+
+Fallow compares PRs against their base commit, pushes against the previous commit,
+and manual runs against `HEAD^`. When no previous commit exists, the full-repository
+check still runs. Missing nonempty base references are errors. Audit warnings are
+advisory; failures and runtime errors fail the job.
+
+The `Main CI checks` repository ruleset requires all three GitHub Actions checks
+and an up-to-date branch before merging into `main`. Organization rules continue
+to require pull requests and squash merges. GitHub automerge remains disabled.
