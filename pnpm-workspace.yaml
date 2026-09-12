@@ -1,0 +1,6 @@
+packages:
+  - "packages/*"
+
+# dprint installs its platform-specific formatter executable.
+allowBuilds:
+  dprint: true

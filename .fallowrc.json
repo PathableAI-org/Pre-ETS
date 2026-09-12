@@ -1,0 +1,38 @@
+{
+  "$schema": "./node_modules/fallow/schema.json",
+  "entry": [
+    "packages/*/src/index.ts"
+  ],
+  "workspaces": {
+    "patterns": [
+      "packages/*"
+    ]
+  },
+  "ignorePatterns": [
+    "**/dist/**",
+    "**/build/**",
+    "**/coverage/**",
+    "**/.next/**"
+  ],
+  "rules": {
+    "unused-dependencies": "error"
+  },
+  "framework": [
+    {
+      "name": "dprint-npm-plugins",
+      "enablers": [
+        "dprint"
+      ],
+      "configPatterns": [
+        "dprint.json",
+        "packages/*/dprint.json"
+      ],
+      "toolingDependencies": [
+        "@dprint/typescript",
+        "@dprint/json",
+        "@dprint/markdown",
+        "dprint-plugin-yaml"
+      ]
+    }
+  ]
+}
