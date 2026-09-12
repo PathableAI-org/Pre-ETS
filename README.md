@@ -35,3 +35,16 @@ Effect-style configuration. Strict checks apply equally to non-Effect code. Use
 explicit `.js` extensions in relative imports for NodeNext compilation. Build
 configs enable emission and source maps without weakening type checks. Effect
 and its language-service plugin are not installed.
+
+## ESLint
+
+`pnpm lint` checks the root JavaScript files first, then delegates to each
+workspace’s `lint` script. `pnpm lint:fix` follows the same sequence with automatic
+fixes. Run a package independently with, for example,
+`pnpm --filter @pathableai/pre-ets-frontend lint`.
+
+Each package’s `eslint.config.js` imports the root configuration and sets its own
+TypeScript project directory. Shared rules include strict and stylistic typed
+checks, natural sorting, and consistent type imports. JavaScript configuration
+files are checked without a TypeScript project. Add package-specific extensions
+in the owning workspace; keep common rules at the root.

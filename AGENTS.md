@@ -11,3 +11,7 @@
 - Run the available checks before committing; do not commit generated output.
 - Do not add application frameworks, publication, client workflows, or extra tools
   beyond the requested task. Keep machine-local configuration and credentials out.
+- Each workspace owns an `eslint.config.js` importing the root config. Keep shared
+  rules at the root and workspace-specific rules in that workspace. Root linting
+  checks top-level files, then delegates to workspace lint scripts.
+- Validate with `pnpm typecheck`, `pnpm build`, and `pnpm lint`.

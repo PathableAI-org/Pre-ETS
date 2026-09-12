@@ -10,10 +10,17 @@
     "start:frontend": "pnpm --filter @pathableai/pre-ets-frontend start",
     "start:backend": "pnpm --filter @pathableai/pre-ets-backend start",
     "build": "pnpm --filter \"./packages/*\" run build",
-    "typecheck": "pnpm --filter \"./packages/*\" run typecheck"
+    "typecheck": "pnpm --filter \"./packages/*\" run typecheck",
+    "lint": "eslint \"*.js\" --max-warnings=0 && pnpm --filter \"./packages/*\" run lint",
+    "lint:fix": "eslint \"*.js\" --max-warnings=0 --fix && pnpm --filter \"./packages/*\" run lint:fix"
   },
   "devDependencies": {
+    "@eslint/js": "10.0.1",
     "@types/node": "24.13.4",
-    "typescript": "6.0.3"
+    "eslint": "10.10.0",
+    "eslint-plugin-perfectionist": "5.11.0",
+    "globals": "17.12.0",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.70.0"
   }
 }
