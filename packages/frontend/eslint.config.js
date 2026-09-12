@@ -1,13 +1,13 @@
-import { defineConfig } from "eslint/config";
+import { defineConfig } from "eslint/config"
 
-import rootConfig from "../../eslint.config.js";
+import rootConfig from "../../eslint.config.js"
 
 export default defineConfig([
   ...rootConfig,
   {
     files: ["**/*.{ts,tsx}"],
     languageOptions: {
-      parserOptions: { tsconfigRootDir: import.meta.dirname },
-    },
-  },
-]);
+      parserOptions: { tsconfigRootDir: import.meta.dirname }
+    }
+  }
+])

@@ -16,5 +16,23 @@
   ],
   "rules": {
     "unused-dependencies": "error"
-  }
+  },
+  "framework": [
+    {
+      "name": "dprint-npm-plugins",
+      "enablers": [
+        "dprint"
+      ],
+      "configPatterns": [
+        "dprint.json",
+        "packages/*/dprint.json"
+      ],
+      "toolingDependencies": [
+        "@dprint/typescript",
+        "@dprint/json",
+        "@dprint/markdown",
+        "dprint-plugin-yaml"
+      ]
+    }
+  ]
 }

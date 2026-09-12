@@ -14,11 +14,18 @@
     "lint": "eslint \"*.js\" --max-warnings=0 && pnpm --filter \"./packages/*\" run lint",
     "lint:fix": "eslint \"*.js\" --max-warnings=0 --fix && pnpm --filter \"./packages/*\" run lint:fix",
     "fallow": "fallow",
-    "check:unused": "fallow dead-code"
+    "check:unused": "fallow dead-code",
+    "format:check": "dprint check \"*\" && pnpm --filter \"./packages/*\" run format:check",
+    "format:write": "dprint fmt \"*\" && pnpm --filter \"./packages/*\" run format:write"
   },
   "devDependencies": {
+    "@dprint/json": "0.23.0",
+    "@dprint/markdown": "0.24.0",
+    "@dprint/typescript": "0.96.1",
     "@eslint/js": "10.0.1",
     "@types/node": "24.13.4",
+    "dprint": "0.57.4",
+    "dprint-plugin-yaml": "0.6.0",
     "eslint": "10.10.0",
     "eslint-plugin-perfectionist": "5.11.0",
     "fallow": "3.25.0",

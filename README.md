@@ -58,11 +58,13 @@ an available Git base, use `pnpm fallow audit --base origin/main`.
 The configuration explicitly identifies workspace source entrypoints because
 start scripts run compiled output. ESLint configurations are discovered by
 Fallow’s ESLint integration. Generated output is excluded, and unused dependencies
-remain errors. No public-library exemptions or blanket suppressions are enabled.
+remain errors. No public-library exemptions or blanket suppressions are enabled. The Fallow
+configuration declares the four dprint plugins as tooling dependencies because
+Fallow does not resolve their `npm:` references in `dprint.json`.
 
 ## Renovate
 
-`renovate.json5` follows the update policy in `next-level-preets`, including groups
+`renovate.json` follows the update policy in `next-level-preets`, including groups
 for the anticipated Effect, React/Next, PathAble, lint, test, Docker, and GitHub
 Actions dependencies. Rules for tools not yet installed remain inactive until
 those dependencies exist. Node pins, Node types, and package engines are grouped.
@@ -81,10 +83,31 @@ does not activate Renovate or guarantee validated automatic merges.
 Validate configuration without adding Renovate as a project dependency:
 
 ```sh
-pnpm --package=renovate@44.82.3 dlx renovate-config-validator --strict --no-global renovate.json5
+pnpm --package=renovate@44.82.3 dlx renovate-config-validator --strict --no-global renovate.json
 ```
 
 On environments without Renovate’s optional native RE2 module, the validator
 falls back to JavaScript regular expressions and warns that regex validation may
 be less accurate. The initial strict repository-config validation passed using
 that fallback; the custom Node regex is unchanged from the reference repository.
+
+## Formatting
+
+Run `pnpm format:check` to verify formatting or `pnpm format:write` to apply it.
+Each root command checks or formats top-level files first, then delegates to the
+same script in every workspace. Each package owns a `dprint.json` with
+`extends: "../../dprint.json"`, inheriting the root settings and plugins while allowing local
+overrides. Run a package independently with
+`pnpm --filter @pathableai/pre-ets-frontend format:check`.
+
+The shared style follows Effect: two spaces, 120 columns, LF newlines, double
+quotes, no optional semicolons, and no TypeScript trailing commas. ESLint and
+Perfectionist own sorting; dprint preserves import and export order. After code
+changes, run `pnpm lint:fix`, then `pnpm format:write`, and verify both checks.
+
+The CLI and TypeScript/JavaScript, JSON/JSONC, Markdown, and YAML plugins are
+pinned in pnpm and updated through Renovate’s lint-and-format group. Formatting
+loads plugins from installed dependencies without fetching plugin versions. pnpm
+allows only dprint’s required executable installation script. Generated output
+and the pnpm lockfile are excluded. `renovate.json` uses JSONC-compatible syntax
+to retain policy comments while allowing dprint formatting.
