@@ -18,8 +18,9 @@
 - Run `pnpm check:unused` before committing; investigate findings rather than
   adding blanket suppressions. `pnpm fallow` provides broader analysis.
 - Each workspace owns a `dprint.json` inheriting the root settings. Root formatting
-  scripts process top-level files, then delegate to each workspace. Keep shared
-  formatting policy at the root and sorting in ESLint/Perfectionist.
+  scripts process top-level files, `.github`, and `docs`, then delegate to each
+  workspace. Keep shared formatting policy at the root and sorting in
+  ESLint/Perfectionist.
 - Run `pnpm format:check` before committing. Apply lint fixes before
   `pnpm format:write`, then verify lint and formatting both pass.
 - Husky runs lint-staged once at the root. Each workspace extends the root
