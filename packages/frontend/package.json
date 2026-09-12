@@ -1,0 +1,8 @@
+{
+  "name": "@pathableai/pre-ets-frontend",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js"
+  }
+}

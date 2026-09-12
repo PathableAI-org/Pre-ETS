@@ -1,0 +1,13 @@
+{
+  "name": "@pathableai/pre-ets",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.26.0",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "start:frontend": "pnpm --filter @pathableai/pre-ets-frontend start",
+    "start:backend": "pnpm --filter @pathableai/pre-ets-backend start"
+  }
+}
