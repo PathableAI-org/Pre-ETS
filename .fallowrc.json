@@ -14,7 +14,8 @@
     "**/dist/**",
     "**/build/**",
     "**/coverage/**",
-    "**/.next/**"
+    "**/.next/**",
+    "**/next-env.d.ts"
   ],
   "rules": {
     "unused-dependencies": "error"

@@ -68,7 +68,8 @@ an available Git base, use `pnpm fallow audit --base origin/main`.
 The configuration explicitly identifies workspace source entrypoints because
 start scripts run compiled output: the backend `dist` program and the frontend
 `.next` server. ESLint configurations are discovered by
-Fallow’s ESLint integration. Generated output is excluded, and unused dependencies
+Fallow’s ESLint integration. Generated output and Next.js `next-env.d.ts` are
+excluded, and unused dependencies
 remain errors. No public-library exemptions or blanket suppressions are enabled. The Fallow
 configuration declares the four dprint plugins as tooling dependencies because
 Fallow does not resolve their `npm:` references in `dprint.json`.
