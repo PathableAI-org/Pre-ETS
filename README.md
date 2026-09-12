@@ -94,8 +94,8 @@ that fallback; the custom Node regex is unchanged from the reference repository.
 ## Formatting
 
 Run `pnpm format:check` to verify formatting or `pnpm format:write` to apply it.
-Each root command checks or formats top-level files and `.github` first, then delegates to the
-same script in every workspace. Each package owns a `dprint.json` with
+Each root command checks or formats top-level files, `.github`, and `docs` first, then
+delegates to the same script in every workspace. Each package owns a `dprint.json` with
 `extends: "../../dprint.json"`, inheriting the root settings and plugins while allowing local
 overrides. Run a package independently with
 `pnpm --filter @pathableai/pre-ets-frontend format:check`.
@@ -156,7 +156,7 @@ checks unused code across the repository and audits newly introduced findings.
 
 CI uses the pinned Node and pnpm versions, a frozen lockfile, and pnpm store caching.
 `HUSKY=0` skips local hook installation; CI invokes the full checks directly and
-never fixes files. Root formatting includes workflow YAML in `.github`.
+never fixes files. Root formatting includes workflow YAML in `.github` and Markdown in `docs`.
 
 Fallow compares PRs against their base commit, pushes against the previous commit,
 and manual runs against `HEAD^`. When no previous commit exists, the full-repository
