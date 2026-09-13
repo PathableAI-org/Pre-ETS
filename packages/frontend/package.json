@@ -14,12 +14,12 @@
   },
   "dependencies": {
     "@pathableai/react": "0.0.5",
-    "next": "16.3.4",
+    "next": "16.3.5",
     "react": "19.3.0",
     "react-dom": "19.3.0"
   },
   "devDependencies": {
-    "@next/eslint-plugin-next": "16.3.4",
+    "@next/eslint-plugin-next": "16.3.5",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "eslint-plugin-react-hooks": "7.1.1",
