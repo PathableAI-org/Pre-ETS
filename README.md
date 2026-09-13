@@ -178,3 +178,26 @@ advisory; failures and runtime errors fail the job.
 The `Main CI checks` repository ruleset requires all three GitHub Actions checks
 and an up-to-date branch before merging into `main`. Organization rules continue
 to require pull requests and squash merges. GitHub automerge remains disabled.
+
+## Spec Kit
+
+The repository includes Spec Kit 1.0.5 with one root workflow in `.specify/`.
+The project constitution is [`.specify/memory/constitution.md`](.specify/memory/constitution.md).
+Read it before specifying, planning, implementing, or reviewing a feature.
+
+Core skills are installed for Codex in `.agents/skills` and for Cursor in
+`.cursor/skills`. The installed assess, BDD, critique, and Git extensions have
+Cursor skill entrypoints; `.specify/extensions.yml` records their workflow hooks.
+The closed-vocabulary preset extends Cursor's analysis command to report
+inconsistent enumerations across feature artifacts.
+
+Run Spec Kit from the repository root. Set `SPECIFY_INIT_DIR` to this checkout's
+root when invoking its scripts from another working directory. Start with
+`speckit-specify`, clarify the requirements, then use `speckit-plan` and
+`speckit-tasks` before implementation. The constitution defines the required
+behavioral verification; installing the BDD extension does not make Gherkin
+mandatory for every change.
+
+Commit shared scripts, templates, skills, extension configuration, and the
+constitution. Keep the current-feature pointer, local extension overrides, and
+regenerable composition cache out of version control.

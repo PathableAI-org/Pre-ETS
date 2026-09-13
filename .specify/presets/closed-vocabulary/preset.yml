@@ -1,0 +1,30 @@
+schema_version: "1.0"
+
+preset:
+  id: "closed-vocabulary"
+  name: "Closed Vocabulary Check"
+  version: "1.0.1"
+  description: "Adds a pass to /speckit.analyze that flags closed sets of values enumerated more than once with different members, and reports its own coverage."
+  author: "Diego Gabriel Impieri"
+  repository: "https://github.com/yunusdim/spec-kit-preset-closed-vocabulary"
+  license: "MIT"
+
+requires:
+  # Composition strategies (prepend, append, wrap) landed in 0.8.0 (#2133).
+  # This preset uses `append`, so anything older would silently replace
+  # the core command instead of extending it.
+  speckit_version: ">=0.8.0"
+
+provides:
+  templates:
+    - type: "command"
+      name: "speckit.analyze"
+      file: "commands/speckit.analyze.md"
+      description: "Append a closed-set divergence pass, reported as a warning with its own coverage figure"
+      strategy: "append"
+
+tags:
+  - "analysis"
+  - "consistency"
+  - "vocabulary"
+  - "verification"
