@@ -12,27 +12,35 @@ Run `pnpm install` from the repository root. For a reproducible installation, us
 
 ## Workspaces
 
-- `packages/frontend` (`@pathableai/pre-ets-frontend`): future user interface.
+- `packages/frontend` (`@pathableai/pre-ets-frontend`): Next.js 16 App Router
+  application with PathAble React components.
 - `packages/backend` (`@pathableai/pre-ets-backend`): future backend process.
 
-Both are currently independent plain Node.js hello-world programs. First run `pnpm build` to compile both programs into their workspace `dist` directories.
-Run them with
-`pnpm start:frontend` and `pnpm start:backend`; each prints a greeting and exits.
+The frontend is an SSR-first Next.js app. Run
+`pnpm --filter @pathableai/pre-ets-frontend dev` or `pnpm dev:frontend` for
+local development. `pnpm build` compiles the backend into `dist` and emits the
+frontend production output into `.next`. After a production build,
+`pnpm start:frontend` serves that Next.js output; `pnpm start:backend` still
+prints a greeting and exits.
 All packages are private; the npm scope identifies ownership, not publication.
 
-Next.js with PathAble React components and an Effect v4 backend are planned.
-Frameworks and client workflows are not implemented yet.
+An Effect v4 backend is planned. Client workflows beyond this landing page are
+not implemented yet.
 
 ## TypeScript
 
 Run `pnpm typecheck` to check both packages without emitting files, and `pnpm build`
-to compile them. Each workspace also exposes `build`, `typecheck`, and `start`;
-for example, `pnpm --filter @pathableai/pre-ets-backend typecheck`. Rebuild after
-source changes before starting the programs.
+to compile them. The frontend typecheck runs `next typegen` then `tsc`; its
+build emits `.next`. The backend still uses `tsc` and a `dist` directory.
+Each workspace also exposes `build`, `typecheck`, and `start`;
+for example, `pnpm --filter @pathableai/pre-ets-backend typecheck`. Rebuild the
+frontend after source changes before `pnpm start:frontend`.
 
 Both packages inherit `tsconfig.base.json`, modeled on the reference project's
-Effect-style configuration. Strict checks apply equally to non-Effect code. Use
-explicit `.js` extensions in relative imports for NodeNext compilation. Build
+Effect-style configuration. Strict checks apply equally to non-Effect code. The
+backend uses NodeNext compilation and explicit `.js` extensions in relative
+imports. The frontend overrides those settings for the Next.js App Router
+(`jsx: "preserve"`, DOM libs, and bundler module resolution). Backend build
 configs enable emission and source maps without weakening type checks. Effect
 and its language-service plugin are not installed.
 
@@ -46,8 +54,10 @@ fixes. Run a package independently with, for example,
 Each package’s `eslint.config.js` imports the root configuration and sets its own
 TypeScript project directory. Shared rules include strict and stylistic typed
 checks, natural sorting, and consistent type imports. JavaScript configuration
-files are checked without a TypeScript project. Add package-specific extensions
-in the owning workspace; keep common rules at the root.
+files are checked without a TypeScript project. The frontend workspace adds
+React Hooks and Next.js plugin rules plus browser globals for `*.tsx`. Add
+package-specific extensions in the owning workspace; keep common rules at the
+root.
 
 ## Fallow
 
@@ -56,8 +66,10 @@ for full analysis including duplication and complexity. To compare changes with
 an available Git base, use `pnpm fallow audit --base origin/main`.
 
 The configuration explicitly identifies workspace source entrypoints because
-start scripts run compiled output. ESLint configurations are discovered by
-Fallow’s ESLint integration. Generated output is excluded, and unused dependencies
+start scripts run compiled output: the backend `dist` program and the frontend
+`.next` server. ESLint configurations are discovered by
+Fallow’s ESLint integration. Generated output and Next.js `next-env.d.ts` are
+excluded, and unused dependencies
 remain errors. No public-library exemptions or blanket suppressions are enabled. The Fallow
 configuration declares the four dprint plugins as tooling dependencies because
 Fallow does not resolve their `npm:` references in `dprint.json`.
@@ -108,9 +120,9 @@ changes, run `pnpm lint:fix`, then `pnpm format:write`, and verify both checks.
 The CLI and TypeScript/JavaScript, JSON/JSONC, Markdown, and YAML plugins are
 pinned in pnpm and updated through Renovate’s lint-and-format group. Formatting
 loads plugins from installed dependencies without fetching plugin versions. pnpm
-allows only dprint’s required executable installation script. Generated output
-and the pnpm lockfile are excluded. `renovate.json` uses JSONC-compatible syntax
-to retain policy comments while allowing dprint formatting.
+allows only dprint’s required executable installation script. Generated output, Next.js `next-env.d.ts`, and the pnpm lockfile are excluded.
+`renovate.json` uses JSONC-compatible syntax to retain policy comments while
+allowing dprint formatting.
 
 ## Git hooks
 
@@ -151,7 +163,7 @@ Fallow’s hook installer. Builds and full typechecks remain separate checks.
 
 The `CI` workflow runs on every pull request, pushes to `main`, and manual dispatch.
 Three jobs run independently: **CI / Quality** checks formatting, lint, and types;
-**CI / Build** builds both packages and verifies their greetings; **CI / Fallow**
+**CI / Build** builds both packages and verifies the backend greeting; **CI / Fallow**
 checks unused code across the repository and audits newly introduced findings.
 
 CI uses the pinned Node and pnpm versions, a frozen lockfile, and pnpm store caching.

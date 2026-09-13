@@ -9,6 +9,7 @@
   "scripts": {
     "start:frontend": "pnpm --filter @pathableai/pre-ets-frontend start",
     "start:backend": "pnpm --filter @pathableai/pre-ets-backend start",
+    "dev:frontend": "pnpm --filter @pathableai/pre-ets-frontend dev",
     "build": "pnpm --filter \"./packages/*\" run build",
     "typecheck": "pnpm --filter \"./packages/*\" run typecheck",
     "lint": "eslint \"*.js\" --max-warnings=0 && pnpm --filter \"./packages/*\" run lint",

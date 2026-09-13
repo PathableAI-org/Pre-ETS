@@ -4,6 +4,10 @@
   workspaces under `packages/`, named in the `@pathableai` npm scope.
 - Frontend and backend are separate processes. Keep implementation in its owning
   workspace; introduce shared contracts only when actual requirements need them.
+- When creating or editing UI that uses `@pathableai/react`, locate the
+  installed `@pathableai/react` package and read
+  `agent-guidance/pathable-react/SKILL.md` from that package before making
+  changes. Read only the linked reference relevant to the task.
 - Apply the shared strict TypeScript settings to all code, including non-Effect code.
 - Prefer direct package scripts and README instructions over custom wrappers.
 - Keep each new tool setup in its own focused commit with its configuration,
