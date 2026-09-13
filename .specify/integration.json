@@ -15,6 +15,6 @@
       "invoke_separator": "-"
     }
   },
-  "integration": "cursor-agent",
-  "default_integration": "cursor-agent"
+  "integration": "codex",
+  "default_integration": "codex"
 }
