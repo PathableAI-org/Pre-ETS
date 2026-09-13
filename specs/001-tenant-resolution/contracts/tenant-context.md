@@ -26,11 +26,13 @@ selection, public configuration endpoint, or persistence write operation is expo
 Place local settings in `packages/frontend/.env.local` or pass them to the frontend process. Do not use `NEXT_PUBLIC_`
 variables or `next.config`'s public environment export. `.env.example` contains synthetic examples only.
 
-| Variable                     | Format/default                                  | Effect                                                                                                                                             |
-| ---------------------------- | ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `TENANT_RESOLUTION`          | `host` or `static`; absent means `host`         | Static works only in development. In production, `static` is ignored and host association remains required. Other values cause `invalid-settings`. |
-| `TENANT_CONFIG_RECORDS_JSON` | JSON array of tenant records; absent means `[]` | Known records for host mode. No automatic sample tenant.                                                                                           |
-| `TENANT_LOCAL_CONFIG_JSON`   | JSON tenant record; no default                  | Required only in effective static mode; never a fallback for a host-mode miss.                                                                     |
+| Variable                     | Format/default                                  | Effect                                                                                                                                                                                 |
+| ---------------------------- | ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `TENANT_RESOLUTION`          | `host` or `static`; absent means `host`         | Static works only in development. In production, `static` is ignored and host association remains required. Other values retain host mode and emit the safe `invalid-mode` diagnostic. |
+| `TENANT_CONFIG_RECORDS_JSON` | JSON array of tenant records; absent means `[]` | Known records for host mode. No automatic sample tenant.                                                                                                                               |
+| `TENANT_LOCAL_CONFIG_JSON`   | JSON tenant record; no default                  | Required only in effective static mode; never a fallback for a host-mode miss.                                                                                                         |
+
+An unsupported mode is not a failure response: emit `invalid-mode` with guidance to use `host` or development-only `static`, without logging the raw value. Continue host association using the runtime suffix: a known host can succeed, an invalid/unknown host returns 403, and selected-source errors retain their 500/503 mapping. Never consult the local static record for an unsupported mode.
 
 Only the selected source is parsed. For example, malformed unused local data must not affect a production host-mode
 request. Parse/validate lazily on first request use, not during build/type generation. Do not mutate parsed records or

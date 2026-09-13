@@ -52,11 +52,15 @@ Feature: Developers exercise production-like tenant association using local tena
   @FR-014 @contract
   Scenario: An invalid mode cannot silently disable host association
     Given the developer supplied the unsupported resolution mode "automatic"
-    When the user attempts to open the local landing page
-    Then host association is not disabled
-    And either host association remains enforced or startup is prevented with an understandable configuration error
+    And a local static record exists for tenant "local-demo" with Display Name "Must Not Be Used"
+    When the resolver handles "springfield.localhost:3000" and "unknown.localhost:3000"
+    Then host association remains enforced for both requests
+    And the known host resolves tenant "springfield" with Display Name "Springfield Demo"
+    And the unknown host is denied without a successful tenant context
+    And neither result uses the local static record
+    And diagnostics report "invalid-mode" with accepted-mode guidance without echoing the supplied value
 
-  @FR-007 @SC-006 @http
+  @FR-007 @SC-006 @http @production
   Scenario Outline: Local settings cannot bypass production association
     Given the application instead runs in production
     And the developer supplied a setting to disable host association

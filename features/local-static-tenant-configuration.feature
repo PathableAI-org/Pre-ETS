@@ -18,7 +18,7 @@ Feature: Developers use supplied tenant configuration on the local landing page
   @FR-009 @SC-005 @contract
   Scenario: Static configuration is not represented as host association
     Given the developer supplies tenant "springfield" with Display Name "Local Demo"
-    When the user opens the landing page at "localhost:3000"
+    When the resolver consumes the supplied local configuration
     Then the current context identifies tenant "springfield" with Display Name "Local Demo"
     And the context is identified as supplied local static data rather than host-associated identity
     And the host is not used to select a tenant

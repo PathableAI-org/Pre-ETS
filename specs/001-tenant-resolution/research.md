@@ -72,7 +72,7 @@ known tenants. A provider registry, repository class hierarchy, and schema libra
 
 **Decision**: `TENANT_RESOLUTION=host|static`, default `host`. `static` is honored only under `NODE_ENV=development`.
 In production, `static` cannot disable association: use production host rules and ignore the local record. Other
-unrecognized setting values fail as configuration errors. Static mode uses `TENANT_LOCAL_CONFIG_JSON`, one record
+unrecognized mode values retain host association and emit the safe `invalid-mode` diagnostic; they never select local static data or cause a mode-only HTTP 500. Static mode uses `TENANT_LOCAL_CONFIG_JSON`, one record
 of the same shape, and never consults the host to choose its tenant. Missing local data is a visible 500, not 403
 or a default tenant. Read settings lazily at request time so build/type generation needs no tenant configuration.
 Treat environment records as immutable for the process lifetime; restart after changes.
@@ -143,7 +143,7 @@ adapting the extension's generic CommonJS example. Cucumber uses Node ESM loadin
 Cucumber World holds per-scenario state. Hooks and scenario Given steps manage owned test servers, readiness,
 restart, and cleanup; Playwright Test's webServer/fixture behavior is not available under this runner. Run scenarios
 serially, preserving deliberate concurrency within isolation scenarios. A listener can be ready while intentionally
-returning 403 or 500; bound readiness waits and check child-process failures. No arbitrary server reuse is allowed.
+returning 403 or 500; bound readiness waits and check child-process failures. No arbitrary server reuse is allowed. Following critique E2, run the `@production` partition before `not @production`, using a fresh build before each full suite; development output is never reused to start production. Validate the build/production/development/rebuild lifecycle with the pinned runtime and record suite duration during scaffolding. The plan evidence matrix separates pure contract and response-adapter assertions from live-page results.
 
 **Alternatives considered**: Keeping Gherkin as documentation loses the extension's executable workflow. Adding
 Cucumber alongside duplicate Playwright Test scenarios doubles acceptance maintenance. The user selected Vitest for unit testing; retaining a parallel native Node test runner is unnecessary. Scaffold paths are adapted to the frontend workspace instead of adding root runtime dependencies.

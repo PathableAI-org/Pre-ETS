@@ -1,4 +1,4 @@
-@tenant-resolution @US1
+@tenant-resolution @US1 @production
 Feature: Visitors see the Display Name of the tenant associated with their address
   As a user
   I want the landing page to identify the tenant whose address I visited
@@ -74,27 +74,27 @@ Feature: Visitors see the Display Name of the tenant associated with their addre
     And neither visitor sees the other tenant's Display Name
 
   @FR-004 @FR-005 @FR-012 @SC-005 @contract
-  Scenario: Multiple page consumers use one established tenant determination
+  Scenario: Multiple consumers use one established tenant determination
     Given the visitor's request has been associated with tenant "springfield"
-    When the user opens a landing page whose consumers read the current tenant and configuration repeatedly
+    When consumers repeatedly read the established tenant context and configuration
     Then every consumer receives tenant "springfield" and Display Name "Springfield Demo"
     And no consumer interprets the address again or accesses the configuration store directly
     And the request has exactly one host-based tenant determination
 
   @FR-006 @SC-005 @contract
-  Scenario: Replacing the configuration source preserves the page's tenant selection
+  Scenario: Replacing the configuration source preserves tenant selection
     Given an alternative test configuration source supplies tenant "springfield" with only Display Name "Springfield Training"
-    And the landing page's tenant-selection behavior is unchanged
-    When the user opens the landing page at "springfield.pathable.com"
-    Then the landing page displays the tenant Display Name "Springfield Training"
-    And the page does not need knowledge of the replacement configuration source
+    When the unchanged consumer resolves "springfield.pathable.com" and reads its established tenant configuration
+    Then the returned context identifies tenant "springfield" with Display Name "Springfield Training"
+    And the consumer does not need knowledge of the replacement configuration source
 
   @FR-013 @SC-006 @contract
   Scenario Outline: Configuration failures never become a different tenant
     Given the configuration read for "springfield" has failure "<failure>"
-    When the user opens the landing page at "springfield.pathable.com"
-    Then a visible configuration failure prevents a successful tenant context
-    And neither known tenant's Display Name is displayed
+    When the resolver consumes the configuration result for the established tenant "springfield"
+    Then a configuration failure prevents a successful tenant context
+    And the response adapter maps the failure to its specified error status and safe text
+    And the error response contains neither known tenant's Display Name
     And diagnostics identify "<category>" without exposing another tenant's data
 
     Examples:
@@ -102,7 +102,7 @@ Feature: Visitors see the Display Name of the tenant associated with their addre
       | the source returns a record for shelbyville    | configuration mismatch    |
       | the source cannot complete the read            | configuration unavailable |
 
-  @FR-015 @contract
+  @FR-015 @contract @browser
   Scenario: Equal Display Names do not merge tenant identities
     Given both known tenants have Display Name "Regional Training"
     When two users visit their respective tenant landing pages
@@ -110,7 +110,7 @@ Feature: Visitors see the Display Name of the tenant associated with their addre
     And the Springfield visitor's tenant identity remains "springfield"
     And the Shelbyville visitor's tenant identity remains "shelbyville"
 
-  @FR-015 @SC-007 @contract
+  @FR-015 @SC-007 @contract @http
   Scenario Outline: A known tenant requires a usable Display Name
     Given the configuration for "springfield" has "<invalid_name>"
     When the user opens the landing page at "springfield.pathable.com"

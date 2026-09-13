@@ -128,13 +128,13 @@ Implementation adds frontend scripts:
 
 - `test:unit`: `vitest run --config vitest.config.ts`
 - `test:bdd:dry`: `cucumber-js --config cucumber.mjs --dry-run`
-- `test:bdd`: `cucumber-js --config cucumber.mjs`
+- `test:bdd`: `cucumber-js --config cucumber.mjs --tags '@production' && cucumber-js --config cucumber.mjs --tags 'not @production'`
 
 The Cucumber configuration loads root `features/*.feature` and frontend ESM TypeScript step/support files.
 Scenario Given steps choose development/production, host/static mode, and synthetic records; there is no separate
 `TENANT_E2E_PROFILE` setting. Cucumber hooks own server/browser cleanup. Execute scenarios serially, with isolated
 World state and no existing-server reuse. Restart scenarios perform their own initial visit and restart rather than
-relying on another scenario. The suite covers all 52 expanded cases, including lower-layer contract steps.
+relying on another scenario. The two disjoint partitions cover all 52 expanded cases, including lower-layer contract steps. Run production cases before development touches `.next`; fully terminate production processes before the second partition. Rebuild before every full suite, and never start production against output touched by development. Record both partition counts and full-suite wall-clock duration, with build duration separately. During scaffolding prove build → production cases → development cases → rebuild → production known-tenant request with the pinned Next version. See the plan for the assertion-layer matrix; pure return values never count as live-page evidence.
 
 After the planned dependencies/scripts exist:
 
@@ -181,3 +181,17 @@ Do not commit `.next`, browser reports, test results, or local environment files
 Success evidence includes matching landing-page names, actual rejection statuses, absence of cross-tenant names
 under overlapping requests, updated static name after restart, and readable/keyboard-compatible presentation.
 Passing type/lint/build checks alone is not evidence that these workflows work.
+
+### Independent developer walkthrough (SC-003)
+
+One developer follows sections 1–2 independently using the documented commands, then changes Display Name and restarts. Record actual outcomes below before completion; automation that directly supplies fixtures is insufficient. Correct unclear instructions and repeat affected steps. This record is pending, not a claim of validation already performed.
+
+| Evidence                                                     | Result  |
+| ------------------------------------------------------------ | ------- |
+| Developer, date, OS, Node/pnpm versions                      | Pending |
+| Host-mode setup: matching name and unknown/bare-host refusal | Pending |
+| Static-mode setup: supplied name on localhost                | Pending |
+| Changed Display Name and restart: updated visible name       | Pending |
+| Instruction corrections and repeated-step results            | Pending |
+
+Unsupported `TENANT_RESOLUTION` values retain host mode and report `invalid-mode` with accepted-mode guidance; use `host` or development-only `static`, then restart. Bare localhost still fails in host mode. Missing/invalid data in selected static mode remains a configuration error.

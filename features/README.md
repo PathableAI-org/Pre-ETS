@@ -66,16 +66,20 @@ of credentials throughout the repository.
   names must not become HTML or executable content. Distinct-name fixtures support negative assertions; the
   same-name case instead checks distinct slug identities at the contract layer.
 
-## Assumptions and discrepancy requiring alignment
+## Assumptions and selected mode policy
 
 No new business-rule assumptions were needed. Scenarios retain the specification's established defaults: slug is
 identity, local tenant hosts use `.localhost`, missing local data fails visibly, and restart is an acceptable way to
 apply static changes. They do not introduce billing, authentication, sessions, durable stores, or a tenant editor.
 
-**FR-014 discrepancy**: The spec permits an invalid mode to retain host association or prevent startup with an
-understandable error. Research decision 4 and the context contract instead describe a lazy request-time configuration
-error. The invalid-mode scenario deliberately preserves the spec's permitted outcomes. Align the plan with FR-014
-before dependent implementation, or clarify the spec explicitly; a request-time 500 alone does not satisfy this case.
+**FR-014 resolution**: Unsupported mode values preserve host association and emit a safe `invalid-mode`
+diagnostic with accepted-mode guidance. They do not select local static data or produce a mode-only 500.
+Missing/invalid selected static records retain their configuration-error behavior.
+
+The plan's acceptance evidence matrix distinguishes pure contract results, response-adapter checks, and live-page
+assertions. Repeated consumers, source substitution, and injected source failures are contract checks; they make no
+rendering claim. Mixed equal-name and invalid-name scenarios share fixtures but retain separate contract and live
+results. `@production` partitions run before all remaining scenarios; rebuilding is required before another full suite.
 
 ## Validation of these artifacts
 

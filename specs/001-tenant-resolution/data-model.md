@@ -50,7 +50,7 @@ host ownership, or session validity. Consumers cannot change identity through co
 ## Resolution settings
 
 The application mode has exactly two values: `host` and `static`. Absence selects `host`. `static` is effective only
-under development runtime; production always requires host association. Invalid values fail as invalid settings.
+under development runtime; production always requires host association. Unsupported values select `host` and emit the diagnostic `invalid-mode`, without echoing the supplied value. This diagnostic is not a resolution failure; host validation and record lookup still determine the outcome.
 Host mode uses the environment's fixed suffix (`localhost` in development; `pathable.com` otherwise). Static mode
 requires exactly one explicit local record.
 
@@ -62,7 +62,7 @@ Internal reasons are closed and contain no HTTP concepts in model types:
 | -------------------- | ---------------------------------------------------------------------------------------- |
 | `invalid-host`       | Missing or disallowed authority/host pattern.                                            |
 | `unknown-tenant`     | Valid slug has no source record.                                                         |
-| `invalid-settings`   | Unsupported mode or malformed selected environment settings.                             |
+| `invalid-settings`   | Malformed selected environment settings; excludes unsupported mode values.               |
 | `invalid-config`     | Invalid record/Display Name, duplicate slug, or lookup slug mismatch.                    |
 | `config-unavailable` | Source cannot complete the read.                                                         |
 | `invalid-context`    | Internal request identity is absent, malformed, inconsistent, or has a forbidden origin. |

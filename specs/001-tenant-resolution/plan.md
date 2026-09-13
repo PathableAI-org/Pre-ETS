@@ -153,7 +153,7 @@ installed evidence, and official sources. No technical clarification remains ope
 
 ### Request flow and ownership
 
-1. Proxy discards caller-supplied `x-preets-tenant-*` values and loads validated runtime settings.
+1. Proxy discards caller-supplied `x-preets-tenant-*` values and loads validated runtime settings. An absent or unsupported mode selects host association. For unsupported values, emit the safe `invalid-mode` diagnostic and accepted-mode guidance without the raw value; never use local static data. The normal host/source outcome applies, not a mode-only 500. Missing or malformed selected static records remain configuration errors.
 2. In host mode, the pure binder validates only Host and returns the canonical slug. The separate source reader
    resolves and validates that slug's record. Unknown/invalid host or missing record returns 403; malformed source
    returns 500; unavailable source returns 503. In local static mode, validate the supplied record without binding Host.
@@ -219,7 +219,7 @@ results. Steps sharing World use Cucumber-compatible function callbacks. No glob
 
 Given steps accumulate the scenario's settings before starting the server, including overrides of Background setup.
 Start lazily when the scenario first needs the running page; restart within the changed-name scenario. Run scenarios
-serially to avoid shared `.next` conflicts. Own each test process, reject occupied ports rather than reusing servers,
+serially, with all production scenarios before any development scenarios as specified below. Own each test process, reject occupied ports rather than reusing servers,
 wait for process/listener readiness with a timeout, and allow intentional 403/500 responses without treating them as
 startup failure. Always close browser/request contexts and terminate owned processes after success or failure.
 Overlapping-tenant scenarios still create concurrent requests against one owned process. Production builds are made
@@ -227,14 +227,36 @@ once before the suite; local scenarios run development servers. Map production b
 browser, and send production HTTP requests to loopback with Host headers; never contact live production tenants.
 
 `@browser`, `@http`, and `@contract` select interaction layers, not separate competing runners. Contract-tagged steps
-invoke pure source/orchestration contracts with injected fixtures; mixed scenarios may combine contract and visible
-checks without diagnostic UI. Vitest unit tests cover additional boundary combinations rather than duplicate all
+invoke pure source/orchestration contracts with injected fixtures. The evidence matrix below separates contract results from live-page evidence; no contract result or mocked HTML counts as a rendered-page assertion. Vitest unit tests cover additional boundary combinations rather than duplicate all
 52 expanded Gherkin cases. Keep synthetic payloads and logs isolated; Cucumber results must account for all examples.
 
 Scaffold non-passing steps before implementation, validate discovery with `test:bdd:dry`, then use `test:bdd` to prove
-behavior as steps are implemented. A full passing suite must contain no pending or undefined scenarios. The existing
-FR-014 invalid-mode discrepancy remains recorded in `features/README.md`; this test-stack revision does not resolve
-that independent behavior decision.
+behavior as steps are implemented. A full passing suite must contain no pending or undefined scenarios. The FR-014 mode policy is synchronized across the spec, settings contract, model, research, and acceptance scenario: unsupported values preserve host association and report `invalid-mode`.
+
+### Acceptance evidence matrix
+
+| Scenario / assertions                                                              | Execution and evidence                                                                                                                                                                                                                                                                                                                    | Traceability                           |
+| ---------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------- |
+| Multiple consumers use one established tenant determination                        | In the Cucumber World, call the pure resolver once with a counted binder, then repeatedly call `readBoundTenant` with the established slug/origin. Assert matching identity/configuration and no additional binding. Review the page/accessor dependency boundary separately; this does not claim to test React memoization or rendering. | FR-004, FR-005, FR-012, SC-005         |
+| Replacing the configuration source preserves tenant selection                      | Inject the alternate source into the same resolver/bound-reader consumer path; assert unchanged slug and the alternate Display Name in the returned configuration. No production source switch or diagnostic route.                                                                                                                       | FR-006, SC-005                         |
+| Configuration failures never become a different tenant                             | Inject mismatched/unavailable source results; assert no successful context and map the typed failure through the real response adapter to 500/503 with safe text. This is adapter evidence, not a live page or live network result.                                                                                                       | FR-013, SC-006                         |
+| Known-tenant names, name changes, accessible text, isolation, invalid Display Name | Navigate the existing live page with Playwright against environment-supplied records. Assert actual text, absent fallback names, focus/semantics, and response status as specified. Invalid-name cases use both `@contract` and `@http`: validate the source result and the live response using the same fixture.                         | FR-015, FR-016, SC-001, SC-004, SC-007 |
+| Equal names with distinct identities                                               | Use both `@contract` and `@browser`: resolve both records in World and visit both real pages with those same records. Assert distinct slugs in contract results and equal visible names in the browsers, without inferring identity from name.                                                                                            | FR-015                                 |
+| Static context origin and invalid mode                                             | Pure settings/resolver calls establish origin, binder usage, and diagnostic behavior. Static-page rendering is independently proved by the local browser scenarios. Invalid-mode known/unknown-host checks use injected host inputs and assert success/denial without local fallback.                                                     | FR-009, FR-014, SC-005                 |
+
+Mixed steps keep separate typed contract and browser/HTTP results in the same scenario World and use one fixture set. A Then step must name and assert the appropriate evidence; an absent live response fails a live-response assertion. Lower-layer failure injection never adds a test-only application route or fabricates rendered HTML. Real production HTTP rejection and live configured-error cases remain required independently of response-adapter assertions.
+
+### Build lifecycle and duration evidence
+
+Use the existing `.next` output with an explicit production-first policy. Mark every scenario requiring a production server `@production` (including the production override in the local-host feature). `test:bdd` runs two serial Cucumber invocations through a direct package script: `cucumber-js --config cucumber.mjs --tags '@production' && cucumber-js --config cucumber.mjs --tags 'not @production'`. Dry-run discovery remains one invocation covering all scenarios. Every case belongs to exactly one partition; retain separate reports/counts for both partitions (27 production, 25 remaining) and verify their sum is 52 expanded cases. Configure distinct report destinations so the second invocation cannot overwrite production evidence.
+
+Build once immediately before `test:bdd`. The first partition starts only production servers; fully terminate them before the development partition starts. No later scenario may start production against output touched by development. After development runs, another full suite requires a fresh build. Do not rely on serial execution alone to preserve build files or introduce an unverified custom output directory.
+
+During scaffolding, validate this lifecycle with the pinned Next runtime: build, run all production cases successfully, shut down, run development cases, rebuild, and prove a production known-tenant request again. Record the commands, runtime versions, partition counts, and actual results. Measure full `test:bdd` wall-clock duration plus build duration separately. Keep per-scenario process ownership initially; consider reuse only if measured cost warrants it and fixture/process isolation can still be proved. No latency target is invented.
+
+### Developer walkthrough evidence
+
+Before feature completion, one developer independently follows the documented host-mode setup, static-mode setup, and Display Name change/restart procedure. Record date, environment, pass/fail for each step, observed names/statuses, and any instruction corrections. Re-run corrected steps. Automated fixture setup does not satisfy this SC-003 usability check; record it as pending until performed. Use the completion record in [quickstart.md](quickstart.md).
 
 ## Unit-test runner decision
 
