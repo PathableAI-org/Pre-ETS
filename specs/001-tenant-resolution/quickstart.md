@@ -154,7 +154,7 @@ Playwright is used as a library inside Cucumber steps; no Playwright Test runner
 HTTP requests connect to loopback with Host headers. Production browser cases require test-browser hostname mapping
 to loopback; local browser cases use `.localhost`. Never navigate to live production tenants. Readiness uses bounded
 process/listener checks and tolerates intentional 403/500 outcomes; teardown must also run after failed steps.
-On CI install Chromium with `playwright install --with-deps chromium`, then run `test:bdd` after the production build.
+On CI install Chromium with `pnpm --filter @pathableai/pre-ets-frontend exec playwright install --with-deps chromium`, then run `test:bdd` after the production build.
 
 Unit coverage must include the full contract matrix: mode defaults/invalid values, source failures/mismatches,
 invalid Display Name, duplicate slug, same-name distinct tenants, no fallback, and exactly one binder invocation in

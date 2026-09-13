@@ -7,7 +7,7 @@
 ## Repository evidence
 
 - `package.json` and `.node-version` select pnpm 12.4.1 and Node 24.21.0; TypeScript is 6.0.3.
-  README still names pnpm 11.26.0; the manifest is authoritative. Correct that setup sentence when adding local-mode instructions.
+  The root README now matches pnpm 12.4.1; `package.json` remains the canonical package-manager version.
 - `packages/frontend/package.json` has Next 16.3.5, React 19.3.0, and PathAble React 0.0.5.
   There is no test script, tenant module, database client, or authentication implementation.
 - `packages/frontend/src/app/page.tsx` is a Server Component using PathAble layout, text, and button components.
@@ -193,3 +193,9 @@ Maintain strict TypeScript checking independently of executing tests. Pin compat
 into Vitest would undo the adopted Cucumber workflow.
 
 **Sources**: [Vitest guide](https://vitest.dev/guide/) and [configuration reference](https://vitest.dev/config/).
+
+## Review refinements
+
+The mode policy uses a pure selector returning effective mode and optional safe diagnostic metadata. Server-only settings emit that fixed record to stderr during lazy initialization; Cucumber captures the pure result and adapter tests capture the warning sink. No diagnostic travels through the page or HTTP response. See the context contract for the exact payload and initialization scope.
+
+Implementation must add and pin `server-only` as a frontend runtime dependency before introducing the planned marker imports. Vitest, Cucumber, and Playwright remain frontend development dependencies. The root README now matches the manifest's pnpm version, and CI Chromium installation is explicitly scoped to the frontend workspace.

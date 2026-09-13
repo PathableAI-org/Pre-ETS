@@ -11,12 +11,12 @@ Feature: Developers exercise production-like tenant association using local tena
       | springfield | Springfield Demo |
       | shelbyville | Shelbyville Demo |
 
-  @FR-007 @FR-008 @FR-011 @FR-016 @SC-003 @browser
+  @FR-007 @FR-008 @FR-011 @FR-016 @SC-003 @browser @contract
   Scenario Outline: Tenant-shaped local addresses display the associated name
     Given the developer follows the documented instructions to enable production-like host association
     When the user opens the landing page at "<host>"
     Then the landing page displays the tenant Display Name "<name>"
-    And the current tenant identity is "<slug>"
+    And the contract result for the same host and fixture identifies tenant "<slug>"
 
     Examples:
       | host                       | slug        | name             |

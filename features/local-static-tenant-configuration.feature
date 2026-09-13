@@ -36,7 +36,8 @@ Feature: Developers use supplied tenant configuration on the local landing page
   Scenario Outline: Invalid supplied data gives an actionable local error
     Given the supplied local tenant data has "<problem>"
     When the user opens the landing page at "localhost:3000"
-    Then an understandable local configuration error is displayed
+    Then the response has HTTP status 500 without a redirect
+    And an understandable local configuration error is displayed
     And the error explains how to supply valid data and restart
     And no successful tenant context is returned
     And neither a default tenant nor the slug is displayed as a replacement name

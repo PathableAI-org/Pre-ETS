@@ -40,6 +40,14 @@ environment settings during a running process; restarting is the documented upda
 must receive the same process configuration. A production-build demonstration can explicitly supply synthetic known
 records, but this does not constitute real-tenant onboarding or durable production storage.
 
+### Mode diagnostic channel
+
+Add a pure `selectTenantMode(rawMode, runtime)` operation in `src/tenant/mode.ts`. It returns `{ mode, diagnostic }`, where mode is `host` or `static` and diagnostic is absent for accepted/omitted values or the readonly record `{ category: "invalid-mode", message: "Use host or development-only static for TENANT_RESOLUTION; host association remains enabled." }` for unsupported values. It performs no logging and returns no raw input. This diagnostic is separate from the closed resolution-failure vocabulary.
+
+The server-only settings adapter calls this operation during lazy process-settings initialization and writes the diagnostic record as one structured JSON warning to server stderr, once per settings initialization per worker. It passes only the selected mode into `resolveTenant`; that resolver continues to return context or failure. Neither diagnostic metadata nor the warning is forwarded in tenant headers, HTML, or HTTP response bodies.
+
+The invalid-mode Cucumber contract step calls the pure selector with its scenario settings, saves the returned diagnostic in its typed World, and passes the selected mode into the resolver for both host cases. Its diagnostic Then asserts the exact category and fixed guidance from that captured result. Add an adapter test with a captured warning sink to prove the settings adapter emits the same safe record and omits raw values. The production sink is stderr; tests inject only the sink, not a public runtime setting or route. Logging failure must not change tenant selection or HTTP behavior.
+
 ## Host authority and grammar
 
 - Only the `Host` request header selects tenancy. Do not fall back to `nextUrl.hostname`, `Forwarded`, or

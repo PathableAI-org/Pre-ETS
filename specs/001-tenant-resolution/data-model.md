@@ -80,3 +80,7 @@ does not depend on status codes or framework response types.
 
 Static source data remains immutable for a running process. Restarting with replacement data affects subsequent
 requests. There is no write interface, version history, retention policy, or durable identity lifecycle in this slice.
+
+## Mode-selection diagnostic
+
+`ModeSelection` contains the effective `mode` and an optional readonly `diagnostic` with category `invalid-mode` and fixed accepted-mode guidance defined in the context contract. This metadata comes from the pure mode selector, not `TenantContext` or a resolution failure. The server settings adapter logs it through its warning sink; it contains no raw setting, host, slug, or Display Name.

@@ -114,7 +114,8 @@ Feature: Visitors see the Display Name of the tenant associated with their addre
   Scenario Outline: A known tenant requires a usable Display Name
     Given the configuration for "springfield" has "<invalid_name>"
     When the user opens the landing page at "springfield.pathable.com"
-    Then a visible configuration failure prevents a successful tenant context
+    Then the response has HTTP status 500 without a redirect
+    And a visible configuration failure prevents a successful tenant context
     And neither the slug nor another tenant's name is used as a Display Name fallback
 
     Examples:

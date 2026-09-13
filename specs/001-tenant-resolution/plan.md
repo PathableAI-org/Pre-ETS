@@ -19,8 +19,7 @@ no runtime behavior or feature tests have been implemented or executed.
 
 **Language/Version**: TypeScript 6.0.3 with root strict settings; Node 24.21.0; pnpm 12.4.1, verified from manifests.
 
-**Primary Dependencies**: Existing Next 16.3.5, React/React DOM 19.3.0, PathAble React 0.0.5. Add the standard
-`server-only` import marker for the current-context/settings entry points and frontend development dependency
+**Primary Dependencies**: Existing Next 16.3.5, React/React DOM 19.3.0, PathAble React 0.0.5. During implementation, add `server-only` as an explicit frontend runtime dependency, pin it in the root lockfile, and use its import marker for current-context/settings entry points. Add
 `vitest`, `@cucumber/cucumber`, and `playwright` as frontend development dependencies for Gherkin acceptance and browser/HTTP interaction. Pin compatible versions in the existing root lockfile during implementation.
 No new application framework, tenancy library, database client, schema framework, or additional unit-test framework beyond Vitest.
 
@@ -110,6 +109,7 @@ packages/frontend/
 │   └── tenant/
 │       ├── model.ts                     # readonly identity/config/context and failure types
 │       ├── host.ts                      # pure trusted-authority-to-slug parser
+│       ├── mode.ts                      # pure mode selection plus safe diagnostic metadata
 │       ├── settings.ts                  # server-only environment composition
 │       ├── source.ts                    # async read contract and static record validation
 │       ├── resolve.ts                   # pure orchestration with injected settings/source
@@ -178,6 +178,8 @@ production response headers and content separation rather than assuming developm
 and outcome mapping. [contracts/landing-page.md](contracts/landing-page.md) defines user-visible behavior and acceptance.
 Errors carry safe diagnostic categories; they do not dump JSON, names, request headers, or raw exceptions to users/logs.
 
+Mode diagnostics use the explicit selector/adapter channel in the context contract: pure `selectTenantMode` returns the selected mode and optional fixed diagnostic, server settings log that record to stderr, and `resolveTenant` receives only the mode. Cucumber captures selector metadata in World; an adapter test captures the warning sink. This adds no diagnostic UI or response metadata.
+
 ### Validation and sequencing
 
 - First establish failing pure policy/source cases, then implement the small source and resolver contracts.
@@ -245,6 +247,8 @@ behavior as steps are implemented. A full passing suite must contain no pending 
 | Static context origin and invalid mode                                             | Pure settings/resolver calls establish origin, binder usage, and diagnostic behavior. Static-page rendering is independently proved by the local browser scenarios. Invalid-mode known/unknown-host checks use injected host inputs and assert success/denial without local fallback.                                                     | FR-009, FR-014, SC-005                 |
 
 Mixed steps keep separate typed contract and browser/HTTP results in the same scenario World and use one fixture set. A Then step must name and assert the appropriate evidence; an absent live response fails a live-response assertion. Lower-layer failure injection never adds a test-only application route or fabricates rendered HTML. Real production HTTP rejection and live configured-error cases remain required independently of response-adapter assertions.
+
+The local-address outline also uses `@browser @contract`: its visible Display Name comes from the live page, while slug identity comes from a separate pure resolver result using the same host and synthetic records. Do not expose a slug or diagnostic element in the page. Invalid local data and invalid Display Name HTTP cases must inspect the actual 500 response with redirects disabled and assert that no redirect occurred, as well as checking safe error text.
 
 ### Build lifecycle and duration evidence
 
