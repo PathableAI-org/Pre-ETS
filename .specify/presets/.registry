@@ -10,10 +10,16 @@
       "registered_commands": {
         "cursor-agent": [
           "speckit.analyze"
+        ],
+        "codex": [
+          "speckit.analyze"
         ]
       },
       "registered_skills": {
         "cursor-agent": [
+          "speckit-analyze"
+        ],
+        "codex": [
           "speckit-analyze"
         ]
       },
