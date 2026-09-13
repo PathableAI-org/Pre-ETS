@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0",
+  "presets": {
+    "closed-vocabulary": {
+      "version": "1.0.1",
+      "source": "local",
+      "manifest_hash": "sha256:71d7e68b7e3fa6d2b18bd6494673327e5d31d3292d2c37c516b52502f9b8fa92",
+      "enabled": true,
+      "priority": 10,
+      "registered_commands": {
+        "cursor-agent": [
+          "speckit.analyze"
+        ]
+      },
+      "registered_skills": {
+        "cursor-agent": [
+          "speckit-analyze"
+        ]
+      },
+      "installed_at": "2026-09-13T10:31:05.420597+00:00"
+    }
+  }
+}

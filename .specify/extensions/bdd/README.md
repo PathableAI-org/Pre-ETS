@@ -1,0 +1,131 @@
+<p align="center">
+  <img src="assets/images/hero.png" alt="spec-kit-bdd: SPEC → BDD (Gherkin) → ATDD → CODE workflow" width="100%">
+</p>
+
+# spec-kit-bdd
+
+<p align="center">
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/github/license/RSginer/spec-kit-bdd?color=blue&style=flat-square"></a>
+  <a href="https://github.com/RSginer/spec-kit-bdd/releases"><img alt="Latest release" src="https://img.shields.io/github/v/tag/RSginer/spec-kit-bdd?label=release&style=flat-square"></a>
+  <a href="https://github.com/RSginer/spec-kit-bdd/actions/workflows/pages.yml"><img alt="Deploy site" src="https://img.shields.io/github/actions/workflow/status/RSginer/spec-kit-bdd/pages.yml?label=site&style=flat-square"></a>
+  <a href="https://github.com/github/spec-kit"><img alt="spec-kit compatibility" src="https://img.shields.io/badge/spec--kit-%3E%3D0.2.0-8b5cf6?style=flat-square"></a>
+  <a href="https://github.com/RSginer/spec-kit-bdd/pulls"><img alt="PRs welcome" src="https://img.shields.io/badge/PRs-welcome-brightgreen?style=flat-square"></a>
+</p>
+
+A [spec-kit](https://github.com/github/spec-kit) community extension that adds Behavior-Driven Development (BDD) and Acceptance Test-Driven Development (ATDD) to the spec-driven workflow.
+
+## Why?
+
+Lean software development treats anything that doesn't directly deliver value to the user as waste — rework from misread requirements, code built against specs nobody validated, defects caught late instead of early. [W. Edwards Deming's](https://es.wikipedia.org/wiki/William_Edwards_Deming) core teaching, later formalized for software in [Mary and Tom Poppendieck's](https://es.wikipedia.org/wiki/Mary_Poppendieck) in their book [Lean Software Development: An Agile Toolkit](https://ptgmedia.pearsoncmg.com/images/9780321150783/samplepages/0321150783.pdf), is to build quality into the process instead of inspecting for it afterward.
+
+BDD/ATDD is how **spec-kit-bdd** applies that here: acceptance criteria become executable Gherkin scenarios _before_ implementation starts, and step definitions fail (RED) until the code they describe actually satisfies them (GREEN).
+
+Ambiguity in a spec surfaces as a failing scenario before any code is written, instead of as a bug report or a misaligned feature after the fact — the same reduction in waste from rework and overproduction that Deming's approach targets.
+
+### How this differs from writing tests the usual way
+
+|                              | spec-kit-bdd                                                                                          | Cucumber/Behave/SpecFlow standalone                  | spec-kit without BDD                   |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------- | ---------------------------------------------------- | -------------------------------------- |
+| Spec → scenario traceability | Generated automatically from the spec-kit spec, verified by `/speckit.bdd.verify`                     | Hand-written and maintained separately from the spec | None — spec and tests aren't connected |
+| When acceptance tests exist  | Before implementation, as part of the spec-kit lifecycle (`/speckit.bdd.scaffold` runs pre-implement) | Whenever the team gets around to it                  | Not enforced at all                    |
+| Setup footprint              | A YAML manifest + Markdown prompt files — no new runtime or language dependency                       | Full framework install and config, per language      | N/A                                    |
+| Coverage gaps                | Surfaced automatically in `features/TRACEABILITY.md`                                                  | Manual auditing                                      | No mechanism                           |
+| Workflow integration         | Native hooks (`after_specify`, `before_implement`), optional and skippable                            | Bolted on outside the spec workflow                  | N/A                                    |
+
+## What it does
+
+| Command                  | What it produces                                                      |
+| ------------------------ | --------------------------------------------------------------------- |
+| `/speckit.bdd.scenarios` | Gherkin `.feature` files from your spec-kit specification             |
+| `/speckit.bdd.scaffold`  | Step definition stubs (Python, JS, Ruby, Java, C#) ready to implement |
+| `/speckit.bdd.verify`    | A traceability matrix mapping spec requirements ↔ scenarios           |
+
+**ATDD workflow:** write acceptance tests before writing code.
+
+1. `/speckit.specify` — write what you want to build
+2. `/speckit.bdd.scenarios` — convert acceptance criteria to Gherkin (**RED**)
+3. `/speckit.bdd.scaffold` — generate step definition stubs (**still RED**)
+4. `/speckit.plan` + `/speckit.tasks` — plan the implementation
+5. `/speckit.implement` — write code until all scenarios pass (**GREEN**)
+6. `/speckit.bdd.verify` — confirm full spec coverage
+
+See [docs/usage.md](docs/usage.md) for the full command reference, or the [project website](https://rsginer.github.io/spec-kit-bdd/) for a visual walkthrough.
+
+## Installation
+
+```bash
+specify extension add bdd --from https://github.com/RSginer/spec-kit-bdd/archive/refs/tags/v1.0.3.zip
+```
+
+## Usage
+
+### 1. Generate Gherkin scenarios from your spec
+
+After running `/speckit.specify`, convert acceptance criteria to Gherkin:
+
+```
+/speckit.bdd.scenarios
+```
+
+This creates `features/*.feature` files. Review them — they define what the system must do.
+
+### 2. Scaffold step definitions before implementing
+
+Before writing any application code:
+
+```
+/speckit.bdd.scaffold
+```
+
+This generates `features/step_definitions/` (or framework equivalent) with stubs that raise `NotImplementedError`. Your tests now exist and **fail** — as intended.
+
+### 3. Implement until tests pass
+
+Write code until `pytest tests/step_defs/ -v` (or equivalent) shows all scenarios passing.
+
+### 4. Verify coverage
+
+After implementing:
+
+```
+/speckit.bdd.verify
+```
+
+This produces `features/TRACEABILITY.md` showing which spec requirements are covered by scenarios, and highlights any gaps.
+
+## Hooks
+
+The extension registers two optional hooks:
+
+- **`after_specify`** — prompts you to run scenario generation immediately after writing your spec
+- **`before_implement`** — prompts you to scaffold step stubs before starting implementation
+
+Both hooks are `optional: true` — they ask for confirmation and can be skipped.
+
+## Examples
+
+| Example                                                  | Stack                                                 |
+| -------------------------------------------------------- | ----------------------------------------------------- |
+| [examples/vitest-react-todo](examples/vitest-react-todo) | React 19 + Vite + Vitest + `@amiceli/vitest-cucumber` |
+| [examples/express-cucumber](examples/express-cucumber)   | Express 5 + TypeScript + `@cucumber/cucumber`         |
+
+## Requirements
+
+- spec-kit `>=0.2.0`
+- Any AI coding agent supported by spec-kit (Claude, Copilot, Cursor, etc.)
+
+## Contributing
+
+See [docs/usage.md](docs/usage.md) for full usage details and examples.
+
+### Running the website locally
+
+The [project website](https://rsginer.github.io/spec-kit-bdd/) (`index.md`, `_layouts/`, `assets/`) is a Jekyll site deployed by [.github/workflows/pages.yml](.github/workflows/pages.yml). To preview it locally:
+
+```bash
+bundle config set --local path 'vendor/bundle'
+bundle install
+bundle exec jekyll serve
+```
+
+Then open <http://localhost:4000>. `.ruby-version` pins the Ruby version; `Gemfile`/`Gemfile.lock` pin the same `github-pages` gem version GitHub builds with, so the local preview matches production.
