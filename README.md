@@ -4,9 +4,9 @@ A new service grounded in our client’s Pre-ETS operations.
 
 ## Setup
 
-Use Node.js **24.21.0** (pinned in `.node-version`) and pnpm **11.26.0**
+Use Node.js **24.21.0** (pinned in `.node-version`) and pnpm **12.4.1**
 (pinned in `package.json`). Select that Node version with your preferred version
-manager, then install pnpm if needed with `npm install --global pnpm@11.26.0`.
+manager, then install pnpm if needed with `npm install --global pnpm@12.4.1`.
 Run `pnpm install` from the repository root. For a reproducible installation, use
 `pnpm install --frozen-lockfile`.
 
