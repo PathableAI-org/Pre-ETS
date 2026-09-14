@@ -148,5 +148,11 @@ build/
 # Fallow analysis cache
 .fallow/
 
+# Cucumber and Playwright generated artifacts
+reports/
+test-results/
+playwright-report/
+blob-report/
+
 # Generated Husky hook launchers
 .husky/_/

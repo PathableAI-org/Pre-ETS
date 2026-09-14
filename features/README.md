@@ -7,8 +7,8 @@ Supporting design: [plan](../specs/001-tenant-resolution/plan.md) and
 Consumer type: **Human end user of UI**, detected from the frontend's Next, React, and React DOM dependencies.
 Developers are human users of the local landing page; they are not reframed as API clients.
 
-These are pre-implementation Gherkin acceptance specifications. No step definitions, runner, application code, or
-executable test results are supplied by this generation step.
+These are pre-implementation Gherkin acceptance specifications. Cucumber step stubs live in
+`tests/bdd/` and remain intentionally non-passing until implementation.
 
 ## Feature index
 
@@ -37,9 +37,9 @@ not proof that every architectural constraint can be verified through the UI.
 Mixed outcomes may require complementary layers. For example, a local visit's visible name is browser-verifiable,
 while its canonical identity is a lower-layer assertion. Preserve the intent instead of forcing all assertions into
 Playwright. The adopted runner is Cucumber (`@cucumber/cucumber`), with the Playwright library for browser/HTTP
-steps and pure modules for contract steps. Support code and dependencies belong to `packages/frontend`; the root
-feature files remain Cucumber inputs. Vitest tests supplement boundary coverage. Step scaffolding remains future
-work; the updated plan defines ESM imports, per-scenario state, server lifecycle, and `test:bdd` commands.
+steps and pure modules for contract steps. Support code lives in root `tests/bdd/`; the feature files remain
+Cucumber inputs. Vitest tests supplement boundary coverage. Step stubs are pending; `cucumber.mjs` and the root
+`test:bdd` scripts define ESM imports, per-scenario state, and production-first partitions.
 
 FR-006 ownership and exclusion of durable storage, and FR-011 synthetic-data/documentation restrictions, also require
 code/document review. The source contract uses only Display Name as configuration and keeps slug as identity; no

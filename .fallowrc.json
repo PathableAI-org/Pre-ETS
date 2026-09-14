@@ -3,7 +3,10 @@
   "entry": [
     "packages/backend/src/index.ts",
     "packages/frontend/src/app/layout.tsx",
-    "packages/frontend/src/app/page.tsx"
+    "packages/frontend/src/app/page.tsx",
+    "cucumber.mjs",
+    "tests/bdd/steps/tenant.steps.ts",
+    "tests/bdd/support/hooks.ts"
   ],
   "workspaces": {
     "patterns": [
