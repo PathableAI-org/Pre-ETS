@@ -168,8 +168,11 @@ installed evidence, and official sources. No technical clarification remains ope
 Proxy prevalidation and the current accessor may each read the small static source. This does not repeat host binding.
 The source is fixed for the process lifetime and changes require restart; a future durable source must revisit this
 choice. Request headers force request-dependent rendering. Do not introduce `use cache`, persistent config caching,
-or a shared mutable current-context singleton. Tenant responses/refusals must be non-shared-cacheable; verify actual
-production response headers and content separation rather than assuming development behavior proves it.
+or a shared mutable current-context singleton. The response adapter in `packages/frontend/src/proxy.ts` must explicitly set
+`Cache-Control: private, no-store` on both successful tenant-dependent HTML/RSC responses (including prefetch)
+and all refusal/error responses. Set this as an outgoing response header, not an upstream request header; do not
+rely on framework defaults. Retain production assertions on the final served responses and cross-tenant content
+separation to detect framework overrides or missing paths.
 
 ### Interfaces and failures
 

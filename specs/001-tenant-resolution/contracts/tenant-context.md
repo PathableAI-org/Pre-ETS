@@ -97,8 +97,10 @@ Prevalidation establishes failures before rendering. An unexpected accessor inva
 never convert it to success or rebind. Unit and production-build tests must prove normal invalid/unknown cases fail at
 Proxy rather than relying on a post-stream exception to set the status.
 
-Use UTF-8 plain text for refusal responses and a non-shared-cacheable policy (`Cache-Control: private, no-store`).
-Successful tenant-dependent HTML/RSC must also remain request-dependent and non-shared-cacheable. Verify the final
+Use UTF-8 plain text for refusal responses. The response adapter must explicitly set the outgoing response header
+`Cache-Control: private, no-store` on both successful tenant-dependent HTML/RSC responses (including prefetch)
+and every refusal/error response. Do not rely on framework defaults or set this only on forwarded request headers.
+Successful rendering must remain request-dependent. Verify the final
 production server response because framework behavior can affect headers. Future CDN deployment may not override this
 policy without proving tenant-keyed isolation.
 
