@@ -4,8 +4,9 @@ This note records the line between frontend session state and the backend
 domain model. How Redis is keyed is described in
 [session-state.md](./session-state.md). Tenant configuration (branding, copy,
 broker connection) is a separate frontend-owned store, described in
-[multi-tenancy.md](./multi-tenancy.md). It is not session state and it is not
-domain data.
+[multi-tenancy.md](./multi-tenancy.md). This increment supplies only a static
+Display Name from selected environment records. Durable tenant configuration
+remains future work. It is not session state and it is not domain data.
 
 ## Two persistences
 

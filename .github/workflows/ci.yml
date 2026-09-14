@@ -43,11 +43,13 @@ jobs:
         run: pnpm lint
       - name: Typecheck workspaces
         run: pnpm typecheck
+      - name: Run frontend unit tests
+        run: pnpm --filter @pathableai/pre-ets-frontend test:unit
 
   build:
     name: CI / Build
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 45
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -63,8 +65,12 @@ jobs:
           cache-dependency-path: pnpm-lock.yaml
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
       - name: Build workspaces
         run: pnpm build
+      - name: Run production-first Cucumber partitions
+        run: pnpm test:bdd
       - name: Smoke check backend
         run: |
           greeting=$(pnpm --silent start:backend)

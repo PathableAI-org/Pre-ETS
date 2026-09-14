@@ -10,7 +10,9 @@ export default defineConfig([
     "**/dist/**",
     "**/build/**",
     "**/coverage/**",
-    "**/.next/**"
+    "**/.next/**",
+    "**/.vitest/**",
+    "**/reports/**"
   ]),
   {
     extends: [eslint.configs.recommended, perfectionist.configs["recommended-natural"]],

@@ -10,15 +10,18 @@
     "lint": "eslint . --max-warnings=0",
     "lint:fix": "eslint . --max-warnings=0 --fix",
     "format:check": "dprint check",
-    "format:write": "dprint fmt"
+    "format:write": "dprint fmt",
+    "test:unit": "vitest run --config vitest.config.ts"
   },
   "dependencies": {
     "@pathableai/react": "0.0.5",
     "next": "16.3.5",
     "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react-dom": "19.3.0",
+    "server-only": "0.0.1"
   },
   "devDependencies": {
+    "vitest": "5.0.0",
     "@next/eslint-plugin-next": "16.3.5",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",

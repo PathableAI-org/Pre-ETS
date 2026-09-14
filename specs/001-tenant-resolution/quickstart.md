@@ -1,11 +1,14 @@
 # Quickstart: Validate Tenant Resolution
 
-**Status**: Planned validation guide. The tenant settings and test scripts below are not implemented yet. Run this
-workflow after implementation; this planning pass has not demonstrated runtime success.
+**Status**: Implemented on 2026-09-14. Runtime is Node 24.21.0 and pnpm 12.4.1. Cucumber
+runs from the repository root (`pnpm test:bdd:dry`, `pnpm test:bdd`), not the frontend
+workspace. This increment is not deployment-ready: production ingress must still present
+the original `Host` header. T031 (independent human walkthrough) remains pending.
 
-Run commands from the repository root. Use Node from `.node-version` and pnpm from `package.json` (currently 24.21.0
-and 12.4.1). Install with `pnpm install --frozen-lockfile`. No database, Compose, backend server, login, or real tenant
-data is required. Stop each server before starting the next profile; they share the normal frontend build directory.
+Run commands from the repository root. Use Node from `.node-version` and pnpm from `package.json`.
+Install with `pnpm install --frozen-lockfile`. No database, Compose, backend server, login, or real
+tenant data is required. Stop each server before starting the next profile; they share the normal
+frontend build directory.
 
 ## 1. Local host association
 
@@ -124,47 +127,46 @@ rejected by Node before Next are documented separately from application 403 hand
 
 ## 5. Automated feature verification
 
-Implementation adds frontend scripts:
+Root scripts:
 
-- `test:unit`: `vitest run --config vitest.config.ts`
-- `test:bdd:dry`: `cucumber-js --config cucumber.mjs --dry-run`
-- `test:bdd`: `cucumber-js --config cucumber.mjs --tags '@production' && cucumber-js --config cucumber.mjs --tags 'not @production'`
+- Frontend `test:unit`: `vitest run --config vitest.config.ts` (23 tests passed)
+- `test:bdd:dry`: `cucumber-js --config cucumber.mjs --dry-run` (52 scenarios / 480 steps discovered; no undefined steps)
+- `test:bdd`: production partition then remaining (`@production` then `not @production`)
 
-The Cucumber configuration loads root `features/*.feature` and frontend ESM TypeScript step/support files.
-Scenario Given steps choose development/production, host/static mode, and synthetic records; there is no separate
-`TENANT_E2E_PROFILE` setting. Cucumber hooks own server/browser cleanup. Execute scenarios serially, with isolated
-World state and no existing-server reuse. Restart scenarios perform their own initial visit and restart rather than
-relying on another scenario. The two disjoint partitions cover all 52 expanded cases, including lower-layer contract steps. Run production cases before development touches `.next`; fully terminate production processes before the second partition. Rebuild before every full suite, and never start production against output touched by development. Record both partition counts and full-suite wall-clock duration, with build duration separately. During scaffolding prove build → production cases → development cases → rebuild → production known-tenant request with the pinned Next version. See the plan for the assertion-layer matrix; pure return values never count as live-page evidence.
+Recorded 2026-09-14 on Node 24.21.0 / pnpm 12.4.1 / Next.js 16.3.5:
 
-After the planned dependencies/scripts exist:
+| Gate                                                         | Result                                                                                 |
+| ------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
+| `pnpm --filter @pathableai/pre-ets-frontend test:unit`       | 23 passed                                                                              |
+| `pnpm test:bdd:dry`                                          | 52 scenarios discovered                                                                |
+| Fresh `pnpm --filter @pathableai/pre-ets-frontend build`     | ~3.2s after a warm compile; first build ~5.4s                                          |
+| Production Cucumber (`@production`)                          | 27 passed in 7.622s                                                                    |
+| Remaining Cucumber (`not @production`)                       | 25 passed in 24.231s                                                                   |
+| Full `pnpm test:bdd`                                         | 52 passed, 32.70s wall clock                                                           |
+| Rebuild after development + `Host: springfield.pathable.com` | HTTP 200, `Cache-Control: private, no-store`, body contains `Tenant: Springfield Demo` |
+
+HTTP/1.1 requests with no `Host` header are rejected by Node before Next (400). The missing-host
+acceptance case sends HTTP/1.0 so the application can return 403. Next.js development overwrites
+successful document `Cache-Control` to `no-cache, must-revalidate` for HMR; production and all
+mapped 403/500/503 bodies serve `private, no-store`. Occupied test ports refuse reuse; each
+scenario owns its process. Process reuse was not added (full suite is under a minute).
 
 ```sh
-pnpm --filter @pathableai/pre-ets-frontend exec playwright install chromium
+pnpm exec playwright install chromium
 pnpm --filter @pathableai/pre-ets-frontend test:unit
-pnpm --filter @pathableai/pre-ets-frontend test:bdd:dry
+pnpm test:bdd:dry
 pnpm build
-pnpm --filter @pathableai/pre-ets-frontend test:bdd
+pnpm test:bdd
 ```
 
-Dry-run checks scenario/step discovery; it does not prove behavior or replace the full suite. During scaffolding,
-stubs must remain non-passing. Before completion, every example must execute successfully with no pending, undefined,
-ambiguous, or skipped acceptance work presented as passed.
-
-Playwright is used as a library inside Cucumber steps; no Playwright Test runner configuration is required. Production
-HTTP requests connect to loopback with Host headers. Production browser cases require test-browser hostname mapping
-to loopback; local browser cases use `.localhost`. Never navigate to live production tenants. Readiness uses bounded
-process/listener checks and tolerates intentional 403/500 outcomes; teardown must also run after failed steps.
-On CI install Chromium with `pnpm --filter @pathableai/pre-ets-frontend exec playwright install --with-deps chromium`, then run `test:bdd` after the production build.
-
-Unit coverage must include the full contract matrix: mode defaults/invalid values, source failures/mismatches,
-invalid Display Name, duplicate slug, same-name distinct tenants, no fallback, and exactly one binder invocation in
-host resolution. Vitest uses a Node environment and discovers only `tests/unit/**/*.test.ts`; keep framework-only
-modules out of these pure unit targets. Include `vitest.config.ts` and tests in normal strict typechecking, which
-remains a separate gate. Cucumber support files are loaded by Cucumber, not Vitest.
+Playwright is used as a library inside Cucumber steps. Production HTTP requests connect to
+loopback with Host headers. Production browser cases map `*.pathable.com` to loopback. Never
+navigate to live production tenants. On CI, Quality runs Vitest; Build installs Chromium with
+`pnpm exec playwright install --with-deps chromium` and runs `pnpm test:bdd` after `pnpm build`.
 
 ## 6. Repository gates and completion evidence
 
-Run the existing checks, plus the feature commands above:
+Recorded 2026-09-14 after lint fixes then formatting:
 
 ```sh
 pnpm typecheck
@@ -174,13 +176,10 @@ pnpm format:check
 pnpm check:unused
 ```
 
-If fixes are needed, apply lint fixes before formatting. Before a commit, preserve the normal Husky/lint-staged
-protections and single `check:changes` audit. Record actual test results and any unmet browser/deployment conditions.
-Do not commit `.next`, browser reports, test results, or local environment files.
-
-Success evidence includes matching landing-page names, actual rejection statuses, absence of cross-tenant names
-under overlapping requests, updated static name after restart, and readable/keyboard-compatible presentation.
-Passing type/lint/build checks alone is not evidence that these workflows work.
+All five passed. Feature tests: 23 Vitest cases and 52 Cucumber cases passed. Do not commit `.next`,
+browser reports, test results, or local environment files. Passing type/lint/build checks alone is
+not evidence that the workflows work; the partition results and production known-tenant request above
+are. Ingress must still supply the original Host. This is not a deployment-readiness claim.
 
 ### Independent developer walkthrough (SC-003)
 

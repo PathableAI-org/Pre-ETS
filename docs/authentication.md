@@ -43,8 +43,8 @@ An unauthenticated request is handled in this order:
 request URL → slug → tenant configuration → OIDC login (broker)
 ```
 
-1. Bind the request to a slug and load that tenant’s configuration, or reject
-   the request as not found. Do not start login for an unknown host, and do not
+1. Bind the request to a slug and load that tenant’s configuration, or refuse
+   the request with HTTP 403. Do not start login for an unknown host, and do not
    fall through to another tenant’s identity provider.
 2. Configuration includes presentation data (branding, copy) and the broker
    **connection** to use for this slug. The login page may render that
