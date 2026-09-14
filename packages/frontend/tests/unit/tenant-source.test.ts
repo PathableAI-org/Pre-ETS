@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest"
 
-import { parseTenantRecord } from "../../src/tenant/model.ts"
 import {
   createMismatchedTenantSource,
   createStaticTenantSource,
-  createUnavailableTenantSource
-} from "../../src/tenant/source.ts"
+  createThrowingTenantSource
+} from "../../src/lib/tenant/source.ts"
+import { CONFIG_UNAVAILABLE, parseTenantRecord } from "../../src/lib/tenant/types.ts"
 
 const springfield = {
   config: { displayName: "Springfield Demo" },
@@ -20,62 +20,44 @@ const shelbyville = {
 describe("static tenant source", () => {
   it("accepts an empty known set", async () => {
     const source = createStaticTenantSource([])
-    expect(source.ok).toBe(true)
-    if (!source.ok) {
-      return
-    }
-
-    const missing = await source.value.readTenantRecord("springfield")
-    expect(missing).toEqual({ ok: false, reason: "unknown-tenant" })
+    await expect(source.readTenantRecord("springfield")).resolves.toBeUndefined()
   })
 
   it("rejects duplicate slugs and allows duplicate display names", () => {
-    expect(createStaticTenantSource([springfield, springfield]).ok).toBe(false)
-    expect(
+    expect(() => createStaticTenantSource([springfield, springfield])).toThrow(CONFIG_UNAVAILABLE)
+    expect(() =>
       createStaticTenantSource([
         springfield,
         { config: { displayName: "Springfield Demo" }, slug: "shelbyville" }
-      ]).ok
-    ).toBe(true)
+      ])
+    ).not.toThrow()
   })
 
   it("returns the matching record and rejects a lookup mismatch", async () => {
     const source = createStaticTenantSource([springfield, shelbyville])
-    expect(source.ok).toBe(true)
-    if (!source.ok) {
-      return
-    }
-
-    await expect(source.value.readTenantRecord("springfield")).resolves.toEqual({
-      ok: true,
-      value: springfield
-    })
+    await expect(source.readTenantRecord("springfield")).resolves.toEqual(springfield)
 
     const mismatched = createMismatchedTenantSource(shelbyville)
-    await expect(mismatched.readTenantRecord("springfield")).resolves.toEqual({
-      ok: true,
-      value: shelbyville
-    })
+    await expect(mismatched.readTenantRecord("springfield")).resolves.toEqual(shelbyville)
   })
 
-  it("reports an unavailable source", async () => {
-    await expect(createUnavailableTenantSource().readTenantRecord("springfield")).resolves.toEqual({
-      ok: false,
-      reason: "config-unavailable"
-    })
+  it("throws when the source cannot complete a read", async () => {
+    await expect(createThrowingTenantSource().readTenantRecord("springfield")).rejects.toThrow(
+      CONFIG_UNAVAILABLE
+    )
   })
 
   it("rejects missing, numeric, empty, whitespace, and unknown configuration fields", () => {
-    expect(parseTenantRecord({ config: {}, slug: "springfield" }).ok).toBe(false)
-    expect(parseTenantRecord({ config: { displayName: 42 }, slug: "springfield" }).ok).toBe(false)
-    expect(parseTenantRecord({ config: { displayName: "" }, slug: "springfield" }).ok).toBe(false)
-    expect(parseTenantRecord({ config: { displayName: "   " }, slug: "springfield" }).ok).toBe(false)
+    expect(parseTenantRecord({ config: {}, slug: "springfield" })).toBeUndefined()
+    expect(parseTenantRecord({ config: { displayName: 42 }, slug: "springfield" })).toBeUndefined()
+    expect(parseTenantRecord({ config: { displayName: "" }, slug: "springfield" })).toBeUndefined()
+    expect(parseTenantRecord({ config: { displayName: "   " }, slug: "springfield" })).toBeUndefined()
     expect(
       parseTenantRecord({
         config: { displayName: "Springfield Demo", extra: true },
         slug: "springfield"
-      }).ok
-    ).toBe(false)
-    expect(parseTenantRecord({ config: { displayName: "Nope" }, slug: "www" }).ok).toBe(false)
+      })
+    ).toBeUndefined()
+    expect(parseTenantRecord({ config: { displayName: "Nope" }, slug: "www" })).toBeUndefined()
   })
 })

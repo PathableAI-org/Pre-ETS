@@ -31,9 +31,10 @@ All 16 functional requirements and seven success criteria have scenario referenc
 not proof that every architectural constraint can be verified through the UI.
 
 - `@browser`: Navigate the running landing page and assert meaningful visible/accessibility/keyboard outcomes.
-- `@http`: Verify the actual response to a visitor's request, including status 403 and absence of redirects/fallback.
+- `@http`: Verify the actual response to a visitor's request, including Access denied / no redirect.
+  Prefer HTTP 403; a 200 `forbidden.tsx` document is acceptable if Next.js streams the interrupt.
   These remain human-facing workflows even when a test client supplies the request's Host.
-- `@contract`: Verify source substitution, binding count, context origin/identity, and injected failures at the lower
+- `@contract`: Verify source substitution, host binding, and injected failures at the lower
   layer. Do not add diagnostic UI, public test endpoints, or browser inspection of framework internals.
 
 Mixed outcomes may require complementary layers. For example, a local visit's visible name is browser-verifiable,

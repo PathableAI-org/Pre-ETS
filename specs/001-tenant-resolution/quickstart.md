@@ -33,7 +33,8 @@ curl --noproxy '*' -i http://127.0.0.1:3000/ -H 'Host: unknown.localhost:3000'
 curl --noproxy '*' -i http://127.0.0.1:3000/ -H 'Host: a.b.localhost:3000'
 ```
 
-All three must return 403, not a redirect or successful landing page. Ports do not change tenant identity.
+All three must refuse with `Access denied.` and no redirect (HTTP 403 when `forbidden()` is applied
+before streaming). Ports do not change tenant identity.
 Check source/record validation and host edge cases against [the context contract](contracts/tenant-context.md).
 
 ## 2. Local static configuration and a changed name
@@ -106,8 +107,8 @@ curl --noproxy '*' -i http://127.0.0.1:3000/ -H 'Host: a.b.pathable.com'
 curl --noproxy '*' -i http://127.0.0.1:3000/ -H 'Host: localhost:3000'
 ```
 
-The first two return successful documents containing the matching Display Name. The remaining requests return 403,
-with no tenant name or redirect. No result may use `Must Not Be Used`. Confirm success/refusal responses cannot be
+The first two return successful documents containing the matching Display Name. The remaining requests are refused
+with `Access denied.` and no redirect. No result may use `Must Not Be Used`. Confirm success/refusal responses cannot be
 shared-cacheable. Repeat known requests concurrently against this same process.
 
 Attempt competing tenant selectors:
@@ -120,10 +121,10 @@ curl --noproxy '*' -i 'http://127.0.0.1:3000/?tenant=shelbyville' \
   -H 'x-preets-tenant-origin: local-static'
 ```
 
-Expect Springfield's name. Repeat with `Host: unknown.pathable.com`; expect 403. Internal tenant headers must not
-appear as application response headers. Production HTTP cases also cover RSC/prefetch variants so those request
+Expect Springfield's name. Repeat with `Host: unknown.pathable.com`; expect Access denied. Caller-supplied tenant headers must not
+select another tenant. Production HTTP cases also cover RSC/prefetch variants so those request
 forms cannot bypass the boundary. The browser/HTTP test suite supplies protocol-valid cases; malformed wire messages
-rejected by Node before Next are documented separately from application 403 handling.
+rejected by Node before Next are documented separately from application refusal handling.
 
 ## 5. Automated feature verification
 

@@ -3,7 +3,7 @@
   "entry": [
     "packages/backend/src/index.ts",
     "packages/frontend/src/app/**/*.{ts,tsx}",
-    "packages/frontend/src/proxy.ts",
+    "packages/frontend/src/lib/**/*.ts",
     "packages/frontend/vitest.config.ts",
     "packages/frontend/tests/unit/**/*.ts",
     "cucumber.mjs",

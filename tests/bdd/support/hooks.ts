@@ -24,7 +24,6 @@ function resetTenantWorld(world: TenantWorld): void {
   world.knownHostResult = undefined
   world.localConfigProblem = undefined
   world.localStaticRecord = undefined
-  world.mappedFailure = undefined
   world.modeDiagnostic = undefined
   world.ownedProcess = undefined
   world.page = undefined

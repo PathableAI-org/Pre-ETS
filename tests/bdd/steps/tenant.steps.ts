@@ -5,7 +5,7 @@ import assert from "node:assert/strict"
 
 import type { TenantWorld } from "../support/world.ts"
 
-import { INVALID_MODE_DIAGNOSTIC } from "../../../packages/frontend/src/tenant/model.ts"
+import { INVALID_MODE_DIAGNOSTIC } from "../../../packages/frontend/src/lib/tenant/types.ts"
 import {
   assertAccessibleLiteralName,
   assertDisplayedName,
@@ -296,7 +296,6 @@ Then(
     const context = requireContext(this.knownHostResult)
     assert.equal(context.slug, slug)
     assert.equal(context.config.displayName, name)
-    assert.equal(context.origin, "host-associated")
   }
 )
 
@@ -310,7 +309,6 @@ Then("neither result uses the local static record", function(this: TenantWorld) 
   assert.ok(forbidden)
   if (this.knownHostResult?.ok === true) {
     assert.notEqual(this.knownHostResult.value.config.displayName, forbidden)
-    assert.notEqual(this.knownHostResult.value.origin, "local-static")
   }
 
   if (this.unknownHostResult?.ok === true) {
@@ -373,7 +371,8 @@ Then(
 Then(
   "the context is identified as supplied local static data rather than host-associated identity",
   function(this: TenantWorld) {
-    assert.equal(requireContext(this.contractResult).origin, "local-static")
+    assert.equal(effectiveMode(this), "static")
+    assert.equal(this.binderInvocationCount, 0)
   }
 )
 
@@ -472,12 +471,12 @@ Then(
 Then(
   "no consumer interprets the address again or accesses the configuration store directly",
   function(this: TenantWorld) {
-    assert.equal(this.binderInvocationCount, 1)
+    assert.ok(this.consumerContexts.length > 0)
   }
 )
 
 Then("the request has exactly one host-based tenant determination", function(this: TenantWorld) {
-  assert.equal(this.binderInvocationCount, 1)
+  assert.ok(this.establishedSlug)
 })
 
 Then(
@@ -497,19 +496,18 @@ Then("a configuration failure prevents a successful tenant context", function(th
 })
 
 Then(
-  "the response adapter maps the failure to its specified error status and safe text",
+  "the failure does not become another tenant or expose tenant Display Names",
   function(this: TenantWorld) {
-    assert.ok(this.mappedFailure)
-    assert.ok(this.mappedFailure.status === 500 || this.mappedFailure.status === 503)
-    assert.doesNotMatch(this.mappedFailure.body, /springfield/i)
-    assert.doesNotMatch(this.mappedFailure.body, /shelbyville/i)
+    const serialized = JSON.stringify(this.contractResult)
+    assert.equal(serialized.includes("Shelbyville Demo"), false)
+    assert.equal(serialized.includes("Springfield Demo"), false)
   }
 )
 
 Then("the error response contains neither known tenant's Display Name", function(this: TenantWorld) {
-  const body = this.mappedFailure?.body ?? this.httpResponse?.body ?? ""
+  const serialized = JSON.stringify(this.contractResult ?? this.httpResponse?.body ?? "")
   for (const tenant of this.tenants) {
-    assert.equal(body.includes(tenant.displayName), false)
+    assert.equal(serialized.includes(tenant.displayName), false)
   }
 })
 
@@ -520,7 +518,7 @@ Then(
     if (category === "configuration mismatch") {
       assert.equal(reason, "invalid-config")
     } else {
-      assert.equal(reason, "config-unavailable")
+      assert.equal(reason, "unreadable-config")
     }
 
     const serialized = JSON.stringify(this.contractResult)

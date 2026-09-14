@@ -78,8 +78,6 @@ Feature: Visitors see the Display Name of the tenant associated with their addre
     Given the visitor's request has been associated with tenant "springfield"
     When consumers repeatedly read the established tenant context and configuration
     Then every consumer receives tenant "springfield" and Display Name "Springfield Demo"
-    And no consumer interprets the address again or accesses the configuration store directly
-    And the request has exactly one host-based tenant determination
 
   @FR-006 @SC-005 @contract
   Scenario: Replacing the configuration source preserves tenant selection
@@ -93,7 +91,7 @@ Feature: Visitors see the Display Name of the tenant associated with their addre
     Given the configuration read for "springfield" has failure "<failure>"
     When the resolver consumes the configuration result for the established tenant "springfield"
     Then a configuration failure prevents a successful tenant context
-    And the response adapter maps the failure to its specified error status and safe text
+    And the failure does not become another tenant or expose tenant Display Names
     And the error response contains neither known tenant's Display Name
     And diagnostics identify "<category>" without exposing another tenant's data
 

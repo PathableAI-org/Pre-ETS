@@ -1,33 +1,20 @@
 import { describe, expect, it } from "vitest"
 
-import { bindHost } from "../../src/tenant/host.ts"
-import { selectTenantMode } from "../../src/tenant/mode.ts"
-import { INVALID_MODE_DIAGNOSTIC } from "../../src/tenant/model.ts"
+import { bindHost } from "../../src/lib/tenant/host.ts"
+import { INVALID_MODE_DIAGNOSTIC, selectTenantMode } from "../../src/lib/tenant/types.ts"
 
 describe("host binding", () => {
   it("accepts production tenant hosts and ignores a valid port", () => {
-    expect(bindHost("springfield.pathable.com", "pathable.com")).toEqual({
-      ok: true,
-      value: "springfield"
-    })
-    expect(bindHost("Shelbyville.Pathable.COM:443", "pathable.com")).toEqual({
-      ok: true,
-      value: "shelbyville"
-    })
+    expect(bindHost("springfield.pathable.com", "pathable.com")).toBe("springfield")
+    expect(bindHost("Shelbyville.Pathable.COM:443", "pathable.com")).toBe("shelbyville")
   })
 
   it("accepts local tenant hosts across ports", () => {
-    expect(bindHost("springfield.localhost:3000", "localhost")).toEqual({
-      ok: true,
-      value: "springfield"
-    })
-    expect(bindHost("springfield.localhost:3100", "localhost")).toEqual({
-      ok: true,
-      value: "springfield"
-    })
+    expect(bindHost("springfield.localhost:3000", "localhost")).toBe("springfield")
+    expect(bindHost("springfield.localhost:3100", "localhost")).toBe("springfield")
   })
 
-  it("rejects apex, reserved, extra-label, unknown-suffix, and deceptive hosts", () => {
+  it("rejects apex, reserved, extra-label, unknown-suffix, and unusable hosts", () => {
     const rejected = [
       undefined,
       "",
@@ -51,28 +38,27 @@ describe("host binding", () => {
     ]
 
     for (const host of rejected) {
-      const production = bindHost(host, "pathable.com")
-      const local = bindHost(host, "localhost")
-      expect(production.ok || local.ok, String(host)).toBe(false)
+      expect(bindHost(host, "pathable.com") ?? bindHost(host, "localhost"), String(host)).toBeUndefined()
     }
   })
 })
 
 describe("mode selection", () => {
   it("selects host when the mode is omitted", () => {
-    expect(selectTenantMode(undefined, "development")).toEqual({ mode: "host" })
-    expect(selectTenantMode("", "production")).toEqual({ mode: "host" })
+    expect(selectTenantMode(undefined)).toEqual({ mode: "host" })
+    expect(selectTenantMode("")).toEqual({ mode: "host" })
   })
 
-  it("keeps static in development and ignores it in production", () => {
-    expect(selectTenantMode("static", "development")).toEqual({ mode: "static" })
-    expect(selectTenantMode("static", "production")).toEqual({ mode: "host" })
+  it("keeps static outside production and ignores it in production", () => {
+    expect(selectTenantMode("static")).toEqual({ mode: "static" })
+    expect(selectTenantMode("static", true)).toEqual({ mode: "host" })
   })
 
   it("retains host association for unsupported values", () => {
-    expect(selectTenantMode("automatic", "development")).toEqual({
+    expect(selectTenantMode("automatic")).toEqual({
       diagnostic: INVALID_MODE_DIAGNOSTIC,
       mode: "host"
     })
+    expect(selectTenantMode("automatic", true)).toEqual({ mode: "host" })
   })
 })

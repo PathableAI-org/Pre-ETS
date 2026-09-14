@@ -33,7 +33,8 @@ Compose or a database. Copy `packages/frontend/.env.example` to
 Host association (default, including omitted `TENANT_RESOLUTION`) uses
 `TENANT_CONFIG_RECORDS_JSON` and `{slug}.localhost` locally or
 `{slug}.pathable.com` in production. Bare `localhost`, unknown hosts, and
-invalid hosts return HTTP 403. Production ignores `TENANT_RESOLUTION=static`.
+invalid hosts are refused with `forbidden()` (`Access denied.`, no redirect). Production never
+reads `TENANT_RESOLUTION` or `TENANT_LOCAL_CONFIG_JSON`.
 Unsupported mode values keep host association and log a safe `invalid-mode`
 diagnostic to stderr.
 

@@ -20,5 +20,5 @@ partition first, then `not @production`, writing distinct JSON reports under `re
 ## Bindings
 
 Step definitions in `tenant.steps.ts` drive the owned Next.js test process, Playwright
-page/HTTP requests, and injected contract helpers. Assertions read typed evidence on
+page/HTTP requests, and injected contract helpers against `src/lib/tenant`. Assertions read typed evidence on
 `TenantWorld`. Pending, undefined, and ambiguous steps must not be treated as passing.

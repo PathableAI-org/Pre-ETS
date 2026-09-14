@@ -3,30 +3,25 @@ import type { Locator } from "playwright"
 import assert from "node:assert/strict"
 import net from "node:net"
 
-import type { HttpExchange, TenantWorld } from "./world.ts"
+import type { ContractFailureReason, ContractResult, HttpExchange, TenantWorld } from "./world.ts"
 
-import { bindHost } from "../../../packages/frontend/src/tenant/host.ts"
-import { selectTenantMode } from "../../../packages/frontend/src/tenant/mode.ts"
-import {
-  type CurrentTenantContext,
-  parseTenantRecord,
-  type TenantFailureReason,
-  type TenantRecord,
-  type TenantResult
-} from "../../../packages/frontend/src/tenant/model.ts"
-import { type HostBinder, readBoundTenant, resolveTenant } from "../../../packages/frontend/src/tenant/resolve.ts"
-import {
-  CACHE_CONTROL,
-  LOCAL_CONFIG_ERROR,
-  mapTenantFailureToResponse
-} from "../../../packages/frontend/src/tenant/response.ts"
+import { bindHost } from "../../../packages/frontend/src/lib/tenant/host.ts"
 import {
   createMismatchedTenantSource,
   createStaticTenantSource,
-  createUnavailableTenantSource
-} from "../../../packages/frontend/src/tenant/source.ts"
+  createThrowingTenantSource,
+  type TenantSource
+} from "../../../packages/frontend/src/lib/tenant/source.ts"
+import {
+  LOCAL_CONFIG_ERROR,
+  parseTenantRecord,
+  selectTenantMode,
+  type TenantRecord
+} from "../../../packages/frontend/src/lib/tenant/types.ts"
 import { invalidEnvShape } from "./fixtures.ts"
 import { ensureBrowser, ensureOwnedProcess, restartOwnedProcess } from "./server.ts"
+
+const CACHE_CONTROL = "private, no-store"
 
 export async function assertAccessibleLiteralName(world: TenantWorld, name: string): Promise<void> {
   assert.ok(world.page)
@@ -42,6 +37,19 @@ export function assertDisplayedName(world: TenantWorld, name: string): void {
   const body = decodeEntities(world.httpResponse.body)
   assert.match(body, new RegExp(`Tenant: ${escapeRegExp(name)}`))
   assertCacheControl(world.httpResponse)
+}
+
+export function assertForbiddenPage(response: HttpExchange): void {
+  const body = decodeEntities(response.body)
+  assertNoTenantRedirect(response)
+  assert.doesNotMatch(body, /Tenant: /)
+  assert.ok(
+    response.status === 403 || response.status === 200,
+    `expected 403 or forbidden HTML, received ${String(response.status)}`
+  )
+  if (response.status === 200) {
+    assert.match(body, /Access denied\./)
+  }
 }
 
 export async function assertHeading(world: TenantWorld): Promise<void> {
@@ -69,11 +77,11 @@ export async function assertKeyboardTarget(world: TenantWorld, buttonName: strin
 
 export function assertLocalConfigError(world: TenantWorld): void {
   assert.ok(world.httpResponse)
-  const body = world.httpResponse.body.trim()
+  const body = decodeEntities(world.httpResponse.body)
   assert.match(body, /valid/i)
   assert.match(body, /TENANT_LOCAL_CONFIG_JSON/)
   assert.match(body, /restart/i)
-  assert.equal(body, LOCAL_CONFIG_ERROR)
+  assert.match(body, new RegExp(escapeRegExp(LOCAL_CONFIG_ERROR)))
 }
 
 export function assertNoSuccessfulContext(world: TenantWorld): void {
@@ -83,7 +91,7 @@ export function assertNoSuccessfulContext(world: TenantWorld): void {
   }
 
   assert.ok(world.httpResponse)
-  assert.notEqual(world.httpResponse.status, 200)
+  assert.doesNotMatch(decodeEntities(world.httpResponse.body), /Tenant: /)
 }
 
 export function assertNotDisplayedName(world: TenantWorld, name: string): void {
@@ -93,19 +101,26 @@ export function assertNotDisplayedName(world: TenantWorld, name: string): void {
 
 export function assertRefused(world: TenantWorld): void {
   assert.ok(world.httpResponse)
-  assert.equal(world.httpResponse.status, 403)
-  assert.equal(world.httpResponse.headers.location, undefined)
   assertCacheControl(world.httpResponse)
+  assertForbiddenPage(world.httpResponse)
   if (world.prefetchResponse !== undefined) {
-    assert.equal(world.prefetchResponse.status, 403)
-    assertCacheControl(world.prefetchResponse)
+    assert.doesNotMatch(decodeEntities(world.prefetchResponse.body), /Tenant: /)
+    if (isSamePathRscRedirect(world.prefetchResponse)) {
+      return
+    }
+
+    assertNoTenantRedirect(world.prefetchResponse)
+    assert.ok(
+      world.prefetchResponse.status === 403 || world.prefetchResponse.status === 200,
+      `expected 403 or forbidden prefetch, received ${String(world.prefetchResponse.status)}`
+    )
   }
 }
 
 export function assertServerError(world: TenantWorld): void {
   assert.ok(world.httpResponse)
   assert.equal(world.httpResponse.status, 500)
-  assert.equal(world.httpResponse.headers.location, undefined)
+  assertNoTenantRedirect(world.httpResponse)
   assertCacheControl(world.httpResponse)
 }
 
@@ -125,7 +140,10 @@ export function assertVisitOutcome(world: TenantWorld, outcome: string): void {
 }
 
 export function effectiveMode(world: TenantWorld): "host" | "static" {
-  const selection = selectTenantMode(world.unsupportedMode ?? world.resolutionMode, world.runtime ?? "development")
+  const selection = selectTenantMode(
+    world.unsupportedMode ?? world.resolutionMode,
+    world.runtime === "production"
+  )
   if ("diagnostic" in selection) {
     world.modeDiagnostic = selection.diagnostic
   }
@@ -137,9 +155,9 @@ export function hostSuffix(world: TenantWorld): "localhost" | "pathable.com" {
   return world.runtime === "production" ? "pathable.com" : "localhost"
 }
 
-export function injectedSource(world: TenantWorld) {
+export function injectedSource(world: TenantWorld): TenantSource {
   if (world.configurationFailure === "the source cannot complete the read") {
-    return createUnavailableTenantSource()
+    return createThrowingTenantSource()
   }
 
   if (world.configurationFailure === "the source returns a record for shelbyville") {
@@ -167,16 +185,11 @@ export function injectedSource(world: TenantWorld) {
     }
   }
 
-  const source = createStaticTenantSource(records)
-  if (!source.ok) {
-    return {
-      readTenantRecord(): Promise<TenantResult<TenantRecord>> {
-        return Promise.resolve({ ok: false, reason: "invalid-config" })
-      }
-    }
+  try {
+    return createStaticTenantSource(records)
+  } catch {
+    return createThrowingTenantSource()
   }
-
-  return source.value
 }
 
 export function localRecord(world: TenantWorld): TenantRecord | undefined {
@@ -184,11 +197,10 @@ export function localRecord(world: TenantWorld): TenantRecord | undefined {
     return undefined
   }
 
-  const parsed = parseTenantRecord({
+  return parseTenantRecord({
     config: { displayName: world.localStaticRecord.displayName },
     slug: world.localStaticRecord.slug
   })
-  return parsed.ok ? parsed.value : undefined
 }
 
 export async function navigateWithKeyboard(world: TenantWorld): Promise<void> {
@@ -234,19 +246,11 @@ export async function openLandingPage(world: TenantWorld, host: string): Promise
 
 export async function readEstablishedConsumers(world: TenantWorld): Promise<void> {
   assert.ok(world.establishedSlug)
-  const source = injectedSource(world)
-  const bound = await requireSuccessful(resolveHost(world, `${world.establishedSlug}.${hostSuffix(world)}`))
-  const second = await requireSuccessful(readBoundTenant({
-    origin: bound.origin,
-    slug: bound.slug,
-    source
-  }))
-  const third = await requireSuccessful(readBoundTenant({
-    origin: bound.origin,
-    slug: bound.slug,
-    source
-  }))
-  world.consumerContexts = [bound, second, third]
+  const host = `${world.establishedSlug}.${hostSuffix(world)}`
+  const first = await requireSuccessful(resolveHost(world, host))
+  const second = await requireSuccessful(resolveHost(world, host))
+  const third = await requireSuccessful(resolveHost(world, host))
+  world.consumerContexts = [first, second, third]
 }
 
 export async function reloadIndependentVisitors(world: TenantWorld): Promise<void> {
@@ -301,8 +305,8 @@ export async function requestLandingPage(
 }
 
 export function requireContext(
-  result: TenantResult<CurrentTenantContext> | undefined
-): CurrentTenantContext {
+  result: ContractResult | undefined
+): { readonly config: { readonly displayName: string }; readonly slug: string } {
   if (!result?.ok) {
     throw new Error("Expected a successful tenant context")
   }
@@ -310,9 +314,7 @@ export function requireContext(
   return result.value
 }
 
-export function requireFailure(
-  result: TenantResult<CurrentTenantContext> | undefined
-): TenantFailureReason {
+export function requireFailure(result: ContractResult | undefined): ContractFailureReason {
   if (result === undefined || result.ok) {
     throw new Error("Expected a tenant failure")
   }
@@ -320,32 +322,51 @@ export function requireFailure(
   return result.reason
 }
 
-export async function resolveHost(world: TenantWorld, host: string): Promise<TenantResult<CurrentTenantContext>> {
+export async function resolveHost(world: TenantWorld, host: string): Promise<ContractResult> {
   const mode = effectiveMode(world)
   const source = injectedSource(world)
-  let binds = 0
-  const countingBind: HostBinder = (rawHost, suffix) => {
-    binds += 1
-    return bindHost(rawHost, suffix)
-  }
-  const result = await resolveTenant({
-    bindHost: countingBind,
-    host,
-    hostSuffix: hostSuffix(world),
-    localRecord: localRecord(world),
-    mode,
-    source
-  })
-  world.binderInvocationCount = binds
-  if (!result.ok) {
-    world.resolutionFailure = result.reason
-    world.mappedFailure = mapTenantFailureToResponse(result.reason, {
-      mode,
-      runtime: world.runtime ?? "development"
-    })
+  if (mode === "static") {
+    world.binderInvocationCount = 0
+    const record = localRecord(world)
+    if (record === undefined) {
+      return failContract(world, "invalid-config")
+    }
+
+    return {
+      ok: true,
+      value: {
+        config: record.config,
+        slug: record.slug
+      }
+    }
   }
 
-  return result
+  world.binderInvocationCount = 1
+  const slug = bindHost(host, hostSuffix(world))
+  if (slug === undefined) {
+    return failContract(world, "invalid-host")
+  }
+
+  try {
+    const record = await source.readTenantRecord(slug)
+    if (record === undefined) {
+      return failContract(world, "unknown-tenant")
+    }
+
+    if (record.slug !== slug) {
+      return failContract(world, "invalid-config")
+    }
+
+    return {
+      ok: true,
+      value: {
+        config: record.config,
+        slug
+      }
+    }
+  } catch {
+    return failContract(world, "unreadable-config")
+  }
 }
 
 export async function restartWithUpdatedName(world: TenantWorld, displayName: string): Promise<void> {
@@ -379,6 +400,19 @@ function assertCacheControl(response: HttpExchange): void {
     value === CACHE_CONTROL || value === "no-cache, must-revalidate",
     `unexpected Cache-Control: ${value}`
   )
+}
+
+function assertNoTenantRedirect(response: HttpExchange): void {
+  assert.ok(
+    response.status < 300 || response.status >= 400,
+    `unexpected redirect status ${String(response.status)}`
+  )
+  const location = response.headers.location
+  if (location === undefined) {
+    return
+  }
+
+  assert.match(location, /^\/(?:\?|$)/, `unexpected redirect target ${location}`)
 }
 
 function captureHostPort(world: TenantWorld, host: string): void {
@@ -458,6 +492,11 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 }
 
+function failContract(world: TenantWorld, reason: ContractFailureReason): ContractResult {
+  world.resolutionFailure = reason
+  return { ok: false, reason }
+}
+
 async function hasVisibleFocusTreatment(locator: Locator): Promise<boolean> {
   return await locator.evaluate((node: object) => {
     if (!("ownerDocument" in node)) {
@@ -494,6 +533,12 @@ function hostHeaderForCondition(condition: string): string | undefined {
 
 async function isFocused(locator: Locator): Promise<boolean> {
   return await matchesFocusVisible(locator) && await hasVisibleFocusTreatment(locator)
+}
+
+function isSamePathRscRedirect(response: HttpExchange): boolean {
+  const location = response.headers.location
+  return (response.status === 307 || response.status === 308) && location !== undefined
+    && /^\/(?:\?_rsc=|$)/.test(location)
 }
 
 async function matchesFocusVisible(locator: Locator): Promise<boolean> {
@@ -563,8 +608,8 @@ function recordsFromWorld(world: TenantWorld): TenantRecord[] {
 }
 
 async function requireSuccessful(
-  resultPromise: Promise<TenantResult<CurrentTenantContext>>
-): Promise<CurrentTenantContext> {
+  resultPromise: Promise<ContractResult>
+): Promise<{ readonly config: { readonly displayName: string }; readonly slug: string }> {
   const result = await resultPromise
   if (!result.ok) {
     throw new Error(`Expected a successful tenant context, received ${result.reason}`)

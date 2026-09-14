@@ -9,11 +9,11 @@ session state differs from backend domain persistence is described in
 
 The frontend owns tenant configuration. The Next.js app is the only reader of
 this data when rendering UI. Binding the host to a slug and loading
-configuration are first-party modules; there is no tenancy library. Durable
-tenant storage, authentication, and session architecture remain future work.
-This increment supplies a Display Name from either host-associated known
-records or one development-only static record. Local configuration needs no
-external services and does not use Compose.
+configuration are first-party modules under `packages/frontend/src/lib/tenant`;
+there is no tenancy library. Durable tenant storage, authentication, and session
+architecture remain future work. This increment supplies a Display Name from
+either host-associated known records or one development-only static record.
+Local configuration needs no external services and does not use Compose.
 
 ## Tenant slug
 
@@ -25,17 +25,15 @@ Users belong to a single tenant. A request is always for exactly one tenant.
 
 ## Binding: slug from the URL
 
-The UI binds a request to a tenant by reading the `Host` header.
+The UI binds a request to a tenant by reading the `Host` header in
+`getCurrentTenant()`. Production hosts follow `{slug}.pathable.com`. Local host
+association uses `{slug}.localhost` with the same label rules. Only this binding
+step may parse the host. It returns a slug or calls Next.js `forbidden()`. It
+does not load configuration, and it does not fall through to a default tenant.
 
-Production hosts follow `{slug}.pathable.com`. The label immediately to the left
-of `pathable.com` is the slug. For example, `springfield.pathable.com` yields
-`springfield`. Local host association uses `{slug}.localhost` with the same
-label rules. Only this binding step may parse the host. It returns a slug or
-fails. It does not load configuration, and it does not fall through to a
-default tenant.
-
-The host must be a known application pattern. Refuse the request with HTTP
-**403** (`Access denied.`) and no redirect when:
+The host must be a known application pattern. The nested `(tenant)` layout
+awaits `getCurrentTenant` and `getCurrentTenantConfig`, so an unusable host or
+unknown slug renders `app/forbidden.tsx` (`Access denied.`) with no redirect:
 
 - the host is the apex (`pathable.com`) or another non-tenant host such as
   `www.pathable.com`
@@ -43,31 +41,37 @@ The host must be a known application pattern. Refuse the request with HTTP
 - the host does not match the application’s tenant URL scheme
 - the slug is unknown
 
-When the app sits behind a proxy, the binding step must use one trusted source
-for the original host (`Host`) and ignore caller-supplied `X-Forwarded-Host`,
-query values, and inbound `x-preets-tenant-*` headers. Deployment ingress must
-still present the original host; this application cannot make untrusted
-forwarded headers authoritative.
+When the app sits behind a reverse proxy, the binding step must use one trusted
+source for the original host (`Host`) and ignore caller-supplied
+`X-Forwarded-Host` and query values. Deployment ingress must still present the
+original host; this application cannot make untrusted forwarded headers
+authoritative.
 
 ## Loading tenant configuration
 
-The slug from the binding step is the key used to load tenant configuration:
+The slug from the binding step is the argument to `getCurrentTenantConfig`:
 
 ```text
 request URL → slug → tenant configuration
 ```
 
-A missing, unreadable, or unknown host is a 403 refusal. Invalid selected
-configuration is a 500. A temporarily unavailable configuration source is a
-503. The UI does not substitute another tenant’s configuration, a default
-tenant, or the slug as a Display Name.
+A missing, unreadable, or unknown host is refused with `forbidden()`. An
+unknown or non-canonical slug argument is also `forbidden()`. Invalid or
+unreadable selected configuration throws (HTTP 500). The UI does not substitute
+another tenant’s configuration, a default tenant, or the slug as a Display Name.
+
+These functions do not cache or store the current tenant on the request. The
+nested layout only gates the request. Any Server Component that needs a slug or
+Display Name calls the same functions itself. A later session slice can look
+the tenant up from the session first.
 
 In development, an explicit `TENANT_RESOLUTION=static` setting may supply
 exactly one local record and show only that Display Name on `localhost`. That
-exception is honored only when `NODE_ENV=development`. Any other runtime,
-including unset, `test`, and `staging`, keeps host association. Unsupported
-mode values also keep host association and emit a safe `invalid-mode`
-diagnostic.
+exception is honored only when `NODE_ENV` is not `production`. Production
+always binds `{slug}.pathable.com` and never reads `TENANT_RESOLUTION` or
+`TENANT_LOCAL_CONFIG_JSON`. Unsupported mode values keep host association and
+emit a safe `invalid-mode` diagnostic.
 
-Downstream frontend modules receive the slug (and the configuration it loaded).
-They do not parse the request URL again to decide which tenant they are in.
+Downstream frontend modules that need tenancy call `getCurrentTenant` /
+`getCurrentTenantConfig`. They do not parse the request URL themselves to
+decide which tenant they are in.
