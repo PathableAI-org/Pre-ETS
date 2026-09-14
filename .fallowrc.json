@@ -2,20 +2,12 @@
   "$schema": "./node_modules/fallow/schema.json",
   "entry": [
     "packages/backend/src/index.ts",
-    "packages/frontend/src/app/layout.tsx",
+    "packages/frontend/src/app/**/*.{ts,tsx}",
     "packages/frontend/src/proxy.ts",
     "packages/frontend/vitest.config.ts",
-    "packages/frontend/tests/unit/tenant-source.test.ts",
-    "packages/frontend/tests/unit/tenant-policy.test.ts",
-    "packages/frontend/tests/unit/tenant-settings.test.ts",
-    "packages/frontend/tests/unit/tenant-context.test.ts",
-    "packages/frontend/tests/unit/tenant-response.test.ts",
+    "packages/frontend/tests/unit/**/*.ts",
     "cucumber.mjs",
-    "tests/bdd/steps/tenant.steps.ts",
-    "tests/bdd/support/hooks.ts",
-    "tests/bdd/support/world.ts",
-    "tests/bdd/support/server.ts",
-    "tests/bdd/support/actions.ts"
+    "tests/bdd/**/*.ts"
   ],
   "workspaces": {
     "patterns": [

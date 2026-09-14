@@ -15,18 +15,11 @@ const FRONTEND_ROOT = path.join(REPO_ROOT, "packages/frontend")
 const READY_TIMEOUT_MS = 120_000
 
 export async function closeOwnedResources(world: TenantWorld): Promise<void> {
-  await world.springfieldPage?.context().close().catch(() => undefined)
-  await world.shelbyvillePage?.context().close().catch(() => undefined)
-  await world.page?.context().close().catch(() => undefined)
-  await world.browserContext?.close().catch(() => undefined)
+  await discardBrowserPages(world)
   await world.browser?.close().catch(() => undefined)
   await terminateProcess(world.ownedProcess)
   world.ownedProcess = undefined
   world.browser = undefined
-  world.browserContext = undefined
-  world.page = undefined
-  world.springfieldPage = undefined
-  world.shelbyvillePage = undefined
 }
 
 export async function ensureBrowser(world: TenantWorld): Promise<void> {
@@ -48,6 +41,7 @@ export async function ensureOwnedProcess(world: TenantWorld): Promise<void> {
 export async function restartOwnedProcess(world: TenantWorld): Promise<void> {
   await terminateProcess(world.ownedProcess)
   world.ownedProcess = undefined
+  await discardBrowserPages(world)
   await startOwnedProcess(world)
 }
 
@@ -128,6 +122,17 @@ function buildProcessEnv(world: TenantWorld): NodeJS.ProcessEnv {
   }
 
   return env
+}
+
+async function discardBrowserPages(world: TenantWorld): Promise<void> {
+  await world.springfieldPage?.context().close().catch(() => undefined)
+  await world.shelbyvillePage?.context().close().catch(() => undefined)
+  await world.page?.context().close().catch(() => undefined)
+  await world.browserContext?.close().catch(() => undefined)
+  world.browserContext = undefined
+  world.page = undefined
+  world.springfieldPage = undefined
+  world.shelbyvillePage = undefined
 }
 
 function localConfigPayload(problem: string): string | undefined {

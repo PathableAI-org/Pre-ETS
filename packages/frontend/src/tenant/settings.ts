@@ -56,7 +56,7 @@ export function loadTenantSettings(
   env: TenantProcessEnv,
   warn: WarningSink = defaultWarningSink
 ): TenantSettingsLoad {
-  const runtime: ApplicationRuntime = env.NODE_ENV === "production" ? "production" : "development"
+  const runtime = runtimeFromNodeEnv(env.NODE_ENV)
   const selection = selectTenantMode(env.TENANT_RESOLUTION, runtime)
   emitModeWarning(selection, warn)
   const hostSuffix: HostSuffix = runtime === "production" ? "pathable.com" : "localhost"
@@ -161,4 +161,8 @@ function parseJsonValue(raw: string): TenantResult<unknown> {
   } catch {
     return fail("invalid-settings")
   }
+}
+
+function runtimeFromNodeEnv(nodeEnv: string | undefined): ApplicationRuntime {
+  return nodeEnv === "development" ? "development" : "production"
 }

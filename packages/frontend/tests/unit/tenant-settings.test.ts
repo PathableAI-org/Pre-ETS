@@ -89,4 +89,30 @@ describe("tenant settings", () => {
     })
     expect(missing).toMatchObject({ mode: "static", ok: false, reason: "invalid-config" })
   })
+
+  it("honors static mode only when NODE_ENV is development", () => {
+    const localRecord = JSON.stringify({
+      config: { displayName: "Local Demo" },
+      slug: "local-demo"
+    })
+    const records = JSON.stringify([springfield])
+
+    for (const nodeEnv of [undefined, "test", "staging", "production"] as const) {
+      const settings = loadTenantSettings({
+        ...(nodeEnv === undefined ? {} : { NODE_ENV: nodeEnv }),
+        TENANT_CONFIG_RECORDS_JSON: records,
+        TENANT_LOCAL_CONFIG_JSON: localRecord,
+        TENANT_RESOLUTION: "static"
+      })
+
+      expect(settings.ok, String(nodeEnv)).toBe(true)
+      if (!settings.ok) {
+        continue
+      }
+
+      expect(settings.value.mode).toBe("host")
+      expect(settings.value.runtime).toBe("production")
+      expect(settings.value.localRecord).toBeUndefined()
+    }
+  })
 })

@@ -260,8 +260,12 @@ export async function reloadIndependentVisitors(world: TenantWorld): Promise<voi
 
 export async function reloadLandingPage(world: TenantWorld, host: string): Promise<void> {
   captureHostPort(world, host)
-  if (world.page !== undefined) {
-    await world.page.reload({ waitUntil: "domcontentloaded" })
+  if (world.useBrowser) {
+    if (world.page === undefined || world.page.isClosed()) {
+      await openBrowserPage(world, host)
+    } else {
+      await world.page.reload({ waitUntil: "domcontentloaded" })
+    }
   }
 
   await requestLandingPage(world, host)
@@ -454,6 +458,28 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 }
 
+async function hasVisibleFocusTreatment(locator: Locator): Promise<boolean> {
+  return await locator.evaluate((node: object) => {
+    if (!("ownerDocument" in node)) {
+      return false
+    }
+
+    const view = (node.ownerDocument as { defaultView?: unknown }).defaultView
+    if (typeof view !== "object" || view === null || !("getComputedStyle" in view)) {
+      return false
+    }
+
+    const computed = (view.getComputedStyle as (element: object) => {
+      boxShadow: string
+      outlineStyle: string
+      outlineWidth: string
+    }).call(view, node)
+    const hasOutline = computed.outlineStyle !== "none" && computed.outlineWidth !== "0px"
+    const hasShadow = computed.boxShadow !== "none" && computed.boxShadow !== ""
+    return hasOutline || hasShadow
+  })
+}
+
 function hostHeaderForCondition(condition: string): string | undefined {
   if (condition === "a missing host") {
     return undefined
@@ -467,23 +493,23 @@ function hostHeaderForCondition(condition: string): string | undefined {
 }
 
 async function isFocused(locator: Locator): Promise<boolean> {
+  return await matchesFocusVisible(locator) && await hasVisibleFocusTreatment(locator)
+}
+
+async function matchesFocusVisible(locator: Locator): Promise<boolean> {
   return await locator.evaluate((node: object) => {
-    if (!("ownerDocument" in node)) {
-      return false
-    }
-
-    const doc = node.ownerDocument
-    if (typeof doc !== "object" || doc === null || !("activeElement" in doc)) {
-      return false
-    }
-
-    return Object.is(doc.activeElement, node)
+    return "matches" in node && typeof node.matches === "function"
+      && (node.matches as (selector: string) => boolean).call(node, ":focus-visible")
   })
 }
 
 async function openBrowserPage(world: TenantWorld, host: string) {
   await ensureBrowser(world)
   assert.ok(world.browser)
+  if (world.browserContext !== undefined) {
+    await world.browserContext.close().catch(() => undefined)
+  }
+
   const context = await world.browser.newContext()
   world.browserContext = context
   world.page = await context.newPage()

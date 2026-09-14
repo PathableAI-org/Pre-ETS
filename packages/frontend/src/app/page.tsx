@@ -1,18 +1,23 @@
 import { Alert, Button, Card, Container, Heading, Page, Stack, Text } from "@pathableai/react"
 
-import { getCurrentTenantConfig } from "../tenant/current.ts"
+import { getCurrentTenant, getCurrentTenantConfig } from "../tenant/current.ts"
 
 export const dynamic = "force-dynamic"
 
 export default async function HomePage() {
-  const tenant = await getCurrentTenantConfig()
+  const tenant = await getCurrentTenant()
+  const config = await getCurrentTenantConfig()
+  const displayName = config.displayName
+  if (displayName !== tenant.config.displayName) {
+    throw new Error("Tenant config accessor diverged from established identity")
+  }
 
   return (
     <Page>
       <Container>
         <Stack gap="lg">
           <Heading level={1}>Welcome to the Pre-ETS workspace</Heading>
-          <Text>{`Tenant: ${tenant.displayName}`}</Text>
+          <Text>{`Tenant: ${displayName}`}</Text>
           <Text>
             This Next.js App Router landing page is server-rendered with PathAble React components.
           </Text>

@@ -93,9 +93,9 @@ Run `pnpm check:unused` for dead-code and dependency checks, or `pnpm fallow`
 for full analysis including duplication and complexity. To compare changes with
 an available Git base, use `pnpm fallow audit --base origin/main`.
 
-The configuration explicitly identifies workspace source entrypoints because
-start scripts run compiled output: the backend `dist` program and the frontend
-`.next` server. ESLint configurations are discovered by
+The configuration uses glob entry points for workspace sources, unit tests, and
+Cucumber support code because start scripts run compiled output: the backend
+`dist` program and the frontend `.next` server. ESLint configurations are discovered by
 Fallow’s ESLint integration. Generated output and Next.js `next-env.d.ts` are
 excluded, and unused dependencies
 remain errors. No public-library exemptions or blanket suppressions are enabled. The Fallow

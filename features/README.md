@@ -7,8 +7,10 @@ Supporting design: [plan](../specs/001-tenant-resolution/plan.md) and
 Consumer type: **Human end user of UI**, detected from the frontend's Next, React, and React DOM dependencies.
 Developers are human users of the local landing page; they are not reframed as API clients.
 
-These are pre-implementation Gherkin acceptance specifications. Cucumber step stubs live in
-`tests/bdd/` and remain intentionally non-passing until implementation.
+These Gherkin files are the executable acceptance suite for tenant resolution.
+Cucumber bindings live in `tests/bdd/` and `pnpm test:bdd` is required CI
+evidence. Dry discovery still reports 52 expanded cases (27 `@production`, 25
+remaining).
 
 ## Feature index
 
@@ -38,8 +40,8 @@ Mixed outcomes may require complementary layers. For example, a local visit's vi
 while its canonical identity is a lower-layer assertion. Preserve the intent instead of forcing all assertions into
 Playwright. The adopted runner is Cucumber (`@cucumber/cucumber`), with the Playwright library for browser/HTTP
 steps and pure modules for contract steps. Support code lives in root `tests/bdd/`; the feature files remain
-Cucumber inputs. Vitest tests supplement boundary coverage. Step stubs are pending; `cucumber.mjs` and the root
-`test:bdd` scripts define ESM imports, per-scenario state, and production-first partitions.
+Cucumber inputs. Vitest tests supplement boundary coverage. `cucumber.mjs` and the root `test:bdd`
+scripts define ESM imports, per-scenario state, and production-first partitions.
 
 FR-006 ownership and exclusion of durable storage, and FR-011 synthetic-data/documentation restrictions, also require
 code/document review. The source contract uses only Display Name as configuration and keeps slug as identity; no
@@ -85,5 +87,5 @@ results. `@production` partitions run before all remaining scenarios; rebuilding
 
 Reviewed against the source stories, requirements, success criteria, and edge cases. Structural checks validate
 feature/background presence, unique names, Given/When/Then ordering, outline columns and substitution names, tags,
-and the counts above. No full Gherkin parser or step runner was available in the repository; structural checks are
-not execution of the acceptance tests. Executable coverage remains future work.
+and the counts above. `pnpm test:bdd:dry` proves discovery of every expanded case. `pnpm test:bdd` executes both
+partitions and is the acceptance evidence for this suite.

@@ -39,6 +39,10 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   return response
 }
 
+export const config = {
+  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"]
+}
+
 function refusalResponse(
   reason: TenantFailureReason,
   options: {

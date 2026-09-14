@@ -64,8 +64,10 @@ tenant, or the slug as a Display Name.
 
 In development, an explicit `TENANT_RESOLUTION=static` setting may supply
 exactly one local record and show only that Display Name on `localhost`. That
-local-only exception does not apply in production. Unsupported mode values keep
-host association and emit a safe `invalid-mode` diagnostic.
+exception is honored only when `NODE_ENV=development`. Any other runtime,
+including unset, `test`, and `staging`, keeps host association. Unsupported
+mode values also keep host association and emit a safe `invalid-mode`
+diagnostic.
 
 Downstream frontend modules receive the slug (and the configuration it loaded).
 They do not parse the request URL again to decide which tenant they are in.

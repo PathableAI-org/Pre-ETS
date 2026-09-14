@@ -7,7 +7,7 @@ import { type CurrentTenantContext, fail, type TenantConfig, type TenantResult }
 import { readBoundTenant } from "./resolve.ts"
 import { getProcessTenantSettings } from "./settings.ts"
 
-const getCurrentTenant = cache(async (): Promise<CurrentTenantContext> => {
+export const getCurrentTenant = cache(async (): Promise<CurrentTenantContext> => {
   const result = await readCurrentTenant()
   if (!result.ok) {
     throw new Error(`Tenant context failed: ${result.reason}`)
