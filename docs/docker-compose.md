@@ -4,7 +4,9 @@ This note records how local development runs **external** services. The Next.js
 app and the Effect API stay on the host (`pnpm` in each workspace). Compose
 does not run those processes.
 
-The stack for now is an OIDC broker, Postgres, and Redis.
+The stack for now is an OIDC broker, Postgres, and Redis. Tenant resolution in
+this increment does not use those services: local host association and static
+Display Name configuration are process environment settings only.
 
 OIDC behavior is described in [authentication.md](./authentication.md). Session
 state is described in [session-state.md](./session-state.md). Domain persistence
@@ -15,8 +17,9 @@ is described in [domain-persistence.md](./domain-persistence.md).
 A root Compose file starts only services the apps talk to over the network:
 
 - **Keycloak** — local OIDC broker for manual login testing
-- **Postgres** — durable store for frontend tenant configuration and backend
-  domain data
+- **Postgres** — durable store for future frontend tenant configuration and
+  backend domain data. This increment does not read tenant Display Name from
+  Postgres.
 - **Redis** — frontend session store
 
 Pin image tags. Do not use `latest`. Credentials and ports in this file are
@@ -68,10 +71,11 @@ environment variables.
 One Postgres **container** is enough. Keep ownership clear with separate
 databases (or schemas) in that instance:
 
-- frontend-owned tenant configuration (branding, copy, broker connection)
+- future frontend-owned tenant configuration (branding, copy, broker connection)
 - backend-owned domain records
 
-The Next.js app is the only writer of tenant configuration. The Effect API is
+The Next.js app will be the only writer of durable tenant configuration. This
+increment does not persist tenant Display Name in Postgres. The Effect API is
 the only writer of domain data. They do not share tables. Neither uses this
 Postgres instance as a session store.
 

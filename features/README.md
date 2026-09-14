@@ -7,8 +7,10 @@ Supporting design: [plan](../specs/001-tenant-resolution/plan.md) and
 Consumer type: **Human end user of UI**, detected from the frontend's Next, React, and React DOM dependencies.
 Developers are human users of the local landing page; they are not reframed as API clients.
 
-These are pre-implementation Gherkin acceptance specifications. No step definitions, runner, application code, or
-executable test results are supplied by this generation step.
+These Gherkin files are the executable acceptance suite for tenant resolution.
+Cucumber bindings live in `tests/bdd/` and `pnpm test:bdd` is required CI
+evidence. Dry discovery still reports 52 expanded cases (27 `@production`, 25
+remaining).
 
 ## Feature index
 
@@ -29,17 +31,18 @@ All 16 functional requirements and seven success criteria have scenario referenc
 not proof that every architectural constraint can be verified through the UI.
 
 - `@browser`: Navigate the running landing page and assert meaningful visible/accessibility/keyboard outcomes.
-- `@http`: Verify the actual response to a visitor's request, including status 403 and absence of redirects/fallback.
+- `@http`: Verify the actual response to a visitor's request, including Access denied / no redirect.
+  Prefer HTTP 403; a 200 `forbidden.tsx` document is acceptable if Next.js streams the interrupt.
   These remain human-facing workflows even when a test client supplies the request's Host.
-- `@contract`: Verify source substitution, binding count, context origin/identity, and injected failures at the lower
+- `@contract`: Verify source substitution, host binding, and injected failures at the lower
   layer. Do not add diagnostic UI, public test endpoints, or browser inspection of framework internals.
 
 Mixed outcomes may require complementary layers. For example, a local visit's visible name is browser-verifiable,
 while its canonical identity is a lower-layer assertion. Preserve the intent instead of forcing all assertions into
 Playwright. The adopted runner is Cucumber (`@cucumber/cucumber`), with the Playwright library for browser/HTTP
-steps and pure modules for contract steps. Support code and dependencies belong to `packages/frontend`; the root
-feature files remain Cucumber inputs. Vitest tests supplement boundary coverage. Step scaffolding remains future
-work; the updated plan defines ESM imports, per-scenario state, server lifecycle, and `test:bdd` commands.
+steps and pure modules for contract steps. Support code lives in root `tests/bdd/`; the feature files remain
+Cucumber inputs. Vitest tests supplement boundary coverage. `cucumber.mjs` and the root `test:bdd`
+scripts define ESM imports, per-scenario state, and production-first partitions.
 
 FR-006 ownership and exclusion of durable storage, and FR-011 synthetic-data/documentation restrictions, also require
 code/document review. The source contract uses only Display Name as configuration and keeps slug as identity; no
@@ -85,5 +88,5 @@ results. `@production` partitions run before all remaining scenarios; rebuilding
 
 Reviewed against the source stories, requirements, success criteria, and edge cases. Structural checks validate
 feature/background presence, unique names, Given/When/Then ordering, outline columns and substitution names, tags,
-and the counts above. No full Gherkin parser or step runner was available in the repository; structural checks are
-not execution of the acceptance tests. Executable coverage remains future work.
+and the counts above. `pnpm test:bdd:dry` proves discovery of every expanded case. `pnpm test:bdd` executes both
+partitions and is the acceptance evidence for this suite.

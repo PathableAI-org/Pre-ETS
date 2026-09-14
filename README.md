@@ -24,6 +24,35 @@ frontend production output into `.next`. After a production build,
 prints a greeting and exits.
 All packages are private; the npm scope identifies ownership, not publication.
 
+### Local tenant resolution
+
+Tenant Display Name for this increment comes from process environment, not
+Compose or a database. Copy `packages/frontend/.env.example` to
+`packages/frontend/.env.local` (gitignored) and restart after edits.
+
+Host association (default, including omitted `TENANT_RESOLUTION`) uses
+`TENANT_CONFIG_RECORDS_JSON` and `{slug}.localhost` locally or
+`{slug}.pathable.com` in production. Bare `localhost`, unknown hosts, and
+invalid hosts are refused with `forbidden()` (`Access denied.`, no redirect). Production never
+reads `TENANT_RESOLUTION` or `TENANT_LOCAL_CONFIG_JSON`.
+Unsupported mode values keep host association and log a safe `invalid-mode`
+diagnostic to stderr.
+
+Development-only static mode:
+
+```sh
+TENANT_RESOLUTION=static \
+TENANT_LOCAL_CONFIG_JSON='{"slug":"springfield","config":{"displayName":"Local Demo"}}' \
+pnpm dev:frontend
+```
+
+Open `http://localhost:3000/` and expect `Tenant: Local Demo`. Change only the
+Display Name, restart, and reload. Invalid or missing static data returns HTTP
+500 with instructions to supply a valid record and restart.
+
+See `specs/001-tenant-resolution/quickstart.md` for the full validation
+workflow.
+
 An Effect v4 backend is planned. Client workflows beyond this landing page are
 not implemented yet.
 
@@ -65,9 +94,9 @@ Run `pnpm check:unused` for dead-code and dependency checks, or `pnpm fallow`
 for full analysis including duplication and complexity. To compare changes with
 an available Git base, use `pnpm fallow audit --base origin/main`.
 
-The configuration explicitly identifies workspace source entrypoints because
-start scripts run compiled output: the backend `dist` program and the frontend
-`.next` server. ESLint configurations are discovered by
+The configuration uses glob entry points for workspace sources, unit tests, and
+Cucumber support code because start scripts run compiled output: the backend
+`dist` program and the frontend `.next` server. ESLint configurations are discovered by
 Fallow’s ESLint integration. Generated output and Next.js `next-env.d.ts` are
 excluded, and unused dependencies
 remain errors. No public-library exemptions or blanket suppressions are enabled. The Fallow
@@ -162,8 +191,9 @@ Fallow’s hook installer. Builds and full typechecks remain separate checks.
 ## Continuous integration
 
 The `CI` workflow runs on every pull request, pushes to `main`, and manual dispatch.
-Three jobs run independently: **CI / Quality** checks formatting, lint, and types;
-**CI / Build** builds both packages and verifies the backend greeting; **CI / Fallow**
+Three jobs run independently: **CI / Quality** checks formatting, lint, types,
+and frontend Vitest; **CI / Build** builds both packages, installs Chromium,
+runs production-first Cucumber, and verifies the backend greeting; **CI / Fallow**
 checks unused code across the repository and audits newly introduced findings.
 
 CI uses the pinned Node and pnpm versions, a frozen lockfile, and pnpm store caching.

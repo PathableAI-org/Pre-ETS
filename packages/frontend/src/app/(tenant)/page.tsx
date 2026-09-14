@@ -1,11 +1,19 @@
 import { Alert, Button, Card, Container, Heading, Page, Stack, Text } from "@pathableai/react"
 
-export default function HomePage() {
+import { getCurrentTenant, getCurrentTenantConfig } from "../../lib/tenant/index.ts"
+
+export const dynamic = "force-dynamic"
+
+export default async function HomePage() {
+  const tenant = await getCurrentTenant()
+  const config = await getCurrentTenantConfig(tenant)
+
   return (
     <Page>
       <Container>
         <Stack gap="lg">
           <Heading level={1}>Welcome to the Pre-ETS workspace</Heading>
+          <Text>{`Tenant: ${config.displayName}`}</Text>
           <Text>
             This Next.js App Router landing page is server-rendered with PathAble React components.
           </Text>

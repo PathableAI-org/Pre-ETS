@@ -20,6 +20,7 @@ lib-cov
 
 # Coverage directory used by tools like istanbul
 coverage
+.vitest/
 *.lcov
 
 # nyc test coverage
@@ -147,6 +148,12 @@ build/
 
 # Fallow analysis cache
 .fallow/
+
+# Cucumber and Playwright generated artifacts
+reports/
+test-results/
+playwright-report/
+blob-report/
 
 # Generated Husky hook launchers
 .husky/_/
