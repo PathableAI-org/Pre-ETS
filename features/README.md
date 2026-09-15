@@ -8,9 +8,10 @@ Consumer type: **Human end user of UI**, detected from the frontend's Next, Reac
 Developers are human users of the local landing page; they are not reframed as API clients.
 
 These Gherkin files are the executable acceptance suite for tenant resolution.
-Cucumber bindings live in `tests/bdd/` and `pnpm test:bdd` is required CI
-evidence. Dry discovery still reports 52 expanded cases (27 `@production`, 25
-remaining).
+Cucumber bindings live in `tests/bdd/`. Pull request CI requires
+`pnpm test:bdd:dry` (discovery and step binding). Full `pnpm test:bdd` is
+acceptance evidence on `main`, or on a PR labeled `ci:bdd`. Dry discovery still
+reports 52 expanded cases (27 `@production`, 25 remaining).
 
 ## Feature index
 
@@ -88,5 +89,6 @@ results. `@production` partitions run before all remaining scenarios; rebuilding
 
 Reviewed against the source stories, requirements, success criteria, and edge cases. Structural checks validate
 feature/background presence, unique names, Given/When/Then ordering, outline columns and substitution names, tags,
-and the counts above. `pnpm test:bdd:dry` proves discovery of every expanded case. `pnpm test:bdd` executes both
-partitions and is the acceptance evidence for this suite.
+and the counts above. `pnpm test:bdd:dry` proves discovery of every expanded case and is the
+pull-request CI gate. `pnpm test:bdd` executes both partitions and is the acceptance evidence
+for this suite on `main` or on a PR labeled `ci:bdd`.

@@ -1,0 +1,91 @@
+name: CI BDD
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+env:
+  CI: "true"
+  HUSKY: "0"
+
+concurrency:
+  group: ci-bdd-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    name: Detect BDD paths
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      bdd: ${{ steps.set.outputs.bdd }}
+    steps:
+      - name: Detect pull request path changes
+        if: github.event_name == 'pull_request'
+        id: filter
+        uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590 # v3.0.3
+        with:
+          filters: |
+            bdd:
+              - 'features/**'
+              - 'tests/bdd/**'
+              - 'cucumber.mjs'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+      - name: Set path filter outputs
+        id: set
+        run: |
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "bdd=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "bdd=${{ steps.filter.outputs.bdd }}" >> "$GITHUB_OUTPUT"
+          fi
+
+  bdd-dry:
+    name: CI / BDD Dry
+    needs: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Skip when no BDD-relevant paths changed
+        if: needs.changes.outputs.bdd != 'true'
+        run: echo "No BDD-relevant paths changed; skipping."
+      - name: Check out repository
+        if: needs.changes.outputs.bdd == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Set up Node.js and install dependencies
+        if: needs.changes.outputs.bdd == 'true'
+        uses: ./.github/actions/setup-node-pnpm
+      - name: Dry-run Cucumber discovery
+        if: needs.changes.outputs.bdd == 'true'
+        run: pnpm test:bdd:dry
+
+  bdd:
+    name: CI / BDD
+    if: >-
+      github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' &&
+       contains(github.event.pull_request.labels.*.name, 'ci:bdd'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Set up Node.js and install dependencies
+        uses: ./.github/actions/setup-node-pnpm
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Run production-first Cucumber partitions
+        run: pnpm test:bdd

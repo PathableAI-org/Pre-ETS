@@ -1,0 +1,96 @@
+name: CI Fallow
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+env:
+  CI: "true"
+  HUSKY: "0"
+
+concurrency:
+  group: ci-fallow-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    name: Detect fallow paths
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      fallow: ${{ steps.set.outputs.fallow }}
+    steps:
+      - name: Detect pull request path changes
+        if: github.event_name == 'pull_request'
+        id: filter
+        uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590 # v3.0.3
+        with:
+          filters: |
+            fallow:
+              - 'packages/**'
+              - 'tests/**'
+              - '*.js'
+              - '*.mjs'
+              - 'eslint.config.js'
+              - 'tsconfig*.json'
+              - 'cucumber.mjs'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - '.node-version'
+              - '.fallowrc.json'
+      - name: Set path filter outputs
+        id: set
+        run: |
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "fallow=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "fallow=${{ steps.filter.outputs.fallow }}" >> "$GITHUB_OUTPUT"
+          fi
+
+  fallow:
+    name: CI / Fallow
+    needs: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Skip when no fallow-relevant paths changed
+        if: needs.changes.outputs.fallow != 'true'
+        run: echo "No fallow-relevant paths changed; skipping."
+      - name: Check out repository
+        if: needs.changes.outputs.fallow == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Set up Node.js and install dependencies
+        if: needs.changes.outputs.fallow == 'true'
+        uses: ./.github/actions/setup-node-pnpm
+      - name: Check unused code and dependencies
+        if: needs.changes.outputs.fallow == 'true'
+        run: pnpm check:unused
+      - name: Audit changes
+        if: needs.changes.outputs.fallow == 'true'
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          case "$EVENT_NAME" in
+            pull_request) base="$PR_BASE_SHA" ;;
+            push) base="$PUSH_BEFORE_SHA" ;;
+            workflow_dispatch) base=$(git rev-parse --verify HEAD^ 2>/dev/null || true) ;;
+            *) echo "Unsupported event: $EVENT_NAME" >&2; exit 1 ;;
+          esac
+          if [ -z "$base" ] || [ "$base" = "0000000000000000000000000000000000000000" ]; then
+            echo "No previous commit is available; the full-repository check completed above."
+            exit 0
+          fi
+          git cat-file -e "$base^{commit}"
+          pnpm exec fallow audit --gate new-only --base "$base"
