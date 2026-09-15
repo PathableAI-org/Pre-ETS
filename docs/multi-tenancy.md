@@ -31,7 +31,7 @@ association uses `{slug}.localhost` with the same label rules. Only this binding
 step may parse the host. It returns a slug or calls Next.js `forbidden()`. It
 does not load configuration, and it does not fall through to a default tenant.
 
-The host must be a known application pattern. The nested `(app)` layout
+The host must be a known application pattern. The nested `(tenant)` layout
 awaits `getCurrentTenant` and `getCurrentTenantConfig`, so an unusable host or
 unknown slug renders `app/forbidden.tsx` (`Access denied.`) with no redirect:
 

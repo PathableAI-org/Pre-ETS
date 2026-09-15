@@ -11,8 +11,7 @@ Next.js Proxy inspects the signed session cookie and loads its record before inv
 trusted tenant owner. It accepts matching state or persists a fresh tenant-bound session, then supplies
 validated context to downstream rendering and issues a cookie only after a successful write.
 
-This PR contains Phase 0 research and Phase 1 design, plus the route-group rename from `(tenant)`
-to `(app)` to reflect application-wide request validation. The rename preserves current behavior. It targets `002-setup-session`, whose
+This PR contains Phase 0 research and Phase 1 design only. It targets `002-setup-session`, whose
 specification and BDD scaffolding form the preceding stack entry. Implementation and task generation
 remain later increments; this plan does not make the existing pending session steps pass.
 
@@ -98,7 +97,7 @@ packages/frontend/
 │   ├── store.ts                    # Redis connection, read, atomic create
 │   └── types.ts                    # Record/context/config validation
 ├── src/lib/tenant/                 # Existing owner; extract explicit-host operations
-├── src/app/(app)/               # Consume validated request tenant context
+├── src/app/(app)/                  # Rename existing (tenant); consume validated request context
 └── tests/                         # Existing unit tests plus Redis integration tests
 features/session-*.feature          # Existing acceptance definitions retained
 features/local-session-development.feature
@@ -142,7 +141,9 @@ Later tasks should follow these dependent, reviewable slices (no additional bran
    local documentation in the same focused commit as the new tool setup.
 2. Signed-cookie/record validation and ordered setup contracts; test invalid signatures, finite expiry,
    tenant mismatch, failed writes, recovery, and no adoption of presented ids before integration.
-3. Existing tenant resolver extraction plus Proxy/SSR context integration; preserve tenant regression
+3. Rename `src/app/(tenant)` to `src/app/(app)` and `TenantLayout` to `AppLayout` to represent
+   application-wide request validation, preserving the `/` URL and existing UI. Update active strategy
+   references during implementation. Combine this with tenant resolver extraction and Proxy/SSR context integration; preserve tenant regression
    behavior and prove the first HTTP response, same-request context, header spoofing rejection, and matcher.
 4. Complete session BDD scaffolding and isolated real Redis/browser lifecycle proof; update README,
    `docs/session-state.md`, `docs/multi-tenancy.md`, and `docs/docker-compose.md` to reflect implemented
