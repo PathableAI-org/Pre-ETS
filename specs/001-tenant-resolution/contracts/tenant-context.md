@@ -13,9 +13,9 @@ These are module interfaces, not public HTTP endpoints. Public API is imported f
 | `bindHost`               | Raw `Host` and host suffix    | Canonical slug, or unusable                                                                                                                   | `src/lib/tenant/host.ts`    |
 | `readTenantRecord`       | Canonical slug                | Matching readonly record, unknown, or thrown read/parse failure                                                                               | `src/lib/tenant/source.ts`  |
 | `getCurrentTenant`       | Current server-render request | Promise of slug; `forbidden()` on invalid/unusable Host                                                                                       | `src/lib/tenant` (prod/dev) |
-| `getCurrentTenantConfig` | Canonical slug argument       | Promise of `TenantConfig`; `forbidden()` if the argument is not a canonical slug or is unknown; **throw** if the record cannot be read/parsed | `src/lib/tenant/actions.ts` |
+| `getCurrentTenantConfig` | Canonical slug argument       | Promise of `TenantConfig`; `forbidden()` if the argument is not a canonical slug or is unknown; **throw** if the record cannot be read/parsed | `src/lib/tenant` (prod/dev) |
 
-`getCurrentTenantConfig` is a server action. The nested `(tenant)` layout awaits both functions to gate the
+`getCurrentTenantConfig` is a server-only accessor, not a public Server Action. The nested `(tenant)` layout awaits both functions to gate the
 request and does not store or pass tenant data. The landing page calls them again to read Display Name. Duplicate
 work is acceptable. There is no React `cache()`, request memoization, Provider, or other request-scoped store for
 tenant identity.
@@ -24,8 +24,8 @@ The page uses `getCurrentTenantConfig(tenant)`. Consumers needing the slug use `
 tenant selection, public configuration endpoint, or persistence write operation is exposed.
 
 Production (`NODE_ENV === "production"`) always binds `{slug}.pathable.com`. It never reads `TENANT_RESOLUTION` or
-`TENANT_LOCAL_CONFIG_JSON`. Any other `NODE_ENV` loads the development implementation, which chooses host vs static
-at process start.
+`TENANT_LOCAL_CONFIG_JSON`. Only `NODE_ENV === "development"` loads the development implementation, which chooses host vs static
+at process start. Unset, `test`, `staging`, and any other runtime use the production host implementation.
 
 ## Server settings
 
