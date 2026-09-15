@@ -92,3 +92,60 @@ feature/background presence, unique names, Given/When/Then ordering, outline col
 and the counts above. `pnpm test:bdd:dry` proves discovery of every expanded case and is the
 pull-request CI gate. `pnpm test:bdd` executes both partitions and is the acceptance evidence
 for this suite on `main` or on a PR labeled `ci:bdd`.
+
+## Session setup scenarios
+
+Source: [session setup specification](../specs/002-setup-session/spec.md).
+Consumer type: **Human end user of UI**, detected from the frontend's Next.js and React dependencies.
+Local setup uses the developer as a human operating the development environment.
+
+| File                                                                   | Purpose                                                                                              |
+| ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| [session-continuity.feature](session-continuity.feature)               | First visit, repeat visits, restart continuity, cookie protections, expiry, and resource exclusions. |
+| [session-recovery.feature](session-recovery.feature)                   | Unusable references, tenant isolation, storage failures, and recovery.                               |
+| [local-session-development.feature](local-session-development.feature) | Compose setup, local tenant modes, service restart, and production restrictions.                     |
+
+These files define acceptance behavior before session implementation. Their 76 throwing stubs live in
+`tests/bdd/steps/session.steps.ts` and are loaded by `cucumber.mjs`. Existing tenant bindings remain intact.
+All 94 expanded cases match exactly one definition per step. An isolated Cucumber run of the session stubs
+produced 42 failing scenarios, as expected before implementation; this is not runtime application verification.
+The tenant suite's 52-case count above applies only to the three tenant-resolution files.
+No runner exclusions or placeholder passing steps have been added.
+
+### Session traceability and verification
+
+Within files tagged `@session-setup`, `@FR-nnn`, `@SC-nnn`, and `@USn` refer exclusively to specification
+`002-setup-session`, not the tenant-resolution specification. Select `@session-setup` when querying its tags.
+
+- `@http`: Visitor request/response outcomes and cookies.
+- `@contract`: Request ordering, state ownership at runtime, session reuse, expiry, and injected store failures.
+  Use lower-layer observations; do not expose diagnostic UI or public test endpoints.
+- `@local-services`: Execute documented local setup against real Compose services.
+- `@production`: Requires production-mode tenant behavior.
+
+FR-001–008 and FR-011 have request/contract scenarios; FR-009–010 have local-service scenarios.
+FR-012's single-session flow has a contract scenario, while simplicity and readability require plan/code review.
+Dependency declaration, absence of committed credentials, frontend-only store ownership, absence of unrelated
+Compose services, and absence of domain data in session storage also require repository review. Scenario tags
+alone do not prove these architectural constraints. SC-001–005 are represented across the three files.
+
+### Session fixture meanings and assumptions
+
+- Each scenario gets independent synthetic tenants, cookies, time, and isolated session storage. Production-style
+  URLs target the local test frontend with the appropriate trusted host; they do not contact production DNS.
+- A valid session precondition supplies a correctly signed, unexpired cookie and matching stored record.
+  Unknown ids use a valid signed reference to a nonexistent record, distinct from a tampered cookie.
+- Cookie application claims exclude standard signing metadata; no user identity or session payload is allowed.
+- The lifetime cases inherit the specification's configurable fixed 24-hour default and no sliding renewal.
+- Cookie lookup precedes tenant resolution; tenant validation still precedes accepting or persisting the binding.
+- A controlled service failure means an unsuccessful response without normal tenant content. The specification
+  does not choose an exact status code or error message; these scenarios do not invent one.
+- Resource cases use existing static/framework resource URLs discovered during implementation, not invented routes.
+- Independent simultaneous cookie-less requests may create separate sessions. Cross-tab coordination and
+  uniqueness claims based only on random samples are not acceptance requirements. Review secure id generation.
+- Local HTTP cookies retain host-only and HttpOnly restrictions; production cookies additionally require Secure.
+- No additional product decisions were introduced. The expiry default remains a specification assumption for review.
+
+Session suite totals: **3 files, 11 ordinary scenarios, 9 outlines, 31 example rows, 42 expanded cases**.
+The combined tenant and session inventory is 94 expanded cases. Session files were syntax-validated using the
+installed Cucumber Gherkin parser; step execution and runtime behavior remain unverified.

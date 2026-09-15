@@ -9,7 +9,8 @@ const configuration = {
     "tests/bdd/support/world.ts",
     "tests/bdd/support/server.ts",
     "tests/bdd/support/hooks.ts",
-    "tests/bdd/steps/tenant.steps.ts"
+    "tests/bdd/steps/tenant.steps.ts",
+    "tests/bdd/steps/session.steps.ts"
   ],
   parallel: 0,
   paths: ["features/*.feature"],
