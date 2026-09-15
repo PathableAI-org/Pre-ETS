@@ -11,7 +11,8 @@ Next.js Proxy inspects the signed session cookie and loads its record before inv
 trusted tenant owner. It accepts matching state or persists a fresh tenant-bound session, then supplies
 validated context to downstream rendering and issues a cookie only after a successful write.
 
-This PR contains Phase 0 research and Phase 1 design only. It targets `002-setup-session`, whose
+This PR contains Phase 0 research and Phase 1 design, plus the route-group rename from `(tenant)`
+to `(app)` to reflect application-wide request validation. The rename preserves current behavior. It targets `002-setup-session`, whose
 specification and BDD scaffolding form the preceding stack entry. Implementation and task generation
 remain later increments; this plan does not make the existing pending session steps pass.
 
@@ -97,7 +98,7 @@ packages/frontend/
 │   ├── store.ts                    # Redis connection, read, atomic create
 │   └── types.ts                    # Record/context/config validation
 ├── src/lib/tenant/                 # Existing owner; extract explicit-host operations
-├── src/app/(tenant)/               # Consume validated request tenant context
+├── src/app/(app)/               # Consume validated request tenant context
 └── tests/                         # Existing unit tests plus Redis integration tests
 features/session-*.feature          # Existing acceptance definitions retained
 features/local-session-development.feature
