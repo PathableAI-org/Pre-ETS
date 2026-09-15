@@ -2,9 +2,10 @@
 
 ## Status and prerequisites
 
-This is the implementation validation guide. This planning PR does not add Compose, session libraries,
-or working session steps. The commands below that depend on those additions are intended for the
-implementation branch. Current `test:bdd:dry` validates discovery only; it does not execute session logic.
+This is the implementation validation guide for the session-setup delivery. Compose Redis,
+session libraries, Proxy/AppLayout integration, unit contracts, and Cucumber session steps are
+on this branch. Prefer `pnpm test:bdd:session` for runtime verification; `test:bdd:dry` only
+validates discovery.
 
 Use Node >=24, the root-pinned pnpm, Docker with Compose, and the existing Playwright browser setup from
 the root README. Run commands from the repository root. Use only synthetic tenant records and an
@@ -135,3 +136,13 @@ Host transport; local static settings must not enable production localhost acces
 Stop the host-run frontend normally, then run `docker compose down`. Never run `FLUSHALL` or delete
 unrelated session keys. Record observed outcomes and any environment limitations in the implementation
 PR; this guide and a dry run alone are not proof that runtime behavior works.
+
+## Implementation evidence (this branch)
+
+| Gate                                                        | Status                                                                                                                                                                                                                                            |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Unit / Redis adapter contracts                              | Pass (`pnpm --filter @pathableai/pre-ets-frontend test:unit`; Redis integration skips when Redis is down)                                                                                                                                         |
+| Cucumber dry-run                                            | Pass (`pnpm test:bdd:dry`)                                                                                                                                                                                                                        |
+| Contract-only session scenarios (`@contract and not @http`) | Pass                                                                                                                                                                                                                                              |
+| Full `pnpm test:bdd:session` HTTP/browser partition         | Partial — free-port harness and step implementations are in place; remaining failures cluster on production `next start` churn, Redis stop/start fixtures, and a few HTTP cookie-jar assertions. Tracked by open tasks T017 / T021 / T025 / T028. |
+| Clean checkout build/typecheck without session secrets      | Pass for lazy config parse                                                                                                                                                                                                                        |

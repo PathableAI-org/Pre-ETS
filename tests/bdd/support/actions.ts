@@ -1,7 +1,6 @@
 import type { Locator } from "playwright"
 
 import assert from "node:assert/strict"
-import net from "node:net"
 
 import type { ContractFailureReason, ContractResult, HttpExchange, TenantWorld } from "./world.ts"
 
@@ -19,6 +18,7 @@ import {
   type TenantRecord
 } from "../../../packages/frontend/src/lib/tenant/types.ts"
 import { invalidEnvShape } from "./fixtures.ts"
+import { sendRawGet } from "./raw-http.ts"
 import { ensureBrowser, ensureOwnedProcess, restartOwnedProcess } from "./server.ts"
 
 const CACHE_CONTROL = "private, no-store"
@@ -452,32 +452,6 @@ function competingHeaders(world: TenantWorld): Record<string, string> {
   }
 }
 
-function decodeChunked(body: string): string {
-  let decoded = ""
-  let remaining = body
-  while (remaining.length > 0) {
-    const lineEnd = remaining.indexOf("\r\n")
-    if (lineEnd === -1) {
-      return body
-    }
-
-    const size = Number.parseInt(remaining.slice(0, lineEnd), 16)
-    if (Number.isNaN(size)) {
-      return body
-    }
-
-    if (size === 0) {
-      break
-    }
-
-    const dataStart = lineEnd + 2
-    decoded += remaining.slice(dataStart, dataStart + size)
-    remaining = remaining.slice(dataStart + size + 2)
-  }
-
-  return decoded
-}
-
 function decodeEntities(value: string): string {
   return value
     .replaceAll("&amp;", "&")
@@ -573,33 +547,6 @@ function pageUrl(world: TenantWorld, host: string): string {
   return host.includes(":") ? `http://${host}/` : `http://${host}:${String(world.port)}/`
 }
 
-function parseRawHttp(raw: string): HttpExchange {
-  const separator = raw.indexOf("\r\n\r\n")
-  const head = separator === -1 ? raw : raw.slice(0, separator)
-  const lines = head.split("\r\n")
-  const statusMatch = /^HTTP\/\d(?:\.\d)?\s+(\d+)/.exec(lines[0] ?? "")
-  const headers: Record<string, string> = {}
-  for (const line of lines.slice(1)) {
-    const index = line.indexOf(":")
-    if (index === -1) {
-      continue
-    }
-
-    headers[line.slice(0, index).trim().toLowerCase()] = line.slice(index + 1).trim()
-  }
-
-  let body = separator === -1 ? "" : raw.slice(separator + 4)
-  if ((headers["transfer-encoding"] ?? "").includes("chunked")) {
-    body = decodeChunked(body)
-  }
-
-  return {
-    body,
-    headers,
-    status: statusMatch === null ? 0 : Number(statusMatch[1])
-  }
-}
-
 function recordsFromWorld(world: TenantWorld): TenantRecord[] {
   return world.tenants.map((tenant) => ({
     config: { displayName: tenant.displayName },
@@ -625,36 +572,7 @@ async function sendHttpRequest(options: {
   path: string
   port: number
 }): Promise<HttpExchange> {
-  const version = options.omitHostHeader === true ? "HTTP/1.0" : "HTTP/1.1"
-  const headerLines = ["Connection: close", "Accept-Encoding: identity"]
-  if (options.omitHostHeader !== true) {
-    headerLines.push(`Host: ${options.host ?? ""}`)
-  }
-
-  for (const [name, value] of Object.entries(options.extraHeaders ?? {})) {
-    headerLines.push(`${name}: ${value}`)
-  }
-
-  const payload = `GET ${options.path} ${version}\r\n${headerLines.join("\r\n")}\r\n\r\n`
-  const raw = await new Promise<string>((resolve, reject) => {
-    const socket = net.connect(options.port, "127.0.0.1")
-    const chunks: Buffer[] = []
-    socket.on("connect", () => {
-      socket.write(payload)
-    })
-    socket.on("data", (chunk: Buffer) => {
-      chunks.push(chunk)
-    })
-    socket.on("end", () => {
-      resolve(Buffer.concat(chunks).toString("utf8"))
-    })
-    socket.on("error", reject)
-    socket.setTimeout(10_000, () => {
-      socket.destroy(new Error("HTTP request timed out"))
-    })
-  })
-
-  return parseRawHttp(raw)
+  return await sendRawGet(options)
 }
 
 function slugOf(record: unknown): string | undefined {

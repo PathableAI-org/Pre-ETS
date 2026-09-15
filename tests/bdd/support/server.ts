@@ -9,6 +9,7 @@ import { chromium } from "playwright"
 import type { TenantWorld } from "./world.ts"
 
 import { invalidEnvShape } from "./fixtures.ts"
+import { ensureSessionSettings } from "./session-env.ts"
 
 const REPO_ROOT = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)))
 const FRONTEND_ROOT = path.join(REPO_ROOT, "packages/frontend")
@@ -31,18 +32,34 @@ export async function ensureBrowser(world: TenantWorld): Promise<void> {
 }
 
 export async function ensureOwnedProcess(world: TenantWorld): Promise<void> {
-  if (world.ownedProcess !== undefined) {
+  const signature = processSignature(world)
+  if (world.ownedProcess !== undefined && world.processSignature === signature) {
     return
   }
 
-  await startOwnedProcess(world)
+  if (world.ownedProcess !== undefined) {
+    await restartOwnedProcess(world, { preserveCookies: true })
+  } else {
+    await startOwnedProcess(world)
+  }
+
+  world.processSignature = signature
 }
 
-export async function restartOwnedProcess(world: TenantWorld): Promise<void> {
+export async function restartOwnedProcess(
+  world: TenantWorld,
+  options: { readonly preserveCookies?: boolean } = {}
+): Promise<void> {
+  ensureSessionSettings(world)
   await terminateProcess(world.ownedProcess)
   world.ownedProcess = undefined
-  await discardBrowserPages(world)
+  world.processSignature = undefined
+  if (options.preserveCookies !== true) {
+    await discardBrowserPages(world)
+    world.sessionCookieJar = new Map()
+  }
   await startOwnedProcess(world)
+  world.processSignature = processSignature(world)
 }
 
 export async function startOwnedProcess(world: TenantWorld): Promise<void> {
@@ -84,12 +101,18 @@ async function assertPortFree(port: number): Promise<void> {
 }
 
 function buildProcessEnv(world: TenantWorld): NodeJS.ProcessEnv {
+  ensureSessionSettings(world)
   const env: NodeJS.ProcessEnv = { ...process.env }
   delete env.TENANT_RESOLUTION
   delete env.TENANT_CONFIG_RECORDS_JSON
   delete env.TENANT_LOCAL_CONFIG_JSON
   env.NEXT_TELEMETRY_DISABLED = "1"
   env.NODE_ENV = world.runtime === "production" ? "production" : "development"
+  env.REDIS_URL = world.redisUrl ?? process.env.REDIS_URL ?? "redis://127.0.0.1:6379"
+  env.SESSION_SIGNING_SECRET = world.sessionSigningSecret
+  env.SESSION_TTL_SECONDS = String(world.sessionTtlSeconds)
+  env.SESSION_STORE_TIMEOUT_MS = String(world.sessionStoreTimeoutMs)
+  env.SESSION_KEY_PREFIX = world.sessionKeyPrefix
 
   if (world.unsupportedMode !== undefined) {
     env.TENANT_RESOLUTION = world.unsupportedMode
@@ -156,6 +179,20 @@ function localConfigPayload(problem: string): string | undefined {
   }
 }
 
+function processSignature(world: TenantWorld): string {
+  ensureSessionSettings(world)
+  const runtime = world.runtime ?? "development"
+  return [
+    runtime,
+    world.resolutionMode ?? "host",
+    world.redisUrl ?? "",
+    world.sessionSigningSecret ?? "",
+    world.sessionKeyPrefix ?? "",
+    String(world.sessionTtlSeconds ?? ""),
+    String(world.port)
+  ].join(":")
+}
+
 async function terminateProcess(child: ChildProcess | undefined): Promise<void> {
   if (child?.pid === undefined) {
     return
@@ -204,7 +241,7 @@ async function waitForReady(port: number, child: ChildProcess, logs: string[]): 
 
     try {
       await new Promise<void>((resolve, reject) => {
-        const req = http.get({ hostname: "127.0.0.1", path: "/", port }, (res) => {
+        const req = http.get({ hostname: "127.0.0.1", path: "/favicon.ico", port }, (res) => {
           res.resume()
           resolve()
         })

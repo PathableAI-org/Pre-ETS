@@ -6,4 +6,10 @@ const tenantRuntime = process.env.NODE_ENV === "development"
 
 export const getCurrentTenant = tenantRuntime.getCurrentTenant
 export const getCurrentTenantConfig = tenantRuntime.getCurrentTenantConfig
+export {
+  createEnvTenantOperations,
+  createTenantOperations,
+  type TenantOperationResult,
+  type TenantOperations
+} from "./operations.ts"
 export type { TenantConfig } from "./types.ts"
