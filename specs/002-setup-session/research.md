@@ -1,7 +1,8 @@
 # Research: Set Up a Session
 
-Date: 2026-09-15. All planning unknowns resolved; implementation must verify the chosen integration
-against the installed framework and real Redis. This document records decisions, not completed behavior.
+Date: 2026-09-15. Updated after Copilot review on PR #18. All planning unknowns
+resolved; implementation must verify the chosen integration against the installed
+framework and real Redis. This document records decisions, not completed behavior.
 
 ## 1. Cookie-write boundary
 
@@ -26,74 +27,129 @@ Initial research used official documentation; after installing locked dependenci
 `packages/frontend/node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/proxy.md`
 confirmed Node runtime, cookie mutation, and upstream request-header support.
 
-## 2. One tenant policy and same-request context
+## 2. Mode-aware tenant policy and bounded same-request context
 
-**Decision**: Extract explicit-Host operations inside the existing tenant owner. Proxy translates typed
-tenant failures into HTTP responses. Forward `{ sessionId, tenantId, expiresAt, tenantConfig }` in a
-reserved upstream-only header after successful validation. Strip caller input for this header first.
-SSR reads it through one server-only accessor and never creates sessions.
+**Decision**: Extract transport-independent tenant operations inside the existing tenant owner. The
+operation is mode-aware: production and development host mode bind the trusted `Host`; development
+static mode resolves the configured `TENANT_LOCAL_CONFIG_JSON` record without Host binding; production
+always uses host mode. Proxy translates typed tenant failures into HTTP responses and must revise the
+established tenant contract (`specs/001-tenant-resolution/contracts/tenant-context.md`) so refusal and
+configuration failures may terminate in Proxy for participating routes while preserving visible outcomes.
+
+Forward only bounded identity/session fields `{ sessionId, tenantId, expiresAt }` (plus a closed origin
+or equivalent short binding if still required by the tenant handoff) in reserved upstream-only headers
+after successful validation. Do **not** serialize `tenantConfig` / Display Name into headers. Strip every
+caller-supplied `x-pathable-session-context` and every established `x-preets-tenant-*` value first, then
+overwrite only the names this feature still uses. The server-only session accessor validates the bounded
+fields and obtains configuration through the existing tenant source contract (same immutable process
+configuration), memoized within the request. SSR never creates sessions.
+
+Rename `(tenant)` → `(app)` and `TenantLayout` → `AppLayout` during implementation. `AppLayout` is the
+application-wide gate that consumes the Proxy-established session context and performs the updated
+session-aware tenant check (conditional on validated context), replacing the current layout's direct
+`getCurrentTenant()` / `getCurrentTenantConfig()` calls. It does not re-run store setup or issue cookies.
 
 **Rationale**: Existing `dev.ts`/`prod.ts` depend on `next/headers` and `forbidden()`. Their underlying
-host/config logic must be reusable without introducing another parser. Separate Proxy/render contexts
-cannot be assumed to share module memory. The internal header carries only already-validated temporary
-context; Redis remains authoritative across requests. Missing context must fail closed.
+host/config logic must be reusable without introducing another parser, and static mode must keep working
+on bare `localhost` (FR-011). Separate Proxy/render contexts cannot share module memory. Display Name has
+no header size/encoding bound (tenant research §5); forwarding only short validated fields preserves that
+guarantee. Revising the tenant refusal contract keeps Proxy and render contracts consistent instead of
+leaving an approved interface that forbids Proxy refusal while the session plan requires it.
 
 **Alternatives considered**: Re-reading Redis in each component repeats lookup and can violate ordering;
 module globals can leak state between visitors; trusting a browser-provided header defeats tenant
-isolation. Automatically reflecting Set-Cookie into SSR is less explicit than upstream context forwarding.
+isolation; serializing full config reintroduces Unicode/size policy for no present need; leaving refusal
+only in the layout conflicts with cookie-before-SSR ordering for denied hosts after a store read.
 
 **Evidence**: `packages/frontend/src/lib/tenant/{index,dev,prod,host,types,source}.ts`;
-[NextResponse request headers](https://nextjs.org/docs/app/api-reference/functions/next-response).
-Production must still ignore local static settings and forwarded host overrides.
+`specs/001-tenant-resolution/research.md` §5; `specs/001-tenant-resolution/contracts/tenant-context.md`
+§Refusal; [NextResponse request headers](https://nextjs.org/docs/app/api-reference/functions/next-response).
 
-## 3. Session storage and outage behavior
+## 3. Session storage, TLS, and outage behavior
 
 **Decision**: Use official `redis`, a single lazily connected frontend client, namespaced string keys,
 and one atomic `SET` with `NX` and absolute `EXAT` expiry. Normal creation uses a 32-byte random id;
 an unlikely collision permits one new id attempt, then controlled failure. Disable offline queuing;
-bound connection/command operations (default 2 seconds), register a safe error listener, and reset failed
-connection initialization so later requests can reconnect. Do not cache records or negative lookups.
+bound connection/command operations (default 2 seconds, capped to the Node timer-safe maximum), register
+a safe error listener, and reset failed connection initialization so later requests can reconnect.
+Do not cache records or negative lookups.
+
+`REDIS_URL` validation: allow plain `redis://` only for loopback/local Compose targets; require TLS
+(`rediss://` or equivalent) for every non-local deployment URL. Reject non-local cleartext at config
+parse time.
+
+Expiry clock: compute `expiresAt` once from the application clock for cookie `exp` and the JSON record.
+Pass the same absolute Unix seconds to Redis `EXAT`. Document that Redis server clock skew can evict
+slightly early or late relative to cookie expiry; acceptance treats cookie `exp` as the visitor-visible
+lifetime and Redis TTL as best-effort cleanup. Do not extend lifetime for skew. Fail creation (no cookie)
+when `expiresAt` is no longer safely later than "now + store timeout" at write time.
 
 **Rationale**: Atomic expiry avoids immortal orphan records. Fixed deadlines turn outages into observable
-503 responses. An ambiguous timed-out write may leave an expiring orphan, but must never issue a cookie
-or complete setup; a later request creates its own id. Read errors differ from a missing key.
+503 responses. TLS protects session records and signing-adjacent traffic off-box. Aligning cookie and
+record values on one application clock keeps the signed reference coherent; Redis cleanup need not be a
+perfect second clock.
 
 **Alternatives considered**: Separate SET/EXPIRE can leave immortal records; process-local fallback breaks
-restart continuity and outage requirements; queued writes can report misleading late success.
+restart continuity and outage requirements; queued writes can report misleading late success; using Redis
+`TIME` for the cookie couples browser expiry to an opaque remote clock and complicates unit tests.
 
 **Evidence**: [node-redis](https://github.com/redis/node-redis),
 [Redis SET](https://redis.io/docs/latest/commands/set/), and `docs/session-state.md`.
 
-## 4. Signing and fixed lifetime
+## 4. Signing, fixed lifetime, and lazy configuration
 
 **Decision**: Use `jose` with HS256 explicitly allowed, a required server-only secret of at least 32
-random bytes, and strict claims `{ sid, tenant, exp }`. Lifetime defaults to 86,400 seconds with a positive
-integer override. Compute expiry once and share it with cookie and Redis; no sliding renewal.
+random bytes, and strict claims `{ sid, tenant, exp }`. Lifetime defaults to 86,400 seconds. Require a
+minimum TTL strictly greater than the configured store timeout (and enough margin to finish setup before
+`exp`), with a representable resulting date. Cap `SESSION_STORE_TIMEOUT_MS` to a runtime-supported
+positive integer range usable by Node timers (reject values that would clamp or overflow).
+
+Parse session configuration lazily on the first participating request (or first store/cookie use), not at
+module import of `proxy.ts` / session modules, so clean-checkout `pnpm build` / `pnpm typecheck` succeed
+without secrets. Missing or invalid runtime configuration fails closed with generic HTTP 500 and a safe
+diagnostic. Unit/contract coverage must prove both: import/build without secrets succeeds, and a
+participating request without configuration returns 500 without issuing a cookie.
 
 **Rationale**: The spec and existing strategy require signed references, not encrypted session payloads
-or an authentication system. Validate signatures, types, canonical tenant, id shape, expiry, and matching
-record binding before use. Signing material must remain stable across frontend restart for continuity.
+or an authentication system. Lazy parsing matches existing tenant configuration patterns and keeps
+repository gates green. A TTL shorter than the setup deadline can issue an already-expired cookie.
 
 **Alternatives considered**: Unsigned ids fail FR-006; session payloads in JWTs create a second state store;
-renewal adds lifecycle behavior the spec excludes. Key rotation policy is future operational work; a
-secret change makes prior references unusable and normal setup replaces them.
+renewal adds lifecycle behavior the spec excludes; eager module-load validation breaks CI build gates.
+Key rotation policy is future operational work; a secret change makes prior references unusable and
+normal setup replaces them.
 
-**Evidence**: [jose](https://github.com/panva/jose), `docs/session-state.md`, spec FR-006/007.
+**Evidence**: [jose](https://github.com/panva/jose), `docs/session-state.md`, spec FR-006/007,
+existing tenant env loading in `packages/frontend/src/lib/tenant`.
 
-## 5. Local services and evidence layers
+## 5. Local services, CI Redis, and evidence layers
 
 **Decision**: Add only official Redis `8.2.9` on loopback, with a ping healthcheck. Keep app processes on
-the host. Extend existing Vitest and Cucumber/Playwright rather than introduce a test framework. Use
-isolated key prefixes and synthetic signing keys/tenants; never flush an arbitrary Redis database.
+the host. Update `docs/docker-compose.md` (and README pointers) in the same focused commit as the
+Redis-only Compose change so operational docs are never contradictory. Extend existing Vitest and
+Cucumber/Playwright rather than introduce a test framework.
+
+Isolation: unit tests may inject a store prefix via constructor. Real HTTP/BDD fixtures that spawn a
+frontend process MUST set a documented test-only `SESSION_KEY_PREFIX` (or dedicated Redis logical
+database) in that process environment, track scenario-owned keys/ids, and delete only that namespace.
+Never `FLUSHALL`. Cookie-jar continuity across frontend restart MUST preserve the browser context or
+capture/replay the raw `Set-Cookie` rather than closing all contexts in `restartOwnedProcess`.
+
+CI: provision Redis (workflow service or fixture-managed lifecycle) and synthetic
+`REDIS_URL` / `SESSION_SIGNING_SECRET` / prefix settings for `pnpm test:bdd` in `.github/workflows/ci.yml`
+before session steps are required to pass. Session lifecycle proofs that need a real cookie jar use
+`@browser` (and HTTPS or raw-header assertions for `Secure`).
 
 **Rationale**: The Compose strategy describes future broker/Postgres services, but this spec narrows this
 increment to Redis. Frontend restart continuity requires Redis to stay running, not durable Redis volume
-provisioning. Contract tests prove ordering; real HTTP/store checks prove integration; browser checks
-prove automatic first visit and return behavior without adding diagnostic UI.
+provisioning. Constructor-only prefixes cannot reach a child frontend process. Without CI Redis, enabling
+session setup will fail the existing tenant suite once it routes through setup.
 
 **Alternatives considered**: Full architecture Compose exceeds scope; mock-only Redis cannot prove
-external continuity or TTL; checking Display Name alone cannot establish sessions.
+external continuity or TTL; checking Display Name alone cannot establish sessions; deferring Compose doc
+updates until the final slice leaves contradictory instructions during earlier slices.
 
 **Evidence**: [official Redis image](https://hub.docker.com/_/redis), `docs/docker-compose.md`,
-`tests/bdd/steps/session.steps.ts` (currently pending), `features/session-continuity.feature`,
-`features/session-recovery.feature`, and `features/local-session-development.feature`.
+`.github/workflows/ci.yml`, `tests/bdd/support/server.ts`, `tests/bdd/steps/session.steps.ts`
+(currently pending), `features/session-continuity.feature`, `features/session-recovery.feature`, and
+`features/local-session-development.feature`.
