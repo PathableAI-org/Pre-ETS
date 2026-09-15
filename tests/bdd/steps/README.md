@@ -2,8 +2,8 @@
 
 **Detected framework:** `@cucumber/cucumber` (TypeScript ESM at the repository root)
 
-These bindings cover the platform as a whole. Root `features/*.feature` files are the Gherkin
-inputs, and Cucumber loads support code through `cucumber.mjs`.
+These bindings cover the platform as a whole. Root feature files are the Gherkin inputs, and
+Cucumber loads support code through `cucumber.mjs`.
 
 ## Running scenarios
 
@@ -12,10 +12,13 @@ From the repository root:
 ```sh
 pnpm test:bdd:dry
 pnpm test:bdd
+pnpm test:bdd:session
 ```
 
-`test:bdd:dry` discovers every scenario without executing steps. `test:bdd` runs the `@production`
-partition first, then `not @production`, writing distinct JSON reports under `reports/`.
+`test:bdd:dry` sets `CUCUMBER_SESSION=1` and discovers every scenario (tenant + session) without
+executing steps. `test:bdd` runs only the tenant suite: the `@production` partition first, then
+`not @production`, writing distinct JSON reports under `reports/`. Session stubs stay out of that
+default path.
 
 ## Bindings
 
@@ -30,16 +33,18 @@ root Cucumber layout rather than introducing a second step-definition directory.
 `Pending:` error; replace it with the required setup, interaction, or assertion one step at a time.
 Quoted values use `{string}` parameters. Unused typed parameters are prefixed with `_` until implemented.
 
-Run only this feature from the repository root:
+`cucumber.mjs` loads session features and stubs only when `CUCUMBER_SESSION=1`. Run the session scaffold
+from the repository root:
 
 ```sh
-pnpm exec cucumber-js --config cucumber.mjs --tags '@session-setup'
+pnpm test:bdd:session
 ```
 
-Use `pnpm test:bdd:dry` to check discovery and `pnpm test:bdd` for the full suite. Dry runs do not prove
-behavior; the session suite must fail until its bindings and implementation are complete. Use real
-request/store integration for ordering, cookie protections, expiry, and failures; do not add diagnostic UI.
-Keep per-scenario state isolated and preserve existing tenant bindings and resource cleanup.
+Use `pnpm test:bdd:dry` to check combined discovery and `pnpm test:bdd` for the tenant acceptance suite.
+Dry runs do not prove implementation; the session suite must fail until its bindings and implementation
+are complete. Use real request/store integration for ordering, cookie protections, expiry, and failures;
+do not add diagnostic UI. Keep per-scenario state isolated and preserve existing tenant bindings and
+resource cleanup.
 
 Scaffold validation matched every step across 94 expanded cases to exactly one definition (85 existing,
 76 new). An isolated Cucumber run of the new bindings produced 42 expected failing scenarios and no undefined

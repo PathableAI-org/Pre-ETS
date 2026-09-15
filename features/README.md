@@ -106,11 +106,13 @@ Local setup uses the developer as a human operating the development environment.
 | [local-session-development.feature](local-session-development.feature) | Compose setup, local tenant modes, service restart, and production restrictions.                     |
 
 These files define acceptance behavior before session implementation. Their 76 throwing stubs live in
-`tests/bdd/steps/session.steps.ts` and are loaded by `cucumber.mjs`. Existing tenant bindings remain intact.
-All 94 expanded cases match exactly one definition per step. An isolated Cucumber run of the session stubs
-produced 42 failing scenarios, as expected before implementation; this is not runtime application verification.
-The tenant suite's 52-case count above applies only to the three tenant-resolution files.
-No runner exclusions or placeholder passing steps have been added.
+`tests/bdd/steps/session.steps.ts`. Default `cucumber.mjs` / `pnpm test:bdd` load only the tenant suite so
+unimplemented session stubs do not fail the default runner or unlabeled PR CI. Set `CUCUMBER_SESSION=1`
+(or run `pnpm test:bdd:session` / `pnpm test:bdd:dry`) to include session features and stubs. Existing
+tenant bindings remain intact. Dry discovery with `CUCUMBER_SESSION=1` matches all 94 expanded cases to
+exactly one definition per step. An isolated session run produced 42 failing scenarios, as expected
+before implementation; this is not runtime application verification. The tenant suite's 52-case count
+above applies only to the three tenant-resolution files.
 
 ### Session traceability and verification
 

@@ -43,9 +43,10 @@ Feature: Tenant session continuity
     And every downstream session access receives that session
     And the response contains no conflicting session cookies
 
-  @FR-006 @http @contract
+  @FR-006 @http @contract @production
   Scenario: Production cookie protects the session reference
-    Given the visitor has no session cookie
+    Given the application instead runs in production
+    And the visitor has no session cookie
     When the visitor opens "https://springfield.pathable.com/"
     Then the session cookie is host-only, HttpOnly, and Secure
     And its signed application claims contain only a session reference, tenant binding, and expiry
