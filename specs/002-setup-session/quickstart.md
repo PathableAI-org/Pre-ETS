@@ -10,6 +10,10 @@ Use Node >=24, the root-pinned pnpm, Docker with Compose, and the existing Playw
 the root README. Run commands from the repository root. Use only synthetic tenant records and an
 isolated local Redis service. Keep session settings in `packages/frontend/.env.local` (untracked).
 
+**Rollback reminder**: if enabling session setup causes 503s that block tenant pages, revert the
+Proxy/session integration; Redis Compose may remain. Prefer safe outcome-class diagnostics only (reuse /
+create / 403 / 500 / 503)—never secrets, cookies, or session ids.
+
 ## Start the implemented local service
 
 ```sh
@@ -25,10 +29,10 @@ Redis-only layout in the same implementation slice that introduces it.
 
 Copy the frontend `.env.example` to `.env.local` if no local file exists; preserve existing settings.
 Set `REDIS_URL=redis://127.0.0.1:6379` (plain URL allowed only for loopback; non-local deployments must
-use `rediss://` or equivalent), leave `SESSION_TTL_SECONDS=86400` unless testing expiry, and set
-`SESSION_STORE_TIMEOUT_MS=2000`. Generate `SESSION_SIGNING_SECRET` locally and retain it across frontend
-restarts; the example must have no usable embedded key. Session settings are parsed lazily—clean
-checkout build/typecheck must succeed before `.env.local` exists:
+use `rediss://` or equivalent with authenticated ACL or mTLS), leave `SESSION_TTL_SECONDS=86400` unless
+testing expiry, and set `SESSION_STORE_TIMEOUT_MS=2000`. Generate `SESSION_SIGNING_SECRET` locally and
+retain it across frontend restarts; the example must have no usable embedded key. Session settings are
+parsed lazily—clean checkout build/typecheck must succeed before `.env.local` exists:
 
 ```sh
 node -e 'console.log(require("node:crypto").randomBytes(32).toString("base64url"))'
@@ -50,8 +54,9 @@ Host transport; local static settings must not enable production localhost acces
 
    Add cookie/schema/ordering/failure tests to this existing suite during implementation. Validate
    exact expiry using an injected clock, asynchronous read-before-tenant order, mismatched tenants,
-   write failure, repeat access, TTL-vs-timeout rejection, lazy missing-config 500, and TLS URL
-   validation. Do not claim these doubles establish real Redis continuity.
+   write failure, repeat access, rejection of non-positive/non-representable TTL (without a raw
+   `SESSION_TTL_SECONDS` vs `SESSION_STORE_TIMEOUT_MS` integer compare), lazy missing-config 500,
+   and TLS/authenticated URL validation. Do not claim these doubles establish real Redis continuity.
 
 2. Run real Redis adapter and HTTP/browser acceptance checks through the session BDD harness:
 
@@ -60,6 +65,7 @@ Host transport; local static settings must not enable production localhost acces
    pnpm test:bdd:session
    ```
 
+   Equivalent: `CUCUMBER_SESSION=1` with the session tag partition used by `test:bdd:session`.
    Implementation must extend fixtures to start/stop its own frontend processes, set a unique
    `SESSION_KEY_PREFIX` (or isolated Redis DB) in the child process environment, track scenario-owned
    ids/keys, and clean only that namespace—never `FLUSHALL`. Constructor injection alone is insufficient
@@ -70,11 +76,19 @@ Host transport; local static settings must not enable production localhost acces
    process with stale tenant settings. Production cookie tests need HTTPS browser transport or explicit
    raw header assertions; a Secure cookie on an HTTP browser is not continuity evidence.
 
-3. Run the full `pnpm test:bdd` suite after session integration to protect existing tenant behavior.
+3. Run the full tenant suite after session integration to protect existing tenant behavior:
+
+   ```sh
+   pnpm test:bdd
+   ```
+
    Adapt the existing server fixture to supply synthetic session settings and Redis to tenant cases.
-   Provision Redis (and the same synthetic env) in `.github/workflows/ci.yml` for the job that runs
-   `pnpm test:bdd` before session steps are required to pass. Do not skip tenant scenarios merely
-   because they now need session infrastructure.
+   Provision Redis (and the same synthetic env) in `.github/workflows/ci-bdd.yml` for the jobs that run
+   `pnpm test:bdd` and `pnpm test:bdd:session` / `CUCUMBER_SESSION=1` before session steps are required
+   to pass. Extend that workflow's path filters so frontend session source changes (for example
+   `packages/frontend/src/**`, especially `proxy.ts` and `lib/session/**`) trigger BDD detection—not only
+   `features/**` / `tests/bdd/**`. Do not skip tenant scenarios merely because they now need session
+   infrastructure. There is no root `ci.yml`; do not document or edit a non-existent workflow file.
 
 4. Run repository checks before committing:
 
@@ -102,10 +116,11 @@ Host transport; local static settings must not enable production localhost acces
 - Isolation: navigate to another tenant; browser must not send the first host's cookie. Separately
   force signed cross-tenant references via HTTP fixtures to exercise all cookie/record mismatch rows;
   none may expose or modify old state. Unknown/removed tenants retain 403 without cookies. Forge
-  `x-pathable-session-context` and legacy `x-preets-tenant-*` headers; neither can select id/tenant.
+  `x-pathable-session-context`, `x-preets-tenant-slug`, `x-preets-tenant-origin`, and other
+  `x-preets-tenant-*` headers; none can select id/tenant or skip checks.
 - Recovery: test missing, tampered, malformed, expired, unknown and evicted references. Unknown ids are
   never adopted; replacements have fresh ids. Compare record expiry and cookie expiry to the application
-  clock; Redis `EXAT` uses those same seconds.
+  clock; Redis `EXAT` uses those same seconds. After a create write-timeout 503, retry may mint a new id.
 - Failure: stop Redis with `docker compose stop redis`; request with a valid cookie and without one
   to exercise read and creation failures. Expect bounded 503, no tenant content and no new cookie.
   Restart with `docker compose start redis` and wait for `redis-cli ping` to succeed; retry must recover.

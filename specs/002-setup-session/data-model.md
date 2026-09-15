@@ -36,9 +36,11 @@ without relaxing host-only or HttpOnly. The cookie never authenticates the visit
 
 ## Request setup context
 
-Request-scoped value `{ sessionId, tenantId, expiresAt }` crosses Proxy → SSR in
-`x-pathable-session-context` after stripping any caller value (and stripping/overwriting every
-`x-preets-tenant-*` name still in use). Do **not** place `tenantConfig` / Display Name in headers.
+Request-scoped value `{ sessionId, tenantId, expiresAt }` crosses Proxy → SSR in header
+`x-pathable-session-context` (compact ASCII JSON, no whitespace) after stripping any caller value.
+Also strip every caller-supplied `x-preets-tenant-*` header, then overwrite exactly
+`x-preets-tenant-slug` (canonical slug = `tenantId`) and `x-preets-tenant-origin` (closed set:
+`host-associated` \| `local-static`). Never place Display Name / `tenantConfig` in headers.
 
 The server-only reader validates the bounded fields and loads `tenantConfig` through the existing
 tenant source using `tenantId`, exposing one immutable snapshot (including config) to repeated
@@ -47,13 +49,13 @@ or host interpretation. `AppLayout` consumes this accessor as the session-aware 
 
 ## Configuration
 
-| Setting                    | Default / validation                                                                                                                                                      |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `REDIS_URL`                | Required server-only URL. Plain `redis://` only for loopback/local Compose (example `redis://127.0.0.1:6379`). Non-local targets require TLS (`rediss://` or equivalent). |
-| `SESSION_SIGNING_SECRET`   | Required base64url encoding of at least 32 random bytes; no committed default. Parsed lazily at request/use time, not at module import.                                   |
-| `SESSION_TTL_SECONDS`      | `86400`; finite positive safe integer, representable resulting date, and strictly greater than `SESSION_STORE_TIMEOUT_MS` (with margin to finish setup before `exp`).     |
-| `SESSION_STORE_TIMEOUT_MS` | `2000`; finite positive integer within the Node timer-safe range; applies to connect and commands. Reject values that would clamp or overflow.                            |
-| `SESSION_KEY_PREFIX`       | Optional; production default `pre-ets:session:`. Tests/CI set a unique prefix (or use an isolated Redis DB) for process fixtures; cleanup deletes only that namespace.    |
+| Setting                    | Default / validation                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `REDIS_URL`                | Required server-only URL. Plain `redis://` only for loopback/local Compose (example `redis://127.0.0.1:6379`). Non-local targets require TLS (`rediss://` or equivalent) **and** authenticated ACL credentials or mTLS—never cleartext or anonymous off-box Redis.                                                                                                                                                                                   |
+| `SESSION_SIGNING_SECRET`   | Required base64url encoding of at least 32 random bytes; no committed default. Parsed lazily at request/use time, not at module import.                                                                                                                                                                                                                                                                                                              |
+| `SESSION_TTL_SECONDS`      | Provisional fixed default `86400` for this slice (no sliding renewal). Finite positive safe integer; resulting absolute expiry must be Date-representable and strictly later than creation time on the application clock. Do **not** compare this seconds value to `SESSION_STORE_TIMEOUT_MS` (different units). Exact TTL-vs-store-timeout safety predicates, clear-session timeout, and capacity/eviction policy are deferred to the next feature. |
+| `SESSION_STORE_TIMEOUT_MS` | `2000`; finite positive integer within the Node timer-safe range; applies to connect and commands. Reject values that would clamp or overflow.                                                                                                                                                                                                                                                                                                       |
+| `SESSION_KEY_PREFIX`       | Optional; production default `pre-ets:session:`. Tests/CI set a unique prefix (or use an isolated Redis DB) for process fixtures; cleanup deletes only that namespace.                                                                                                                                                                                                                                                                               |
 
 Invalid application configuration fails closed with generic HTTP 500 and a safe diagnostic at request
 time. Clean-checkout `pnpm build` / `pnpm typecheck` must succeed without these secrets present.
@@ -69,10 +71,16 @@ incoming reference → invalid/absent → validate tenant (mode-aware) → creat
                                                        → unusable/mismatch → fresh create
 any store operation error → controlled 503, no normal content or new cookie
 invalid/unknown tenant → 403, no accepted state or new record/cookie
-expiresAt not safely after setup → fail creation, no cookie
+expiresAt not future / not representable → fail creation, no cookie
 ```
 
 An existing foreign record is never changed, deleted, or reassigned. At expiry the reference is unusable;
 Redis independently expires the key (subject to server-clock skew). Earlier eviction produces a fresh
 session. Frontend restarts reuse records when the signing secret and Redis remain available. Simultaneous
 independent requests may create independent sessions; repeated accesses inside one request may not.
+
+After a create write-timeout 503, a client retry may establish a **different** session id; any orphan
+from the ambiguous write expires normally via `EXAT` and is never adopted from a client-supplied id.
+Cookie `exp`, record `expiresAt`, and Redis `EXAT` stay aligned on the application clock; Redis skew
+affects cleanup timing only. Exact TTL-vs-store-timeout safety margins remain deferred with clear-session
+timeout to the next feature.
