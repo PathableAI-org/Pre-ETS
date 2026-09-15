@@ -1,0 +1,95 @@
+name: CI Quality
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+env:
+  CI: "true"
+  HUSKY: "0"
+
+concurrency:
+  group: ci-quality-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    name: Detect quality paths
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      format: ${{ steps.set.outputs.format }}
+      code: ${{ steps.set.outputs.code }}
+    steps:
+      - name: Detect pull request path changes
+        if: github.event_name == 'pull_request'
+        id: filter
+        uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590 # v3.0.3
+        with:
+          filters: |
+            format:
+              - '*'
+              - '.github/**'
+              - 'docs/**'
+              - 'tests/**'
+              - 'packages/**'
+              - 'features/**'
+              - 'dprint*'
+            code:
+              - 'packages/**'
+              - 'tests/**'
+              - '*.js'
+              - '*.mjs'
+              - 'eslint.config.js'
+              - 'tsconfig*.json'
+              - 'cucumber.mjs'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - '.node-version'
+      - name: Set path filter outputs
+        id: set
+        run: |
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "format=true" >> "$GITHUB_OUTPUT"
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "format=${{ steps.filter.outputs.format }}" >> "$GITHUB_OUTPUT"
+            echo "code=${{ steps.filter.outputs.code }}" >> "$GITHUB_OUTPUT"
+          fi
+
+  quality:
+    name: CI / Quality
+    needs: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Skip when no quality-relevant paths changed
+        if: needs.changes.outputs.format != 'true' && needs.changes.outputs.code != 'true'
+        run: echo "No quality-relevant paths changed; skipping."
+      - name: Check out repository
+        if: needs.changes.outputs.format == 'true' || needs.changes.outputs.code == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Set up Node.js and install dependencies
+        if: needs.changes.outputs.format == 'true' || needs.changes.outputs.code == 'true'
+        uses: ./.github/actions/setup-node-pnpm
+      - name: Check formatting
+        if: needs.changes.outputs.format == 'true'
+        run: pnpm format:check
+      - name: Lint repository and workspaces
+        if: needs.changes.outputs.code == 'true'
+        run: pnpm lint
+      - name: Typecheck workspaces
+        if: needs.changes.outputs.code == 'true'
+        run: pnpm typecheck
+      - name: Run frontend unit tests
+        if: needs.changes.outputs.code == 'true'
+        run: pnpm --filter @pathableai/pre-ets-frontend test:unit

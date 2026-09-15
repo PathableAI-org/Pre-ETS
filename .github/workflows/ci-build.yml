@@ -1,0 +1,75 @@
+name: CI Build
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+env:
+  CI: "true"
+  HUSKY: "0"
+
+concurrency:
+  group: ci-build-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    name: Detect build paths
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      build: ${{ steps.set.outputs.build }}
+    steps:
+      - name: Detect pull request path changes
+        if: github.event_name == 'pull_request'
+        id: filter
+        uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590 # v3.0.3
+        with:
+          filters: |
+            build:
+              - 'packages/**'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - '.node-version'
+              - '.npmrc'
+      - name: Set path filter outputs
+        id: set
+        run: |
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "build=${{ steps.filter.outputs.build }}" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    name: CI / Build
+    needs: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Skip when no build-relevant paths changed
+        if: needs.changes.outputs.build != 'true'
+        run: echo "No build-relevant paths changed; skipping."
+      - name: Check out repository
+        if: needs.changes.outputs.build == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Set up Node.js and install dependencies
+        if: needs.changes.outputs.build == 'true'
+        uses: ./.github/actions/setup-node-pnpm
+      - name: Build workspaces
+        if: needs.changes.outputs.build == 'true'
+        run: pnpm build
+      - name: Smoke check backend
+        if: needs.changes.outputs.build == 'true'
+        run: |
+          greeting=$(pnpm --silent start:backend)
+          test "$greeting" = "Hello from backend"

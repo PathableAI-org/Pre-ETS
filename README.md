@@ -190,11 +190,37 @@ Fallow’s hook installer. Builds and full typechecks remain separate checks.
 
 ## Continuous integration
 
-The `CI` workflow runs on every pull request, pushes to `main`, and manual dispatch.
-Three jobs run independently: **CI / Quality** checks formatting, lint, types,
-and frontend Vitest; **CI / Build** builds both packages, installs Chromium,
-runs production-first Cucumber, and verifies the backend greeting; **CI / Fallow**
-checks unused code across the repository and audits newly introduced findings.
+CI is split across four workflows that run on every pull request, pushes to
+`main`, and manual dispatch:
+
+| Workflow                           | Required check names           | Role                                      |
+| ---------------------------------- | ------------------------------ | ----------------------------------------- |
+| `.github/workflows/ci-quality.yml` | **CI / Quality**               | Formatting, lint, types, frontend Vitest  |
+| `.github/workflows/ci-build.yml`   | **CI / Build**                 | Package builds and backend greeting smoke |
+| `.github/workflows/ci-bdd.yml`     | **CI / BDD Dry**, **CI / BDD** | Cucumber discovery; full suite when gated |
+| `.github/workflows/ci-fallow.yml`  | **CI / Fallow**                | Unused code and new-finding audit         |
+
+Shared install steps live in `.github/actions/setup-node-pnpm`.
+
+On pull requests, each workflow detects changed paths with `dorny/paths-filter`
+and skips expensive install/work when those paths are irrelevant. The named
+checks still run and report success when skipped so required status checks are
+not blocked. Pushes to `main` and `workflow_dispatch` always run the full work
+for Quality, Build, BDD Dry, and Fallow.
+
+Examples:
+
+- Specs-only Speckit PR (`specs/**`, `.specify/**`) → required checks succeed
+  without install/build/Cucumber.
+- Scaffold PR touching `features/` and `tests/bdd/` → **CI / BDD Dry** (and
+  Quality when format/code paths match); **CI / Build** skips.
+- Implementation PR changing `packages/` → Quality, Build, and Fallow run.
+
+**CI / BDD** installs Chromium and runs production-first Cucumber partitions
+(`pnpm test:bdd`). It runs on pushes to `main`, manual dispatch, and pull
+requests labeled `ci:bdd`. Speckit scaffold PRs leave the label off so
+intentionally failing stubs do not block merge. Do not require **CI / BDD** in
+branch protection: a skipped required check blocks merge.
 
 CI uses the pinned Node and pnpm versions, a frozen lockfile, and pnpm store caching.
 `HUSKY=0` skips local hook installation; CI invokes the full checks directly and
@@ -205,9 +231,12 @@ and manual runs against `HEAD^`. When no previous commit exists, the full-reposi
 check still runs. Missing nonempty base references are errors. Audit warnings are
 advisory; failures and runtime errors fail the job.
 
-The `Main CI checks` repository ruleset requires all three GitHub Actions checks
-and an up-to-date branch before merging into `main`. Organization rules continue
-to require pull requests and squash merges. GitHub automerge remains disabled.
+The `Main CI checks` repository ruleset must require **CI / Quality**,
+**CI / Build**, **CI / Fallow**, and **CI / BDD Dry**, plus an up-to-date branch,
+before merging into `main`. Do **not** require **CI / BDD** on pull requests.
+After changing workflows, update that ruleset’s required checks to match.
+Organization rules continue to require pull requests and squash merges. GitHub
+automerge remains disabled.
 
 ## Spec Kit
 
