@@ -24,11 +24,31 @@ frontend production output into `.next`. After a production build,
 prints a greeting and exits.
 All packages are private; the npm scope identifies ownership, not publication.
 
+### Local Redis and session setup
+
+Start the Redis-only Compose service before exercising session setup:
+
+```sh
+docker compose up -d --wait redis
+docker compose exec redis redis-cli ping
+```
+
+See `docs/docker-compose.md` and `docs/session-state.md`. Copy
+`packages/frontend/.env.example` to `packages/frontend/.env.local`, set
+`REDIS_URL=redis://127.0.0.1:6379`, and generate `SESSION_SIGNING_SECRET` with:
+
+```sh
+node -e 'console.log(require("node:crypto").randomBytes(32).toString("base64url"))'
+```
+
+Stop with `docker compose down`. Never run `FLUSHALL` against shared Redis.
+
 ### Local tenant resolution
 
 Tenant Display Name for this increment comes from process environment, not
-Compose or a database. Copy `packages/frontend/.env.example` to
-`packages/frontend/.env.local` (gitignored) and restart after edits.
+a database. Session continuity uses the local Redis service above. Copy
+`packages/frontend/.env.example` to `packages/frontend/.env.local` (gitignored)
+and restart after edits.
 
 Host association (default, including omitted `TENANT_RESOLUTION`) uses
 `TENANT_CONFIG_RECORDS_JSON` and `{slug}.localhost` locally or
