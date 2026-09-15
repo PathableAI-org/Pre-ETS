@@ -63,8 +63,13 @@ Host transport; local static settings must not enable production localhost acces
 
    ```sh
    pnpm test:bdd:dry
+   pnpm test:bdd:session:contract
    pnpm test:bdd:session
    ```
+
+   CI runs `pnpm test:bdd:session:contract` (`@session-setup and @contract and not @http`) until
+   T017/T021/T025/T028 close the HTTP/browser partition. Run full `pnpm test:bdd:session` locally
+   when exercising lifecycle, recovery, and local-service scenarios.
 
    Equivalent: `CUCUMBER_SESSION=1` with the session tag partition used by `test:bdd:session`.
    Implementation must extend fixtures to start/stop its own frontend processes, set a unique
@@ -85,7 +90,8 @@ Host transport; local static settings must not enable production localhost acces
 
    Adapt the existing server fixture to supply synthetic session settings and Redis to tenant cases.
    Provision Redis (and the same synthetic env) in `.github/workflows/ci-bdd.yml` for the jobs that run
-   `pnpm test:bdd` and `pnpm test:bdd:session` / `CUCUMBER_SESSION=1` before session steps are required
+   `pnpm test:bdd` and `pnpm test:bdd:session:contract` (green `@contract and not @http` partition until
+   T017/T021/T025/T028) / full `pnpm test:bdd:session` locally before session steps are required
    to pass. Extend that workflow's path filters so frontend session source changes (for example
    `packages/frontend/src/**`, especially `proxy.ts` and `lib/session/**`) trigger BDD detection—not only
    `features/**` / `tests/bdd/**`. Do not skip tenant scenarios merely because they now need session
@@ -139,10 +145,10 @@ PR; this guide and a dry run alone are not proof that runtime behavior works.
 
 ## Implementation evidence (this branch)
 
-| Gate                                                        | Status                                                                                                                                                                                                                                            |
-| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Unit / Redis adapter contracts                              | Pass (`pnpm --filter @pathableai/pre-ets-frontend test:unit`; Redis integration skips when Redis is down)                                                                                                                                         |
-| Cucumber dry-run                                            | Pass (`pnpm test:bdd:dry`)                                                                                                                                                                                                                        |
-| Contract-only session scenarios (`@contract and not @http`) | Pass                                                                                                                                                                                                                                              |
-| Full `pnpm test:bdd:session` HTTP/browser partition         | Partial — free-port harness and step implementations are in place; remaining failures cluster on production `next start` churn, Redis stop/start fixtures, and a few HTTP cookie-jar assertions. Tracked by open tasks T017 / T021 / T025 / T028. |
-| Clean checkout build/typecheck without session secrets      | Pass for lazy config parse                                                                                                                                                                                                                        |
+| Gate                                                               | Status                                                                                                                                                                                                                                            |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Unit / Redis adapter contracts                                     | Pass (`pnpm --filter @pathableai/pre-ets-frontend test:unit`; Redis integration skips when Redis is down)                                                                                                                                         |
+| Cucumber dry-run                                                   | Pass (`pnpm test:bdd:dry`)                                                                                                                                                                                                                        |
+| Contract-only session scenarios (`pnpm test:bdd:session:contract`) | Pass in CI (`@session-setup and @contract and not @http`)                                                                                                                                                                                         |
+| Full `pnpm test:bdd:session` HTTP/browser partition                | Partial — free-port harness and step implementations are in place; remaining failures cluster on production `next start` churn, Redis stop/start fixtures, and a few HTTP cookie-jar assertions. Tracked by open tasks T017 / T021 / T025 / T028. |
+| Clean checkout build/typecheck without session secrets             | Pass for lazy config parse                                                                                                                                                                                                                        |

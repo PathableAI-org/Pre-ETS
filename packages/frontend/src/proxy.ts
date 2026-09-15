@@ -55,7 +55,7 @@ function attachSessionCookie(
   expiresAt: number,
   cookieValue: string
 ): void {
-  const attributes = cookieAttributes(expiresAt, process.env.NODE_ENV === "production")
+  const attributes = cookieAttributes(expiresAt, process.env.NODE_ENV !== "development")
   response.cookies.set(SESSION_COOKIE_NAME, cookieValue, {
     expires: attributes.expires,
     httpOnly: attributes.httpOnly,

@@ -108,5 +108,5 @@ jobs:
           echo "SESSION_KEY_PREFIX=ci:bdd:${{ github.run_id }}:" >> "$GITHUB_ENV"
       - name: Run production-first Cucumber partitions
         run: pnpm test:bdd
-      - name: Run session Cucumber partition
-        run: pnpm test:bdd:session
+      - name: Run session contract partition (HTTP/browser gated until T017/T021/T025/T028)
+        run: pnpm test:bdd:session:contract

@@ -33,6 +33,20 @@ const execFile = promisify(execFileCallback)
 const REPO_ROOT = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)))
 const COMPOSE_FILE = path.join(REPO_ROOT, "compose.yaml")
 const CLOSED_REDIS_URL = "redis://127.0.0.1:6399"
+const SEED_PAGE_HTML = [
+  "<!DOCTYPE html><html><head>",
+  "<link rel=\"stylesheet\" href=\"/_next/static/css/app.css\"/>",
+  "</head><body>",
+  "<script src=\"/_next/static/chunks/webpack.js\"></script>",
+  "</body></html>"
+].join("")
+
+interface HttpSessionSnapshot {
+  readonly sessionCookieJar: Map<string, string> | undefined
+  readonly sessionExpiresAtSeconds: number | undefined
+  readonly sessionId: string | undefined
+  readonly sessionTenantId: string | undefined
+}
 
 interface ParsedUrl {
   readonly host: string
@@ -187,8 +201,9 @@ export function assertSessionPersistedBeforeCookie(world: TenantWorld, tenantId?
   assert.ok(events.includes("signCookie"))
   assert.ok(world.sessionContract)
   assert.equal(world.sessionContract.result.kind, "ready")
-  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- narrow cookieValue after kind assert
-  assert.ok(world.sessionContract.result.kind === "ready" && world.sessionContract.result.cookieValue)
+  assert.equal(world.sessionContract.result.outcome, "create")
+  // setupSession signs before persisting, but a ready create outcome is only returned after store.create succeeds.
+  assert.notEqual(world.sessionContract.result.cookieValue, undefined)
 }
 
 export function assertSessionServiceFailure(world: TenantWorld): void {
@@ -223,13 +238,17 @@ export async function cleanupScenarioSessionKeys(world: TenantWorld): Promise<vo
 
   const client = createRedisClient({ disableOfflineQueue: true, url: world.redisUrl ?? "redis://127.0.0.1:6379" })
   try {
-    await client.connect()
-    for (const id of world.sessionTrackedIds) {
-      await client.del(`${world.sessionKeyPrefix}${id}`)
-    }
+    try {
+      await client.connect()
+      for (const id of world.sessionTrackedIds) {
+        await client.del(`${world.sessionKeyPrefix}${id}`)
+      }
 
-    for await (const key of client.scanIterator({ COUNT: 100, MATCH: `${world.sessionKeyPrefix}*` })) {
-      await client.del(key)
+      for await (const key of client.scanIterator({ COUNT: 100, MATCH: `${world.sessionKeyPrefix}*` })) {
+        await client.del(key)
+      }
+    } catch {
+      // Best-effort cleanup: Redis may be intentionally unavailable during 503 scenarios.
     }
   } finally {
     await client.quit().catch(() => undefined)
@@ -263,19 +282,28 @@ export async function ensureSessionContractEvidence(world: TenantWorld): Promise
   }
 
   assert.ok(world.lastVisitedUrl, "No visited URL available for contract probe")
+
+  if (!world.useHttp) {
+    await runSessionContract(world, world.lastVisitedUrl)
+    return
+  }
+
+  const saved = snapshotHttpSessionState(world)
+  if (!world.sessionHadCookieBeforeLastVisit) {
+    clearCookies(world)
+    world.sessionId = undefined
+    world.sessionTenantId = undefined
+    world.sessionExpiresAtSeconds = undefined
+  }
+
   await runSessionContract(world, world.lastVisitedUrl)
+  restoreHttpSessionState(world, saved)
 }
 
 export async function fetchTenantResource(world: TenantWorld, resource: string): Promise<void> {
   const host = world.requestedHost ?? hostForTenant(world, "springfield")
   await ensureOwnedProcess(world)
-  const landing = await sendSessionHttpRequest({
-    cookieJar: new Map(),
-    host,
-    path: "/",
-    port: world.port
-  })
-  const targetPath = discoverResourcePath(landing.body, resource)
+  const targetPath = resolveResourcePath(world, resource)
   world.httpResponse = await sendSessionHttpRequest({
     cookieJar: new Map(),
     host,
@@ -474,15 +502,15 @@ export async function startLocalRedis(world: TenantWorld): Promise<void> {
 }
 
 export async function stopLocalRedis(world: TenantWorld): Promise<void> {
-  if (await commandAvailable("docker")) {
-    await execFile("docker", ["compose", "-f", COMPOSE_FILE, "stop", "redis"], { cwd: REPO_ROOT })
-    world.redisStoppedViaDocker = true
+  if (isCiRedisService()) {
+    world.redisUrl = CLOSED_REDIS_URL
+    await restartOwnedProcess(world, { preserveCookies: true })
     return
   }
 
-  if (process.env.CI === "true") {
-    world.redisUrl = CLOSED_REDIS_URL
-    await restartOwnedProcess(world, { preserveCookies: true })
+  if (await dockerAvailable()) {
+    await execFile("docker", ["compose", "-f", COMPOSE_FILE, "stop", "redis"], { cwd: REPO_ROOT })
+    world.redisStoppedViaDocker = true
     return
   }
 
@@ -493,7 +521,7 @@ export async function verifyComposeRedisSetup(): Promise<void> {
   const contents = fs.readFileSync(COMPOSE_FILE, "utf8")
   assert.match(contents, /image:\s*redis:8\.2\.9/)
   assert.match(contents, /127\.0\.0\.1:6379:6379/)
-  if (await commandAvailable("docker")) {
+  if (await dockerAvailable()) {
     const { stdout } = await execFile("docker", ["compose", "-f", COMPOSE_FILE, "config"], { cwd: REPO_ROOT })
     assert.match(stdout, /redis:8\.2\.9/)
     assert.match(stdout, /host_ip:\s*127\.0\.0\.1/)
@@ -520,12 +548,13 @@ export async function visitUrl(world: TenantWorld, rawUrl: string): Promise<void
   captureHost(world, parsed.host, parsed.port)
   ensureRuntimeForUrl(world, rawUrl)
 
-  // Contract probe first so ordering events reflect this visit's setup path.
-  if (world.useContract) {
+  const runContractBeforeHttp = world.useContract && !world.useHttp && !world.useBrowser
+  if (runContractBeforeHttp) {
     await runSessionContract(world, rawUrl)
   }
 
   if (world.useHttp || world.useBrowser) {
+    world.sessionHadCookieBeforeLastVisit = cookieHeaderForHost(world, parsed.host) !== undefined
     await expireSessionCookieForHttp(world, parsed.host)
     await requestSessionPage(world, parsed)
     rememberOriginalSession(world)
@@ -601,15 +630,6 @@ function collectSetCookies(headers: Record<string, string>): string[] {
   return raw.split(/,(?=[^;]+?=)/)
 }
 
-async function commandAvailable(command: string): Promise<boolean> {
-  try {
-    await execFile("command", ["-v", command])
-    return true
-  } catch {
-    return false
-  }
-}
-
 function cookieDomain(host: string): string {
   return host.split(":")[0] ?? host
 }
@@ -658,6 +678,15 @@ function discoverResourcePath(body: string, resource: string): string {
   const match = /\/_next\/static\/chunks\/[^"'\\s>]+/.exec(body)
   assert.ok(match, "Could not discover a framework resource path")
   return match[0]
+}
+
+async function dockerAvailable(): Promise<boolean> {
+  try {
+    await execFile("docker", ["version"])
+    return true
+  } catch {
+    return false
+  }
 }
 
 function ensureRuntimeForUrl(world: TenantWorld, rawUrl: string): void {
@@ -716,6 +745,12 @@ function hostSuffixForHost(host: string): "localhost" | "pathable.com" {
   return hostname.endsWith(".pathable.com") || hostname === "pathable.com" ? "pathable.com" : "localhost"
 }
 
+function isCiRedisService(): boolean {
+  return (process.env.CI === "true" || process.env.GITHUB_ACTIONS === "true")
+    && process.env.REDIS_URL !== undefined
+    && process.env.REDIS_URL !== ""
+}
+
 function latestSessionCookie(world: TenantWorld): string | undefined {
   const header = world.requestedHost === undefined
     ? undefined
@@ -754,7 +789,7 @@ async function openSessionBrowserPage(world: TenantWorld, parsed: ParsedUrl): Pr
 }
 
 function pageUrl(parsed: ParsedUrl): string {
-  return `http://127.0.0.1:${String(parsed.port)}${parsed.path}`
+  return `http://${parsed.host}${parsed.path}`
 }
 
 function parseUrl(world: TenantWorld, rawUrl: string): ParsedUrl {
@@ -808,6 +843,26 @@ async function requestSessionPage(world: TenantWorld, parsed: ParsedUrl): Promis
   }
 }
 
+function resolveResourcePath(world: TenantWorld, resource: string): string {
+  const priorBody = world.httpResponse?.body
+  if (priorBody !== undefined && priorBody.length > 0) {
+    return discoverResourcePath(priorBody, resource)
+  }
+
+  if (resource === "static asset") {
+    return "/favicon.ico"
+  }
+
+  return discoverResourcePath(SEED_PAGE_HTML, resource)
+}
+
+function restoreHttpSessionState(world: TenantWorld, saved: HttpSessionSnapshot): void {
+  world.sessionCookieJar = saved.sessionCookieJar
+  world.sessionId = saved.sessionId
+  world.sessionTenantId = saved.sessionTenantId
+  world.sessionExpiresAtSeconds = saved.sessionExpiresAtSeconds
+}
+
 async function seedSignedRawRecord(
   world: TenantWorld,
   config: SessionConfig,
@@ -845,6 +900,15 @@ async function sendSessionHttpRequest(options: {
 function setCookie(world: TenantWorld, host: string, value: string): void {
   world.sessionCookieJar ??= new Map()
   world.sessionCookieJar.set(host, `${SESSION_COOKIE_NAME}=${value}`)
+}
+
+function snapshotHttpSessionState(world: TenantWorld): HttpSessionSnapshot {
+  return {
+    sessionCookieJar: world.sessionCookieJar === undefined ? undefined : new Map(world.sessionCookieJar),
+    sessionExpiresAtSeconds: world.sessionExpiresAtSeconds,
+    sessionId: world.sessionId,
+    sessionTenantId: world.sessionTenantId
+  }
 }
 
 function trackSessionId(world: TenantWorld, sessionId: string): void {

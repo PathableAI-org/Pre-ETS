@@ -42,12 +42,13 @@ export interface TenantOperations {
 }
 
 export function createTenantOperations(options: CreateTenantOperationsOptions): TenantOperations {
+  const mode = options.production === true ? "host" : options.mode
   let hostSource: TenantSource | undefined
   let staticRecord: TenantRecord | undefined
 
   return {
     async resolve(input) {
-      if (options.mode === "static") {
+      if (mode === "static") {
         try {
           const record = loadStaticRecord()
           return {
@@ -112,9 +113,11 @@ let loggedInvalidMode = false
 
 export function createEnvTenantOperations(
   env: NodeJS.ProcessEnv = process.env,
-  production = process.env.NODE_ENV === "production"
+  production?: boolean
 ): TenantOperations {
-  if (production) {
+  const isProduction = production ?? env.NODE_ENV === "production"
+
+  if (isProduction) {
     return createTenantOperations({
       hostRecordsJson: env.TENANT_CONFIG_RECORDS_JSON,
       hostSuffix: "pathable.com",

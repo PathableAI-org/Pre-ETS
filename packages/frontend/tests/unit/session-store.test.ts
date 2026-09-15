@@ -154,21 +154,26 @@ describe("RedisSessionStore", () => {
         expiresAt: 1_700_300_000,
         tenantId: "springfield"
       }
+      const setMock = vi.fn(() => new Promise<null | string>(() => undefined))
+      const getMock = vi.fn().mockResolvedValue(null)
       const clientFactory = vi.fn(() => {
         const client = {
           connect: vi.fn().mockResolvedValue(undefined),
+          get: getMock,
           isOpen: true,
-          set: vi.fn(() => new Promise<null | string>(() => undefined))
+          set: setMock
         }
         return client
       })
 
       const store = new RedisSessionStore(testConfig({ storeTimeoutMs: 50 }), {
-        clientFactory: clientFactory as never,
+        clientFactory,
         timeoutMs: 50
       })
 
       await expect(store.create(id, record)).rejects.toBeInstanceOf(SessionStoreError)
+      expect(setMock).toHaveBeenCalledOnce()
+      await expect(store.read(id)).resolves.toEqual({ kind: "missing" })
     })
 
     it("wraps transport failures as SessionStoreError", async () => {
@@ -288,12 +293,6 @@ describe("RedisSessionStore", () => {
 
       expect(await store.create(id, record)).toEqual({ kind: "created" })
       expect(await store.create(id, record)).toEqual({ kind: "collision" })
-    })
-
-    it("leaves no record behind after a timed-out create attempt", async () => {
-      const id = fixedSessionId(12)
-      const store = new RedisSessionStore(testConfig())
-      await expect(store.read(id)).resolves.toEqual({ kind: "missing" })
     })
   })
 })

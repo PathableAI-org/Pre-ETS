@@ -222,17 +222,21 @@ describe("session types", () => {
         .toThrow(/TLS and authentication/)
     })
 
-    it("accepts TLS REDIS_URL with password or mTLS query params", () => {
+    it("accepts TLS REDIS_URL with password auth", () => {
+      const password = "x".repeat(16)
       expect(
         parseSessionConfig(baseEnv({
-          REDIS_URL: "rediss://:secret@redis.example.com:6379"
+          REDIS_URL: `rediss://:${password}@redis.example.com:6379`
         })).redisUrl
       ).toContain("rediss://")
-      expect(
+    })
+
+    it("rejects TLS REDIS_URL with only mTLS query params", () => {
+      expect(() =>
         parseSessionConfig(baseEnv({
           REDIS_URL: "rediss://redis.example.com:6379?cert=a&key=b"
-        })).redisUrl
-      ).toContain("rediss://")
+        }))
+      ).toThrow(/TLS and authentication/)
     })
 
     it("rejects unsupported REDIS_URL protocols", () => {

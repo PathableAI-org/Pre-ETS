@@ -92,6 +92,7 @@ function resetTenantWorld(world: TenantWorld): void {
   world.sessionId = undefined
   world.sessionKeyPrefix = undefined
   world.sessionRefusedCookie = false
+  world.sessionHadCookieBeforeLastVisit = false
   world.sessionSigningSecret = undefined
   world.sessionStorageFailed = false
   world.sessionStorageFailureOperation = undefined

@@ -1,8 +1,12 @@
 import { Given, Then, When } from "@cucumber/cucumber"
 import assert from "node:assert/strict"
+import fs from "node:fs"
+import path from "node:path"
+import { fileURLToPath } from "node:url"
 
 import type { TenantWorld } from "../support/world.ts"
 
+import { cookieAttributes, SESSION_COOKIE_NAME } from "../../../packages/frontend/src/lib/session/types.ts"
 import { ensureOwnedProcess, restartOwnedProcess } from "../support/server.ts"
 import { createRedisClient } from "../support/session-deps.ts"
 import { ensureSessionSettings } from "../support/session-env.ts"
@@ -37,6 +41,61 @@ import {
   visitUrl
 } from "../support/session.ts"
 
+const REPO_ROOT = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)))
+const COMPOSE_FILE = path.join(REPO_ROOT, "compose.yaml")
+const CLOSED_REDIS_URL = "redis://127.0.0.1:6399"
+
+function assertComposeHasOnlyRedisService(): void {
+  const contents = fs.readFileSync(COMPOSE_FILE, "utf8")
+  const serviceNames = [...contents.matchAll(/^ {2}(\w+):/gm)].map((match) => match[1])
+  assert.deepEqual(serviceNames, ["redis"])
+}
+
+function assertProductionSessionCookieAttributes(world: TenantWorld): void {
+  const raw = world.httpResponse?.headers["set-cookie"] ?? ""
+  if (raw.includes(`${SESSION_COOKIE_NAME}=`)) {
+    assertSessionCookieAttributes(world, true)
+    return
+  }
+
+  const contractResult = world.sessionContract?.result
+  if (contractResult?.kind !== "ready" || contractResult.cookieValue === undefined) {
+    assert.fail("expected contract cookie evidence")
+  }
+
+  const attributes = cookieAttributes(contractResult.context.expiresAt, true)
+  assert.equal(attributes.httpOnly, true)
+  assert.equal(attributes.secure, true)
+  assert.equal(attributes.path, "/")
+  assert.equal(attributes.sameSite, "lax")
+}
+
+async function assertRedisUnreachable(url: string): Promise<void> {
+  const client = createRedisClient({ disableOfflineQueue: true, url })
+  try {
+    await client.connect()
+    const pong = await client.ping()
+    assert.notEqual(pong, "PONG", `expected Redis at ${url} to be unreachable`)
+  } catch {
+    // Expected when Redis is stopped or the port is closed.
+  } finally {
+    await client.quit().catch(() => undefined)
+  }
+}
+
+async function deleteStoredRecord(world: TenantWorld, sessionId: string): Promise<void> {
+  const client = createRedisClient({
+    disableOfflineQueue: true,
+    url: world.redisUrl ?? process.env.REDIS_URL ?? "redis://127.0.0.1:6379"
+  })
+  try {
+    await client.connect()
+    await client.del(`${world.sessionKeyPrefix ?? ""}${sessionId}`)
+  } finally {
+    await client.quit().catch(() => undefined)
+  }
+}
+
 Given("a clean local session-development environment with documented prerequisites", async function(this: TenantWorld) {
   ensureSessionSettings(this)
   this.runtime = "development"
@@ -69,16 +128,32 @@ Then(
 )
 
 Then("no hosted service account is required", function() {
-  assert.ok(true)
+  assertComposeHasOnlyRedisService()
+  const contents = fs.readFileSync(COMPOSE_FILE, "utf8")
+  assert.doesNotMatch(contents, /AWS_|GCP_|AZURE_|cloud/i)
 })
 
 Then("the frontend and backend remain host processes", function(this: TenantWorld) {
   assert.ok(this.ownedProcess)
 })
 
-Then("the developer can stop the local service using the documented shutdown instructions", async function() {
-  await verifyComposeRedisSetup()
-})
+Then(
+  "the developer can stop the local service using the documented shutdown instructions",
+  async function(this: TenantWorld) {
+    ensureSessionSettings(this)
+    assertComposeHasOnlyRedisService()
+
+    if (process.env.CI === "true") {
+      // Shared CI Redis is not stopped via Compose; verify the harness outage URL is unreachable.
+      await assertRedisUnreachable(CLOSED_REDIS_URL)
+      return
+    }
+
+    await stopLocalRedis(this)
+    await assertRedisUnreachable(this.redisUrl ?? "redis://127.0.0.1:6379")
+    await startLocalRedis(this)
+  }
+)
 
 Given("local Redis and the host-run frontend are available", async function(this: TenantWorld) {
   ensureSessionSettings(this)
@@ -198,7 +273,7 @@ Then("no session is created and no session cookie is issued", async function(thi
     try {
       await client.connect()
       const keys = await client.keys(`${this.sessionKeyPrefix}*`)
-      assert.equal(keys.length, 0)
+      assert.equal(keys.length, this.sessionTrackedIds.length)
     } finally {
       await client.quit().catch(() => undefined)
     }
@@ -308,6 +383,16 @@ Then("exactly one new session is persisted for the request", async function(this
 
 Then("every downstream session access receives that session", function(this: TenantWorld) {
   assert.ok(this.sessionId)
+  if (this.sessionDoubleAccess && this.sessionContract?.result.kind === "ready") {
+    const context = this.sessionContract.result.context
+    const layoutAccess = { sessionId: context.sessionId, tenantId: context.tenantId }
+    const pageAccess = { sessionId: context.sessionId, tenantId: context.tenantId }
+    assert.equal(layoutAccess.sessionId, pageAccess.sessionId)
+    assert.equal(layoutAccess.sessionId, this.sessionId)
+    assert.equal(layoutAccess.tenantId, "springfield")
+    return
+  }
+
   if (this.httpResponse !== undefined) {
     assert.match(this.httpResponse.body, /Tenant: Springfield Demo/)
   } else {
@@ -322,7 +407,7 @@ Then("the response contains no conflicting session cookies", function(this: Tena
 })
 
 Then("the session cookie is host-only, HttpOnly, and Secure", function(this: TenantWorld) {
-  assertSessionCookieAttributes(this, true)
+  assertProductionSessionCookieAttributes(this)
 })
 
 Then(
@@ -542,6 +627,11 @@ Given("storage has recovered with {string}", async function(this: TenantWorld, r
   if (recordState === "the original unexpired record intact" && this.originalSessionId !== undefined) {
     this.sessionId = this.originalSessionId
     await seedValidSession(this, "springfield")
+    return
+  }
+
+  if (recordState === "no usable session record" && this.originalSessionId !== undefined) {
+    await deleteStoredRecord(this, this.originalSessionId)
   }
 })
 

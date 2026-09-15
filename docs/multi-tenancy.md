@@ -31,9 +31,15 @@ association uses `{slug}.localhost` with the same label rules. Only this binding
 step may parse the host. It returns a slug or calls Next.js `forbidden()`. It
 does not load configuration, and it does not fall through to a default tenant.
 
-The host must be a known application pattern. The nested `(app)` layout
-awaits `getCurrentTenant` and `getCurrentTenantConfig`, so an unusable host or
-unknown slug renders `app/forbidden.tsx` (`Access denied.`) with no redirect:
+The host must be a known application pattern. On Proxy-matched `/` routes,
+`setupSession` runs before SSR, validates the host tenant, and forwards
+`x-pathable-session-context`, `x-preets-tenant-slug`, and
+`x-preets-tenant-origin` on the internal request. The nested `(app)` layout and
+page code consume that context through the server-only `getRequestSession()`
+accessor (which loads tenant configuration from the session tenant id). An
+unusable host or unknown slug still renders `app/forbidden.tsx`
+(`Access denied.`) with no redirect on non-participating routes and on matched
+routes where tenant validation fails before session setup completes:
 
 - the host is the apex (`pathable.com`) or another non-tenant host such as
   `www.pathable.com`

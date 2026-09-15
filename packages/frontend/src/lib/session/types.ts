@@ -263,12 +263,7 @@ function defaultRandom(): Uint8Array {
 }
 
 function hasRedisAuth(url: URL): boolean {
-  if (url.password !== "") {
-    return true
-  }
-
-  // mTLS via client certificate query params or redis client options is accepted as auth presence.
-  return url.searchParams.has("cert") || url.searchParams.has("key") || url.searchParams.has("ca")
+  return url.password !== ""
 }
 
 function isDateRepresentableUnixSeconds(value: number): boolean {
