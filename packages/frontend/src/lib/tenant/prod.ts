@@ -18,7 +18,7 @@ export async function getCurrentTenant(): Promise<string> {
   return slug
 }
 
-export async function readTenantConfig(tenant: string): Promise<TenantConfig> {
+export async function getCurrentTenantConfig(tenant: string): Promise<TenantConfig> {
   if (!isCanonicalTenantSlug(tenant)) {
     forbidden()
   }

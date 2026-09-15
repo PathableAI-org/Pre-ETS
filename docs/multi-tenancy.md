@@ -67,9 +67,10 @@ the tenant up from the session first.
 
 In development, an explicit `TENANT_RESOLUTION=static` setting may supply
 exactly one local record and show only that Display Name on `localhost`. That
-exception is honored only when `NODE_ENV` is not `production`. Production
+exception is honored only when `NODE_ENV=development`. Production
 always binds `{slug}.pathable.com` and never reads `TENANT_RESOLUTION` or
-`TENANT_LOCAL_CONFIG_JSON`. Unsupported mode values keep host association and
+`TENANT_LOCAL_CONFIG_JSON`. Unset, `test`, `staging`, and any other runtime
+use production host association. Unsupported mode values keep host association and
 emit a safe `invalid-mode` diagnostic.
 
 Downstream frontend modules that need tenancy call `getCurrentTenant` /
