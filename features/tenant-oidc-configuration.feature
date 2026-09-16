@@ -38,11 +38,14 @@ Feature: Tenant OIDC connection configuration
     And Shelbyville retains a valid login configuration
     When the visitor navigates to "https://springfield.pathable.com/"
     Then the existing forbidden handling returns HTTP 403 without a login redirect or a new forbidden destination
-    And the visitor receives an app-owned error explaining that login cannot start and a clear next action
+    And the forbidden response uses extended copy explaining that login cannot start with a clear next action
+    And that response is not the login-unavailable route
+    And the extended forbidden copy is accessible and exposes no credentials or other tenant's details
     And no login is initiated and no tenant application content is served
     And no default provider or other tenant's configuration is substituted
     And a safe diagnostic identifies a configuration failure without credentials or other tenant details
     And the response does not trigger an automatic redirect loop
+    And the response does not include a Set-Cookie header for "pathable-session"
 
     Examples:
       | defect                                    |
