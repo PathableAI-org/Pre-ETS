@@ -1,4 +1,5 @@
 const includeSession = process.env.CUCUMBER_SESSION === "1"
+const includeOidc = process.env.CUCUMBER_OIDC === "1"
 
 const tenantFeatures = [
   "features/tenant-landing-page.feature",
@@ -12,6 +13,12 @@ const sessionFeatures = [
   "features/local-session-development.feature"
 ]
 
+const oidcFeatures = [
+  "features/tenant-oidc-login.feature",
+  "features/tenant-oidc-configuration.feature",
+  "features/local-oidc-development.feature"
+]
+
 const imports = [
   "tests/bdd/support/world.ts",
   "tests/bdd/support/server.ts",
@@ -23,6 +30,16 @@ if (includeSession) {
   imports.push("tests/bdd/steps/session.steps.ts")
 }
 
+if (includeOidc) {
+  imports.push("tests/bdd/steps/oidc.steps.ts")
+}
+
+const paths = [
+  ...tenantFeatures,
+  ...(includeSession ? sessionFeatures : []),
+  ...(includeOidc ? oidcFeatures : [])
+]
+
 /** @type {Partial<import("@cucumber/cucumber").IConfiguration>} */
 const configuration = {
   failFast: false,
@@ -32,7 +49,7 @@ const configuration = {
   ],
   import: imports,
   parallel: 0,
-  paths: includeSession ? [...tenantFeatures, ...sessionFeatures] : tenantFeatures,
+  paths,
   strict: true
 }
 
