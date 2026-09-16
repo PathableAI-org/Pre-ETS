@@ -21,7 +21,7 @@ by the specified initial-request ordering. Keep all other data work out of this 
 a redirect or extra request; both complicate transparent first visits. Cookie mutation in a layout is
 unsupported. An Edge session SDK conflicts with the Node/official Redis strategy.
 
-**Evidence**: `packages/frontend/src/app/(tenant)/layout.tsx`, `packages/frontend/package.json`;
+**Evidence**: `packages/frontend/src/app/(app)/layout.tsx`, `packages/frontend/package.json`;
 [Next.js Proxy](https://nextjs.org/docs/app/api-reference/file-conventions/proxy),
 [cookies](https://nextjs.org/docs/app/api-reference/functions/cookies),
 [NextResponse](https://nextjs.org/docs/app/api-reference/functions/next-response).
@@ -94,7 +94,7 @@ one new id attempt, then controlled failure. Do not cache records or negative lo
 offline command queue.
 
 `REDIS_URL` validation: allow plain `redis://` only for loopback/local Compose targets. Every
-non-local URL requires TLS (`rediss://` or equivalent) **and** authenticated ACL credentials or mTLS.
+non-local URL requires TLS (`rediss://`) **and** password authentication in the URL.
 Reject non-local cleartext and non-local TLS-without-auth at config parse time. Validate without
 logging URLs that contain credentials, ACL passwords, or certificate material.
 

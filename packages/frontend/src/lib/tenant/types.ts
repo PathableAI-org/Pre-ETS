@@ -43,6 +43,26 @@ export function isCanonicalTenantSlug(value: string): boolean {
   return value.length >= 1 && value.length <= 63 && value !== "www" && SLUG_PATTERN.test(value)
 }
 
+export function parseLocalConfigJson(raw: string | undefined): TenantRecord {
+  if (raw === undefined || raw === "") {
+    throw new Error(LOCAL_CONFIG_ERROR)
+  }
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    throw new Error(LOCAL_CONFIG_ERROR)
+  }
+
+  const record = parseTenantRecord(parsed)
+  if (record === undefined) {
+    throw new Error(LOCAL_CONFIG_ERROR)
+  }
+
+  return record
+}
+
 export function parseTenantRecord(value: unknown): TenantRecord | undefined {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     return undefined

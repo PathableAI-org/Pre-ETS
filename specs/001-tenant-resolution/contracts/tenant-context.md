@@ -15,13 +15,15 @@ These are module interfaces, not public HTTP endpoints. Public API is imported f
 | `getCurrentTenant`       | Current server-render request | Promise of slug; `forbidden()` on invalid/unusable Host                                                                                       | `src/lib/tenant` (prod/dev) |
 | `getCurrentTenantConfig` | Canonical slug argument       | Promise of `TenantConfig`; `forbidden()` if the argument is not a canonical slug or is unknown; **throw** if the record cannot be read/parsed | `src/lib/tenant` (prod/dev) |
 
-`getCurrentTenantConfig` is a server-only accessor, not a public Server Action. The nested `(tenant)` layout awaits both functions to gate the
-request and does not store or pass tenant data. The landing page calls them again to read Display Name. Duplicate
-work is acceptable. There is no React `cache()`, request memoization, Provider, or other request-scoped store for
-tenant identity.
+`getCurrentTenantConfig` is a server-only accessor, not a public Server Action. The nested `(app)` layout
+(`AppLayout`) consumes the server-only session accessor as the application-wide gate and loads
+`tenantConfig` from the tenant source via the validated `tenantId`. The landing page reads Display Name from
+that same session snapshot. There is no React `cache()`, request memoization, Provider, or other
+request-scoped store for tenant identity beyond the Proxy→SSR session context headers.
 
-The page uses `getCurrentTenantConfig(tenant)`. Consumers needing the slug use `getCurrentTenant`. No browser-side
-tenant selection, public configuration endpoint, or persistence write operation is exposed.
+Consumers needing the slug use session context `tenantId` or `getCurrentTenant` on routes that still bind
+Host directly. No browser-side tenant selection, public configuration endpoint, or persistence write
+operation is exposed.
 
 Production (`NODE_ENV === "production"`) always binds `{slug}.pathable.com`. It never reads `TENANT_RESOLUTION` or
 `TENANT_LOCAL_CONFIG_JSON`. Only `NODE_ENV === "development"` loads the development implementation, which chooses host vs static
@@ -68,10 +70,16 @@ Logging failure must not change tenant selection or HTTP behavior.
 
 ## Refusal and errors
 
-The root layout is `<html>` / `<body>` only. `src/app/(tenant)/layout.tsx` may call `forbidden()`.
-`src/app/forbidden.tsx` renders `Access denied.` Next.js `forbidden()` aims to return HTTP 403; if the framework
-streams HTML with status 200 instead, the visible refusal is still `Access denied.` with no redirect and no tenant
-Display Name. Do not put tenant refusal back in Proxy to force a status code.
+The root layout is `<html>` / `<body>` only. `src/app/(app)/layout.tsx` (`AppLayout`) requires validated
+session context and fails closed without creating sessions. `src/app/forbidden.tsx` renders `Access denied.`
+Next.js `forbidden()` aims to return HTTP 403 on non-participating routes that still call it; if the
+framework streams HTML with status 200 instead, the visible refusal is still `Access denied.` with no
+redirect and no tenant Display Name.
+
+**Supersedes (session setup)**: For Proxy-matched participating routes (`/`), invalid-host /
+unknown-tenant / configuration failures MAY terminate in Proxy with the same visible outcomes
+(`Access denied.` / static-mode guidance / generic 500). Layout-only `forbidden()` remains valid for
+non-participating routes until they join the matcher. Dual-layer regression coverage is required.
 
 | Condition                                         | Result        | Visible response                                                                       |
 | ------------------------------------------------- | ------------- | -------------------------------------------------------------------------------------- |

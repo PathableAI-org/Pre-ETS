@@ -39,6 +39,8 @@ jobs:
               - 'cucumber.mjs'
               - 'package.json'
               - 'pnpm-lock.yaml'
+              - 'packages/frontend/src/**'
+              - 'compose.yaml'
       - name: Set path filter outputs
         id: set
         run: |
@@ -78,6 +80,16 @@ jobs:
        contains(github.event.pull_request.labels.*.name, 'ci:bdd'))
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    services:
+      redis:
+        image: redis:8.2.9
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 10
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -87,5 +99,14 @@ jobs:
         uses: ./.github/actions/setup-node-pnpm
       - name: Install Playwright Chromium
         run: pnpm exec playwright install --with-deps chromium
+      - name: Configure session environment
+        run: |
+          echo "REDIS_URL=redis://127.0.0.1:6379" >> "$GITHUB_ENV"
+          echo "SESSION_SIGNING_SECRET=$(openssl rand -base64 32 | tr '+/' '-_' | tr -d '=')" >> "$GITHUB_ENV"
+          echo "SESSION_TTL_SECONDS=86400" >> "$GITHUB_ENV"
+          echo "SESSION_STORE_TIMEOUT_MS=2000" >> "$GITHUB_ENV"
+          echo "SESSION_KEY_PREFIX=ci:bdd:${{ github.run_id }}:" >> "$GITHUB_ENV"
       - name: Run production-first Cucumber partitions
         run: pnpm test:bdd
+      - name: Run session contract partition (HTTP/browser gated until T017/T021/T025/T028)
+        run: pnpm test:bdd:session:contract

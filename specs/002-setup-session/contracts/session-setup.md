@@ -110,8 +110,8 @@ test-only rendering fixture if necessary, excluded from application routes.
   requests do not open multiple connections; reset failed initialization so later requests can reconnect.
 - Share connections only; request results and accepted sessions are not global caches.
 - Key namespace comes from production default or `SESSION_KEY_PREFIX` / isolated Redis DB for fixtures.
-- Non-loopback Redis requires TLS plus authenticated ACL or mTLS (mirror `REDIS_URL` validation in the
-  data model).
+- Non-loopback Redis requires TLS (`rediss://`) plus password authentication (mirror `REDIS_URL`
+  validation in the data model).
 
 ## Observability and rollback
 
