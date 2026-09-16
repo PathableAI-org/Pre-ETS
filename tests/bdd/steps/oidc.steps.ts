@@ -119,6 +119,15 @@ Given(
 )
 
 Given(
+  "Springfield's trusted OIDC settings use client auth {string}",
+  function(this: TenantWorld, _clientAuth: string) {
+    throw new Error(
+      "Pending: Springfield's trusted OIDC settings use client auth {string}"
+    )
+  }
+)
+
+Given(
   "its trusted OIDC settings supply {string}",
   function(this: TenantWorld, _selection: string) {
     throw new Error(

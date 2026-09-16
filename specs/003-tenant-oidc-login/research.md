@@ -4,57 +4,76 @@ Date: 2026-09-16. All planning unknowns from the Technical Context and FR-002/00
 resolved below. This document records decisions for implementation; it does not claim runtime
 behavior is already delivered.
 
-Updated after clarify (never land without login), critique `critiques/critique-20260916-155032.md`,
-and re-critique `critiques/critique-20260916-160410.md` (behavioral supersession inventory; P4
-extended forbidden; E2/E5/E7). Prior “`reuse` continues landing” decisions are **superseded**.
+Updated after clarify (never land without login), critique cycles through
+`critiques/critique-20260916-161751.md`, and PR review: explicit `oidc.clientAuth` so public vs
+confidential registration is not inferred from an absent secrets-map entry. Prior “`reuse` continues
+landing” decisions remain **superseded**.
 
 ## 1. Tenant OIDC configuration fields
 
 **Decision**: Extend `TenantConfig` with a required nested `oidc` object alongside `displayName`:
 
-| Field             | Type              | Rule                                                                                                                                                     |
-| ----------------- | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `displayName`     | string            | Existing nonempty trimmed text                                                                                                                           |
-| `oidc.issuer`     | string            | Absolute URL; `https:` required outside development; development may use `http:` only for loopback Keycloak                                              |
-| `oidc.clientId`   | string            | Nonempty trimmed client identifier                                                                                                                       |
-| `oidc.connection` | string \| omitted | Nonempty trimmed broker connection id when the registration requires IdP selection; omit only when issuer+client alone reach the tenant login experience |
+| Field             | Type                           | Rule                                                                                                                                                                                                                                  |
+| ----------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `displayName`     | string                         | Existing nonempty trimmed text                                                                                                                                                                                                        |
+| `oidc.issuer`     | string                         | Absolute URL; `https:` required outside development; development may use `http:` only for loopback Keycloak                                                                                                                           |
+| `oidc.clientId`   | string                         | Nonempty trimmed client identifier                                                                                                                                                                                                    |
+| `oidc.clientAuth` | `"public"` \| `"confidential"` | Required closed set. Trusted registration mode for **this application’s** broker client—not inferred from discovery. `"public"` = PKCE-only (no client secret). `"confidential"` = nonempty server-only secret required for that slug |
+| `oidc.connection` | string \| omitted              | Nonempty trimmed broker connection id when the registration requires IdP selection; omit only when issuer+client alone reach the tenant login experience                                                                              |
 
 Reject unknown keys at record and `oidc` object levels (same strictness as today’s Display Name parser).
-A Display Name-only record is invalid for login initiation and yields HTTP 403 with **extended
-forbidden copy** (login cannot start + next action + a11y; no secrets)—not the `login-unavailable`
-page. Update `.env.example` and local docs with Springfield/Shelbyville
-synthetic OIDC examples. Restart remains the documented reload procedure.
+Missing or invalid `clientAuth` is unusable OIDC config (HTTP 403 extended forbidden). A Display
+Name-only record is invalid for login initiation and yields HTTP 403 with **extended forbidden copy**
+(login cannot start + next action + a11y; no secrets)—not the `login-unavailable` page. Update
+`.env.example` and local docs with Springfield/Shelbyville synthetic OIDC examples (`clientAuth:
+"public"` for local Keycloak). Restart remains the documented reload procedure.
 
-**Rationale**: Matches Gherkin columns (`issuer`, `client`, `connection`) and FR-001 without a new
-tenant identity mechanism. Nested `oidc` keeps presentation fields distinct from login settings while
-remaining in the same env JSON source.
+**Rationale**: Matches Gherkin columns (`issuer`, `client`, `connection`) plus an explicit
+registration-mode field so “missing required credential” is implementable without guessing from
+discovery. Nested `oidc` keeps presentation fields distinct from login settings while remaining in
+the same env JSON source.
 
 **Alternatives considered**: Flat top-level OIDC keys (more collision risk with future presentation
 fields); optional `oidc` with login bypass (violates FR-003/007); storing SAML metadata in-app
-(contradicts authentication strategy).
+(contradicts authentication strategy); inferring confidential vs public from discovery metadata
+(unreliable for the app’s own registration; rejected—see §2).
 
 **Evidence**: `packages/frontend/src/lib/tenant/types.ts`; `features/tenant-oidc-configuration.feature`;
-`docs/authentication.md`; FR-001, FR-007, FR-011.
+`docs/authentication.md`; FR-001, FR-002, FR-007, FR-011.
 
 ## 2. Server-only client credential supply
 
 **Decision**: Do **not** place client secrets in `TENANT_CONFIG_RECORDS_JSON` /
 `TENANT_LOCAL_CONFIG_JSON`. Supply them through server-only env `OIDC_CLIENT_SECRETS_JSON`: a JSON
-object mapping canonical tenant slug → secret string. Absent key means no confidential credential for
-that tenant (public client / PKCE-only registration). Parse lazily with session config style so
-clean-checkout build/typecheck needs no secrets. Never log secret values; never emit them in
-redirects, HTML, diagnostics, or fixtures. Local Keycloak clients for this slice are registered as
-public PKCE clients unless a scenario explicitly needs a confidential client.
+object mapping canonical tenant slug → secret string. **Interpretation is gated by
+`oidc.clientAuth`**, not by map presence alone:
 
-**Rationale**: Mirrors `SESSION_SIGNING_SECRET` discipline (FR-002, constitution III). Slug-keyed map
-supports multi-tenant local fixtures without inventing a secret manager.
+| `oidc.clientAuth` | Secrets map entry for slug        | Outcome                                                                                             |
+| ----------------- | --------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `"public"`        | Absent                            | Valid; PKCE-only; do not send a client secret                                                       |
+| `"public"`        | Present (nonempty)                | Valid; secret unused for initiation (still never emitted to browser/logs/fixtures)                  |
+| `"confidential"`  | Nonempty string                   | Valid; secret available only to server-side auth work                                               |
+| `"confidential"`  | Absent, empty, or whitespace-only | Unusable login config → HTTP 403 **extended forbidden** (“missing required server-only credential”) |
 
-**Alternatives considered**: Per-tenant env var name embedded in config (`clientSecretEnv`)—more
+Parse the secrets map lazily with session config style so clean-checkout build/typecheck needs no
+secrets. Never log secret values; never emit them in redirects, HTML, diagnostics, or fixtures. Local
+Keycloak clients for this slice use `clientAuth: "public"` unless a scenario explicitly sets
+`"confidential"` and supplies a synthetic map entry.
+
+**Rationale**: Mirrors `SESSION_SIGNING_SECRET` discipline (FR-002, constitution III). Explicit
+`clientAuth` makes the configuration-feature defect “missing required server-only credential”
+implementable: confidential without a usable secret fails closed; public without a secret succeeds.
+Discovery must not decide registration mode.
+
+**Alternatives considered**: Absent map entry alone means public (ambiguous vs missing required
+secret—rejected by review); per-tenant env var name embedded in config (`clientSecretEnv`)—more
 indirection for the same security property; secret inside tenant JSON—easy to commit/leak; shared
-global client secret—breaks tenant isolation tests.
+global client secret—breaks tenant isolation tests; remove the missing-credential acceptance case—
+weaker than naming the mode.
 
-**Evidence**: FR-002; `packages/frontend/.env.example` session secret pattern; constitution credentials
-rule.
+**Evidence**: FR-002; `features/tenant-oidc-configuration.feature` (server-only credential + missing
+required credential); `packages/frontend/.env.example` session secret pattern; constitution
+credentials rule.
 
 ## 3. Entry decision: reuse vs create (unauthenticated → initiate)
 

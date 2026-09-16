@@ -33,8 +33,9 @@ redirect URIs, and test users from a clean provider state.
 
 Copy `packages/frontend/.env.example` → `.env.local` if needed. Retain session settings (`REDIS_URL`,
 `SESSION_SIGNING_SECRET`, …). Extend tenant JSON with `oidc` for Springfield and Shelbyville using the
-local issuer `http://127.0.0.1:8080/realms/pre-ets` and distinct `clientId` / `connection` values.
-Leave `OIDC_CLIENT_SECRETS_JSON` empty for public clients. Restart the frontend after config changes
+local issuer `http://127.0.0.1:8080/realms/pre-ets`, distinct `clientId` / `connection` values, and
+`clientAuth: "public"`. Leave `OIDC_CLIENT_SECRETS_JSON` empty for public clients. Restart the
+frontend after config changes
 **and** after Keycloak recreate/reprovision (discovery cache is process-lifetime).
 
 ```sh

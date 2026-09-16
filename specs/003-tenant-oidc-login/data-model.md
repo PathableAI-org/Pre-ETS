@@ -13,13 +13,14 @@ Frontend-owned, process-environment JSON. Immutable for the process lifetime; re
 
 ### `TenantConfig`
 
-| Field             | Type              | Rule                                                           |
-| ----------------- | ----------------- | -------------------------------------------------------------- |
-| `displayName`     | string            | Nonempty after trim; existing meaning                          |
-| `oidc`            | object            | Required for login-capable configuration                       |
-| `oidc.issuer`     | string            | Absolute URL; see transport rules below                        |
-| `oidc.clientId`   | string            | Nonempty after trim                                            |
-| `oidc.connection` | string \| omitted | Nonempty after trim when present; broker connection / IdP hint |
+| Field             | Type                           | Rule                                                                    |
+| ----------------- | ------------------------------ | ----------------------------------------------------------------------- |
+| `displayName`     | string                         | Nonempty after trim; existing meaning                                   |
+| `oidc`            | object                         | Required for login-capable configuration                                |
+| `oidc.issuer`     | string                         | Absolute URL; see transport rules below                                 |
+| `oidc.clientId`   | string                         | Nonempty after trim                                                     |
+| `oidc.clientAuth` | `"public"` \| `"confidential"` | Required closed set; trusted app registration mode (not from discovery) |
+| `oidc.connection` | string \| omitted              | Nonempty after trim when present; broker connection / IdP hint          |
 
 Transport rules for `issuer` (and derived authorization endpoints):
 
@@ -30,13 +31,20 @@ Transport rules for `issuer` (and derived authorization endpoints):
 Display Name-only records (no valid `oidc`) are rejected by the OIDC-aware parser used for login
 initiation and yield HTTP 403 with **extended forbidden copy** (login cannot start + next action +
 a11y; no secrets)—distinct from `/login-unavailable`. Shared issuer or Display Name across tenants
-does not merge identity; `connection` and `clientId` remain tenant-specific.
+does not merge identity; `connection` and `clientId` remain tenant-specific. Missing/invalid
+`clientAuth` is unusable OIDC config (same 403 extended forbidden class).
 
 ### Server-only secrets map
 
 Env `OIDC_CLIENT_SECRETS_JSON`: JSON object `Record<slug, secretString>`. Not part of `TenantConfig`.
-Missing slug entry means no confidential credential. Invalid JSON / non-object shapes fail closed at
-lazy parse (HTTP 500). Values never appear in logs, HTML, redirects, or committed examples.
+Meaning depends on `oidc.clientAuth` for that tenant:
+
+- `"public"` — secret entry optional; initiation does not require or send a client secret
+- `"confidential"` — nonempty secret for the slug is **required**; absent/blank → HTTP 403 extended
+  forbidden (defect: missing required server-only credential)
+
+Invalid JSON / non-object shapes fail closed at lazy parse (HTTP 500). Values never appear in logs,
+HTML, redirects, or committed examples.
 
 ## Session context (unchanged ownership)
 
@@ -87,13 +95,13 @@ development. Short-lived; not an authentication session. Signing secret:
 
 ## Configuration settings
 
-| Setting                                                   | Default / validation                                  |
-| --------------------------------------------------------- | ----------------------------------------------------- |
-| `TENANT_CONFIG_RECORDS_JSON` / `TENANT_LOCAL_CONFIG_JSON` | Extended record shape with `oidc`; restart to apply   |
-| `OIDC_CLIENT_SECRETS_JSON`                                | Optional object map; lazy parse; no committed secrets |
-| `OIDC_TX_KEY_PREFIX`                                      | Optional; default `pre-ets:oidc-tx:`                  |
-| `OIDC_TX_TTL_SECONDS`                                     | Default `600`; finite positive safe integer           |
-| `OIDC_TX_SIGNING_SECRET`                                  | Optional; if unset, use `SESSION_SIGNING_SECRET`      |
+| Setting                                                   | Default / validation                                                                                                               |
+| --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `TENANT_CONFIG_RECORDS_JSON` / `TENANT_LOCAL_CONFIG_JSON` | Extended record shape with `oidc`; restart to apply                                                                                |
+| `OIDC_CLIENT_SECRETS_JSON`                                | Object map; lazy parse; nonempty entry required per slug when that tenant’s `clientAuth` is `"confidential"`; no committed secrets |
+| `OIDC_TX_KEY_PREFIX`                                      | Optional; default `pre-ets:oidc-tx:`                                                                                               |
+| `OIDC_TX_TTL_SECONDS`                                     | Default `600`; finite positive safe integer                                                                                        |
+| `OIDC_TX_SIGNING_SECRET`                                  | Optional; if unset, use `SESSION_SIGNING_SECRET`                                                                                   |
 
 Discovery metadata is an in-process cache keyed by issuer URL string—not durable storage. After local
 Keycloak reprovision, restart the frontend (or wait for a future cache TTL).

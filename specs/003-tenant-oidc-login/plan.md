@@ -6,12 +6,14 @@
 
 ## Summary
 
-Extend frontend-owned tenant configuration with per-tenant OIDC issuer, client id, and broker
-connection selection. After the merged session setup runs, **unauthenticated** ready outcomes
+Extend frontend-owned tenant configuration with per-tenant OIDC issuer, client id, required
+`clientAuth` (`public` \| `confidential`), and broker connection selection. After the merged session
+setup runs, **unauthenticated** ready outcomes
 (`reuse` or `create`) both enter the login-initiation path for Proxy-matched document navigations to
 `/`: neither grants Display Name landing or application content. A newly created session may attach
 `pathable-session` only on a successful document-navigation IdP `302`; failures never issue that
-cookie. Add local Keycloak beside Redis in Compose for two synthetic tenant login experiences.
+cookie. Secrets in `OIDC_CLIENT_SECRETS_JSON` are required only when `clientAuth` is `confidential`.
+Add local Keycloak beside Redis in Compose for two synthetic tenant login experiences.
 Callback completion and authenticated identity remain out of scope—so in this slice successful
 document visits initiate OIDC (or fail); they do not SSR landing.
 
@@ -37,8 +39,8 @@ PKCE URL construction. No Better Auth, Auth.js, shared auth package, or backend 
 
 **Storage**: Existing frontend Redis for sessions. Add a second key namespace for short-lived OIDC
 login transactions (PKCE verifier, state/nonce bindings). Tenant OIDC settings remain in process
-environment JSON (same immutability/restart model as Display Name). Client credentials live in a
-separate server-only secrets map env var—never in tenant JSON, browser output, or committed fixtures.
+environment JSON (same immutability/restart model as Display Name). Client credentials live in a separate server-only secrets map env var, required when
+`oidc.clientAuth` is `"confidential"`—never in tenant JSON, browser output, or committed fixtures.
 Local Keycloak uses its embedded `start-dev` database; no Postgres in this slice.
 
 **Testing**: Existing Vitest frontend unit suite; root Cucumber/Playwright harness with

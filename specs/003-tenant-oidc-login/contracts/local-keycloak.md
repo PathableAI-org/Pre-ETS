@@ -28,7 +28,8 @@ Document a single issuer URL used by **both** the browser and the host-run Next.
 From a clean local provider state, operators create:
 
 1. Realm `pre-ets` (name may match docs; keep synthetic).
-2. Two public OpenID Connect clients with PKCE (e.g. `springfield-web`, `shelbyville-web`).
+2. Two public OpenID Connect clients with PKCE (e.g. `springfield-web`, `shelbyville-web`); tenant
+   fixtures set `oidc.clientAuth` to `"public"`.
 3. Valid redirect URIs for local tenant hosts, e.g.
    `http://springfield.localhost:3000/auth/callback`,
    `http://shelbyville.localhost:3000/auth/callback`, and static-mode callback on
@@ -43,9 +44,10 @@ Automated realm import is optional; documented click-ops or CLI steps are suffic
 
 ## Application fixtures
 
-Synthetic `TENANT_CONFIG_RECORDS_JSON` / static JSON must point `issuer`, `clientId`, and `connection`
-at the local realm. `OIDC_CLIENT_SECRETS_JSON` stays empty for public clients. Frontend restart after
-fixture edits **and** after Keycloak recreate/reprovision (in-process discovery cache is process-
+Synthetic `TENANT_CONFIG_RECORDS_JSON` / static JSON must point `issuer`, `clientId`,
+`clientAuth` (`"public"` for these clients), and `connection` at the local realm.
+`OIDC_CLIENT_SECRETS_JSON` stays empty for public clients. Frontend restart after fixture edits
+**and** after Keycloak recreate/reprovision (in-process discovery cache is process-
 lifetime; stale metadata until restart).
 
 ## CI vs local (E8)

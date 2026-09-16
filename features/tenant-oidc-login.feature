@@ -4,9 +4,9 @@ Feature: Tenant OIDC login entry
 
   Background:
     Given isolated OIDC tenant fixtures are configured:
-      | tenant      | display name | issuer                                  | client          | connection      |
-      | springfield | Springfield  | https://identity.example/realms/pre-ets | springfield-web | springfield-idp |
-      | shelbyville | Shelbyville  | https://identity.example/realms/pre-ets | shelbyville-web | shelbyville-idp |
+      | tenant      | display name | issuer                                  | client          | client auth | connection      |
+      | springfield | Springfield  | https://identity.example/realms/pre-ets | springfield-web | public      | springfield-idp |
+      | shelbyville | Shelbyville  | https://identity.example/realms/pre-ets | shelbyville-web | public      | shelbyville-idp |
     And the existing session capability and required provider metadata are available
 
   @FR-003 @FR-004 @FR-006 @SC-001 @SC-005 @browser @contract

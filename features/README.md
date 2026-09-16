@@ -216,9 +216,12 @@ reload/restart, and configuration/provider recovery. No scenario tag alone prove
   secrets or cross-tenant details. That outcome is **not** the `login-unavailable` route; provider metadata
   and transaction (and similar) service failures use `login-unavailable`. Initiation failure responses for
   config 403, `login-unavailable`, transaction failure, and non-document 401 must not include
-  `Set-Cookie` for `pathable-session`. These cases do not invent OIDC field names, credential mechanisms,
-  or a new recovery control. If an interactive recovery action is offered, its keyboard behavior must
-  satisfy the scenario; guidance-only errors need no invented button.
+  `Set-Cookie` for `pathable-session`. Planned OIDC fields include `issuer`, `clientId`, required
+  `clientAuth` (`public` \| `confidential`), and optional `connection`; secrets are supplied only via
+  `OIDC_CLIENT_SECRETS_JSON` and are required when `clientAuth` is `confidential`. Defect
+  “missing required server-only credential” means confidential mode without a usable secret—not a
+  public client with an absent map entry. If an interactive recovery action is offered, its keyboard
+  behavior must satisfy the scenario; guidance-only errors need no invented button.
 - Request-category examples require planning to map concrete existing resource, health, initiation, and return
   routes and non-navigation behavior. They do not authorize adding health endpoints or implementing callbacks.
   Exact response codes for non-navigation requests remain a planning decision.

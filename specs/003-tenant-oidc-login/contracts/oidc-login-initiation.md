@@ -40,10 +40,13 @@ a follow-up mapping.
 `initiateLogin({ tenantId, origin, sessionId, request, setupOutcome })` runs after ready
 unauthenticated `"reuse"` or `"create"`:
 
-1. Load tenant record/`oidc` for `tenantId`. Unusable → typed config refusal (`403` extended
-   forbidden UX—not `login-unavailable`).
-2. Resolve optional client secret for the slug (may be absent).
-3. Discover issuer metadata (`openid-client`); cache by issuer; failure → provider failure.
+1. Load tenant record/`oidc` for `tenantId` (including required `clientAuth`). Unusable → typed
+   config refusal (`403` extended forbidden UX—not `login-unavailable`).
+2. Resolve client secret using trusted `clientAuth` (not discovery): `"public"` → secret optional /
+   unused; `"confidential"` → nonempty `OIDC_CLIENT_SECRETS_JSON[slug]` required or config refusal
+   (`403` extended forbidden—missing required server-only credential).
+3. Discover issuer metadata (`openid-client`); cache by issuer; failure → provider failure. Discovery
+   must not override `clientAuth`.
 4. Generate `state`, `nonce`, PKCE verifier/challenge.
 5. Compute `redirectUri` = approved `{scheme}://{tenant-host}/auth/callback`.
 6. Persist Redis transaction; mint correlation cookie; failure → transaction failure (no redirect).
@@ -56,18 +59,18 @@ PKCE verifier must not appear in the authorization URL, HTML, or client bundles.
 
 ## HTTP outcomes
 
-| Condition                                            | HTTP outcome                      | Session cookie issued?                             | Side effects                                                                                                                            |
-| ---------------------------------------------------- | --------------------------------- | -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| Unauthenticated `reuse` + valid oidc + document nav  | `302` to broker authorization URL | No (retain existing; re-set only if attrs require) | oidc cookie + Redis tx; **no** SSR landing                                                                                              |
-| Unauthenticated `create` + valid oidc + document nav | `302` to broker authorization URL | **Yes** (setup `cookieValue` on this 302)          | oidc cookie + Redis tx                                                                                                                  |
-| Unauthenticated ready + valid oidc + non-document    | `401`                             | **No**                                             | No IdP redirect; no application content                                                                                                 |
-| Unknown tenant / invalid host                        | `403` `Access denied.`            | **No**                                             | No tx; no OIDC cookies                                                                                                                  |
-| Missing/invalid tenant oidc config                   | `403` **extended forbidden** UX   | **No**                                             | “Login cannot start” + next action + a11y; no secrets; **not** `login-unavailable`; no tx; no IdP redirect; Redis create orphan may TTL |
-| Discovery / tx establishment failure                 | Accessible `login-unavailable`    | **No**                                             | No IdP redirect; no application content; distinct from config 403                                                                       |
-| `/login-unavailable`                                 | Accessible failure page (P5)      | **No** (must work without cookie)                  | Outside `(app)`; no initiation                                                                                                          |
-| `/auth/callback`                                     | Stub page (non-initiating)        | N/A                                                | No login redirect loop                                                                                                                  |
-| Terminal session store failure                       | Existing `503` / `500`            | Session rules unchanged                            | No initiation                                                                                                                           |
-| Session with authenticated user id (later; E7)       | SSR landing                       | Per later auth design                              | Sole short-circuit; out of scope                                                                                                        |
+| Condition                                                                                                          | HTTP outcome                      | Session cookie issued?                             | Side effects                                                                                                                            |
+| ------------------------------------------------------------------------------------------------------------------ | --------------------------------- | -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| Unauthenticated `reuse` + valid oidc + document nav                                                                | `302` to broker authorization URL | No (retain existing; re-set only if attrs require) | oidc cookie + Redis tx; **no** SSR landing                                                                                              |
+| Unauthenticated `create` + valid oidc + document nav                                                               | `302` to broker authorization URL | **Yes** (setup `cookieValue` on this 302)          | oidc cookie + Redis tx                                                                                                                  |
+| Unauthenticated ready + valid oidc + non-document                                                                  | `401`                             | **No**                                             | No IdP redirect; no application content                                                                                                 |
+| Unknown tenant / invalid host                                                                                      | `403` `Access denied.`            | **No**                                             | No tx; no OIDC cookies                                                                                                                  |
+| Missing/invalid tenant oidc config (incl. missing/invalid `clientAuth`, or `confidential` without nonempty secret) | `403` **extended forbidden** UX   | **No**                                             | “Login cannot start” + next action + a11y; no secrets; **not** `login-unavailable`; no tx; no IdP redirect; Redis create orphan may TTL |
+| Discovery / tx establishment failure                                                                               | Accessible `login-unavailable`    | **No**                                             | No IdP redirect; no application content; distinct from config 403                                                                       |
+| `/login-unavailable`                                                                                               | Accessible failure page (P5)      | **No** (must work without cookie)                  | Outside `(app)`; no initiation                                                                                                          |
+| `/auth/callback`                                                                                                   | Stub page (non-initiating)        | N/A                                                | No login redirect loop                                                                                                                  |
+| Terminal session store failure                                                                                     | Existing `503` / `500`            | Session rules unchanged                            | No initiation                                                                                                                           |
+| Session with authenticated user id (later; E7)                                                                     | SSR landing                       | Per later auth design                              | Sole short-circuit; out of scope                                                                                                        |
 
 All participating responses remain `Cache-Control: private, no-store`.
 
