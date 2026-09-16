@@ -4,3 +4,6 @@ packages:
 # dprint installs its platform-specific formatter executable.
 allowBuilds:
   dprint: true
+
+minimumReleaseAgeExclude:
+  - "@types/node@24.13.5"
