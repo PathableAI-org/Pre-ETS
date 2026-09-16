@@ -69,6 +69,16 @@ jobs:
     needs: changes
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    services:
+      redis:
+        image: redis:8.2.9
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 10
     steps:
       - name: Skip when no quality-relevant paths changed
         if: needs.changes.outputs.format != 'true' && needs.changes.outputs.code != 'true'
@@ -81,6 +91,14 @@ jobs:
       - name: Set up Node.js and install dependencies
         if: needs.changes.outputs.format == 'true' || needs.changes.outputs.code == 'true'
         uses: ./.github/actions/setup-node-pnpm
+      - name: Configure session environment for unit tests
+        if: needs.changes.outputs.code == 'true'
+        run: |
+          echo "REDIS_URL=redis://127.0.0.1:6379" >> "$GITHUB_ENV"
+          echo "SESSION_SIGNING_SECRET=$(openssl rand -base64 32 | tr '+/' '-_' | tr -d '=')" >> "$GITHUB_ENV"
+          echo "SESSION_TTL_SECONDS=86400" >> "$GITHUB_ENV"
+          echo "SESSION_STORE_TIMEOUT_MS=2000" >> "$GITHUB_ENV"
+          echo "SESSION_KEY_PREFIX=ci:quality:${{ github.run_id }}:" >> "$GITHUB_ENV"
       - name: Check formatting
         if: needs.changes.outputs.format == 'true'
         run: pnpm format:check

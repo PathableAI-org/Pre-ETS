@@ -7,8 +7,7 @@ import { parseRecordsJson, type TenantSource } from "./source.ts"
 import {
   CONFIG_UNAVAILABLE,
   isCanonicalTenantSlug,
-  LOCAL_CONFIG_ERROR,
-  parseTenantRecord,
+  parseLocalConfigJson,
   selectTenantMode,
   type TenantConfig,
   type TenantRecord
@@ -74,27 +73,6 @@ function hostSource(): TenantSource {
 }
 
 function staticRecord(): TenantRecord {
-  if (cachedStaticRecord !== undefined) {
-    return cachedStaticRecord
-  }
-
-  const raw = process.env.TENANT_LOCAL_CONFIG_JSON
-  if (raw === undefined || raw === "") {
-    throw new Error(LOCAL_CONFIG_ERROR)
-  }
-
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(raw)
-  } catch {
-    throw new Error(LOCAL_CONFIG_ERROR)
-  }
-
-  const record = parseTenantRecord(parsed)
-  if (record === undefined) {
-    throw new Error(LOCAL_CONFIG_ERROR)
-  }
-
-  cachedStaticRecord = record
-  return record
+  cachedStaticRecord ??= parseLocalConfigJson(process.env.TENANT_LOCAL_CONFIG_JSON)
+  return cachedStaticRecord
 }
