@@ -67,6 +67,7 @@ As a developer, I can start the external session store with Docker Compose and r
 - Independent simultaneous requests without cookies may create independent sessions; coordinating browser tabs is outside this increment.
 - Static assets and framework resources do not create sessions solely because they are fetched.
 - A browser refusing cookies may receive a fresh session on each request; the feature does not add a cookie-support UI.
+- When session storage is unavailable, requests may receive the controlled service failure (503) before host/tenant validation completes; invalid hosts are not guaranteed an Access denied (403) response until storage recovers. After recovery, unknown tenants again return Access denied.
 
 ## Requirements _(mandatory)_
 
@@ -105,9 +106,11 @@ As a developer, I can start the external session store with Docker Compose and r
 ## Assumptions
 
 - **User-approved scope**: Session-first cookie lookup, external Redis, local Compose support, and simplicity/readability are explicit requirements from this request. This artifact specifies that work; it does not implement it.
-- **Repository evidence**: The current tenant layout invokes tenant resolution directly. [Tenant strategy](../../docs/multi-tenancy.md) allows a later session-first slice. [Session strategy](../../docs/session-state.md) establishes signed cookies and Redis ownership. [Local services strategy](../../docs/docker-compose.md) describes intended infrastructure, but no Compose file currently exists in this checkout.
-- **Ordering interpretation**: Lookup happens first; host/tenant validation still precedes accepting or persisting a tenant binding. This reconciles the requested order with the [constitution](../../.specify/memory/constitution.md). A store outage can stop processing before tenant validation.
-- **Lifecycle default**: Use a configurable fixed lifetime, defaulting to 24 hours from creation, with no sliding renewal in this increment. The record and cookie expire together; earlier record loss starts a fresh session. This is an assumption for review, not an existing product rule.
+- **Repository evidence**: Need for this infrastructure slice is grounded in [session strategy](../../docs/session-state.md) (signed cookies, frontend Redis ownership), [tenant strategy](../../docs/multi-tenancy.md) (session-first ordering allowance), and [local services strategy](../../docs/docker-compose.md) (intended Redis Compose). The current tenant layout still invokes tenant resolution directly; no Compose file currently exists in this checkout.
+- **Cost of inaction**: Later auth and UI-state features cannot meet restart-surviving session continuity without this Redis-backed setup slice.
+- **Observability of success**: Reviewers observe SC-001–005 via the Lifecycle evidence checklist in [quickstart.md](./quickstart.md) (cookie/Redis inspection and continuity checks), not via a public session UI.
+- **Ordering interpretation**: Lookup happens first; host/tenant validation still precedes accepting or persisting a tenant binding. This reconciles the requested order with the [constitution](../../.specify/memory/constitution.md). A store outage can stop processing before tenant validation (see Edge Cases).
+- **Lifecycle decision (provisional for this slice)**: Use a configurable fixed lifetime defaulting to 86,400 seconds (24 hours) from creation, with no sliding renewal. The record and cookie expire together on the application clock; earlier record loss starts a fresh session. Stakeholder follow-up: the **next** feature focuses on clear session timeout and detailed expiry / eviction policy; this slice does not define sliding renewal, capacity/rate limits, or cookie-less flood eviction.
 - **Scope boundary**: No login, OIDC callback, logout, authenticated identity, form drafts, business persistence, new UI, production Redis provisioning, high availability, or additional Compose services are included.
 - **Local behavior**: Local HTTP supports development cookies without requiring production HTTPS; host-only and script-inaccessible restrictions remain. Existing static tenant configuration is preserved.
 - **Planning dependency**: Consult the existing session strategy for its official Redis client and signing-library choices. Determine the framework-supported request boundary for setting cookies before response rendering during planning; no specific mechanism is prescribed here.
