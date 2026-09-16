@@ -1,6 +1,10 @@
-# Tenant-resolution acceptance scenarios
+# Acceptance scenarios
 
-Source: [active specification](../specs/001-tenant-resolution/spec.md), including the Display Name clarification.
+Active feature: [003-tenant-oidc-login](../specs/003-tenant-oidc-login/spec.md).
+
+## Tenant-resolution acceptance scenarios
+
+Source: [tenant-resolution specification](../specs/001-tenant-resolution/spec.md), including the Display Name clarification.
 Supporting design: [plan](../specs/001-tenant-resolution/plan.md) and
 [validation guide](../specs/001-tenant-resolution/quickstart.md).
 
@@ -151,3 +155,76 @@ alone do not prove these architectural constraints. SC-001–005 are represented
 Session suite totals: **3 files, 11 ordinary scenarios, 9 outlines, 31 example rows, 42 expanded cases**.
 The combined tenant and session inventory is 94 expanded cases. Session files were syntax-validated using the
 installed Cucumber Gherkin parser; step execution and runtime behavior remain unverified.
+
+## Tenant OIDC login scenarios
+
+Source: [tenant OIDC login specification](../specs/003-tenant-oidc-login/spec.md).
+Consumer type: **Human end user of UI**, detected from `next`, `react`, and `react-dom` in
+`packages/frontend/package.json`. Local provisioning uses a developer operating the environment;
+it does not make the product a CLI or API consumer.
+
+| File                                                                   | Purpose                                                                                   | Scenarios | Outlines | Example rows | Expanded cases |
+| ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- | --------- | -------- | ------------ | -------------- |
+| [tenant-oidc-login.feature](tenant-oidc-login.feature)                 | Tenant login arrival, isolation, session decisions, caller input, and request exclusions. | 3         | 6        | 24           | 27             |
+| [tenant-oidc-configuration.feature](tenant-oidc-configuration.feature) | Connection settings, secret boundaries, validation, reload, and accessible failures.      | 4         | 5        | 17           | 21             |
+| [local-oidc-development.feature](local-oidc-development.feature)       | Local Keycloak setup, issuer reachability, static mode, restrictions, and recovery.       | 6         | 3        | 6            | 12             |
+| **Total**                                                              |                                                                                           | **13**    | **14**   | **47**       | **60**         |
+
+### OIDC traceability and verification boundaries
+
+Within `@tenant-oidc-login` files, `@FR-nnn`, `@SC-nnn`, and `@USn` refer to **003** only.
+All 13 functional requirements and five success criteria have scenario references. Tags identify intended
+coverage, not proof of runtime behavior or architectural compliance.
+
+- `@browser` checks real navigation to usable provider login controls, accessible error structure, or keyboard
+  recovery. Provider arrival must not be asserted solely through tenant strings in application markup.
+- `@http` checks redirects, refusals, and absence of application content or browser-visible secrets.
+- `@contract` checks trusted configuration, session decisions, tenant/return binding, safe diagnostics, and
+  request classification without public diagnostic routes or assumptions about Redis record internals.
+- `@local-services` exercises documented setup and recovery using real local Keycloak and the existing session service.
+- `@production` checks production restrictions; isolated fixtures must keep the session service available so a
+  storage outage does not mask host refusal.
+
+Repository review must additionally verify server-only credential supply, absence of committed credentials,
+frontend ownership, pinned and loopback-only Compose services, preservation of existing services, and complete
+local instructions. FR-011 documentation review includes upgrading Display Name-only examples, startup/readiness,
+synthetic tenant/client/connection provisioning, local credential supply, registered return destinations,
+reload/restart, and configuration/provider recovery. No scenario tag alone proves those constraints.
+
+### OIDC fixture meanings and unresolved planning choices
+
+- Each scenario and example row starts independently, with isolated tenant configuration, provider fixtures,
+  browser contexts, and session results. Prior failures, changes, and reloads in Given steps are setup within
+  that scenario, never dependencies on another scenario.
+- `identity.example` and the production-style tenant addresses are synthetic fixtures resolved by the test
+  harness; do not contact production DNS. Local service cases use real local hosts. Client and connection
+  names are fixture values, not a prescribed configuration schema or query parameter naming convention.
+- Usable provider arrival means an identifiable, operable login experience for the intended connection.
+  These cases stop before submitting credentials or completing a callback. No authenticated session,
+  callback completion, token exchange, logout, or backend authorization is claimed.
+- Session validity and rejection remain authoritative in feature 002. The sessionless and refusal cases inject
+  those capability outcomes, rather than choosing new expiry or invalidation rules. A tenant-only session is
+  not proof of authentication. Planning must reconcile session creation timing with the original entry
+  decision: creation during initiation must not suppress that request's redirect.
+- Caller override attempts may be rejected or ignored; the specification fixes the security outcome but not
+  which response to use. Neither path may select caller-supplied destinations or grant application access.
+- Invalid configuration and metadata cases constrain outcomes without inventing error copy, status codes,
+  OIDC field names, credential mechanisms, or a new recovery control. If an interactive recovery action is
+  offered, its keyboard behavior must satisfy the scenario; guidance-only errors need no invented button.
+- Request-category examples require planning to map concrete existing resource, health, initiation, and return
+  routes and non-navigation behavior. They do not authorize adding health endpoints or implementing callbacks.
+  Exact response codes for non-navigation requests remain a planning decision.
+- Required connection selection depends on the provider registration. App-detectable defects fail before
+  redirect; failures after the browser leaves the app may appear as a browser/provider error instead.
+- HTTP provider destinations are permitted only in explicit local development. The local issuer URL, pinned
+  Keycloak version, provisioning commands, transaction protection, and return route paths remain planning choices.
+
+### OIDC artifact validation and execution status
+
+The installed Cucumber Gherkin parser successfully parsed and expanded all **60 cases**. Unique scenario names,
+outline substitution, and the FR/SC tag inventory were checked. This validates acceptance artifacts only.
+The existing Cucumber configuration explicitly lists the tenant and session files; these new OIDC files are
+**not yet wired into that runner and have no generated step bindings**. The BDD scaffold step should add
+bindings and discovery before implementation. Existing dry-run commands do not validate OIDC behavior.
+The nine-file repository inventory now contains **154 expanded cases**: 52 tenant, 42 session, and 60 OIDC.
+Earlier tenant/session execution notes above describe their own suites and are not OIDC implementation evidence.
