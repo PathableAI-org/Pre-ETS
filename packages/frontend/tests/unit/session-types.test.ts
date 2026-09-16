@@ -92,6 +92,13 @@ describe("session types", () => {
       expect(parseSessionRecord({ expiresAt: now, tenantId: "   " })).toBeUndefined()
       expect(parseSessionRecord({ expiresAt: 0, tenantId: "springfield" })).toBeUndefined()
     })
+
+    it("rejects expiresAt values outside the Date representable range", () => {
+      expect(parseSessionRecord({
+        expiresAt: Number.MAX_SAFE_INTEGER,
+        tenantId: "springfield"
+      })).toBeUndefined()
+    })
   })
 
   describe("session context", () => {

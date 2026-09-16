@@ -65,6 +65,7 @@ export async function applySessionReferenceCondition(world: TenantWorld, conditi
   const tenantId = "springfield"
   const sessionId = generateSessionId()
   world.sessionId = sessionId
+  world.originalSessionId = sessionId
   world.sessionTenantId = tenantId
 
   switch (condition) {
@@ -139,7 +140,7 @@ export async function assertCookieAndRecordExpireAt(world: TenantWorld, iso: str
   const token = latestSessionCookie(world)
     ?? (world.sessionContract?.result.kind === "ready" ? world.sessionContract.result.cookieValue : undefined)
   assert.ok(token, "expected a session cookie token from contract or HTTP")
-  const decoded = decodeJwt(token)
+  const decoded = await decodeJwt(token)
   assert.equal(decoded.exp, expected)
   const sessionId = world.sessionContract?.result.kind === "ready"
     ? world.sessionContract.result.context.sessionId
@@ -179,8 +180,13 @@ export function assertSessionAccessDenied(world: TenantWorld): void {
 
 export function assertSessionCookieAttributes(world: TenantWorld, secure: boolean): void {
   const setCookies = collectSetCookies(world.httpResponse?.headers ?? {})
-  const cookieLine = setCookies.find((value) => value.startsWith(`${SESSION_COOKIE_NAME}=`))
-  assert.ok(cookieLine)
+  let cookieLine = setCookies.find((value) => value.startsWith(`${SESSION_COOKIE_NAME}=`))
+  if (cookieLine !== undefined) {
+    world.sessionIssuedSetCookie ??= cookieLine
+  } else {
+    cookieLine = world.sessionIssuedSetCookie
+  }
+  assert.ok(cookieLine, "expected session Set-Cookie evidence")
   assert.match(cookieLine, /HttpOnly/i)
   assert.match(cookieLine, /Path=\//i)
   assert.doesNotMatch(cookieLine, /Domain=/i)
@@ -197,12 +203,13 @@ export function assertSessionPersistedBeforeCookie(world: TenantWorld, tenantId?
   }
 
   const events = world.sessionContract?.events ?? []
+  assert.ok(events.includes("resolveTenant"))
   assert.ok(events.includes("store.create"))
-  assert.ok(events.includes("signCookie"))
+  assert.ok(events.indexOf("resolveTenant") < events.indexOf("store.create"))
   assert.ok(world.sessionContract)
   assert.equal(world.sessionContract.result.kind, "ready")
   assert.equal(world.sessionContract.result.outcome, "create")
-  // setupSession signs before persisting, but a ready create outcome is only returned after store.create succeeds.
+  // Contract evidence only: ready create implies persistence succeeded before the harness receives cookieValue.
   assert.notEqual(world.sessionContract.result.cookieValue, undefined)
 }
 
@@ -236,7 +243,7 @@ export async function cleanupScenarioSessionKeys(world: TenantWorld): Promise<vo
     return
   }
 
-  const client = createRedisClient({ disableOfflineQueue: true, url: world.redisUrl ?? "redis://127.0.0.1:6379" })
+  const client = await createRedisClient({ disableOfflineQueue: true, url: world.redisUrl ?? "redis://127.0.0.1:6379" })
   try {
     try {
       await client.connect()
@@ -263,7 +270,7 @@ export async function configureStorageFailure(world: TenantWorld, operation: str
 
 export async function ensureRedisAvailable(world: TenantWorld): Promise<void> {
   ensureSessionSettings(world)
-  const client = createRedisClient({
+  const client = await createRedisClient({
     disableOfflineQueue: true,
     url: world.redisUrl ?? "redis://127.0.0.1:6379"
   })
@@ -567,6 +574,10 @@ export async function visitUrl(world: TenantWorld, rawUrl: string): Promise<void
 
 function applyResponseCookies(world: TenantWorld, host: string, response: HttpExchange): void {
   for (const line of collectSetCookies(response.headers)) {
+    if (line.startsWith(`${SESSION_COOKIE_NAME}=`) && world.sessionIssuedSetCookie === undefined) {
+      world.sessionIssuedSetCookie = line
+    }
+
     const match = new RegExp(`^${SESSION_COOKIE_NAME}=([^;]+)`).exec(line)
     if (match?.[1] !== undefined) {
       setCookie(world, host, match[1])
@@ -701,7 +712,7 @@ function ensureRuntimeForUrl(world: TenantWorld, rawUrl: string): void {
   }
 
   world.sessionCookieHostStyle = "localhost"
-  if (world.runtime === "production") {
+  if (world.runtime === undefined) {
     world.runtime = "development"
     world.processSignature = undefined
   }
@@ -789,7 +800,11 @@ async function openSessionBrowserPage(world: TenantWorld, parsed: ParsedUrl): Pr
 }
 
 function pageUrl(parsed: ParsedUrl): string {
-  return `http://${parsed.host}${parsed.path}`
+  if (parsed.host.includes(":")) {
+    return `http://${parsed.host}${parsed.path}`
+  }
+
+  return `http://${parsed.host}:${String(parsed.port)}${parsed.path}`
 }
 
 function parseUrl(world: TenantWorld, rawUrl: string): ParsedUrl {
@@ -918,7 +933,7 @@ function trackSessionId(world: TenantWorld, sessionId: string): void {
 }
 
 async function waitForRedis(url: string): Promise<void> {
-  const client = createRedisClient({ disableOfflineQueue: true, url })
+  const client = await createRedisClient({ disableOfflineQueue: true, url })
   try {
     await client.connect()
     assert.equal(await client.ping(), "PONG")
@@ -935,7 +950,7 @@ async function writeRawRecord(
 ): Promise<void> {
   ensureSessionSettings(world)
   const prefix = world.sessionKeyPrefix ?? ""
-  const client = createRedisClient({ disableOfflineQueue: true, url: world.redisUrl ?? "redis://127.0.0.1:6379" })
+  const client = await createRedisClient({ disableOfflineQueue: true, url: world.redisUrl ?? "redis://127.0.0.1:6379" })
   try {
     await client.connect()
     const key = `${prefix}${sessionId}`

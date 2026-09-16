@@ -200,7 +200,7 @@ export function parseSessionRecord(value: unknown): SessionRecord | undefined {
     return undefined
   }
 
-  if (!isSafeUnixSeconds(record.expiresAt)) {
+  if (!isSafeUnixSeconds(record.expiresAt) || !isDateRepresentableUnixSeconds(record.expiresAt)) {
     return undefined
   }
 

@@ -19,7 +19,9 @@ import { createEnvTenantOperations } from "./lib/tenant/operations.ts"
 const CACHE_CONTROL = "private, no-store"
 
 let store: RedisSessionStore | undefined
+let operations: ReturnType<typeof createEnvTenantOperations> | undefined
 
+// fallow-ignore-next-line complexity -- request-boundary orchestration: config, setup, terminal vs ready
 export async function proxy(request: NextRequest): Promise<NextResponse> {
   const requestHeaders = new Headers(request.headers)
   stripReservedHeaders(requestHeaders)
@@ -29,13 +31,12 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
     return terminalResponse(500)
   }
 
-  store ??= new RedisSessionStore(config)
-  const operations = createEnvTenantOperations()
+  const deps = sessionDependencies(config)
   const result = await setupSession(request, {
     config,
-    resolveTenant: async () => await mapTenantResolve(operations, request),
+    resolveTenant: async () => await mapTenantResolve(deps.operations, request),
     signCookie: signSessionCookie,
-    store,
+    store: deps.store,
     verifyCookie: verifySessionCookie
   })
 
@@ -109,6 +110,12 @@ function readyResponse(
   }
 
   return response
+}
+
+function sessionDependencies(config: NonNullable<ReturnType<typeof loadProxyConfig>>) {
+  store ??= new RedisSessionStore(config)
+  operations ??= createEnvTenantOperations()
+  return { operations, store }
 }
 
 function stripReservedHeaders(headers: Headers): void {

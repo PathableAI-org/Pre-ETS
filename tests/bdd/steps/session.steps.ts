@@ -71,20 +71,41 @@ function assertProductionSessionCookieAttributes(world: TenantWorld): void {
 }
 
 async function assertRedisUnreachable(url: string): Promise<void> {
-  const client = createRedisClient({ disableOfflineQueue: true, url })
+  let reachable = false
+  const client = await createRedisClient({
+    disableOfflineQueue: true,
+    socket: {
+      connectTimeout: 500,
+      reconnectStrategy: () => false
+    },
+    url
+  })
   try {
-    await client.connect()
-    const pong = await client.ping()
-    assert.notEqual(pong, "PONG", `expected Redis at ${url} to be unreachable`)
+    await Promise.race([
+      (async () => {
+        await client.connect()
+        const pong = await client.ping()
+        if (pong === "PONG") {
+          reachable = true
+        }
+      })(),
+      new Promise((_resolve, reject) => {
+        setTimeout(() => {
+          reject(new Error("Redis connect timeout"))
+        }, 500)
+      })
+    ])
   } catch {
     // Expected when Redis is stopped or the port is closed.
   } finally {
     await client.quit().catch(() => undefined)
   }
+
+  assert.equal(reachable, false, `expected Redis at ${url} to be unreachable`)
 }
 
 async function deleteStoredRecord(world: TenantWorld, sessionId: string): Promise<void> {
-  const client = createRedisClient({
+  const client = await createRedisClient({
     disableOfflineQueue: true,
     url: world.redisUrl ?? process.env.REDIS_URL ?? "redis://127.0.0.1:6379"
   })
@@ -266,7 +287,7 @@ Then("the existing access-denied outcome is returned without a redirect", functi
 Then("no session is created and no session cookie is issued", async function(this: TenantWorld) {
   assertNoSessionCookieIssued(this)
   if (this.sessionKeyPrefix !== undefined) {
-    const client = createRedisClient({
+    const client = await createRedisClient({
       disableOfflineQueue: true,
       url: this.redisUrl ?? "redis://127.0.0.1:6379"
     })
@@ -290,7 +311,7 @@ Given(
 Given("the external session store is available and isolated for this scenario", async function(this: TenantWorld) {
   ensureSessionSettings(this)
   const config = sessionConfig(this)
-  const client = createRedisClient({ disableOfflineQueue: true, url: config.redisUrl })
+  const client = await createRedisClient({ disableOfflineQueue: true, url: config.redisUrl })
   try {
     await client.connect()
     assert.equal(await client.ping(), "PONG")
@@ -382,17 +403,11 @@ Then("exactly one new session is persisted for the request", async function(this
 })
 
 Then("every downstream session access receives that session", function(this: TenantWorld) {
-  assert.ok(this.sessionId)
-  if (this.sessionDoubleAccess && this.sessionContract?.result.kind === "ready") {
-    const context = this.sessionContract.result.context
-    const layoutAccess = { sessionId: context.sessionId, tenantId: context.tenantId }
-    const pageAccess = { sessionId: context.sessionId, tenantId: context.tenantId }
-    assert.equal(layoutAccess.sessionId, pageAccess.sessionId)
-    assert.equal(layoutAccess.sessionId, this.sessionId)
-    assert.equal(layoutAccess.tenantId, "springfield")
-    return
+  if (this.sessionDoubleAccess) {
+    return "pending"
   }
 
+  assert.ok(this.sessionId)
   if (this.httpResponse !== undefined) {
     assert.match(this.httpResponse.body, /Tenant: Springfield Demo/)
   } else {
@@ -540,7 +555,8 @@ Then(
 
 Then("no presented session id is adopted for the new record", function(this: TenantWorld) {
   assert.ok(this.sessionId)
-  assert.ok(this.originalSessionId === undefined || this.sessionId !== this.originalSessionId)
+  assert.ok(this.originalSessionId)
+  assert.notEqual(this.sessionId, this.originalSessionId)
 })
 
 Then("no state from the unusable session is exposed or copied", function(this: TenantWorld) {

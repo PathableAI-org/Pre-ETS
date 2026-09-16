@@ -1,6 +1,12 @@
 import { createClient } from "redis"
 
-import { parseSessionRecord, serializeSessionRecord, type SessionConfig, type SessionRecord } from "./types.ts"
+import {
+  isSessionId,
+  parseSessionRecord,
+  serializeSessionRecord,
+  type SessionConfig,
+  type SessionRecord
+} from "./types.ts"
 
 export interface SessionStore {
   create(id: string, record: SessionRecord): Promise<SessionStoreCreateResult>
@@ -19,12 +25,13 @@ interface RedisLikeClient {
   connect(): Promise<unknown>
   get(key: string): Promise<null | string>
   readonly isOpen: boolean
+  on?(event: "error", listener: (error: unknown) => void): unknown
   set(
     key: string,
     value: string,
     options: {
+      readonly condition: "NX"
       readonly expiration: { readonly type: "EXAT"; readonly value: number }
-      readonly NX: true
     }
   ): Promise<unknown>
 }
@@ -52,14 +59,18 @@ export class RedisSessionStore implements SessionStore {
   }
 
   async create(id: string, record: SessionRecord): Promise<SessionStoreCreateResult> {
+    if (!isSessionId(id)) {
+      throw new SessionStoreError("Invalid session id.")
+    }
+
     const client = await this.connectedClient()
     const result = await this.withTimeout(
       client.set(this.keyFor(id), serializeSessionRecord(record), {
+        condition: "NX",
         expiration: {
           type: "EXAT",
           value: record.expiresAt
-        },
-        NX: true
+        }
       })
     )
 
@@ -67,6 +78,11 @@ export class RedisSessionStore implements SessionStore {
   }
 
   async read(id: string): Promise<SessionStoreReadResult> {
+    // Invalid ids are not store keys; skip Redis I/O.
+    if (!isSessionId(id)) {
+      return { kind: "missing" }
+    }
+
     const client = await this.connectedClient()
     const raw = await this.withTimeout(client.get(this.keyFor(id)))
     if (raw === null) {
@@ -94,7 +110,11 @@ export class RedisSessionStore implements SessionStore {
     }
 
     if (this.connectPromise !== undefined) {
-      return await this.connectPromise
+      try {
+        return await this.connectPromise
+      } catch (error) {
+        throw toStoreError(error)
+      }
     }
 
     this.connectPromise = this.openClient()
@@ -144,10 +164,13 @@ export class SessionStoreError extends Error {
 }
 
 function defaultClientFactory(url: string): RedisLikeClient {
-  return createClient({
+  const client = createClient({
     disableOfflineQueue: true,
     url
   })
+  // Swallow transport errors; callers observe them via connect/get/set failures.
+  client.on("error", () => undefined)
+  return client
 }
 
 function toStoreError(error: unknown): SessionStoreError {

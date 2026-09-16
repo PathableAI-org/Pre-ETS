@@ -89,6 +89,7 @@ export class TenantWorld extends World {
   sessionExpiresAtSeconds: number | undefined = undefined
   sessionHadCookieBeforeLastVisit = false
   sessionId: string | undefined = undefined
+  sessionIssuedSetCookie: string | undefined = undefined
   sessionKeyPrefix: string | undefined = undefined
   sessionRefusedCookie = false
   sessionSigningSecret: string | undefined = undefined

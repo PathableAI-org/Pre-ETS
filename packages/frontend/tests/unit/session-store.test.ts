@@ -113,7 +113,8 @@ describe("RedisSessionStore", () => {
       const mockClient = {
         connect: vi.fn().mockResolvedValue(undefined),
         get: vi.fn().mockResolvedValue(null),
-        isOpen: true
+        isOpen: true,
+        on: vi.fn().mockReturnThis()
       }
       createClientSpy.mockReturnValueOnce(mockClient as never)
 
@@ -190,6 +191,123 @@ describe("RedisSessionStore", () => {
       await expect(store.read(fixedSessionId(11))).rejects.toMatchObject({
         message: "Session store unavailable."
       })
+    })
+
+    it("wraps concurrent connect failures as SessionStoreError", async () => {
+      const clientFactory = vi.fn(() => ({
+        connect: vi.fn().mockRejectedValue(new Error("connect failed")),
+        isOpen: false
+      }))
+
+      const store = new RedisSessionStore(testConfig(), { clientFactory: clientFactory as never })
+      const id = fixedSessionId(12)
+
+      const results = await Promise.allSettled([store.read(id), store.read(id)])
+
+      expect(results).toHaveLength(2)
+      for (const result of results) {
+        expect(result.status).toBe("rejected")
+        if (result.status === "rejected") {
+          expect(result.reason).toBeInstanceOf(SessionStoreError)
+        }
+      }
+      expect(clientFactory).toHaveBeenCalledTimes(1)
+    })
+
+    it("returns missing for invalid session ids without Redis I/O", async () => {
+      const clientFactory = vi.fn(() => ({
+        connect: vi.fn().mockResolvedValue(undefined),
+        get: vi.fn().mockResolvedValue(null),
+        isOpen: true
+      }))
+
+      const store = new RedisSessionStore(testConfig(), { clientFactory: clientFactory as never })
+
+      await expect(store.read("not-a-valid-session-id")).resolves.toEqual({ kind: "missing" })
+      expect(clientFactory).not.toHaveBeenCalled()
+    })
+
+    it("rejects create for invalid session ids without Redis I/O", async () => {
+      const clientFactory = vi.fn(() => ({
+        connect: vi.fn().mockResolvedValue(undefined),
+        isOpen: true,
+        set: vi.fn().mockResolvedValue("OK")
+      }))
+
+      const store = new RedisSessionStore(testConfig(), { clientFactory: clientFactory as never })
+      const record: SessionRecord = {
+        expiresAt: 1_700_300_000,
+        tenantId: "springfield"
+      }
+
+      await expect(store.create("not-a-valid-session-id", record)).rejects.toMatchObject({
+        message: "Invalid session id."
+      })
+      expect(clientFactory).not.toHaveBeenCalled()
+    })
+
+    it("uses SET NX EXAT with redis@6 condition syntax", async () => {
+      const setMock = vi.fn().mockResolvedValue("OK")
+      const clientFactory = vi.fn(() => ({
+        connect: vi.fn().mockResolvedValue(undefined),
+        get: vi.fn().mockResolvedValue(null),
+        isOpen: true,
+        set: setMock
+      }))
+
+      const store = new RedisSessionStore(testConfig(), { clientFactory })
+      const id = fixedSessionId(13)
+      const record: SessionRecord = {
+        expiresAt: 1_700_300_000,
+        tenantId: "springfield"
+      }
+
+      await expect(store.create(id, record)).resolves.toEqual({ kind: "created" })
+      expect(setMock).toHaveBeenCalledWith(`${KEY_PREFIX}${id}`, serializeSessionRecord(record), {
+        condition: "NX",
+        expiration: {
+          type: "EXAT",
+          value: record.expiresAt
+        }
+      })
+    })
+
+    it("reports collision when SET NX returns null", async () => {
+      const setMock = vi.fn().mockResolvedValue(null)
+      const clientFactory = vi.fn(() => ({
+        connect: vi.fn().mockResolvedValue(undefined),
+        isOpen: true,
+        set: setMock
+      }))
+
+      const store = new RedisSessionStore(testConfig(), { clientFactory: clientFactory as never })
+      const id = fixedSessionId(14)
+      const record: SessionRecord = {
+        expiresAt: 1_700_300_000,
+        tenantId: "springfield"
+      }
+
+      await expect(store.create(id, record)).resolves.toEqual({ kind: "collision" })
+    })
+
+    it("attaches a no-op error listener in the default client factory", async () => {
+      const redisModule = await import("redis")
+      const createClientSpy = vi.spyOn(redisModule, "createClient")
+      const onMock = vi.fn().mockReturnThis()
+      const mockClient = {
+        connect: vi.fn().mockResolvedValue(undefined),
+        get: vi.fn().mockResolvedValue(null),
+        isOpen: true,
+        on: onMock
+      }
+      createClientSpy.mockReturnValueOnce(mockClient as never)
+
+      const store = new RedisSessionStore(testConfig())
+      await store.read(fixedSessionId(15))
+
+      expect(onMock).toHaveBeenCalledWith("error", expect.any(Function))
+
+      createClientSpy.mockRestore()
     })
 
     it("shares one in-flight connect promise across concurrent reads", async () => {
