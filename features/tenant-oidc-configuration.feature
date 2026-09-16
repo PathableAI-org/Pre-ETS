@@ -32,12 +32,13 @@ Feature: Tenant OIDC connection configuration
     And that credential is absent from browser content, browser-visible configuration, redirect URLs, and captured diagnostics
     And no other tenant's credential is used
 
-  @FR-001 @FR-004 @FR-007 @FR-008 @SC-003 @browser @contract
+  @FR-001 @FR-004 @FR-007 @FR-008 @SC-002 @SC-003 @browser @http @contract
   Scenario Outline: Detectable configuration defects prevent login initiation
     Given Springfield's login configuration has defect "<defect>"
     And Shelbyville retains a valid login configuration
     When the visitor navigates to "https://springfield.pathable.com/"
-    Then the visitor receives an app-owned error explaining that login cannot start and a clear next action
+    Then the existing forbidden handling returns HTTP 403 without a login redirect or a new forbidden destination
+    And the visitor receives an app-owned error explaining that login cannot start and a clear next action
     And no login is initiated and no tenant application content is served
     And no default provider or other tenant's configuration is substituted
     And a safe diagnostic identifies a configuration failure without credentials or other tenant details
@@ -45,6 +46,7 @@ Feature: Tenant OIDC connection configuration
 
     Examples:
       | defect                                    |
+      | required login configuration cannot be read |
       | Display Name only with no OIDC settings   |
       | missing issuer                            |
       | malformed issuer URL                      |
@@ -73,7 +75,7 @@ Feature: Tenant OIDC connection configuration
     Given the application runs outside explicit local development
     And Springfield's configured "<destination>" uses "<url>"
     When the visitor navigates to "https://springfield.pathable.com/"
-    Then an app-owned configuration failure prevents login initiation
+    Then the existing forbidden handling returns HTTP 403 without a login redirect or a new forbidden destination
     And no insecure redirect or tenant application access is granted
 
     Examples:
@@ -104,6 +106,7 @@ Feature: Tenant OIDC connection configuration
       | failure               |
       | configuration failure |
       | provider failure      |
+      | transaction failure   |
 
   @FR-008 @SC-005 @browser
   Scenario: Any offered recovery control works using only a keyboard

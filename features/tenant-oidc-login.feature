@@ -25,6 +25,28 @@ Feature: Tenant OIDC login entry
       | springfield | springfield-web | springfield-idp |
       | shelbyville | shelbyville-web | shelbyville-idp |
 
+  @FR-006 @SC-003 @http @contract
+  Scenario: Initiation prepares a protected tenant-bound authorization-code transaction
+    Given the visitor has no existing session in a fresh browser context
+    When the visitor navigates to "https://springfield.pathable.com/"
+    Then the redirect starts an OIDC authorization-code request using Springfield's trusted issuer, client, and connection
+    And the authorization request includes a PKCE challenge while its verifier remains protected from browser-visible output
+    And fresh unpredictable state and nonce correlate the attempt with the originating browser, resolved tenant "springfield", and approved return destination on "springfield.pathable.com"
+    And the protected transaction context retains Springfield's expected issuer, client, connection, and correlation values for later callback validation
+    And the PKCE verifier is retained only server-side
+    And preparing that transaction neither completes authentication nor serves tenant application content
+
+  @FR-006 @FR-007 @FR-008 @SC-003 @http @contract
+  Scenario: Failure to establish protected transaction context prevents redirection
+    Given the visitor has no existing session
+    And the protected OIDC transaction context cannot be established
+    When the visitor navigates to "https://springfield.pathable.com/"
+    Then no provider login redirect is issued
+    And the visitor receives an understandable app-owned failure explaining that login cannot start and a clear next action
+    And no tenant application content or authenticated identity is granted
+    And no unprotected authorization request is substituted
+    And the response does not trigger an automatic redirect loop
+
   @FR-004 @FR-009 @SC-001 @browser @contract
   Scenario: Overlapping visits remain isolated even with a shared issuer and Display Name
     Given both tenants have Display Name "Pre-ETS Learning"
@@ -69,6 +91,7 @@ Feature: Tenant OIDC login entry
   @FR-005 @FR-009 @SC-002 @browser @contract
   Scenario Outline: An existing matching session continues the established request flow
     Given the session capability reports an existing valid session bound to "springfield"
+    And that session was presented on entry and contains no authenticated user identity
     And Springfield's OIDC settings are "<settings>"
     When the visitor navigates to "https://springfield.pathable.com/"
     Then this entry feature initiates no new login
@@ -82,13 +105,14 @@ Feature: Tenant OIDC login entry
       | missing required issuer        |
 
   @FR-005 @FR-006 @SC-002 @SC-003 @contract
-  Scenario Outline: Sessionless results from unusable references can initiate tenant-bound login
+  Scenario Outline: Replacement sessions preserve login entry after unusable references
     Given the visitor presents a session evaluated as "<condition>" by the existing session capability
-    And that capability's authoritative result is a sessionless request
+    And that capability creates a fresh session for the validated Springfield tenant during this request
     When the visitor navigates to "https://springfield.pathable.com/"
     Then login is initiated only after Springfield is resolved through the trusted tenant boundary
     And no rejected session state or identity grants application access
     And the initiation uses only Springfield's configured login connection
+    And the replacement session does not suppress the current redirect or establish authenticated identity
 
     Examples:
       | condition            |
@@ -98,7 +122,7 @@ Feature: Tenant OIDC login entry
 
   @FR-005 @FR-007 @SC-003 @contract
   Scenario: A session capability refusal is not converted into login
-    Given the existing session capability refuses the request instead of returning a sessionless result
+    Given the existing session capability returns a terminal refusal or service failure instead of a ready session
     When the visitor navigates to "https://springfield.pathable.com/"
     Then the capability's refusal remains authoritative
     And no login is initiated and no tenant application access is granted

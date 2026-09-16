@@ -165,10 +165,10 @@ it does not make the product a CLI or API consumer.
 
 | File                                                                   | Purpose                                                                                   | Scenarios | Outlines | Example rows | Expanded cases |
 | ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- | --------- | -------- | ------------ | -------------- |
-| [tenant-oidc-login.feature](tenant-oidc-login.feature)                 | Tenant login arrival, isolation, session decisions, caller input, and request exclusions. | 3         | 6        | 24           | 27             |
-| [tenant-oidc-configuration.feature](tenant-oidc-configuration.feature) | Connection settings, secret boundaries, validation, reload, and accessible failures.      | 4         | 5        | 17           | 21             |
+| [tenant-oidc-login.feature](tenant-oidc-login.feature)                 | Tenant login arrival, isolation, session decisions, caller input, and request exclusions. | 5         | 6        | 24           | 29             |
+| [tenant-oidc-configuration.feature](tenant-oidc-configuration.feature) | Connection settings, secret boundaries, validation, reload, and accessible failures.      | 4         | 5        | 19           | 23             |
 | [local-oidc-development.feature](local-oidc-development.feature)       | Local Keycloak setup, issuer reachability, static mode, restrictions, and recovery.       | 6         | 3        | 6            | 12             |
-| **Total**                                                              |                                                                                           | **13**    | **14**   | **47**       | **60**         |
+| **Total**                                                              |                                                                                           | **15**    | **14**   | **49**       | **64**         |
 
 ### OIDC traceability and verification boundaries
 
@@ -179,7 +179,7 @@ coverage, not proof of runtime behavior or architectural compliance.
 - `@browser` checks real navigation to usable provider login controls, accessible error structure, or keyboard
   recovery. Provider arrival must not be asserted solely through tenant strings in application markup.
 - `@http` checks redirects, refusals, and absence of application content or browser-visible secrets.
-- `@contract` checks trusted configuration, session decisions, tenant/return binding, safe diagnostics, and
+- `@contract` checks trusted configuration, session decisions, tenant/return binding, protected authorization transactions, safe diagnostics, and
   request classification without public diagnostic routes or assumptions about Redis record internals.
 - `@local-services` exercises documented setup and recovery using real local Keycloak and the existing session service.
 - `@production` checks production restrictions; isolated fixtures must keep the session service available so a
@@ -202,14 +202,17 @@ reload/restart, and configuration/provider recovery. No scenario tag alone prove
 - Usable provider arrival means an identifiable, operable login experience for the intended connection.
   These cases stop before submitting credentials or completing a callback. No authenticated session,
   callback completion, token exchange, logout, or backend authorization is claimed.
-- Session validity and rejection remain authoritative in feature 002. The sessionless and refusal cases inject
-  those capability outcomes, rather than choosing new expiry or invalidation rules. A tenant-only session is
-  not proof of authentication. Planning must reconcile session creation timing with the original entry
-  decision: creation during initiation must not suppress that request's redirect.
+- Session validity and rejection remain authoritative in feature 002. The recovery cases use its ready/create outcome, and refusal cases use its terminal outcome; there is no
+  sessionless result variant. The entry decision distinguishes a reusable session presented with the request
+  from a new or replacement session created during setup. The latter must not suppress the current redirect.
+  The user retained session presence as this slice's entry condition; a tenant-bound session does not establish
+  authenticated user identity or a complete access-control boundary. Unidentified tenants remain forbidden.
 - Caller override attempts may be rejected or ignored; the specification fixes the security outcome but not
   which response to use. Neither path may select caller-supplied destinations or grant application access.
-- Invalid configuration and metadata cases constrain outcomes without inventing error copy, status codes,
-  OIDC field names, credential mechanisms, or a new recovery control. If an interactive recovery action is
+- Missing or unusable required tenant login configuration follows existing forbidden handling with HTTP 403,
+  as clarified by the user. Provider metadata and transaction failures remain distinct app-owned failures.
+  These cases do not invent a forbidden route, exact error copy, OIDC field names, credential mechanisms,
+  or a new recovery control. If an interactive recovery action is
   offered, its keyboard behavior must satisfy the scenario; guidance-only errors need no invented button.
 - Request-category examples require planning to map concrete existing resource, health, initiation, and return
   routes and non-navigation behavior. They do not authorize adding health endpoints or implementing callbacks.
@@ -217,14 +220,17 @@ reload/restart, and configuration/provider recovery. No scenario tag alone prove
 - Required connection selection depends on the provider registration. App-detectable defects fail before
   redirect; failures after the browser leaves the app may appear as a browser/provider error instead.
 - HTTP provider destinations are permitted only in explicit local development. The local issuer URL, pinned
-  Keycloak version, provisioning commands, transaction protection, and return route paths remain planning choices.
+  Keycloak version, provisioning commands, transaction storage/encoding, and return route paths remain planning choices.
+  Authorization-code initiation with PKCE and tenant-bound state/nonce is required by FR-006; it is not optional planning scope.
+
+See [the traceability report](TRACEABILITY.md) for requirement-level coverage and separate repository-review obligations.
 
 ### OIDC artifact validation and execution status
 
-The installed Cucumber Gherkin parser successfully parsed and expanded all **60 cases**. Unique scenario names,
+The installed Cucumber Gherkin parser successfully parsed and expanded all **64 cases**. Unique scenario names,
 outline substitution, and the FR/SC tag inventory were checked. This validates acceptance artifacts only.
 The existing Cucumber configuration explicitly lists the tenant and session files; these new OIDC files are
 **not yet wired into that runner and have no generated step bindings**. The BDD scaffold step should add
 bindings and discovery before implementation. Existing dry-run commands do not validate OIDC behavior.
-The nine-file repository inventory now contains **154 expanded cases**: 52 tenant, 42 session, and 60 OIDC.
+The nine-file repository inventory now contains **158 expanded cases**: 52 tenant, 42 session, and 64 OIDC.
 Earlier tenant/session execution notes above describe their own suites and are not OIDC implementation evidence.

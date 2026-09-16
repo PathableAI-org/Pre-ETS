@@ -47,7 +47,8 @@ Feature: Local tenant OIDC development
     And explicit static tenant mode on bare localhost supplies Springfield's Display Name without OIDC settings
     And the visitor has no existing session
     When the visitor navigates to "http://localhost:3000/"
-    Then the visitor receives an understandable configuration error with a clear next action
+    Then the existing forbidden handling returns HTTP 403 without a login redirect or a new forbidden destination
+    And the visitor receives an understandable configuration error with a clear next action
     And no login is initiated and no tenant application access is granted
 
   @FR-004 @FR-012 @SC-002 @http
