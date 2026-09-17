@@ -50,20 +50,22 @@ Server Action / Route Handler paths that treat `userId` as authenticated (same s
 class—not merely an in-memory comparison of forwarded context).
 
 **Constraints**: Server authority for idle/absolute deadlines; no browser grace past
-`idleExpiresAt`; activity stamped from **application clock** sampled before Redis I/O
-(no client `at`); store timeout / WATCH abort cancels writes (fail closed); activity must
+`idleExpiresAt`; activity stamped from **application clock** with post-apply re-check
+(no client `at`; cookie-derived session identity only); store timeout / WATCH abort cancels
+writes (fail closed); activity must
 not extend `expiresAt`; renewal/clearance via atomic Redis CAS (deadline wins); missing
 store ≠ inactivity claim; tenant isolation on policy and activity; PathAble Modal behind
 justified client island only; while authenticated UI is mounted, client **MUST** schedule a
 deadline-aligned timer at `min(idleExpiresAt, expiresAt)` (visibility/focus are
-**supplemental** only); Proxy MUST offer a cause-bearing SSR recovery route before generic
-OIDC redirect; session-end latch retained until the ended session’s absolute `expiresAt`;
-BroadcastChannel `inactivity-confirmed` includes `sessionId` + generation; login-again MUST
-use a dedicated CSRF-protected action that rotates `sessionId`/cookie; mounted tabs MUST
-run session-mismatch handshake after rotation; POST-only + CSRF for mutating confirm and
-heartbeats; confirm/5xx MUST fail closed for visible protected UI; protected accessors MUST
-use guard Redis re-read; legacy four-key reads MUST surface a marker so `canReuse` rejects
-them; no advance warning/extend; no new admin UI; secrets never in fixtures; update
+**supplemental** only); Proxy MUST branch on typed setup **inactivity-recovery** signal
+before generic OIDC redirect; session-end latch retained until the ended session’s absolute
+`expiresAt`; BroadcastChannel `inactivity-confirmed` includes `sessionId` + generation;
+login-again MUST use a dedicated CSRF-protected action that rotates `sessionId`/cookie;
+mounted tabs MUST run server-driven session-mismatch handshake after rotation; POST-only +
+CSRF for mutating confirm and heartbeats; confirm/5xx MUST fail closed for visible
+protected UI; protected accessors MUST use guard Redis re-read; legacy four-key reads MUST
+surface a marker so `canReuse` rejects them; two-phase dual-read→idle-write rollout; no
+advance warning/extend; no new admin UI; secrets never in fixtures; update
 `docs/session-state.md`, `docs/multi-tenancy.md`, and `docs/authentication.md` when behavior
 ships.
 
@@ -126,13 +128,13 @@ packages/frontend/
 ├── src/lib/tenant/types.ts              # optional idleTimeoutMinutes + validation
 ├── src/lib/session/types.ts             # SessionRecord + SessionContext idle fields; legacy shape marker
 ├── src/lib/session/store.ts             # atomic conditional update/clear (CAS) helpers
-├── src/lib/session/setup.ts             # enforce idle; reject canReuse when legacyAuthenticated
+├── src/lib/session/setup.ts             # idle enforce; legacy reject; typed inactivity-recovery signal to Proxy
 ├── src/lib/session/idle.ts              # deadline helpers / end-for-inactivity (indicative)
 ├── src/lib/session/guard.ts             # centralized protected-op check (Redis + idle/absolute)
 ├── src/lib/session/index.ts             # getRequestSession → guard-backed for protected SSR/handlers
 ├── src/lib/oidc/initiate.ts             # login-again action: mint new sessionId + cookie before OIDC
 ├── src/lib/oidc/callback.ts             # stamp idle fields on **new** sid only
-├── src/proxy.ts                         # idle gate; cause-bearing recovery forward vs OIDC
+├── src/proxy.ts                         # idle gate; branch on setup recovery signal vs OIDC
 ├── src/app/(app)/…                      # recovery presentation wiring
 ├── src/app/… or route/action            # dedicated CSRF-protected login-again (not bare `/`)
 ├── src/components/…                     # client island: **deadline timer** + activity + Modal (+ tab sync)
@@ -155,10 +157,12 @@ enforces `now < idleExpiresAt` and `now < expiresAt` with tenant bind—fail clo
 trust forwarded context alone after idle expiry. Authenticated `SessionRecord` **and**
 `SessionContext` parsers MUST expand key-count allowlists for idle fields (`expiresAt`
 retained; `idleExpiresAt` required when authenticated) with unit coverage; dual-read MUST
-surface `legacyAuthenticated` so `canReuse` rejects legacy four-key records; store updates
-MUST be atomic vs clearance using application `nowSeconds` sampled before I/O (abort on
-store timeout—not Redis `TIME`); login-again MUST rotate session id via a dedicated
-CSRF-protected action with session-mismatch handshake for siblings. See
+surface `legacyAuthenticated` so `canReuse` rejects legacy four-key records (two-phase
+rollout: dual-read before idle writes; drain uses configured TTL); store updates MUST be
+atomic vs clearance using application `nowSeconds` with **post-apply re-check** (deadline
+wins on delayed commit); activity/confirm MUST derive session identity from the cookie;
+login-again MUST rotate session id via a dedicated CSRF-protected action with server-driven
+session-mismatch handshake (confirm returns cookie-bound `sessionId` / mismatch bit). See
 [data-model.md](./data-model.md). Backend package unchanged.
 
 ## Complexity Tracking

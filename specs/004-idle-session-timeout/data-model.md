@@ -106,25 +106,28 @@ Pre-deployment Redis authenticated records use the legacy **four-key** shape and
 for up to the absolute TTL. Requiring the expanded authenticated allowlist without a policy
 would parse them as missing and force anonymous replacement / OIDC.
 
-**Pinned rollout / rollback**: Parsers MUST **dual-read** legacy four-key authenticated
-records **and** idle-shaped authenticated records for one absolute-TTL drain window after
-deploy (≈ `DEFAULT_SESSION_TTL_SECONDS`). Dual-read is insufficient unless the read
-result **preserves which shape was found**:
+**Pinned rollout / rollback** (two-phase; dual-read alone is not a rollback target of the
+pre-idle binary):
 
-- `parseSessionRecord` / `SessionStore.read` MUST expose a discriminant such as
-  `legacyAuthenticated: true` when the Redis JSON is the pre-idle four-key authenticated
-  shape (even if a `SessionRecord`-like view is also returned for diagnostics).
-- `setupSession.canReuse` (and any path that would continue authenticated access) MUST
-  **reject** `legacyAuthenticated`—treat as unusable for protected reuse (force
-  reauthentication / fresh anonymous→OIDC). Do **not** accept a legacy four-key record
-  exactly like an idle-shaped authenticated session.
-- Cover with unit/contract cases: dual-read parses both shapes; `canReuse` false for
-  legacy; idle-shaped authenticated may reuse when deadlines allow.
-
-New writes are idle-shaped only. **Rollback** during the drain window keeps the dual-read
-parser (do not ship a four-key-only binary while idle-shaped keys remain). After the drain
-window, idle-only authenticated allowlist is allowed. Do not treat “disable client island
-only” as a safe rollback without dual-read.
+1. **Phase A — dual-read deploy**: Ship parsers/`SessionStore.read` that accept **both**
+   legacy four-key and idle-shaped authenticated JSON and expose a discriminant such as
+   `legacyAuthenticated: true` for the four-key shape. `setupSession.canReuse` (and any path
+   that would continue authenticated access) MUST **reject** `legacyAuthenticated`—force
+   reauthentication / fresh anonymous→OIDC. Do **not** yet write idle-shaped records in
+   this phase (or gate writes behind a flag default-off until Phase A is proven).
+2. **Phase B — idle writes**: Enable idle-shaped authenticated writes and idle enforcement.
+3. **Drain window**: Keep dual-read until at least one full configured absolute TTL has
+   elapsed after Phase B starts. Base the window on the **configured** session TTL
+   (`SESSION_TTL_SECONDS` / `SessionConfig.ttlSeconds`), not the
+   `DEFAULT_SESSION_TTL_SECONDS` constant alone—if ops lengthens TTL, extend the drain.
+4. **Rollback**: During the drain window, roll back only to a **Phase A dual-read** build
+   (may disable the client island / idle write flag). Rolling back to a four-key-only
+   parser while idle-shaped keys remain is **explicitly one-way-unsafe** and will treat
+   those records as missing (forced reauth)—document that as unsupported until drain
+   completes. After drain, idle-only authenticated allowlist is allowed.
+5. Cover with unit/contract cases: dual-read parses both shapes; `canReuse` false for
+   legacy; idle-shaped authenticated may reuse when deadlines allow; commit-after-deadline
+   renewal fails closed.
 
 Invariants:
 

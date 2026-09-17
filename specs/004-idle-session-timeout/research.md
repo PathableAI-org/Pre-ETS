@@ -104,14 +104,16 @@ an initial deadline; confirm/read remains a refresh source after renewals).
   themselves**.
 - **Reporting**: a narrow authenticated Server Action (preferred) or **POST-only**
   Route Handler with same-origin `Origin`/CSRF validation accepts activity heartbeats
-  only for an **authenticated same-tenant session cookie** when server `now <
+  only for the **cookie-bound** session (derive `sessionId`/`tenantId` from the verified
+  host-bound cookie—never trust caller-supplied targets) when server `now0 <
   idleExpiresAt`. Stamp activity from the **application clock** (omit client `at`).
-  Update via **atomic** conditional Redis transition that compares using application
-  `nowSeconds` sampled immediately before I/O (pass into CAS; cancel/abort on store
-  timeout—**not** Redis `TIME` as product clock); updates `lastActivityAt` /
-  `idleExpiresAt` without changing `expiresAt` or `idleDurationMinutes`. Reject late
-  reports and lost races vs clearance (no revival / no overwrite of anonymous
-  clearance). No public diagnostic route. `SameSite=Lax` alone is insufficient.
+  Update via **atomic** conditional Redis transition with application `nowSeconds`
+  sampled before I/O **plus post-apply `now1` re-check** (if `now1` is past the
+  pre-renewal deadline, clear and deny—deadline wins on delayed commit; **not** Redis
+  `TIME` as product clock); updates `lastActivityAt` / `idleExpiresAt` without changing
+  `expiresAt` or `idleDurationMinutes`. Reject late reports and lost races vs clearance
+  (no revival / no overwrite of anonymous clearance). No public diagnostic route.
+  `SameSite=Lax` alone is insufficient.
 - **Debounce / coalescing**: client coalesces bursts; server MUST also coalesce or
   rate-bound renewals (indicative: ignore redundant writes within **~1s** when
   `idleExpiresAt` is unchanged—see `idle-expiration.md`). Neither client nor server
@@ -214,10 +216,11 @@ introspection (violates ownership).
   monotonic **`sessionEndGeneration`** on the **post-clearance anonymous** session
   record. The string cause MAY clear after the first recovery UI read; the generation
   latch remains queryable until the ended session’s absolute **`expiresAt`**.
-- **Cause-bearing SSR recovery route**: When the anonymous record has inactivity
-  evidence, the Proxy MUST forward to an SSR recovery shell (Modal + “Log in again”)
-  instead of starting generic OIDC initiation. Protected content stays denied.
-  Anonymous without inactivity evidence keeps today’s OIDC redirect.
+- **Cause-bearing SSR recovery route**: `setupSession` (or Proxy-adjacent read) MUST
+  return a typed **inactivity-recovery** signal when the anonymous record has cause/latch
+  evidence. Proxy branches on that signal to the SSR recovery shell (Modal + “Log in
+  again”) instead of generic OIDC. Cause/latch stay off the authenticated
+  `SessionContext` allowlist. Anonymous without the signal keeps today’s OIDC redirect.
 - **Multi-tab-safe cause (P1 / E1 / X1)**: The first tab that receives a successful
   **server** confirmation of inactivity MUST notify same-origin shared-session sibling
   tabs via `BroadcastChannel` (or equivalent) with `inactivity-confirmed` including
@@ -245,7 +248,9 @@ introspection (violates ownership).
 - “Log in again” invokes a **dedicated same-origin** CSRF-protected action that
   **rotates** to a new `sessionId` + cookie, then starts the existing tenant OIDC
   initiation journey; callback MUST NOT authenticate into the pre-recovery `sid`.
-  Mounted siblings MUST mismatch-handshake. Cancel/fail leaves access unusable with
+  Mounted siblings MUST run a **server-driven session-mismatch handshake** (confirm/read
+  returns cookie-bound `sessionId` or mismatch bit—clients cannot read HttpOnly cookies).
+  Cancel/fail leaves access unusable with
   retry path (`/login-unavailable` or re-shown modal as appropriate).
 - Before enabling further interaction after resume from sleep/offline, remove
   protected content from the active experience. This slice has no draft keys to

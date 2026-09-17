@@ -22,15 +22,20 @@ the interruption. Client timers alone MUST NEVER invent an inactivity claim (FR-
 
 Today’s proxy initiates OIDC whenever `userId` is absent. That would skip the inactivity
 Modal on a full navigation after idle clearance. This slice therefore requires an
-**explicit recovery document path**:
+**explicit recovery document path** with typed setup→Proxy metadata:
 
-1. When the Redis record is anonymous **and** carries consumable inactivity evidence
-   (`accessEndedCause: "inactivity"` and/or an active session-end latch), the Proxy
-   **MUST forward** to an SSR recovery shell (PathAble Modal + “Log in again”) instead of
-   starting generic OIDC initiation.
-2. Protected application content remains denied.
-3. Anonymous sessions **without** inactivity evidence continue the existing OIDC
-   initiation redirect.
+1. Extend `setupSession` (or an adjacent store read used by Proxy) so that when the Redis
+   record is anonymous **and** carries consumable inactivity evidence
+   (`accessEndedCause: "inactivity"` and/or an active `sessionEndGeneration`), the result
+   includes a **typed recovery signal** (indicative: `kind: "inactivity-recovery"` with
+   opaque generation)—**not** only a bare anonymous `SessionContext`. Cause/latch MUST
+   NOT be stuffed into the authenticated context allowlist.
+2. Proxy MUST branch on that recovery signal and **forward** to an SSR recovery shell
+   (PathAble Modal + “Log in again”) instead of starting generic OIDC initiation.
+   Update the Proxy matcher / route if the recovery shell is not the current `/` document.
+3. Protected application content remains denied.
+4. Anonymous sessions **without** inactivity evidence continue the existing OIDC
+   initiation redirect (`userId`-less without recovery signal).
 
 ## Running-app confirm / read interface (E2 / X2)
 
@@ -48,10 +53,16 @@ rules.
 
 | Response (minimal)                          | Meaning                                                                                          |
 | ------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| Authenticated access still valid            | Continue; includes `idleExpiresAt` for timers                                                    |
-| Access ended; cause `inactivity`            | Confirmed inactivity; includes opaque `sessionEndGeneration`; proceed to clear + Modal           |
-| Access ended; cause absent / not inactivity | Different recovery path; no inactivity claim                                                     |
+| Authenticated access still valid            | Continue; includes cookie-bound `sessionId`, `idleExpiresAt`, and `expiresAt` for timers         |
+| Access ended; cause `inactivity`            | Confirmed inactivity; includes opaque `sessionEndGeneration` + cookie-bound `sessionId`          |
+| Access ended; cause absent / not inactivity | Different recovery path; no inactivity claim; includes cookie-bound `sessionId` when resolvable  |
+| Session mismatch vs mounted id              | See handshake below—clear protected UI before accepting new context                              |
 | Transport / 5xx / store unavailable         | See failure stance below—not proof of idle                                                       |
+
+Confirm/read is cookie-bound (`pathable-session` is HttpOnly). Every successful response
+MUST include the **current cookie-bound `sessionId`** (or an explicit
+`mismatch: true` when the client supplies its mounted `sessionId` and it differs from the
+cookie). Clients MUST NOT attempt to read the cookie locally for the handshake.
 
 When access has ended for inactivity, the minimal confirm/read response (and the SSR
 recovery shell props) MUST include **`sessionEndGeneration`** (opaque handle). Sibling tabs
@@ -168,14 +179,14 @@ No advance-warning, countdown, or “extend session” control in this slice.
    shared HttpOnly cookie, rotating it in one tab updates the cookie for all siblings—the
    pre-rotation Redis key is **no longer addressable** via cookie-bound confirm/read.
    Therefore every mounted authenticated document **MUST** run a **session-mismatch
-   handshake**: compare the rendered/mounted `sessionId` (and any held
-   `sessionEndGeneration`) against the current cookie + confirm/read result; on mismatch
-   or ended inactivity for the mounted sid, clear protected UI and show recovery (or
-   generic unavailable) before accepting a new authenticated context. An optional
-   tombstone on the old Redis key MAY remain for audit until `expiresAt`, but it is **not**
-   a sufficient sibling-recovery path by itself. A sibling that missed BroadcastChannel
-   MUST NOT resume with the new cookie while still showing old protected content without
-   recovery.
+   handshake** via confirm/read: pass the rendered/mounted `sessionId` (and any held
+   `sessionEndGeneration`); the server returns the cookie-bound `sessionId` and/or an
+   explicit `mismatch` bit. On mismatch or ended inactivity for the mounted sid, clear
+   protected UI and show recovery (or generic unavailable) before accepting a new
+   authenticated context. An optional tombstone on the old Redis key MAY remain for audit
+   until `expiresAt`, but it is **not** a sufficient sibling-recovery path by itself. A
+   sibling that missed BroadcastChannel MUST NOT resume with the new cookie while still
+   showing old protected content without recovery.
 5. Success establishes a **new** authenticated session with **current** tenant idle policy.
 6. There are **no** draft keys in this slice to restore; login-again MUST NOT revive
    cleared protected UI state from the expired experience.
