@@ -104,12 +104,7 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   )
   if (origin === undefined) {
     logOutcome("login-unavailable")
-    const unavailable = NextResponse.redirect(
-      new URL(LOGIN_UNAVAILABLE_PATH, request.nextUrl.origin),
-      303
-    )
-    unavailable.headers.set("Cache-Control", CACHE_CONTROL)
-    return unavailable
+    return loginUnavailableRedirect(303)
   }
 
   let initiation
@@ -159,12 +154,7 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   }
 
   logOutcome("login-unavailable")
-  const unavailable = NextResponse.redirect(
-    new URL(LOGIN_UNAVAILABLE_PATH, request.nextUrl.origin),
-    302
-  )
-  unavailable.headers.set("Cache-Control", CACHE_CONTROL)
-  return unavailable
+  return loginUnavailableRedirect(302)
 }
 
 export const config = {
@@ -296,11 +286,7 @@ async function handleAuthCallback(
   }
 
   logOutcome("login-unavailable-callback")
-  const unavailable = NextResponse.redirect(
-    new URL(LOGIN_UNAVAILABLE_PATH, request.nextUrl.origin),
-    303
-  )
-  unavailable.headers.set("Cache-Control", CACHE_CONTROL)
+  const unavailable = loginUnavailableRedirect(303)
   clearOidcCookie(unavailable)
   return unavailable
 }
@@ -315,6 +301,17 @@ function loadProxyConfig() {
 
     throw error
   }
+}
+
+/** Relative Location avoids constructing an absolute URL from an untrusted Host. */
+function loginUnavailableRedirect(status: 302 | 303): NextResponse {
+  return new NextResponse(null, {
+    headers: {
+      "Cache-Control": CACHE_CONTROL,
+      Location: LOGIN_UNAVAILABLE_PATH
+    },
+    status
+  })
 }
 
 function logOutcome(outcomeClass: string): void {
