@@ -290,13 +290,13 @@ async function writeAuthenticatedSession(input: {
       return false
     }
 
-    await input.sessionStore.update(input.tx.sessionId, {
+    const updated = await input.sessionStore.update(input.tx.sessionId, {
       expiresAt: existing.record.expiresAt,
       tenantId: existing.record.tenantId,
       userId: input.userId,
       userName: input.userName
     })
-    return true
+    return updated.kind === "updated"
   } catch (error) {
     if (error instanceof SessionStoreError) {
       return false

@@ -272,7 +272,7 @@ describe("RedisSessionStore", () => {
       })
     })
 
-    it("updates records with SET EXAT overwrite (no NX)", async () => {
+    it("updates existing records with SET XX EXAT and reports missing when absent", async () => {
       const setMock = vi.fn().mockResolvedValue("OK")
       const clientFactory = vi.fn(() => ({
         connect: vi.fn().mockResolvedValue(undefined),
@@ -292,11 +292,15 @@ describe("RedisSessionStore", () => {
 
       await expect(store.update(id, record)).resolves.toEqual({ kind: "updated" })
       expect(setMock).toHaveBeenCalledWith(`${KEY_PREFIX}${id}`, serializeSessionRecord(record), {
+        condition: "XX",
         expiration: {
           type: "EXAT",
           value: record.expiresAt
         }
       })
+
+      setMock.mockResolvedValueOnce(null)
+      await expect(store.update(id, record)).resolves.toEqual({ kind: "missing" })
     })
 
     it("reports collision when SET NX returns null", async () => {
