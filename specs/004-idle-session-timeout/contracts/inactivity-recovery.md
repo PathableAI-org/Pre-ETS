@@ -38,12 +38,25 @@ While authenticated UI is mounted, revalidation asks the server via a minimal
 authenticated confirm/read (name indicative: `confirmSessionAccess` / session status
 read). Same-tenant session cookie only (`pathable-session` host-bound).
 
-| Response (minimal)                          | Meaning                                        |
-| ------------------------------------------- | ---------------------------------------------- |
-| Authenticated access still valid            | Continue; includes `idleExpiresAt` for timers  |
-| Access ended; cause `inactivity`            | Confirmed inactivity; proceed to clear + Modal |
-| Access ended; cause absent / not inactivity | Different recovery path; no inactivity claim   |
-| Transport / 5xx / store unavailable         | See failure stance below—not proof of idle     |
+**Transport / CSRF (required)**: Prefer a Server Action (framework CSRF). If a Route
+Handler is used, it MUST be **POST-only** and MUST validate same-origin `Origin` (or
+equivalent CSRF) before any Redis mutation (clearance, latch assign/consume). Cookie
+`SameSite=Lax` alone is **not** sufficient—reject GET and cross-site requests for the
+mutating confirm path. Any GET status probe MUST be **read-only** (no clearance, no latch
+consume). Mirror [idle-expiration.md](./idle-expiration.md) activity-renewal transport
+rules.
+
+| Response (minimal)                          | Meaning                                                                                          |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| Authenticated access still valid            | Continue; includes `idleExpiresAt` for timers                                                    |
+| Access ended; cause `inactivity`            | Confirmed inactivity; includes opaque `sessionEndGeneration`; proceed to clear + Modal           |
+| Access ended; cause absent / not inactivity | Different recovery path; no inactivity claim                                                     |
+| Transport / 5xx / store unavailable         | See failure stance below—not proof of idle                                                       |
+
+When access has ended for inactivity, the minimal confirm/read response (and the SSR
+recovery shell props) MUST include **`sessionEndGeneration`** (opaque handle). Sibling tabs
+and missed-BroadcastChannel recovery validate against this generation when re-querying—do
+**not** infer it from authenticated `SessionContext` (which omits the latch).
 
 **Deadline source for client timers**: Prefer `idleExpiresAt` on the forwarded
 authenticated `SessionContext` (see [data-model.md](../data-model.md)). Confirm/read
@@ -55,8 +68,7 @@ cause before siblings can recover:
 
 1. On first successful server confirmation of inactivity for a session end, assign (or
    retain) a monotonic **`sessionEndGeneration`** on the anonymous record and treat that
-   generation as a **replayable latch** for a short retention window (or until login-again
-   rotates the cookie).
+   generation as a **replayable latch** for a short retention window.
 2. Broadcast `inactivity-confirmed` **with that generation** to same-origin siblings.
 3. Clearing the string field `accessEndedCause` after the first recovery UI read is
    allowed **only if** the generation latch remains queryable so a sibling (or a tab
@@ -80,15 +92,17 @@ The server remains sole authority for `idleExpiresAt`; revalidation MUST NEVER g
 access past that deadline. This path covers expiry **while the application is running**
 (recovery Gherkin)—not only after a later full navigation.
 
-### Revalidation transport / 5xx (P2 / E3)
+### Revalidation transport / 5xx
 
 On confirm/read transport failure or 5xx:
 
 - Retry without claiming inactivity
 - Do **not** treat failure as proof of idle
-- Brief still-visible protected UI until a successful confirmation is an **accepted**
-  stance for this slice (ops remain denied server-side; do not fail-toward-clear without
-  cause)
+- **Fail closed for visible protected content**: immediately lock/clear protected UI in the
+  client shell and show a generic authorization-unavailable state (no inactivity claim,
+  no “session ended due to inactivity” copy) until a successful confirm/read or safe
+  navigation. Server-side denial alone is insufficient when protected content may remain
+  visible in the already-rendered UI.
 
 ## Multi-tab shared-session recovery (P1 / E1 / X1)
 
@@ -125,20 +139,29 @@ No advance-warning, countdown, or “extend session” control in this slice.
 
 ## Login again
 
-1. Activating “Log in again” starts the **originating tenant’s** existing OIDC initiation
-   journey (same host-bound broker configuration).
-2. **Session-id rotation (required)**: Before (or as part of) initiation, mint a **new**
-   `sessionId` and set a new host-bound `pathable-session` cookie. Do **not** pass the
-   post-clearance anonymous `sid` into the OIDC transaction as the authentication target.
-   The OIDC callback MUST write authenticated fields only to the **new** Redis key.
-   Abandon / expire the old post-clearance record so `accessEndedCause`, drafts, and the
-   session-end latch are **not** carried into the new authenticated session.
-3. Success establishes a **new** authenticated session with **current** tenant idle policy.
-4. Cleared temporary data MUST NOT be restored.
-5. An existing identity-provider sign-in MAY complete application login without a fresh
+1. Activating “Log in again” MUST invoke a **dedicated same-origin** Server Action or
+   POST route (indicative: `/auth/login-again`)—**not** a bare document navigation to `/`.
+   Revisiting `/` while the cookie still points at an inactivity latch would re-enter the
+   SSR recovery shell instead of starting OIDC.
+2. That action **rotates session id first**: mint a **new** `sessionId`, set a new
+   host-bound `pathable-session` cookie, then start the originating tenant’s existing OIDC
+   initiation (same host-bound broker configuration) with the **new** `sid` as the
+   transaction target. Do **not** pass the post-clearance anonymous `sid` into the OIDC
+   transaction. The callback MUST write authenticated fields only to the **new** Redis key
+   so `accessEndedCause` / drafts are **not** carried into the new authenticated session.
+3. **Old-session tombstone (multi-tab)**: Retain the pre-rotation Redis key as an
+   anonymous tombstone (cause and/or `sessionEndGeneration`) for a short recovery window
+   after cookie rotation, **or** require each mounted document to run a
+   session-mismatch handshake (rendered generation vs current cookie/`confirm`) that
+   clears protected UI before accepting a new authenticated context. A sibling that missed
+   BroadcastChannel MUST NOT resume with the new cookie while still showing old protected
+   content without recovery.
+4. Success establishes a **new** authenticated session with **current** tenant idle policy.
+5. Cleared temporary data MUST NOT be restored.
+6. An existing identity-provider sign-in MAY complete application login without a fresh
    credentials challenge; it still MUST NOT revive the expired application session
    (no in-place upgrade of the pre-recovery `sid`).
-6. Cancel or failure → expired access remains unusable; understandable retry remains available
+7. Cancel or failure → expired access remains unusable; understandable retry remains available
    (`login-unavailable` and/or return to recovery UI).
 
 ## Temporary vs durable data

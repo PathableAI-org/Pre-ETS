@@ -76,7 +76,10 @@ Gherkin already exists under `features/idle-session-*.feature` and
 OIDC (`CUCUMBER_IDLE=1` / `pnpm test:bdd:idle`) so default CI does not fail on pending stubs.
 
 ```sh
-pnpm test:bdd:dry   # after idle features are registered in cucumber.mjs
+CUCUMBER_IDLE=1 pnpm test:bdd:dry
+# or, once wired: pnpm test:bdd:idle -- --dry-run
+# Bare `pnpm test:bdd:dry` only enables session+OIDC partitions today—do not treat it as
+# idle discovery until cucumber.mjs / package.json include CUCUMBER_IDLE=1.
 ```
 
 ## Expected outcomes (smoke)

@@ -232,10 +232,12 @@ introspection (violates ownership).
 - Modal: accessible name/explanation that inactivity ended the session and a
   button **“Log in again”**. Copy MAY acknowledge that unsaved work was lost
   (no advance-warning / extend UI).
-- “Log in again” **rotates** to a new `sessionId` + cookie, then starts the existing
-  tenant OIDC initiation journey; callback MUST NOT authenticate into the
-  pre-recovery `sid`. Cancel/fail leaves access unusable with retry path
-  (`/login-unavailable` or re-shown modal as appropriate).
+- “Log in again” invokes a **dedicated same-origin** action that **rotates** to a new
+  `sessionId` + cookie, then starts the existing tenant OIDC initiation journey; callback
+  MUST NOT authenticate into the pre-recovery `sid`. Retain a short-lived old-sid
+  tombstone (or require session-mismatch handshake) so a suspended sibling is not stranded.
+  Cancel/fail leaves access unusable with retry path (`/login-unavailable` or re-shown
+  modal as appropriate).
 - Before enabling further interaction after resume from sleep/offline, remove
   protected content from the active experience and clear temporary session
   draft fields from Redis; durable backend records untouched.

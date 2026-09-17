@@ -105,22 +105,28 @@ When idle deadline is reached or detected:
 ## Session confirm / read (running-app)
 
 Authenticated same-tenant session cookie only. Returns whether access is still
-authenticated vs ended, and whether cause is `inactivity` when applicable. While still
-authenticated, the response (or forwarded `SessionContext`) MUST expose `idleExpiresAt`
-so the client can schedule deadline-aligned revalidation—see
+authenticated vs ended, and whether cause is `inactivity` when applicable (including
+opaque `sessionEndGeneration` when ended for inactivity). While still authenticated, the
+response (or forwarded `SessionContext`) MUST expose `idleExpiresAt` so the client can
+schedule deadline-aligned revalidation—see
 [inactivity-recovery.md](./inactivity-recovery.md) and [data-model.md](../data-model.md).
 Consume of `accessEndedCause` follows the session-end latch rules (not a public
 diagnostic dump of session internals).
 
+**Transport**: Mutating confirm (clearance / latch assign/consume) MUST use the same
+Server Action or POST + same-origin CSRF rules as activity renewal above. GET probes MUST
+be non-mutating.
+
 ## HTTP / outcome classes (indicative)
 
-| Condition                               | Authenticated access | Cause label                    |
-| --------------------------------------- | -------------------- | ------------------------------ |
-| `now < idleExpiresAt` and authenticated | Allowed              | n/a                            |
-| `now >= idleExpiresAt`                  | Denied               | `inactivity`                   |
-| Missing session                         | Denied               | not inactivity                 |
-| Store timeout / 503                     | Denied               | not inactivity                 |
-| Anonymous replacement after idle        | Denied for protected | `inactivity` if cause retained |
+| Condition                                                          | Authenticated access | Cause label                                                      |
+| ------------------------------------------------------------------ | -------------------- | ---------------------------------------------------------------- |
+| Authenticated; `now < idleExpiresAt` and `now < expiresAt`         | Allowed              | n/a                                                              |
+| `now >= idleExpiresAt` and `now < expiresAt`                       | Denied               | `inactivity`                                                     |
+| `now >= expiresAt` (absolute binds first or alone)                 | Denied               | **not** inactivity unless idle evidence also established         |
+| Missing session                                                    | Denied               | not inactivity                                                   |
+| Store timeout / 503                                                | Denied               | not inactivity                                                   |
+| Anonymous replacement after idle                                   | Denied for protected | `inactivity` if cause/latch retained                             |
 
 Exact status codes for document vs non-document follow existing Proxy patterns (SSR recovery
 UI vs `401`/`403` as applicable); contract tests care about **authorization outcome** and

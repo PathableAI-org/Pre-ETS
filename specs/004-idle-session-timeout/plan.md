@@ -54,10 +54,13 @@ revalidation using forwarded `idleExpiresAt` (deadline-aligned and/or
 `visibilitychange`/`focus`); Proxy MUST offer a cause-bearing SSR recovery route before
 generic OIDC redirect; session-end generation latch + BroadcastChannel
 `inactivity-confirmed` so siblings are not stranded after string-cause consume; login-again
-MUST rotate `sessionId`/cookie (no in-place upgrade of expired sid); POST-only + CSRF for
-route-handler heartbeats; no advance warning/extend; no new admin UI; secrets/credentials
-never in fixtures; update `docs/session-state.md` / `docs/multi-tenancy.md` when behavior
-ships.
+MUST use a dedicated same-origin action that rotates `sessionId`/cookie (no bare `/`, no
+in-place upgrade of expired sid); POST-only + CSRF for mutating confirm and heartbeats;
+confirm/5xx MUST fail closed for visible protected UI (generic unavailable, not inactivity);
+protected server accessors MUST NOT trust forwarded context without a Redis/idle guard
+re-read; no advance warning/extend; no new admin UI; secrets/credentials never in fixtures;
+update `docs/session-state.md`, `docs/multi-tenancy.md`, and `docs/authentication.md` when
+behavior ships.
 
 **Scale/Scope**: Authenticated session idle lifecycle for participating app routes; optional
 tenant policy field; recovery modal + login-again. Out of scope: HIPAA certification, general
@@ -120,26 +123,34 @@ packages/frontend/
 ├── src/lib/session/store.ts             # atomic conditional update/clear (CAS) helpers
 ├── src/lib/session/setup.ts             # enforce idle on reuse/authenticated paths; legacy reauth
 ├── src/lib/session/idle.ts              # deadline helpers / end-for-inactivity (indicative)
-├── src/lib/oidc/initiate.ts             # login-again: mint new sessionId + cookie before OIDC
+├── src/lib/session/guard.ts             # centralized protected-op check (Redis + idle/absolute)
+├── src/lib/session/index.ts             # getRequestSession → guard-backed for protected SSR/handlers
+├── src/lib/oidc/initiate.ts             # login-again action: mint new sessionId + cookie before OIDC
 ├── src/lib/oidc/callback.ts             # stamp idle fields on **new** sid only
 ├── src/proxy.ts                         # idle gate; cause-bearing recovery forward vs OIDC
 ├── src/app/(app)/…                      # recovery presentation wiring
+├── src/app/… or route/action            # dedicated same-origin login-again (not bare `/`)
 ├── src/components/…                     # client island: activity + revalidation + Modal (+ tab sync)
 └── tests/unit/                          # policy, idle math, activity CAS, context parsers, cause/latch
 docs/session-state.md
 docs/multi-tenancy.md
-cucumber.mjs / package.json              # idle BDD partition when steps wired
+docs/authentication.md                   # initiation/callback target new sid after rotation
+cucumber.mjs / package.json              # CUCUMBER_IDLE=1 + test:bdd:idle (parallel to oidc)
 features/*.feature                       # already drafted; wire steps in tasks
 tests/bdd/steps/                         # idle step defs (tasks phase)
 ```
 
 **Structure Decision**: Keep idle timeout inside the frontend session and tenant owners beside
 OIDC. Client island owns activity capture, **required** non-authoritative deadline
-revalidation (while authenticated UI is mounted), multi-tab UI sync, and PathAble Modal;
-Proxy/setup remain the authoritative gate and sole source of `idleExpiresAt`. Authenticated
-`SessionRecord` **and** `SessionContext` parsers MUST expand key-count allowlists for idle
-fields (`idleExpiresAt` on context at minimum) with unit coverage; store updates MUST be
-atomic vs clearance; login-again MUST rotate session id. See
+revalidation (while authenticated UI is mounted), multi-tab UI sync, and PathAble Modal.
+Proxy/setup are the **primary** request gate, but any server path that treats `userId` as
+authenticated (SSR via `getRequestSession`, Server Actions, Route Handlers outside the
+Proxy matcher) MUST call a centralized protected-op **guard** that re-reads Redis and
+enforces `now < idleExpiresAt` and `now < expiresAt` with tenant bind—fail closed; do not
+trust forwarded context alone after idle expiry. Authenticated `SessionRecord` **and**
+`SessionContext` parsers MUST expand key-count allowlists for idle fields (`idleExpiresAt`
+on context at minimum) with unit coverage; store updates MUST be atomic vs clearance;
+login-again MUST rotate session id via a dedicated action. See
 [data-model.md](./data-model.md). Backend package unchanged.
 
 ## Complexity Tracking

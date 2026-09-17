@@ -47,7 +47,7 @@ this slice.
 | `tenantId`              | string                    | Canonical slug                                                                                                                                                            |
 | `expiresAt`             | number                    | Absolute Unix seconds; Redis `EXAT` align                                                                                                                                 |
 | `accessEndedCause`      | `"inactivity"` \| omitted | Set only after confirmed idle clearance; may be cleared after first recovery UI read                                                                                      |
-| `sessionEndGeneration`  | number \| omitted         | Monotonic latch for this session end; retained for a short window (or until cookie rotation) so siblings / missed BroadcastChannel can still confirm inactivity           |
+| `sessionEndGeneration`  | number \| omitted         | Monotonic latch for this session end; retained for a short window (including as a post-rotation tombstone when a sibling may still hold the old UI) so missed BroadcastChannel tabs can confirm inactivity |
 
 ### Authenticated `SessionRecord` (extended)
 
@@ -111,6 +111,14 @@ with a fresh anonymous tenant session). Do **not** silently invent idle fields f
 clock without an explicit product decision to soft-upgrade. Cover with a unit/contract case
 so rollout does not strand users in a parse-fail loop without a defined path.
 
+**Rollback / drain**: Expanding the authenticated allowlist is a one-way Redis shape change.
+A rollback that only disables the client island (or omits idle fields from new writes) will
+treat post-deploy idle-shaped records as missing under the legacy four-key parser. Before
+relying on forced-reauth rollout, define either: (a) dual-read of legacy + idle shapes for a
+drain window, (b) an explicit non-rollback with wait-for-TTL drain of idle-shaped keys, or
+(c) a feature-flagged parser that accepts both shapes until Redis keys expire. Document the
+chosen procedure in implementation tasks.
+
 Invariants:
 
 - `idleExpiresAt <= expiresAt` is not required if absolute TTL is long; both deadlines bind
@@ -142,9 +150,13 @@ re-read a still-present string cause after the first tab consumed it.
 
 ## Temporary session data
 
-Any frontend-owned draft / unsaved work fields on the session (present or future) are cleared
-when authenticated access ends for inactivity. Durable backend/business records are not session
-fields and remain intact. This slice does not introduce a general autosave schema.
+**This slice**: the current authenticated `SessionRecord` has **no** draft / unsaved-work
+keys (`types.ts` today is identity + absolute expiry only, plus the idle fields above).
+Acceptance for FR-007 / recovery copy that mentions unsaved work is scoped to:
+(1) **non-restoration**—login-again MUST NOT revive cleared UI state; (2) when draft keys
+are later added to the session record, list them here and clear them atomically in the
+idle-clearance CAS transition. Do not invent a draft schema for 004. Durable
+backend/business records are not session fields and remain intact.
 
 ## State transitions
 
