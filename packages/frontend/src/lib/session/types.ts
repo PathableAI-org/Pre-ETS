@@ -8,8 +8,17 @@ export const SESSION_ID_BYTE_LENGTH = 32
 export const SESSION_ID_LENGTH = 43
 export const NODE_TIMER_MAX_MS = 2_147_483_647
 export const SESSION_CONTEXT_HEADER = "x-pathable-session-context"
+export const SESSION_END_GENERATION_HEADER = "x-pathable-session-end-generation"
 export const TENANT_SLUG_HEADER = "x-preets-tenant-slug"
 export const TENANT_ORIGIN_HEADER = "x-preets-tenant-origin"
+
+export type AccessEndedCause = "inactivity"
+
+/** Dual-read parse result; `legacyAuthenticated` is true for four-key authenticated JSON. */
+export interface ParsedSessionRecord {
+  readonly legacyAuthenticated: boolean
+  readonly record: SessionRecord
+}
 
 export interface SessionConfig {
   readonly keyPrefix: string
@@ -21,6 +30,8 @@ export interface SessionConfig {
 
 export interface SessionContext {
   readonly expiresAt: number
+  /** Required when authenticated; idle half of deadline-aligned revalidation. */
+  readonly idleExpiresAt?: number
   readonly sessionId: string
   readonly tenantId: string
   readonly userId?: string
@@ -36,7 +47,15 @@ export interface SessionCookieClaims {
 export type SessionOutcomeClass = "403" | "500" | "503" | "create" | "reuse"
 
 export interface SessionRecord {
+  /** Anonymous only: set after confirmed idle clearance. */
+  readonly accessEndedCause?: AccessEndedCause
   readonly expiresAt: number
+  /** Fixed at authentication from tenant effective policy; integer 5–30. */
+  readonly idleDurationMinutes?: number
+  readonly idleExpiresAt?: number
+  readonly lastActivityAt?: number
+  /** Anonymous only: monotonic latch for this session end. */
+  readonly sessionEndGeneration?: number
   readonly tenantId: string
   readonly userId?: string
   readonly userName?: string
@@ -153,6 +172,9 @@ export function parseSessionConfig(env: NodeJS.ProcessEnv | Record<string, strin
   }
 }
 
+const MIN_IDLE_DURATION_MINUTES = 5
+const MAX_IDLE_DURATION_MINUTES = 30
+
 // fallow-ignore-next-line complexity -- exact-shape context parser; optional auth fields
 export function parseSessionContextJson(raw: string): SessionContext | undefined {
   let parsed: unknown
@@ -170,7 +192,8 @@ export function parseSessionContextJson(raw: string): SessionContext | undefined
   const keys = Object.keys(value)
   const hasAuth = "userId" in value || "userName" in value
   if (hasAuth) {
-    if (keys.length !== 5) {
+    // Authenticated: sessionId, tenantId, expiresAt, userId, userName, idleExpiresAt
+    if (keys.length !== 6) {
       return undefined
     }
   } else if (keys.length !== 3) {
@@ -205,8 +228,13 @@ export function parseSessionContextJson(raw: string): SessionContext | undefined
     return undefined
   }
 
+  if (!isSafeUnixSeconds(value.idleExpiresAt)) {
+    return undefined
+  }
+
   return {
     expiresAt: value.expiresAt,
+    idleExpiresAt: value.idleExpiresAt,
     sessionId: value.sessionId,
     tenantId: value.tenantId,
     userId: value.userId,
@@ -214,52 +242,41 @@ export function parseSessionContextJson(raw: string): SessionContext | undefined
   }
 }
 
-// fallow-ignore-next-line complexity -- exact-shape record parser; optional auth fields
+/** Parse a session record, stripping the dual-read discriminant. */
 export function parseSessionRecord(value: unknown): SessionRecord | undefined {
+  return parseSessionRecordDetailed(value)?.record
+}
+
+/**
+ * Dual-read authenticated + anonymous session record parser.
+ * Legacy four-key authenticated JSON yields `legacyAuthenticated: true`.
+ */
+// fallow-ignore-next-line complexity -- exact-shape record parser; dual-read + optional cause/latch
+export function parseSessionRecordDetailed(value: unknown): ParsedSessionRecord | undefined {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     return undefined
   }
 
-  const record = value as Record<string, unknown>
-  const keys = Object.keys(record)
-  const hasAuth = "userId" in record || "userName" in record
+  const raw = value as Record<string, unknown>
+  const keys = Object.keys(raw)
+  if (!("tenantId" in raw) || !("expiresAt" in raw)) {
+    return undefined
+  }
+
+  if (typeof raw.tenantId !== "string" || raw.tenantId.trim() === "") {
+    return undefined
+  }
+
+  if (!isSafeUnixSeconds(raw.expiresAt) || !isDateRepresentableUnixSeconds(raw.expiresAt)) {
+    return undefined
+  }
+
+  const hasAuth = "userId" in raw || "userName" in raw
   if (hasAuth) {
-    if (keys.length !== 4 || !("tenantId" in record) || !("expiresAt" in record)) {
-      return undefined
-    }
-  } else if (keys.length !== 2 || !("tenantId" in record) || !("expiresAt" in record)) {
-    return undefined
+    return parseAuthenticatedSessionRecord(raw, keys)
   }
 
-  if (typeof record.tenantId !== "string" || record.tenantId.trim() === "") {
-    return undefined
-  }
-
-  if (!isSafeUnixSeconds(record.expiresAt) || !isDateRepresentableUnixSeconds(record.expiresAt)) {
-    return undefined
-  }
-
-  if (!hasAuth) {
-    return {
-      expiresAt: record.expiresAt,
-      tenantId: record.tenantId
-    }
-  }
-
-  if (typeof record.userId !== "string" || record.userId.trim() === "") {
-    return undefined
-  }
-
-  if (typeof record.userName !== "string" || record.userName.trim() === "") {
-    return undefined
-  }
-
-  return {
-    expiresAt: record.expiresAt,
-    tenantId: record.tenantId,
-    userId: record.userId,
-    userName: record.userName
-  }
+  return parseAnonymousSessionRecord(raw, keys)
 }
 
 export function parseSigningSecret(raw: string): Uint8Array {
@@ -288,6 +305,17 @@ export function resetSessionConfigCacheForTests(): void {
 
 export function serializeSessionContext(context: SessionContext): string {
   if (context.userId !== undefined && context.userName !== undefined) {
+    if (context.idleExpiresAt !== undefined) {
+      return JSON.stringify({
+        expiresAt: context.expiresAt,
+        idleExpiresAt: context.idleExpiresAt,
+        sessionId: context.sessionId,
+        tenantId: context.tenantId,
+        userId: context.userId,
+        userName: context.userName
+      })
+    }
+
     return JSON.stringify({
       expiresAt: context.expiresAt,
       sessionId: context.sessionId,
@@ -306,6 +334,22 @@ export function serializeSessionContext(context: SessionContext): string {
 
 export function serializeSessionRecord(record: SessionRecord): string {
   if (record.userId !== undefined && record.userName !== undefined) {
+    if (
+      record.idleDurationMinutes !== undefined
+      && record.lastActivityAt !== undefined
+      && record.idleExpiresAt !== undefined
+    ) {
+      return JSON.stringify({
+        expiresAt: record.expiresAt,
+        idleDurationMinutes: record.idleDurationMinutes,
+        idleExpiresAt: record.idleExpiresAt,
+        lastActivityAt: record.lastActivityAt,
+        tenantId: record.tenantId,
+        userId: record.userId,
+        userName: record.userName
+      })
+    }
+
     return JSON.stringify({
       expiresAt: record.expiresAt,
       tenantId: record.tenantId,
@@ -314,7 +358,23 @@ export function serializeSessionRecord(record: SessionRecord): string {
     })
   }
 
-  return JSON.stringify({ expiresAt: record.expiresAt, tenantId: record.tenantId })
+  const anonymous: {
+    accessEndedCause?: AccessEndedCause
+    expiresAt: number
+    sessionEndGeneration?: number
+    tenantId: string
+  } = {
+    expiresAt: record.expiresAt,
+    tenantId: record.tenantId
+  }
+  if (record.accessEndedCause !== undefined) {
+    anonymous.accessEndedCause = record.accessEndedCause
+  }
+  if (record.sessionEndGeneration !== undefined) {
+    anonymous.sessionEndGeneration = record.sessionEndGeneration
+  }
+
+  return JSON.stringify(anonymous)
 }
 
 /** Build request-forwarded session context from a store record. */
@@ -323,13 +383,24 @@ export function sessionContextFromRecord(
   record: SessionRecord
 ): SessionContext {
   if (record.userId !== undefined && record.userName !== undefined) {
-    return {
+    const context: {
+      expiresAt: number
+      idleExpiresAt?: number
+      sessionId: string
+      tenantId: string
+      userId: string
+      userName: string
+    } = {
       expiresAt: record.expiresAt,
       sessionId,
       tenantId: record.tenantId,
       userId: record.userId,
       userName: record.userName
     }
+    if (record.idleExpiresAt !== undefined) {
+      context.idleExpiresAt = record.idleExpiresAt
+    }
+    return context
   }
 
   return {
@@ -378,6 +449,10 @@ function hasRedisAuth(url: URL): boolean {
   return url.password !== ""
 }
 
+function isAccessEndedCause(value: unknown): value is AccessEndedCause {
+  return value === "inactivity"
+}
+
 function isDateRepresentableUnixSeconds(value: number): boolean {
   if (!Number.isSafeInteger(value) || value <= 0) {
     return false
@@ -390,6 +465,125 @@ function isDateRepresentableUnixSeconds(value: number): boolean {
 
   const date = new Date(millis)
   return !Number.isNaN(date.getTime()) && Math.floor(date.getTime() / 1000) === value
+}
+
+function isIdleDurationMinutes(value: unknown): value is number {
+  return typeof value === "number"
+    && Number.isSafeInteger(value)
+    && value >= MIN_IDLE_DURATION_MINUTES
+    && value <= MAX_IDLE_DURATION_MINUTES
+}
+
+function isSessionEndGeneration(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0
+}
+
+// fallow-ignore-next-line complexity -- anonymous allowlist: base, +cause, +latch, or both
+function parseAnonymousSessionRecord(
+  raw: Record<string, unknown>,
+  keys: readonly string[]
+): ParsedSessionRecord | undefined {
+  if (keys.length < 2 || keys.length > 4) {
+    return undefined
+  }
+
+  const hasCause = "accessEndedCause" in raw
+  const hasGeneration = "sessionEndGeneration" in raw
+  const expectedLength = 2 + (hasCause ? 1 : 0) + (hasGeneration ? 1 : 0)
+  if (keys.length !== expectedLength) {
+    return undefined
+  }
+
+  const record: {
+    accessEndedCause?: AccessEndedCause
+    expiresAt: number
+    sessionEndGeneration?: number
+    tenantId: string
+  } = {
+    expiresAt: raw.expiresAt as number,
+    tenantId: raw.tenantId as string
+  }
+
+  if (hasCause) {
+    if (!isAccessEndedCause(raw.accessEndedCause)) {
+      return undefined
+    }
+    record.accessEndedCause = raw.accessEndedCause
+  }
+
+  if (hasGeneration) {
+    if (!isSessionEndGeneration(raw.sessionEndGeneration)) {
+      return undefined
+    }
+    record.sessionEndGeneration = raw.sessionEndGeneration
+  }
+
+  return { legacyAuthenticated: false, record }
+}
+
+// fallow-ignore-next-line complexity -- exact-shape auth parser; legacy + idle field allowlists
+function parseAuthenticatedSessionRecord(
+  raw: Record<string, unknown>,
+  keys: readonly string[]
+): ParsedSessionRecord | undefined {
+  if (typeof raw.userId !== "string" || raw.userId.trim() === "") {
+    return undefined
+  }
+
+  if (typeof raw.userName !== "string" || raw.userName.trim() === "") {
+    return undefined
+  }
+
+  // Legacy four-key authenticated (pre-idle)
+  if (keys.length === 4) {
+    return {
+      legacyAuthenticated: true,
+      record: {
+        expiresAt: raw.expiresAt as number,
+        tenantId: raw.tenantId as string,
+        userId: raw.userId,
+        userName: raw.userName
+      }
+    }
+  }
+
+  // Idle-shaped: tenantId, expiresAt, userId, userName, idleDurationMinutes, lastActivityAt, idleExpiresAt
+  if (keys.length !== 7) {
+    return undefined
+  }
+
+  if (
+    !("idleDurationMinutes" in raw)
+    || !("lastActivityAt" in raw)
+    || !("idleExpiresAt" in raw)
+  ) {
+    return undefined
+  }
+
+  if (!isIdleDurationMinutes(raw.idleDurationMinutes)) {
+    return undefined
+  }
+
+  if (!isSafeUnixSeconds(raw.lastActivityAt) || !isDateRepresentableUnixSeconds(raw.lastActivityAt)) {
+    return undefined
+  }
+
+  if (!isSafeUnixSeconds(raw.idleExpiresAt) || !isDateRepresentableUnixSeconds(raw.idleExpiresAt)) {
+    return undefined
+  }
+
+  return {
+    legacyAuthenticated: false,
+    record: {
+      expiresAt: raw.expiresAt as number,
+      idleDurationMinutes: raw.idleDurationMinutes,
+      idleExpiresAt: raw.idleExpiresAt,
+      lastActivityAt: raw.lastActivityAt,
+      tenantId: raw.tenantId as string,
+      userId: raw.userId,
+      userName: raw.userName
+    }
+  }
 }
 
 function parsePositiveSafeInteger(

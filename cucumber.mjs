@@ -1,5 +1,6 @@
 const includeSession = process.env.CUCUMBER_SESSION === "1"
 const includeOidc = process.env.CUCUMBER_OIDC === "1"
+const includeIdle = process.env.CUCUMBER_IDLE === "1"
 
 const tenantFeatures = [
   "features/tenant-landing-page.feature",
@@ -19,6 +20,12 @@ const oidcFeatures = [
   "features/local-oidc-development.feature"
 ]
 
+const idleFeatures = [
+  "features/idle-session-expiration.feature",
+  "features/idle-session-recovery.feature",
+  "features/tenant-idle-timeout-policy.feature"
+]
+
 const imports = [
   "tests/bdd/support/world.ts",
   "tests/bdd/support/server.ts",
@@ -34,10 +41,15 @@ if (includeOidc) {
   imports.push("tests/bdd/steps/oidc.steps.ts")
 }
 
+if (includeIdle) {
+  imports.push("tests/bdd/steps/idle.steps.ts")
+}
+
 const paths = [
   ...tenantFeatures,
   ...(includeSession ? sessionFeatures : []),
-  ...(includeOidc ? oidcFeatures : [])
+  ...(includeOidc ? oidcFeatures : []),
+  ...(includeIdle ? idleFeatures : [])
 ]
 
 /** @type {Partial<import("@cucumber/cucumber").IConfiguration>} */

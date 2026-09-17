@@ -22,6 +22,7 @@ import {
   serializeSessionContext,
   SESSION_CONTEXT_HEADER,
   SESSION_COOKIE_NAME,
+  SESSION_END_GENERATION_HEADER,
   type SessionConfig,
   SessionConfigError,
   type SessionContext,
@@ -31,6 +32,7 @@ import {
 import { createEnvTenantOperations } from "./lib/tenant/operations.ts"
 
 const CACHE_CONTROL = "private, no-store"
+const INACTIVITY_RECOVERY_PATH = "/inactivity"
 const LOGIN_UNAVAILABLE_PATH = "/login-unavailable"
 
 let store: RedisSessionStore | undefined
@@ -84,6 +86,44 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
     return terminalResponse(result.status, result.message)
   }
 
+  if (result.kind === "inactivity-recovery") {
+    if (!isDocumentNavigation(request)) {
+      logOutcome("401-nondoc-recovery")
+      return new NextResponse(null, {
+        headers: { "Cache-Control": CACHE_CONTROL },
+        status: 401
+      })
+    }
+
+    // Branch to SSR recovery shell BEFORE generic OIDC initiation.
+    if (request.nextUrl.pathname !== INACTIVITY_RECOVERY_PATH) {
+      logOutcome("inactivity-recovery-redirect")
+      const url = request.nextUrl.clone()
+      url.pathname = INACTIVITY_RECOVERY_PATH
+      const response = NextResponse.redirect(url, 303)
+      response.headers.set("Cache-Control", CACHE_CONTROL)
+      return response
+    }
+
+    logOutcome("inactivity-recovery")
+    return recoveryReadyResponse(
+      requestHeaders,
+      result.context,
+      result.origin,
+      result.sessionEndGeneration
+    )
+  }
+
+  if (request.nextUrl.pathname === INACTIVITY_RECOVERY_PATH) {
+    // No consumable latch — restart normal entry instead of inventing inactivity UI.
+    logOutcome("recovery-without-latch")
+    const url = request.nextUrl.clone()
+    url.pathname = "/"
+    const response = NextResponse.redirect(url, 303)
+    response.headers.set("Cache-Control", CACHE_CONTROL)
+    return response
+  }
+
   if (result.context.userId !== undefined) {
     logOutcome(result.outcome === "reuse" ? "authenticated-reuse" : "authenticated-create")
     return readyResponse(requestHeaders, result.context, result.origin, result.cookieValue)
@@ -107,6 +147,9 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
     return loginUnavailableRedirect(303)
   }
 
+  const setupOutcome = result.outcome
+  const cookieValue = result.cookieValue
+
   let initiation
   try {
     initiation = await initiateLogin(
@@ -114,7 +157,7 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
         nowSeconds: Math.floor(Date.now() / 1000),
         origin,
         sessionId: result.context.sessionId,
-        setupOutcome: result.outcome,
+        setupOutcome,
         tenantId: result.context.tenantId,
         tenantRecord: {
           config: result.config,
@@ -131,11 +174,11 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   }
 
   if (initiation.kind === "redirect") {
-    logOutcome(result.outcome === "reuse" ? "reuse" : "redirect")
+    logOutcome(setupOutcome === "reuse" ? "reuse" : "redirect")
     const response = NextResponse.redirect(initiation.location, 302)
     response.headers.set("Cache-Control", CACHE_CONTROL)
     attachOidcCookie(response, initiation.expiresAt, initiation.oidcCookieValue)
-    const sessionCookie = sessionCookieForRedirect(result.outcome, result.cookieValue)
+    const sessionCookie = sessionCookieForRedirect(setupOutcome, cookieValue)
     if (sessionCookie !== undefined) {
       attachSessionCookie(response, result.context.expiresAt, sessionCookie)
     }
@@ -158,7 +201,7 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
 }
 
 export const config = {
-  matcher: ["/", "/auth/callback"]
+  matcher: ["/", "/inactivity", "/auth/callback"]
 }
 
 function attachOidcCookie(
@@ -333,11 +376,10 @@ async function mapTenantResolve(
   )
 }
 
-function readyResponse(
+function passthroughWithTenantHeaders(
   requestHeaders: Headers,
   context: SessionContext,
-  origin: "host-associated" | "local-static",
-  cookieValue: string | undefined
+  origin: "host-associated" | "local-static"
 ): NextResponse {
   requestHeaders.set(SESSION_CONTEXT_HEADER, serializeSessionContext(context))
   requestHeaders.set(TENANT_SLUG_HEADER, context.tenantId)
@@ -349,11 +391,30 @@ function readyResponse(
     }
   })
   response.headers.set("Cache-Control", CACHE_CONTROL)
+  return response
+}
+
+function readyResponse(
+  requestHeaders: Headers,
+  context: SessionContext,
+  origin: "host-associated" | "local-static",
+  cookieValue: string | undefined
+): NextResponse {
+  const response = passthroughWithTenantHeaders(requestHeaders, context, origin)
   if (cookieValue !== undefined) {
     attachSessionCookie(response, context.expiresAt, cookieValue)
   }
-
   return response
+}
+
+function recoveryReadyResponse(
+  requestHeaders: Headers,
+  context: SessionContext,
+  origin: "host-associated" | "local-static",
+  sessionEndGeneration: number
+): NextResponse {
+  requestHeaders.set(SESSION_END_GENERATION_HEADER, String(sessionEndGeneration))
+  return passthroughWithTenantHeaders(requestHeaders, context, origin)
 }
 
 function sessionDependencies(config: SessionConfig, txConfig: OidcTxConfig) {
@@ -369,6 +430,7 @@ function sessionDependencies(config: SessionConfig, txConfig: OidcTxConfig) {
 
 function stripReservedHeaders(headers: Headers): void {
   headers.delete(SESSION_CONTEXT_HEADER)
+  headers.delete(SESSION_END_GENERATION_HEADER)
   for (const name of [...headers.keys()]) {
     if (name.toLowerCase().startsWith("x-preets-tenant-")) {
       headers.delete(name)

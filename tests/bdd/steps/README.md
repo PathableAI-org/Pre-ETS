@@ -14,12 +14,13 @@ pnpm test:bdd:dry
 pnpm test:bdd
 pnpm test:bdd:session
 pnpm test:bdd:oidc
+pnpm test:bdd:idle
 ```
 
-`test:bdd:dry` sets `CUCUMBER_SESSION=1` and `CUCUMBER_OIDC=1` and discovers every scenario
-(tenant + session + OIDC) without executing steps. `test:bdd` runs only the tenant suite: the
-`@production` partition first, then `not @production`, writing distinct JSON reports under
-`reports/`. Session and OIDC stubs stay out of that default path.
+`test:bdd:dry` sets `CUCUMBER_SESSION=1`, `CUCUMBER_OIDC=1`, and `CUCUMBER_IDLE=1` and discovers
+every scenario (tenant + session + OIDC + idle) without executing steps. `test:bdd` runs only the
+tenant suite: the `@production` partition first, then `not @production`, writing distinct JSON
+reports under `reports/`. Session, OIDC, and idle stubs stay out of that default path.
 
 ## Bindings
 
@@ -43,7 +44,7 @@ pnpm test:bdd:session
 
 ## OIDC login scaffold
 
-`oidc.steps.ts` contains 139 parameterized TypeScript stubs for the OIDC feature files:
+`oidc.steps.ts` contains parameterized TypeScript stubs for the OIDC feature files:
 
 - `features/tenant-oidc-login.feature`
 - `features/tenant-oidc-configuration.feature`
@@ -60,13 +61,32 @@ from the repository root:
 pnpm test:bdd:oidc
 ```
 
+## Idle-session timeout scaffold
+
+`idle.steps.ts` contains 140 parameterized TypeScript stubs for the idle-timeout feature files:
+
+- `features/idle-session-expiration.feature`
+- `features/idle-session-recovery.feature`
+- `features/tenant-idle-timeout-policy.feature`
+
+Each stub throws a `Pending:` error; replace it with the required setup, interaction, or
+assertion one step at a time. Quoted values and outline placeholders use `{string}` parameters.
+Unused typed parameters are prefixed with `_` until implemented.
+
+`cucumber.mjs` loads idle features and stubs only when `CUCUMBER_IDLE=1`. Run the idle scaffold
+from the repository root:
+
+```sh
+pnpm test:bdd:idle
+```
+
 Use `pnpm test:bdd:dry` to check combined discovery and `pnpm test:bdd` for the tenant
-acceptance suite. Dry runs do not prove implementation; the OIDC suite must fail until its
+acceptance suite. Dry runs do not prove implementation; the idle suite must fail until its
 bindings and implementation are complete.
 
 ## What to implement
 
-All OIDC stubs raise `Pending:` errors. Replace each one with:
+All pending stubs raise `Pending:` errors. Replace each one with:
 
 1. Application interaction (HTTP call, UI action, database query, provider fixture)
 2. An assertion verifying the expected outcome

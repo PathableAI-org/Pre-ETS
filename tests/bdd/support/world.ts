@@ -6,6 +6,7 @@ import { setWorldConstructor, World } from "@cucumber/cucumber"
 import type { SetupSessionResult } from "../../../packages/frontend/src/lib/session/setup.ts"
 import type { SessionRecord } from "../../../packages/frontend/src/lib/session/types.ts"
 import type { ModeDiagnostic, TenantConfig } from "../../../packages/frontend/src/lib/tenant/types.ts"
+import type { IdleContractState, IdlePolicyState } from "./idle.ts"
 
 export type ApplicationRuntime = "development" | "production"
 
@@ -75,6 +76,8 @@ export class TenantWorld extends World {
   foreignSessionRecord: SessionRecord | undefined = undefined
   hostCondition: string | undefined = undefined
   httpResponse: HttpExchange | undefined = undefined
+  idleContract: IdleContractState | undefined = undefined
+  idlePolicy: IdlePolicyState | undefined = undefined
   invalidDisplayName: string | undefined = undefined
   knownHostResult: ContractResult | undefined = undefined
   lastVisitedUrl: string | undefined = undefined

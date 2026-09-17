@@ -92,4 +92,54 @@ When `userId` is present on the Redis record, Proxy short-circuits document
 navigations to `/`: it forwards session context (including `userName`) to SSR
 and does not re-initiate login. Downstream modules read identity through the
 server-only session accessor; they do not invent a second place to store the
-current user.
+current user. Authenticated SSR / Server Actions that treat `userId` as proof of
+access re-read Redis through the session guard—they do not trust the forwarded
+header alone.
+
+## Idle timeout rollout (Phase A → B → drain)
+
+Authenticated Redis records gain idle fields (`idleDurationMinutes`,
+`lastActivityAt`, `idleExpiresAt`) in a controlled rollout. Legacy **four-key**
+authenticated JSON (`tenantId`, `expiresAt`, `userId`, `userName`) may remain
+until absolute TTL expires.
+
+1. **Phase A — dual-read**: Parsers and `SessionStore.read` accept both legacy
+   four-key and idle-shaped authenticated JSON and expose `legacyAuthenticated`
+   for the four-key shape. `setupSession` reuse **rejects** legacy records
+   (force reauthentication / fresh anonymous). Idle-shaped authenticated writes
+   stay off (or gated default-off) until Phase A is proven.
+2. **Phase B — idle writes**: Enable idle-shaped authenticated writes and idle
+   enforcement (guard, activity renewal, clearance). Callback stamps
+   `idleDurationMinutes` / `lastActivityAt` / `idleExpiresAt` on the **new**
+   `sessionId` at authentication (omit tenant policy → effective **30** until
+   US3). Drain window remains open until at least one configured absolute TTL
+   elapses after Phase B starts.
+3. **Drain window**: Keep dual-read until at least one full **configured**
+   absolute TTL has elapsed after Phase B starts—base the window on
+   `SESSION_TTL_SECONDS` / `SessionConfig.ttlSeconds`, not
+   `DEFAULT_SESSION_TTL_SECONDS` alone. If ops lengthens TTL, extend the drain.
+4. **Rollback**: During the drain window, roll back only to a **Phase A
+   dual-read** build (idle write flag / client island may be disabled). Rolling
+   back to a **four-key-only** parser while idle-shaped keys remain is
+   **unsupported** and one-way-unsafe: those records parse as missing and force
+   reauth. After drain completes, an idle-only authenticated allowlist is
+   allowed. This slice has **no** Redis draft/unsaved-work keys.
+
+## Qualifying activity and recovery
+
+Authoritative idle and absolute deadlines live on the Redis record. The application
+clock is the only activity timestamp source; clients must not supply `at`. Qualifying
+client events require `event.isTrusted === true` (`keydown`, `pointerdown`,
+`touchstart`, trusted `wheel`)—not bare `scroll`, polling, or untrusted scripts.
+Renewal and idle clearance use a per-session idle lock plus compare-and-set with a
+post-apply re-check (deadline wins). Coalesce ~1s when `idleExpiresAt` is unchanged.
+
+Confirmed inactivity clears authenticated fields, sets
+`accessEndedCause: "inactivity"` and `sessionEndGeneration` (latch retained until the
+ended session’s absolute `expiresAt`). Proxy branches on setup
+`kind: "inactivity-recovery"` to the SSR recovery shell at `/inactivity` before generic
+OIDC. Running-app tabs schedule a deadline-aligned timer at
+`min(idleExpiresAt, expiresAt)` and sync siblings via BroadcastChannel
+`inactivity-confirmed` payloads that include `sessionId` + `sessionEndGeneration`.
+Login-again rotates a **new** `sessionId` and cookie before OIDC initiation; callback
+writes idle fields only to that new Redis key.
