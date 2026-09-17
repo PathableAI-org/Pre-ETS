@@ -7,6 +7,7 @@ import type { OidcTransactionStore } from "./transaction.ts"
 import { SessionStoreError } from "../session/store.ts"
 import { verifyOidcCorrelationCookie } from "./cookie.ts"
 import { discoverOidcIssuer } from "./discovery.ts"
+import { approvedApplicationOrigin } from "./initiation-http.ts"
 import { type OidcSecretResolution, OidcSecretsConfigError, resolveOidcClientSecret } from "./secrets.ts"
 import { getOidcTxConfig, OIDC_COOKIE_NAME, type OidcTransactionRecord, type OidcTxConfig } from "./types.ts"
 
@@ -115,6 +116,19 @@ export async function completeLogin(
     return { kind: "config-refusal", outcomeClass: "403-config" }
   }
 
+  const origin = approvedApplicationOrigin(
+    input.request.headers.get("host") ?? undefined,
+    callbackUrl
+  )
+  if (origin === undefined) {
+    return { kind: "login-unavailable", outcomeClass: "login-unavailable" }
+  }
+
+  const currentCallbackUri = `${origin}/auth/callback`
+  if (currentCallbackUri !== tx.redirectUri) {
+    return { kind: "login-unavailable", outcomeClass: "login-unavailable" }
+  }
+
   // fallow-ignore-next-line code-duplication -- secret resolve + discover mirrors initiateLogin
   let secretResolution: OidcSecretResolution
   try {
@@ -146,10 +160,17 @@ export async function completeLogin(
     return { kind: "login-unavailable", outcomeClass: "login-unavailable" }
   }
 
+  const grantUrl = new URL(tx.redirectUri)
+  grantUrl.search = callbackUrl.search
+  const grantRequest = new Request(grantUrl, {
+    headers: input.request.headers,
+    method: "GET"
+  })
+
   const authorizationCodeGrant = deps.authorizationCodeGrant ?? client.authorizationCodeGrant
   let tokens: Awaited<ReturnType<typeof client.authorizationCodeGrant>>
   try {
-    tokens = await authorizationCodeGrant(discovered.configuration, input.request, {
+    tokens = await authorizationCodeGrant(discovered.configuration, grantRequest, {
       expectedNonce: tx.nonce,
       expectedState: state,
       pkceCodeVerifier: tx.codeVerifier
@@ -183,7 +204,7 @@ export async function completeLogin(
 
   return {
     kind: "redirect",
-    location: `${new URL(input.request.url).origin}/`,
+    location: `${new URL(tx.redirectUri).origin}/`,
     outcomeClass: "callback-success"
   }
 }

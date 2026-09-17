@@ -38,14 +38,16 @@ Do **not** re-run `initiateLogin` on the callback path.
    query `state` and cookie `tenant` === resolved tenant.
 5. One-time Redis transaction consume by `state` (`GETDEL`).
 6. Refuse tenant / issuer / client / connection mismatch with tx or session.
-7. Discover issuer; authorization-code grant with PKCE verifier; confidential
+7. Require the approved Host-derived callback URI to equal `tx.redirectUri`;
+   perform the code grant against that stored URI (not an unbound request URL).
+8. Discover issuer; authorization-code grant with PKCE verifier; confidential
    clients use server-only secret resolution.
-8. Validate ID token `nonce` against tx; extract `sub` as `userId` and display
+9. Validate ID token `nonce` against tx; extract `sub` as `userId` and display
    name as `name` → `preferred_username` → `sub`.
-9. Update Redis session for `tx.sessionId` with
-   `{ tenantId, expiresAt, userId, userName }` preserving existing expiry.
-   Do **not** store access/refresh tokens.
-10. Clear `pathable-oidc`; redirect `303` to `/`.
+10. Update Redis session for `tx.sessionId` with
+    `{ tenantId, expiresAt, userId, userName }` preserving existing expiry.
+    Do **not** store access/refresh tokens.
+11. Clear `pathable-oidc`; redirect `303` to `/` on the bound application origin.
 
 ## Session / cookie boundaries
 

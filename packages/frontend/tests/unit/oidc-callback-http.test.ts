@@ -75,6 +75,7 @@ describe("completeLogin HTTP callback with mock IdP", () => {
           headers: {
             accept: "text/html",
             cookie: `pathable-oidc=${cookie}`,
+            host: "springfield.localhost",
             "sec-fetch-dest": "document"
           }
         }),

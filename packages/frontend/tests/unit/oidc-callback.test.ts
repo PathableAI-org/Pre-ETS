@@ -25,8 +25,10 @@ const SESSION_ID = Buffer.from(new Uint8Array(32).fill(9)).toString("base64url")
 const STATE = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLM"
 
 function documentCallback(url: string, cookie?: string): Request {
+  const parsed = new URL(url)
   const headers: Record<string, string> = {
     accept: "text/html",
+    host: parsed.host,
     "sec-fetch-dest": "document"
   }
   if (cookie !== undefined) {
@@ -210,6 +212,46 @@ describe("completeLogin", () => {
       kind: "login-unavailable",
       outcomeClass: "login-unavailable"
     })
+  })
+
+  it("fails closed when Host-derived callback URI does not match tx.redirectUri", async () => {
+    const txConfig = testTxConfig()
+    const cookie = await signOidcCorrelationCookie(
+      { exp: NOW + 600, state: STATE, tenant: "springfield" },
+      txConfig
+    )
+    const grant = vi.fn()
+
+    const result = await completeLogin(
+      {
+        nowSeconds: NOW,
+        request: documentCallback(
+          `https://attacker.example/auth/callback?code=auth-code&state=${STATE}`,
+          `pathable-oidc=${cookie}`
+        ),
+        tenantId: "springfield",
+        tenantRecord: springfieldRecord
+      },
+      {
+        authorizationCodeGrant: grant,
+        discover: async () => ({
+          authorizationEndpoint: "https://identity.example/auth",
+          configuration: {} as Configuration
+        }),
+        resolveSecret: () => ({ kind: "none" }),
+        sessionStore: mockSessionStore(),
+        store: mockTxStore({
+          consume: vi.fn().mockResolvedValue({ kind: "record", record: txRecord() })
+        }),
+        txConfig
+      }
+    )
+
+    expect(result).toEqual({
+      kind: "login-unavailable",
+      outcomeClass: "login-unavailable"
+    })
+    expect(grant).not.toHaveBeenCalled()
   })
 
   it("fails closed on bad nonce from token exchange", async () => {
