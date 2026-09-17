@@ -24,31 +24,46 @@ frontend production output into `.next`. After a production build,
 prints a greeting and exits.
 All packages are private; the npm scope identifies ownership, not publication.
 
-### Local Redis and session setup
+### Local Redis, Keycloak, and session setup
 
-Start the Redis-only Compose service before exercising session setup:
+Start Redis and local Keycloak before exercising session setup or OIDC login
+initiation. Apps stay on the host; Compose publishes loopback only. Keycloak
+imports the tracked realm at `docker/keycloak/pre-ets-realm.json` on first boot.
+Set `KC_BOOTSTRAP_ADMIN_USERNAME` and `KC_BOOTSTRAP_ADMIN_PASSWORD` in the shell
+or a gitignored root `.env` (Compose fails if either is unset):
 
 ```sh
-docker compose up -d --wait redis
+export KC_BOOTSTRAP_ADMIN_USERNAME=admin
+export KC_BOOTSTRAP_ADMIN_PASSWORD=admin
+docker compose up -d --wait redis keycloak
 docker compose exec redis redis-cli ping
+curl -sS -o /dev/null -w '%{http_code}\n' \
+  http://127.0.0.1:8080/realms/pre-ets/.well-known/openid-configuration
 ```
 
-See `docs/docker-compose.md` and `docs/session-state.md`. Copy
-`packages/frontend/.env.example` to `packages/frontend/.env.local`, set
-`REDIS_URL=redis://127.0.0.1:6379`, and generate `SESSION_SIGNING_SECRET` with:
+Copy `packages/frontend/.env.example` to `packages/frontend/.env.local`, keep
+`TENANT_RESOLUTION=static`, set `REDIS_URL=redis://127.0.0.1:6379`, and generate
+`SESSION_SIGNING_SECRET` with:
 
 ```sh
 node -e 'console.log(require("node:crypto").randomBytes(32).toString("base64url"))'
 ```
 
+Then `pnpm dev:frontend` and open `http://localhost:3000/` — expect Keycloak
+login (`demo` / `demo`). Issuer:
+`http://127.0.0.1:8080/realms/pre-ets`. See `docs/docker-compose.md`,
+`docs/session-state.md`, and `docs/authentication.md`.
+
 Stop with `docker compose down`. Never run `FLUSHALL` against shared Redis.
+After editing the realm JSON, recreate Keycloak
+(`docker compose up -d --force-recreate keycloak`) and restart the frontend.
 
 ### Local tenant resolution
 
-Tenant Display Name for this increment comes from process environment, not
-a database. Session continuity uses the local Redis service above. Copy
-`packages/frontend/.env.example` to `packages/frontend/.env.local` (gitignored)
-and restart after edits.
+Tenant Display Name and OIDC settings for this increment come from process
+environment, not a database. Session continuity uses the local Redis service
+above. Copy `packages/frontend/.env.example` to `packages/frontend/.env.local`
+(gitignored) and restart after edits (including after Keycloak reprovision).
 
 Host association (default, including omitted `TENANT_RESOLUTION`) uses
 `TENANT_CONFIG_RECORDS_JSON` and `{slug}.localhost` locally or
@@ -58,17 +73,22 @@ reads `TENANT_RESOLUTION` or `TENANT_LOCAL_CONFIG_JSON`.
 Unsupported mode values keep host association and log a safe `invalid-mode`
 diagnostic to stderr.
 
-Development-only static mode:
+Unauthenticated document visits to `/` initiate tenant-bound OIDC (or fail);
+they do not serve Display Name landing content. See `.env.example` for
+synthetic `oidc` fields and empty `OIDC_CLIENT_SECRETS_JSON`.
+
+Development-only static mode (include valid `oidc` for login initiation):
 
 ```sh
 TENANT_RESOLUTION=static \
-TENANT_LOCAL_CONFIG_JSON='{"slug":"springfield","config":{"displayName":"Local Demo"}}' \
+TENANT_LOCAL_CONFIG_JSON='{"slug":"springfield","config":{"displayName":"Local Demo","oidc":{"issuer":"http://127.0.0.1:8080/realms/pre-ets","clientId":"springfield-web","clientAuth":"public","connection":"springfield-idp"}}}' \
 pnpm dev:frontend
 ```
 
-Open `http://localhost:3000/` and expect `Tenant: Local Demo`. Change only the
-Display Name, restart, and reload. Invalid or missing static data returns HTTP
-500 with instructions to supply a valid record and restart.
+Open `http://localhost:3000/` and expect login initiation toward the local
+issuer (or a documented failure page)—not Display Name landing. Invalid or
+missing static data returns HTTP 500 with instructions to supply a valid
+record and restart.
 
 See `specs/001-tenant-resolution/quickstart.md` for the full validation
 workflow.

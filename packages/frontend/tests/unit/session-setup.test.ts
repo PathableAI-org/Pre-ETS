@@ -13,6 +13,7 @@ import {
   type SessionCookieClaims,
   type SessionRecord
 } from "../../src/lib/session/types.ts"
+import { springfieldConfig } from "./tenant-fixtures.ts"
 
 function fixedSessionId(seed = 3): string {
   const bytes = new Uint8Array(32)
@@ -24,12 +25,14 @@ function mockStore(overrides: Partial<SessionStore> = {}): SessionStore {
   return {
     create: vi.fn().mockResolvedValue({ kind: "created" }),
     read: vi.fn().mockResolvedValue({ kind: "missing" }),
+    update: vi.fn().mockResolvedValue({ kind: "updated" }),
     ...overrides
   }
 }
 
 function okTenant(tenantId = "springfield") {
   return async () => ({
+    config: springfieldConfig,
     kind: "ok" as const,
     origin: "host-associated" as const,
     tenantId
@@ -88,7 +91,12 @@ describe("setupSession", () => {
         },
         resolveTenant: async () => {
           events.push("resolveTenant")
-          return { kind: "ok", origin: "host-associated", tenantId: "springfield" }
+          return {
+            config: springfieldConfig,
+            kind: "ok",
+            origin: "host-associated",
+            tenantId: "springfield"
+          }
         },
         store,
         verifyCookie: async () => {
@@ -181,12 +189,53 @@ describe("setupSession", () => {
       })
 
       expect(result).toEqual({
+        config: springfieldConfig,
         context: { expiresAt, sessionId, tenantId: "springfield" },
         kind: "ready",
         origin: "host-associated",
         outcome: "reuse"
       })
       expect(vi.mocked(store.create)).not.toHaveBeenCalled()
+    })
+
+    it("forwards authenticated user fields when reusing a session", async () => {
+      const config = testConfig()
+      const now = 1_700_000_000
+      const expiresAt = now + 3600
+      const sessionId = fixedSessionId(31)
+      const store = mockStore({
+        read: vi.fn().mockResolvedValue({
+          kind: "record",
+          record: {
+            expiresAt,
+            tenantId: "springfield",
+            userId: "user-sub",
+            userName: "Demo User"
+          }
+        })
+      })
+      const request = await signedRequest({ exp: expiresAt, sid: sessionId, tenant: "springfield" }, config)
+
+      const result = await setupSession(request, {
+        config,
+        nowSeconds: () => now,
+        resolveTenant: okTenant(),
+        store
+      })
+
+      expect(result).toEqual({
+        config: springfieldConfig,
+        context: {
+          expiresAt,
+          sessionId,
+          tenantId: "springfield",
+          userId: "user-sub",
+          userName: "Demo User"
+        },
+        kind: "ready",
+        origin: "host-associated",
+        outcome: "reuse"
+      })
     })
 
     it("creates once per request with clock-controlled TTL alignment", async () => {

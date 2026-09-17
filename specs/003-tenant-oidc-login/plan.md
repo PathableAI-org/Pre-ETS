@@ -34,9 +34,9 @@ tasks—not this plan alone—makes pending OIDC Cucumber steps pass.
 **Language/Version**: Strict TypeScript 6.0.x, ESM, Node >=24; pnpm 12.4.1 (repository root).
 
 **Primary Dependencies**: Existing Next.js 16.3.5 / React 19.3.0 / `jose` / `redis` / PathAble React.
-Add `openid-client` to the frontend during implementation—**pin a compatible released version** in
-the root lockfile and record the chosen major here once known—for discovery and authorization-code +
-PKCE URL construction. No Better Auth, Auth.js, shared auth package, or backend dependency.
+Add `openid-client` to the frontend during implementation—**pinned at major 6**
+(`openid-client@6.8.8` in the frontend workspace and root lockfile)—for discovery and
+authorization-code + PKCE URL construction. No Better Auth, Auth.js, shared auth package, or backend dependency.
 
 **Storage**: Existing frontend Redis for sessions. Add a second key namespace for short-lived OIDC
 login transactions (PKCE verifier, state/nonce bindings). Tenant OIDC settings remain in process

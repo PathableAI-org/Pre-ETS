@@ -7,17 +7,18 @@ import type { ContractFailureReason, ContractResult, HttpExchange, TenantWorld }
 import { bindHost } from "../../../packages/frontend/src/lib/tenant/host.ts"
 import {
   createMismatchedTenantSource,
-  createStaticTenantSource,
   createThrowingTenantSource,
   type TenantSource
 } from "../../../packages/frontend/src/lib/tenant/source.ts"
 import {
+  CONFIG_UNAVAILABLE,
   LOCAL_CONFIG_ERROR,
   parseTenantRecord,
   selectTenantMode,
+  type TenantConfig,
   type TenantRecord
 } from "../../../packages/frontend/src/lib/tenant/types.ts"
-import { invalidEnvShape } from "./fixtures.ts"
+import { invalidEnvShape, syntheticTenantConfig, syntheticTenantRecord } from "./fixtures.ts"
 import { sendRawGet } from "./raw-http.ts"
 import { ensureBrowser, ensureOwnedProcess, restartOwnedProcess } from "./server.ts"
 
@@ -163,10 +164,9 @@ export function injectedSource(world: TenantWorld): TenantSource {
   if (world.configurationFailure === "the source returns a record for shelbyville") {
     const shelbyville = world.tenants.find((tenant) => tenant.slug === "shelbyville")
     assert.ok(shelbyville)
-    return createMismatchedTenantSource({
-      config: { displayName: shelbyville.displayName },
-      slug: shelbyville.slug
-    })
+    return createMismatchedTenantSource(
+      syntheticTenantRecord(shelbyville.slug, shelbyville.displayName)
+    )
   }
 
   const records: unknown[] = recordsFromWorld(world)
@@ -179,14 +179,11 @@ export function injectedSource(world: TenantWorld): TenantSource {
   if (world.alternativeDisplayName !== undefined) {
     const index = records.findIndex((record) => slugOf(record) === "springfield")
     assert.notEqual(index, -1)
-    records[index] = {
-      config: { displayName: world.alternativeDisplayName },
-      slug: "springfield"
-    }
+    records[index] = syntheticTenantRecord("springfield", world.alternativeDisplayName)
   }
 
   try {
-    return createStaticTenantSource(records)
+    return createBddTenantSource(records)
   } catch {
     return createThrowingTenantSource()
   }
@@ -197,10 +194,16 @@ export function localRecord(world: TenantWorld): TenantRecord | undefined {
     return undefined
   }
 
-  return parseTenantRecord({
-    config: { displayName: world.localStaticRecord.displayName },
-    slug: world.localStaticRecord.slug
-  })
+  return parseTenantRecord(
+    {
+      config: syntheticTenantConfig(
+        world.localStaticRecord.displayName,
+        world.localStaticRecord.slug
+      ),
+      slug: world.localStaticRecord.slug
+    },
+    { allowLoopbackHttp: true }
+  )
 }
 
 export async function navigateWithKeyboard(world: TenantWorld): Promise<void> {
@@ -296,7 +299,11 @@ export async function requestLandingPage(
   await ensureOwnedProcess(world)
   const pathName = world.competingSlug === undefined ? "/" : `/?tenant=${world.competingSlug}`
   world.httpResponse = await sendHttpRequest({
-    extraHeaders: competingHeaders(world),
+    extraHeaders: {
+      Accept: "text/html,application/xhtml+xml",
+      "Sec-Fetch-Dest": "document",
+      ...competingHeaders(world)
+    },
     host,
     path: pathName,
     port: world.port
@@ -306,7 +313,7 @@ export async function requestLandingPage(
 
 export function requireContext(
   result: ContractResult | undefined
-): { readonly config: { readonly displayName: string }; readonly slug: string } {
+): { readonly config: TenantConfig; readonly slug: string } {
   if (!result?.ok) {
     throw new Error("Expected a successful tenant context")
   }
@@ -452,6 +459,51 @@ function competingHeaders(world: TenantWorld): Record<string, string> {
   }
 }
 
+/**
+ * Like `createStaticTenantSource`, but allows loopback HTTP issuers used by
+ * local Keycloak BDD fixtures regardless of the cucumber process NODE_ENV.
+ */
+function createBddTenantSource(records: unknown[]): TenantSource {
+  if (!Array.isArray(records)) {
+    throw new Error(CONFIG_UNAVAILABLE)
+  }
+
+  const parsed: TenantRecord[] = []
+  const slugs = new Set<string>()
+
+  for (const record of records) {
+    // fallow-ignore-next-line code-duplication -- BDD-local copy of createStaticTenantSource with loopback HTTP
+    const value = parseTenantRecord(record, { allowLoopbackHttp: true })
+    if (value === undefined) {
+      throw new Error(CONFIG_UNAVAILABLE)
+    }
+
+    if (slugs.has(value.slug)) {
+      throw new Error(CONFIG_UNAVAILABLE)
+    }
+
+    slugs.add(value.slug)
+    parsed.push(value)
+  }
+
+  const bySlug = new Map(parsed.map((record) => [record.slug, record]))
+
+  return {
+    readTenantRecord(slug: string): Promise<TenantRecord | undefined> {
+      const record = bySlug.get(slug)
+      if (record === undefined) {
+        return Promise.resolve(undefined)
+      }
+
+      if (record.slug !== slug) {
+        return Promise.reject(new Error(CONFIG_UNAVAILABLE))
+      }
+
+      return Promise.resolve(record)
+    }
+  }
+}
+
 function decodeEntities(value: string): string {
   return value
     .replaceAll("&amp;", "&")
@@ -548,15 +600,12 @@ function pageUrl(world: TenantWorld, host: string): string {
 }
 
 function recordsFromWorld(world: TenantWorld): TenantRecord[] {
-  return world.tenants.map((tenant) => ({
-    config: { displayName: tenant.displayName },
-    slug: tenant.slug
-  }))
+  return world.tenants.map((tenant) => syntheticTenantRecord(tenant.slug, tenant.displayName))
 }
 
 async function requireSuccessful(
   resultPromise: Promise<ContractResult>
-): Promise<{ readonly config: { readonly displayName: string }; readonly slug: string }> {
+): Promise<{ readonly config: TenantConfig; readonly slug: string }> {
   const result = await resultPromise
   if (!result.ok) {
     throw new Error(`Expected a successful tenant context, received ${result.reason}`)

@@ -8,7 +8,7 @@ import { chromium } from "playwright"
 
 import type { TenantWorld } from "./world.ts"
 
-import { invalidEnvShape } from "./fixtures.ts"
+import { invalidEnvShape, recordsJsonForWorld, syntheticTenantConfig } from "./fixtures.ts"
 import { ensureSessionSettings } from "./session-env.ts"
 
 const REPO_ROOT = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)))
@@ -100,12 +100,15 @@ async function assertPortFree(port: number): Promise<void> {
   })
 }
 
+// fallow-ignore-next-line complexity -- BDD spawn env assembly for tenant + session + OIDC
 function buildProcessEnv(world: TenantWorld): NodeJS.ProcessEnv {
   ensureSessionSettings(world)
   const env: NodeJS.ProcessEnv = { ...process.env }
   delete env.TENANT_RESOLUTION
   delete env.TENANT_CONFIG_RECORDS_JSON
   delete env.TENANT_LOCAL_CONFIG_JSON
+  delete env.OIDC_CLIENT_SECRETS_JSON
+  delete env.OIDC_TX_KEY_PREFIX
   env.NEXT_TELEMETRY_DISABLED = "1"
   env.NODE_ENV = world.runtime === "production" ? "production" : "development"
   env.REDIS_URL = world.redisUrl ?? process.env.REDIS_URL ?? "redis://127.0.0.1:6379"
@@ -113,6 +116,10 @@ function buildProcessEnv(world: TenantWorld): NodeJS.ProcessEnv {
   env.SESSION_TTL_SECONDS = String(world.sessionTtlSeconds)
   env.SESSION_STORE_TIMEOUT_MS = String(world.sessionStoreTimeoutMs)
   env.SESSION_KEY_PREFIX = world.sessionKeyPrefix
+  env.OIDC_TX_KEY_PREFIX = world.oidcTxKeyPrefix
+  if (world.oidcClientSecretsJson !== undefined) {
+    env.OIDC_CLIENT_SECRETS_JSON = world.oidcClientSecretsJson
+  }
 
   if (world.unsupportedMode !== undefined) {
     env.TENANT_RESOLUTION = world.unsupportedMode
@@ -120,17 +127,22 @@ function buildProcessEnv(world: TenantWorld): NodeJS.ProcessEnv {
     env.TENANT_RESOLUTION = world.resolutionMode
   }
 
-  const records = world.tenants.map((tenant) => {
-    if (tenant.slug === "springfield" && world.invalidDisplayName !== undefined) {
-      return invalidEnvShape(world.invalidDisplayName)
-    }
+  const production = world.runtime === "production"
+  if (world.oidcFixtures !== undefined || world.oidcUnreadableConfig) {
+    env.TENANT_CONFIG_RECORDS_JSON = recordsJsonForWorld(world, production)
+  } else {
+    const records = world.tenants.map((tenant) => {
+      if (tenant.slug === "springfield" && world.invalidDisplayName !== undefined) {
+        return invalidEnvShape(world.invalidDisplayName)
+      }
 
-    return {
-      config: { displayName: tenant.displayName },
-      slug: tenant.slug
-    }
-  })
-  env.TENANT_CONFIG_RECORDS_JSON = JSON.stringify(records)
+      return {
+        config: syntheticTenantConfig(tenant.displayName, tenant.slug, { production }),
+        slug: tenant.slug
+      }
+    })
+    env.TENANT_CONFIG_RECORDS_JSON = JSON.stringify(records)
+  }
 
   if (world.localConfigProblem !== undefined) {
     const payload = localConfigPayload(world.localConfigProblem)
@@ -139,9 +151,21 @@ function buildProcessEnv(world: TenantWorld): NodeJS.ProcessEnv {
     }
   } else if (world.localStaticRecord !== undefined) {
     env.TENANT_LOCAL_CONFIG_JSON = JSON.stringify({
-      config: { displayName: world.localStaticRecord.displayName },
+      config: syntheticTenantConfig(
+        world.localStaticRecord.displayName,
+        world.localStaticRecord.slug,
+        { production }
+      ),
       slug: world.localStaticRecord.slug
     })
+  }
+
+  if (world.oidcClientSecretsJson !== undefined) {
+    env.OIDC_CLIENT_SECRETS_JSON = world.oidcClientSecretsJson
+  }
+
+  if (world.oidcTxKeyPrefix !== undefined) {
+    env.OIDC_TX_KEY_PREFIX = world.oidcTxKeyPrefix
   }
 
   return env
@@ -179,6 +203,7 @@ function localConfigPayload(problem: string): string | undefined {
   }
 }
 
+// fallow-ignore-next-line complexity -- restart signature over many optional world fields
 function processSignature(world: TenantWorld): string {
   ensureSessionSettings(world)
   const runtime = world.runtime ?? "development"
@@ -188,6 +213,13 @@ function processSignature(world: TenantWorld): string {
     world.redisUrl ?? "",
     world.sessionSigningSecret ?? "",
     world.sessionKeyPrefix ?? "",
+    world.oidcTxKeyPrefix ?? "",
+    world.oidcClientSecretsJson ?? "",
+    world.oidcMockIssuer ?? "",
+    world.oidcDefect ?? "",
+    world.oidcForcedFailure ?? "",
+    world.oidcUnreadableConfig ? "unreadable" : "",
+    JSON.stringify(world.oidcFixtures ?? []),
     String(world.sessionTtlSeconds ?? ""),
     String(world.port)
   ].join(":")

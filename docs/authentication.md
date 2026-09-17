@@ -40,26 +40,50 @@ module in [session-state.md](./session-state.md) is what persists the user id.
 An unauthenticated request is handled in this order:
 
 ```text
-request URL → slug → tenant configuration → OIDC login (broker)
+request URL → slug → tenant configuration → session setup → OIDC initiation (broker)
 ```
 
 1. Bind the request to a slug and load that tenant’s configuration, or refuse
    the request with HTTP 403. Do not start login for an unknown host, and do not
-   fall through to another tenant’s identity provider.
-2. Configuration includes presentation data (branding, copy) and the broker
-   **connection** to use for this slug. The login page may render that
-   tenant’s chrome before the user authenticates.
+   fall through to another tenant’s identity provider. Shared tenant config
+   requires Display Name **and** nested OIDC settings including required
+   `clientAuth` (`public` or `confidential`—the app’s registration mode).
+2. After the session module returns a ready outcome (`reuse` or `create`) for a
+   **document** navigation to `/`:
+   - If the session record already has an authenticated `userId`, Proxy
+     short-circuits to SSR the landing page (tenant Display Name + signed-in
+     user name). It does **not** call initiation.
+   - Otherwise Proxy **initiates OIDC**. Creating or reusing an anonymous
+     session does not suppress login. Non-document requests that need login
+     receive `401` without an IdP redirect.
 3. The Next.js app starts a standard OIDC authorization request against the
-   broker with `openid-client` and asks for that connection. The callback URL
-   is on the same host the user hit, for example
+   broker with `openid-client` (PKCE S256, `scope=openid`) using only the
+   resolved tenant’s issuer, client id, and optional connection (`kc_idp_hint`
+   for local Keycloak). Caller query values cannot override those fields. The
+   callback URL is on the same host the user hit, for example
    `https://springfield.pathable.com/auth/callback`.
-4. The OIDC `state` (and any equivalent nonce) includes the slug resolved in
-   step 1. On callback, the host and the completed connection must match that
-   slug. A mismatch is a failed login, not a session for a different tenant.
-5. The broker authenticates the user at the tenant’s identity provider (SAML
+4. A short-lived Redis transaction holds the PKCE verifier and bindings; a
+   host-only `pathable-oidc` cookie carries signed `state` / `tenant` / `exp`.
+   The `pathable-session` cookie is set on this response **only** when setup
+   created a new session and initiation returns a successful document IdP
+   `302`. Failures never attach that cookie.
+5. Missing or invalid OIDC config (including confidential without a server-only
+   secret) yields HTTP 403 with extended “login cannot start” copy—not the
+   provider-failure page. Discovery or transaction failures redirect to
+   `/login-unavailable`. Malformed `OIDC_CLIENT_SECRETS_JSON` yields HTTP 500.
+6. The broker authenticates the user at the tenant’s identity provider (SAML
    or OIDC). PathAble sees only the broker’s OIDC tokens afterward.
-6. A successful callback creates a session already bound to that slug. The
-   session’s tenant cannot change.
+7. On `GET /auth/callback` (document navigation), Proxy runs callback
+   completion: verify `pathable-oidc` against query `state`, consume the Redis
+   transaction once, exchange the authorization code (PKCE + confidential
+   secret when required), validate ID token `nonce`, and write `userId` /
+   `userName` onto the existing Redis session (no tokens stored). Success
+   clears `pathable-oidc` and redirects `303` to `/`. Failures clear the
+   correlation cookie without authenticating and redirect to
+   `/login-unavailable` or return extended 403 as appropriate. Non-document
+   callback requests receive `401`.
+8. The next document visit to `/` with an authenticated session short-circuits
+   to the landing page showing tenant Display Name and the signed-in user name.
 
 ACS URLs and other SAML endpoints live on the broker so tenant metadata stays
 stable when the Next.js app moves. Downstream frontend modules receive the

@@ -4,6 +4,7 @@ import { chromium } from "playwright"
 
 import type { TenantWorld } from "./world.ts"
 
+import { closeMockOidcServer } from "./oidc.ts"
 import { closeOwnedResources } from "./server.ts"
 import { cleanupScenarioSessionKeys } from "./session.ts"
 
@@ -54,6 +55,22 @@ function resetTenantWorld(world: TenantWorld): void {
   world.localConfigProblem = undefined
   world.localStaticRecord = undefined
   world.modeDiagnostic = undefined
+  world.forceDevelopmentRuntime = false
+  world.oidcCallerOverride = undefined
+  world.oidcClientSecretsJson = undefined
+  world.oidcConcurrentResponses = undefined
+  world.oidcDefect = undefined
+  world.oidcFixtures = undefined
+  world.oidcForcedFailure = undefined
+  world.oidcLastRequestedUrl = undefined
+  world.oidcMockBrokenAuthorize = false
+  world.oidcMockIssuer = undefined
+  world.oidcMockServer = undefined
+  world.oidcNonDocumentRequest = false
+  world.oidcRawSpringfieldOverride = undefined
+  world.oidcSupportingCategory = undefined
+  world.oidcTxKeyPrefix = undefined
+  world.oidcUnreadableConfig = false
   world.ownedProcess = undefined
   world.page = undefined
   world.playwrightChromium = chromium
@@ -114,4 +131,5 @@ Before(async function(this: TenantWorld, { pickle }) {
 After({ timeout: 15_000 }, async function(this: TenantWorld) {
   await cleanupScenarioSessionKeys(this)
   await closeOwnedResources(this)
+  await closeMockOidcServer(this)
 })

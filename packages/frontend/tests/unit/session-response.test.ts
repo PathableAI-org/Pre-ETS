@@ -16,6 +16,7 @@ import {
   TENANT_ORIGIN_HEADER,
   TENANT_SLUG_HEADER
 } from "../../src/lib/session/types.ts"
+import { springfieldConfig } from "./tenant-fixtures.ts"
 
 function fixedSessionId(seed = 2): string {
   const bytes = new Uint8Array(32)
@@ -27,6 +28,7 @@ function mockStore(overrides: Partial<SessionStore> = {}): SessionStore {
   return {
     create: vi.fn().mockResolvedValue({ kind: "created" }),
     read: vi.fn().mockResolvedValue({ kind: "missing" }),
+    update: vi.fn().mockResolvedValue({ kind: "updated" }),
     ...overrides
   }
 }
@@ -174,6 +176,7 @@ describe("session response helpers", () => {
         createId: () => fixedSessionId(10),
         nowSeconds: () => now,
         resolveTenant: async () => ({
+          config: springfieldConfig,
           kind: "ok",
           origin: "host-associated",
           tenantId: "springfield"
@@ -209,6 +212,7 @@ describe("session response helpers", () => {
         createId: () => fixedSessionId(11),
         nowSeconds: () => now,
         resolveTenant: async () => ({
+          config: springfieldConfig,
           kind: "ok",
           origin: "host-associated",
           tenantId: "springfield"

@@ -272,6 +272,37 @@ describe("RedisSessionStore", () => {
       })
     })
 
+    it("updates existing records with SET XX EXAT and reports missing when absent", async () => {
+      const setMock = vi.fn().mockResolvedValue("OK")
+      const clientFactory = vi.fn(() => ({
+        connect: vi.fn().mockResolvedValue(undefined),
+        get: vi.fn().mockResolvedValue(null),
+        isOpen: true,
+        set: setMock
+      }))
+
+      const store = new RedisSessionStore(testConfig(), { clientFactory })
+      const id = fixedSessionId(16)
+      const record: SessionRecord = {
+        expiresAt: 1_700_300_000,
+        tenantId: "springfield",
+        userId: "user-1",
+        userName: "Demo User"
+      }
+
+      await expect(store.update(id, record)).resolves.toEqual({ kind: "updated" })
+      expect(setMock).toHaveBeenCalledWith(`${KEY_PREFIX}${id}`, serializeSessionRecord(record), {
+        condition: "XX",
+        expiration: {
+          type: "EXAT",
+          value: record.expiresAt
+        }
+      })
+
+      setMock.mockResolvedValueOnce(null)
+      await expect(store.update(id, record)).resolves.toEqual({ kind: "missing" })
+    })
+
     it("reports collision when SET NX returns null", async () => {
       const setMock = vi.fn().mockResolvedValue(null)
       const clientFactory = vi.fn(() => ({

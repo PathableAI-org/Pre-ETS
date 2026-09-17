@@ -11,6 +11,7 @@ import {
 export interface SessionStore {
   create(id: string, record: SessionRecord): Promise<SessionStoreCreateResult>
   read(id: string): Promise<SessionStoreReadResult>
+  update(id: string, record: SessionRecord): Promise<SessionStoreUpdateResult>
 }
 
 export type SessionStoreCreateResult =
@@ -21,6 +22,10 @@ export type SessionStoreReadResult =
   | { readonly kind: "missing" }
   | { readonly kind: "record"; readonly record: SessionRecord }
 
+export type SessionStoreUpdateResult =
+  | { readonly kind: "missing" }
+  | { readonly kind: "updated" }
+
 interface RedisLikeClient {
   connect(): Promise<unknown>
   get(key: string): Promise<null | string>
@@ -30,7 +35,7 @@ interface RedisLikeClient {
     key: string,
     value: string,
     options: {
-      readonly condition: "NX"
+      readonly condition?: "NX" | "XX"
       readonly expiration: { readonly type: "EXAT"; readonly value: number }
     }
   ): Promise<unknown>
@@ -102,6 +107,29 @@ export class RedisSessionStore implements SessionStore {
     }
 
     return { kind: "record", record }
+  }
+
+  async update(id: string, record: SessionRecord): Promise<SessionStoreUpdateResult> {
+    if (!isSessionId(id)) {
+      throw new SessionStoreError("Invalid session id.")
+    }
+
+    if (parseSessionRecord(record) === undefined) {
+      throw new SessionStoreError("Invalid session record.")
+    }
+
+    const client = await this.connectedClient()
+    const result = await this.withTimeout(
+      client.set(this.keyFor(id), serializeSessionRecord(record), {
+        condition: "XX",
+        expiration: {
+          type: "EXAT",
+          value: record.expiresAt
+        }
+      })
+    )
+
+    return result === null ? { kind: "missing" } : { kind: "updated" }
   }
 
   private async connectedClient(): Promise<RedisLikeClient> {

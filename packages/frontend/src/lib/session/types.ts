@@ -23,6 +23,8 @@ export interface SessionContext {
   readonly expiresAt: number
   readonly sessionId: string
   readonly tenantId: string
+  readonly userId?: string
+  readonly userName?: string
 }
 
 export interface SessionCookieClaims {
@@ -36,6 +38,8 @@ export type SessionOutcomeClass = "403" | "500" | "503" | "create" | "reuse"
 export interface SessionRecord {
   readonly expiresAt: number
   readonly tenantId: string
+  readonly userId?: string
+  readonly userName?: string
 }
 
 export type TenantOrigin = "host-associated" | "local-static"
@@ -149,6 +153,7 @@ export function parseSessionConfig(env: NodeJS.ProcessEnv | Record<string, strin
   }
 }
 
+// fallow-ignore-next-line complexity -- exact-shape context parser; optional auth fields
 export function parseSessionContextJson(raw: string): SessionContext | undefined {
   let parsed: unknown
   try {
@@ -162,7 +167,13 @@ export function parseSessionContextJson(raw: string): SessionContext | undefined
   }
 
   const value = parsed as Record<string, unknown>
-  if (Object.keys(value).length !== 3) {
+  const keys = Object.keys(value)
+  const hasAuth = "userId" in value || "userName" in value
+  if (hasAuth) {
+    if (keys.length !== 5) {
+      return undefined
+    }
+  } else if (keys.length !== 3) {
     return undefined
   }
 
@@ -178,13 +189,32 @@ export function parseSessionContextJson(raw: string): SessionContext | undefined
     return undefined
   }
 
+  if (!hasAuth) {
+    return {
+      expiresAt: value.expiresAt,
+      sessionId: value.sessionId,
+      tenantId: value.tenantId
+    }
+  }
+
+  if (typeof value.userId !== "string" || value.userId.trim() === "") {
+    return undefined
+  }
+
+  if (typeof value.userName !== "string" || value.userName.trim() === "") {
+    return undefined
+  }
+
   return {
     expiresAt: value.expiresAt,
     sessionId: value.sessionId,
-    tenantId: value.tenantId
+    tenantId: value.tenantId,
+    userId: value.userId,
+    userName: value.userName
   }
 }
 
+// fallow-ignore-next-line complexity -- exact-shape record parser; optional auth fields
 export function parseSessionRecord(value: unknown): SessionRecord | undefined {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     return undefined
@@ -192,7 +222,12 @@ export function parseSessionRecord(value: unknown): SessionRecord | undefined {
 
   const record = value as Record<string, unknown>
   const keys = Object.keys(record)
-  if (keys.length !== 2 || !("tenantId" in record) || !("expiresAt" in record)) {
+  const hasAuth = "userId" in record || "userName" in record
+  if (hasAuth) {
+    if (keys.length !== 4 || !("tenantId" in record) || !("expiresAt" in record)) {
+      return undefined
+    }
+  } else if (keys.length !== 2 || !("tenantId" in record) || !("expiresAt" in record)) {
     return undefined
   }
 
@@ -204,10 +239,46 @@ export function parseSessionRecord(value: unknown): SessionRecord | undefined {
     return undefined
   }
 
+  if (!hasAuth) {
+    return {
+      expiresAt: record.expiresAt,
+      tenantId: record.tenantId
+    }
+  }
+
+  if (typeof record.userId !== "string" || record.userId.trim() === "") {
+    return undefined
+  }
+
+  if (typeof record.userName !== "string" || record.userName.trim() === "") {
+    return undefined
+  }
+
   return {
     expiresAt: record.expiresAt,
-    tenantId: record.tenantId
+    tenantId: record.tenantId,
+    userId: record.userId,
+    userName: record.userName
   }
+}
+
+export function parseSigningSecret(raw: string): Uint8Array {
+  if (!BASE64URL_SECRET_PATTERN.test(raw)) {
+    throw new SessionConfigError("SESSION_SIGNING_SECRET must be base64url.")
+  }
+
+  let bytes: Buffer
+  try {
+    bytes = Buffer.from(raw, "base64url")
+  } catch {
+    throw new SessionConfigError("SESSION_SIGNING_SECRET must be base64url.")
+  }
+
+  if (bytes.byteLength < SESSION_ID_BYTE_LENGTH) {
+    throw new SessionConfigError("SESSION_SIGNING_SECRET must encode at least 32 bytes.")
+  }
+
+  return new Uint8Array(bytes)
 }
 
 export function resetSessionConfigCacheForTests(): void {
@@ -216,6 +287,16 @@ export function resetSessionConfigCacheForTests(): void {
 }
 
 export function serializeSessionContext(context: SessionContext): string {
+  if (context.userId !== undefined && context.userName !== undefined) {
+    return JSON.stringify({
+      expiresAt: context.expiresAt,
+      sessionId: context.sessionId,
+      tenantId: context.tenantId,
+      userId: context.userId,
+      userName: context.userName
+    })
+  }
+
   return JSON.stringify({
     expiresAt: context.expiresAt,
     sessionId: context.sessionId,
@@ -224,7 +305,38 @@ export function serializeSessionContext(context: SessionContext): string {
 }
 
 export function serializeSessionRecord(record: SessionRecord): string {
+  if (record.userId !== undefined && record.userName !== undefined) {
+    return JSON.stringify({
+      expiresAt: record.expiresAt,
+      tenantId: record.tenantId,
+      userId: record.userId,
+      userName: record.userName
+    })
+  }
+
   return JSON.stringify({ expiresAt: record.expiresAt, tenantId: record.tenantId })
+}
+
+/** Build request-forwarded session context from a store record. */
+export function sessionContextFromRecord(
+  sessionId: string,
+  record: SessionRecord
+): SessionContext {
+  if (record.userId !== undefined && record.userName !== undefined) {
+    return {
+      expiresAt: record.expiresAt,
+      sessionId,
+      tenantId: record.tenantId,
+      userId: record.userId,
+      userName: record.userName
+    }
+  }
+
+  return {
+    expiresAt: record.expiresAt,
+    sessionId,
+    tenantId: record.tenantId
+  }
 }
 
 function assertRedisUrl(raw: string): void {
@@ -299,25 +411,6 @@ function parsePositiveSafeInteger(
   }
 
   return value
-}
-
-function parseSigningSecret(raw: string): Uint8Array {
-  if (!BASE64URL_SECRET_PATTERN.test(raw)) {
-    throw new SessionConfigError("SESSION_SIGNING_SECRET must be base64url.")
-  }
-
-  let bytes: Buffer
-  try {
-    bytes = Buffer.from(raw, "base64url")
-  } catch {
-    throw new SessionConfigError("SESSION_SIGNING_SECRET must be base64url.")
-  }
-
-  if (bytes.byteLength < SESSION_ID_BYTE_LENGTH) {
-    throw new SessionConfigError("SESSION_SIGNING_SECRET must encode at least 32 bytes.")
-  }
-
-  return new Uint8Array(bytes)
 }
 
 function parseStoreTimeoutMs(raw: string | undefined): number {
