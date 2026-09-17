@@ -264,7 +264,7 @@ management process; these scenarios do not introduce an administration screen or
 | File                                                                     | Purpose                                                                                                                     | Scenarios | Outlines | Example rows | Expanded cases |
 | ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------- | --------- | -------- | ------------ | -------------- |
 | [idle-session-expiration.feature](idle-session-expiration.feature)       | Authoritative deadlines, qualifying activity, shared tabs, independent sessions, lifetime limits, and failed authorization. | 5         | 7        | 27           | 32             |
-| [idle-session-recovery.feature](idle-session-recovery.feature)           | Accessible inactivity explanation, temporary-data clearing, tenant login recovery, and resumed-browser protection.          | 6         | 3        | 11           | 17             |
+| [idle-session-recovery.feature](idle-session-recovery.feature)           | Running-app revalidation modal, multi-tab recovery consistency, temporary-data clearing, tenant login, and resume paths.    | 6         | 3        | 11           | 17             |
 | [tenant-idle-timeout-policy.feature](tenant-idle-timeout-policy.feature) | Default and all permitted durations, invalid choices, configuration authority, persistence, and new-session-only changes.   | 4         | 4        | 40           | 44             |
 | **Total**                                                                |                                                                                                                             | **15**    | **14**   | **78**       | **93**         |
 
@@ -280,7 +280,7 @@ are represented, expanded into boundary, failure, and alternative-flow cases.
 | FR-003; SC-004                             | Policy scenarios cover authorized management, tenant isolation, persistence, and shorter/longer changes for new sessions only. Expiration and recovery cover isolated policy and login-again sessions.                                                                                                        |
 | FR-004–007; SC-002, SC-004                 | Expiration scenarios cover deadlines, browser independence, qualifying versus passive activity, shared tabs, separate sessions, late/concurrent reports, absolute lifetime, and anonymous continuity.                                                                                                         |
 | FR-008; SC-003 cause accuracy              | Expiration and recovery scenarios distinguish missing, evicted, unavailable, and otherwise expired access from established inactivity.                                                                                                                                                                        |
-| FR-009–010; SC-003                         | Recovery scenarios cover meaningful modal semantics, keyboard/focus operation, assistive technology, tenant authentication, existing provider sign-in, failure, clearing, and preserved durable records.                                                                                                      |
+| FR-009–010; SC-003                         | Recovery scenarios cover running-app revalidation that confirms inactivity with the server, multi-tab protected-content clearing, meaningful modal semantics, keyboard/focus operation, assistive technology, tenant authentication, existing provider sign-in, failure, clearing, and preserved durable records. |
 | FR-011; SC-001 approval/rationale portion  | **Policy/document review required:** identify the approver, justify the default and full supported range against risk/client obligations, and check regulatory currency. Scenario tags cannot establish legal sufficiency or approval.                                                                        |
 | FR-012; SC-005                             | **Validation planning remains incomplete:** agree the protected-operation inventory, representative workflows, timing precision, interruption/data-loss thresholds, evidence retention, and evidence owner. These scenarios cover known behavior but do not supply the unresolved workflow-impact thresholds. |
 
@@ -314,13 +314,16 @@ are represented, expanded into boundary, failure, and alternative-flow cases.
   belong to planning and the existing configuration boundary.
 - “Establishes” or “proposes” a tenant duration means the trusted management process from assumption D-002;
   it does not imply a new product form, endpoint, or role. Persistence is checked across the session boundary.
-- Authenticated sessions and successful recovery are prerequisites supplied by separately sequenced authentication
-  work. Feature 003's provider-page arrival does not satisfy them. Planning must enumerate protected operations
+- Authenticated session write via the OIDC callback path and Redis `userId` already exists; idle scenarios extend
+  that path and do not absorb a general authentication redesign. Planning must still enumerate protected operations
   and independent credentials (D-003); one placeholder operation cannot prove revocation of every credential.
 - The user selected existing provider sign-in as an allowed way to complete new application authentication.
   It does not silently revive the expired session. Recovery begins with the user's “Log in again” action.
 - A suspended application cannot guarantee an exact repaint instant. On resumption, protected content must be
-  removed before further interaction; expired access remains authoritatively denied throughout.
+  removed before further interaction; expired access remains authoritatively denied throughout. While the
+  application is running, client-driven revalidation must confirm inactivity with the server and surface recovery
+  without waiting for a later full navigation; shared-session tabs must promptly clear protected content together.
+  Operational idle-expiry metrics and alerting are out of scope for this feature.
 - No new business-policy choices were needed. The spec's D-001–D-006 dependencies remain explicit, particularly
   SC-005's unresolved workflow-impact thresholds. No warning countdown, autosave, broader logout, or new
   authentication implementation is added by these acceptance artifacts.

@@ -10,11 +10,13 @@ Feature: Recover access after inactivity
   @FR-009 @FR-010 @SC-003 @browser @contract
   Scenario: Expiration explains the interruption and clears temporary work
     When the user's access expires for confirmed inactivity while the application is running
+    And client-driven revalidation confirms that inactivity cause with the authoritative server without a later full navigation
     Then an accessible modal explains that inactivity ended the session
     And the modal offers a button named "Log in again"
     And protected content and "Unsent practice note" are no longer exposed in the active application
     And temporary data belonging to the expired session has been cleared
     And the durable record "Saved practice note" remains saved
+    And client timing alone did not authorize continued access after the deadline
 
   @FR-009 @SC-003 @browser
   Scenario: Keyboard users can act on the expiration modal without returning to protected work
@@ -103,10 +105,11 @@ Feature: Recover access after inactivity
       | offline use     |
       | a suspended tab |
 
-  @FR-005 @FR-010 @SC-003 @SC-004 @browser @contract
+  @FR-005 @FR-009 @FR-010 @SC-003 @SC-004 @browser @contract
   Scenario: A second tab cannot retain expired temporary work
     Given two running tabs share the same authenticated session and its temporary work
-    When their shared access expires for confirmed inactivity
-    Then both tabs remove expired protected content and offer login again
-    And neither tab can restore "Unsent practice note" from the expired session
+    When one tab discovers that shared access has ended for confirmed inactivity
+    Then both tabs promptly remove expired protected content and present the inactivity recovery experience
+    And neither tab continues to expose "Unsent practice note" from the expired session
     And the durable record "Saved practice note" remains saved
+    And neither tab treats local client timing as authority to grant continued access
