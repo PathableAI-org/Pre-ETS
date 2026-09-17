@@ -1,5 +1,15 @@
 # Quickstart: Tenant OIDC Login Validation
 
+## Implementation progress (2026-09-17)
+
+- Unit suite green (`123` tests): shared `TenantConfig`+`oidc`, secrets, tx types, initiate/proxy
+  contracts, config-failure taxonomy.
+- Runtime: Proxy initiates on document `/` after session setup; `/auth/callback` pass-through;
+  extended 403 HTML; `/login-unavailable`; `openid-client@6.8.8`; Compose Redis+Keycloak.
+- Still open for acceptance green: replace pending OIDC Cucumber stubs (T017/T026/T030), finish
+  001 landing Gherkin retarget (T023), and run `pnpm test:bdd:oidc` / `pnpm test:bdd:session`
+  evidence (T024/T029/T034/T036–T038).
+
 ## Status and prerequisites
 
 Validation guide for the OIDC login-initiation delivery. Prefer `pnpm test:bdd:oidc` once steps are

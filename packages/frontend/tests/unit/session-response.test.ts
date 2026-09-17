@@ -16,6 +16,7 @@ import {
   TENANT_ORIGIN_HEADER,
   TENANT_SLUG_HEADER
 } from "../../src/lib/session/types.ts"
+import { springfieldConfig } from "./tenant-fixtures.ts"
 
 function fixedSessionId(seed = 2): string {
   const bytes = new Uint8Array(32)
@@ -174,6 +175,7 @@ describe("session response helpers", () => {
         createId: () => fixedSessionId(10),
         nowSeconds: () => now,
         resolveTenant: async () => ({
+          config: springfieldConfig,
           kind: "ok",
           origin: "host-associated",
           tenantId: "springfield"
@@ -209,6 +211,7 @@ describe("session response helpers", () => {
         createId: () => fixedSessionId(11),
         nowSeconds: () => now,
         resolveTenant: async () => ({
+          config: springfieldConfig,
           kind: "ok",
           origin: "host-associated",
           tenantId: "springfield"

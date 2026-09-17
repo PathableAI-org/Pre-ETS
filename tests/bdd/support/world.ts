@@ -30,6 +30,22 @@ export interface HttpExchange {
   readonly status: number
 }
 
+export interface MockOidcServerHandle {
+  readonly baseUrl: string
+  brokenAuthorize: boolean
+  readonly close: () => Promise<void>
+  readonly issuer: string
+}
+
+export interface OidcTenantFixtureState {
+  readonly clientAuth: "confidential" | "public"
+  readonly clientId: string
+  readonly connection?: string
+  readonly displayName: string
+  readonly issuer: string
+  readonly slug: string
+}
+
 export interface SessionContractEvidence {
   readonly events: readonly string[]
   readonly result: SetupSessionResult
@@ -55,6 +71,7 @@ export class TenantWorld extends World {
   crossTenantSessionId: string | undefined = undefined
   establishedSlug: string | undefined = undefined
   fixedNowSeconds: number | undefined = undefined
+  forceDevelopmentRuntime = false
   foreignSessionRecord: SessionRecord | undefined = undefined
   hostCondition: string | undefined = undefined
   httpResponse: HttpExchange | undefined = undefined
@@ -64,6 +81,24 @@ export class TenantWorld extends World {
   localConfigProblem: string | undefined = undefined
   localStaticRecord: SyntheticTenantRecord | undefined = undefined
   modeDiagnostic: ModeDiagnostic | undefined = undefined
+  oidcCallerOverride: undefined | { readonly source: string; readonly value: string } = undefined
+  oidcClientSecretsJson: string | undefined = undefined
+  oidcConcurrentResponses: undefined | {
+    readonly shelbyville: HttpExchange
+    readonly springfield: HttpExchange
+  } = undefined
+  oidcDefect: string | undefined = undefined
+  oidcFixtures: OidcTenantFixtureState[] | undefined = undefined
+  oidcForcedFailure: string | undefined = undefined
+  oidcLastRequestedUrl: string | undefined = undefined
+  oidcMockBrokenAuthorize = false
+  oidcMockIssuer: string | undefined = undefined
+  oidcMockServer: MockOidcServerHandle | undefined = undefined
+  oidcNonDocumentRequest = false
+  oidcRawSpringfieldOverride: unknown = undefined
+  oidcSupportingCategory: string | undefined = undefined
+  oidcTxKeyPrefix: string | undefined = undefined
+  oidcUnreadableConfig = false
   originalSessionId: string | undefined = undefined
   originalSessionTenantId: string | undefined = undefined
   ownedProcess: ChildProcess | undefined = undefined

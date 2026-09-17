@@ -1,37 +1,69 @@
 import { type NextRequest, NextResponse } from "next/server"
 
+import { isDocumentNavigation } from "./lib/oidc/document-navigation.ts"
+import { extendedForbiddenBody } from "./lib/oidc/forbidden-body.ts"
+import { initiateLogin } from "./lib/oidc/initiate.ts"
+import { isAuthCallbackPath, sessionCookieForRedirect } from "./lib/oidc/initiation-http.ts"
+import { RedisOidcTransactionStore } from "./lib/oidc/transaction.ts"
+import {
+  getOidcTxConfig,
+  OIDC_COOKIE_NAME,
+  oidcCookieAttributes,
+  type OidcTxConfig,
+  OidcTxConfigError
+} from "./lib/oidc/types.ts"
 import { signSessionCookie, verifySessionCookie } from "./lib/session/cookie.ts"
 import { setupSession, toTenantResolveResult } from "./lib/session/setup.ts"
 import { RedisSessionStore } from "./lib/session/store.ts"
 import {
   cookieAttributes,
   getSessionConfig,
-  serializeSessionContext,
   SESSION_CONTEXT_HEADER,
   SESSION_COOKIE_NAME,
-  SessionConfigError,
-  type SessionContext,
-  TENANT_ORIGIN_HEADER,
-  TENANT_SLUG_HEADER
+  type SessionConfig,
+  SessionConfigError
 } from "./lib/session/types.ts"
 import { createEnvTenantOperations } from "./lib/tenant/operations.ts"
 
 const CACHE_CONTROL = "private, no-store"
+const LOGIN_UNAVAILABLE_PATH = "/login-unavailable"
 
 let store: RedisSessionStore | undefined
+let oidcStore: RedisOidcTransactionStore | undefined
 let operations: ReturnType<typeof createEnvTenantOperations> | undefined
 
-// fallow-ignore-next-line complexity -- request-boundary orchestration: config, setup, terminal vs ready
+// fallow-ignore-next-line complexity -- request-boundary: callback exclude, setup, initiate
 export async function proxy(request: NextRequest): Promise<NextResponse> {
   const requestHeaders = new Headers(request.headers)
   stripReservedHeaders(requestHeaders)
+
+  if (isAuthCallbackPath(request.nextUrl.pathname)) {
+    const response = NextResponse.next({
+      request: {
+        headers: requestHeaders
+      }
+    })
+    response.headers.set("Cache-Control", CACHE_CONTROL)
+    return response
+  }
 
   const config = loadProxyConfig()
   if (config === undefined) {
     return terminalResponse(500)
   }
 
-  const deps = sessionDependencies(config)
+  let txConfig: OidcTxConfig
+  try {
+    txConfig = getOidcTxConfig()
+  } catch (error) {
+    if (error instanceof OidcTxConfigError) {
+      return terminalResponse(500)
+    }
+
+    throw error
+  }
+
+  const deps = sessionDependencies(config, txConfig)
   const result = await setupSession(request, {
     config,
     resolveTenant: async () => await mapTenantResolve(deps.operations, request),
@@ -44,11 +76,86 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
     return terminalResponse(result.status, result.message)
   }
 
-  return readyResponse(requestHeaders, result.context, result.origin, result.cookieValue)
+  if (!isDocumentNavigation(request)) {
+    logOutcome("401-nondoc")
+    return new NextResponse(null, {
+      headers: { "Cache-Control": CACHE_CONTROL },
+      status: 401
+    })
+  }
+
+  let initiation
+  try {
+    initiation = await initiateLogin(
+      {
+        nowSeconds: Math.floor(Date.now() / 1000),
+        origin: request.nextUrl.origin,
+        sessionId: result.context.sessionId,
+        setupOutcome: result.outcome,
+        tenantId: result.context.tenantId,
+        tenantRecord: {
+          config: result.config,
+          slug: result.context.tenantId
+        }
+      },
+      {
+        store: deps.oidcStore,
+        txConfig
+      }
+    )
+  } catch {
+    return terminalResponse(500)
+  }
+
+  if (initiation.kind === "redirect") {
+    logOutcome(result.outcome === "reuse" ? "reuse" : "redirect")
+    const response = NextResponse.redirect(initiation.location, 302)
+    response.headers.set("Cache-Control", CACHE_CONTROL)
+    attachOidcCookie(response, initiation.expiresAt, initiation.oidcCookieValue)
+    const sessionCookie = sessionCookieForRedirect(result.outcome, result.cookieValue)
+    if (sessionCookie !== undefined) {
+      attachSessionCookie(response, result.context.expiresAt, sessionCookie)
+    }
+
+    return response
+  }
+
+  if (initiation.kind === "config-refusal") {
+    logOutcome("403-config")
+    return extendedForbiddenResponse()
+  }
+
+  if (initiation.kind === "process-config") {
+    logOutcome("process-config")
+    return terminalResponse(500)
+  }
+
+  logOutcome("login-unavailable")
+  const unavailable = NextResponse.redirect(
+    new URL(LOGIN_UNAVAILABLE_PATH, request.nextUrl.origin),
+    302
+  )
+  unavailable.headers.set("Cache-Control", CACHE_CONTROL)
+  return unavailable
 }
 
 export const config = {
-  matcher: "/"
+  matcher: ["/", "/auth/callback"]
+}
+
+function attachOidcCookie(
+  response: NextResponse,
+  expiresAt: number,
+  cookieValue: string
+): void {
+  const attributes = oidcCookieAttributes(expiresAt, process.env.NODE_ENV !== "development")
+  response.cookies.set(OIDC_COOKIE_NAME, cookieValue, {
+    expires: attributes.expires,
+    httpOnly: attributes.httpOnly,
+    path: attributes.path,
+    sameSite: attributes.sameSite,
+    secure: attributes.secure
+  })
 }
 
 function attachSessionCookie(
@@ -66,6 +173,16 @@ function attachSessionCookie(
   })
 }
 
+function extendedForbiddenResponse(): NextResponse {
+  return new NextResponse(extendedForbiddenBody(), {
+    headers: {
+      "Cache-Control": CACHE_CONTROL,
+      "Content-Type": "text/html; charset=utf-8"
+    },
+    status: 403
+  })
+}
+
 function loadProxyConfig() {
   try {
     return getSessionConfig()
@@ -78,44 +195,34 @@ function loadProxyConfig() {
   }
 }
 
+function logOutcome(outcomeClass: string): void {
+  try {
+    console.error(JSON.stringify({ outcomeClass }))
+  } catch {
+    // Diagnostics must never change the response.
+  }
+}
+
 async function mapTenantResolve(
-  operations: ReturnType<typeof createEnvTenantOperations>,
+  ops: ReturnType<typeof createEnvTenantOperations>,
   request: NextRequest
 ) {
   return toTenantResolveResult(
-    await operations.resolve({
+    await ops.resolve({
       host: request.headers.get("host") ?? undefined
     })
   )
 }
 
-function readyResponse(
-  requestHeaders: Headers,
-  context: SessionContext,
-  origin: "host-associated" | "local-static",
-  cookieValue: string | undefined
-): NextResponse {
-  requestHeaders.set(SESSION_CONTEXT_HEADER, serializeSessionContext(context))
-  requestHeaders.set(TENANT_SLUG_HEADER, context.tenantId)
-  requestHeaders.set(TENANT_ORIGIN_HEADER, origin)
-
-  const response = NextResponse.next({
-    request: {
-      headers: requestHeaders
-    }
-  })
-  response.headers.set("Cache-Control", CACHE_CONTROL)
-  if (cookieValue !== undefined) {
-    attachSessionCookie(response, context.expiresAt, cookieValue)
-  }
-
-  return response
-}
-
-function sessionDependencies(config: NonNullable<ReturnType<typeof loadProxyConfig>>) {
+function sessionDependencies(config: SessionConfig, txConfig: OidcTxConfig) {
   store ??= new RedisSessionStore(config)
+  oidcStore ??= new RedisOidcTransactionStore({
+    keyPrefix: txConfig.keyPrefix,
+    redisUrl: config.redisUrl,
+    storeTimeoutMs: txConfig.storeTimeoutMs
+  })
   operations ??= createEnvTenantOperations()
-  return { operations, store }
+  return { oidcStore, operations, store }
 }
 
 function stripReservedHeaders(headers: Headers): void {

@@ -17,9 +17,15 @@ These are module interfaces, not public HTTP endpoints. Public API is imported f
 
 `getCurrentTenantConfig` is a server-only accessor, not a public Server Action. The nested `(app)` layout
 (`AppLayout`) consumes the server-only session accessor as the application-wide gate and loads
-`tenantConfig` from the tenant source via the validated `tenantId`. The landing page reads Display Name from
-that same session snapshot. There is no React `cache()`, request memoization, Provider, or other
+`tenantConfig` from the tenant source via the validated `tenantId`. Authenticated landing reads Display
+Name from that same session snapshot. There is no React `cache()`, request memoization, Provider, or other
 request-scoped store for tenant identity beyond the Proxy→SSR session context headers.
+
+**Supersedes (003 OIDC)**: Shared `TenantConfig` requires `displayName` **and** nested `oidc`
+(including required `clientAuth`). Display Name alone is not sufficient for login initiation or for
+shared parse success. Unauthenticated document `/` initiates OIDC or fails—see
+`specs/003-tenant-oidc-login/contracts/tenant-oidc-config.md` and `oidc-login-initiation.md`. Display
+Name presentation on `/` remains only after authenticated identity exists (later slice).
 
 Consumers needing the slug use session context `tenantId` or `getCurrentTenant` on routes that still bind
 Host directly. No browser-side tenant selection, public configuration endpoint, or persistence write

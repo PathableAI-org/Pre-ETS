@@ -210,6 +210,25 @@ export function parseSessionRecord(value: unknown): SessionRecord | undefined {
   }
 }
 
+export function parseSigningSecret(raw: string): Uint8Array {
+  if (!BASE64URL_SECRET_PATTERN.test(raw)) {
+    throw new SessionConfigError("SESSION_SIGNING_SECRET must be base64url.")
+  }
+
+  let bytes: Buffer
+  try {
+    bytes = Buffer.from(raw, "base64url")
+  } catch {
+    throw new SessionConfigError("SESSION_SIGNING_SECRET must be base64url.")
+  }
+
+  if (bytes.byteLength < SESSION_ID_BYTE_LENGTH) {
+    throw new SessionConfigError("SESSION_SIGNING_SECRET must encode at least 32 bytes.")
+  }
+
+  return new Uint8Array(bytes)
+}
+
 export function resetSessionConfigCacheForTests(): void {
   cachedConfig = undefined
   cachedConfigError = undefined
@@ -299,25 +318,6 @@ function parsePositiveSafeInteger(
   }
 
   return value
-}
-
-function parseSigningSecret(raw: string): Uint8Array {
-  if (!BASE64URL_SECRET_PATTERN.test(raw)) {
-    throw new SessionConfigError("SESSION_SIGNING_SECRET must be base64url.")
-  }
-
-  let bytes: Buffer
-  try {
-    bytes = Buffer.from(raw, "base64url")
-  } catch {
-    throw new SessionConfigError("SESSION_SIGNING_SECRET must be base64url.")
-  }
-
-  if (bytes.byteLength < SESSION_ID_BYTE_LENGTH) {
-    throw new SessionConfigError("SESSION_SIGNING_SECRET must encode at least 32 bytes.")
-  }
-
-  return new Uint8Array(bytes)
 }
 
 function parseStoreTimeoutMs(raw: string | undefined): number {

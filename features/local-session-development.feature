@@ -22,7 +22,7 @@ Feature: Local session development
     And the visitor already has a session established at "<url>"
     When the visitor returns to "<url>"
     Then the original session id and tenant binding are retained
-    And the visitor receives the existing Springfield tenant page without additional action
+    And the visitor is redirected to initiate Springfield login without tenant application content
     And the HTTP development cookie remains host-only and HttpOnly
 
     Examples:
@@ -44,7 +44,7 @@ Feature: Local session development
     And local Redis has restarted successfully
     When the visitor retries "http://springfield.localhost:3000/"
     Then an existing usable session is resumed or a fresh session for "springfield" is created
-    And the visitor receives the existing Springfield tenant page without additional action
+    And the visitor is redirected to initiate Springfield login without tenant application content
 
   @FR-002 @FR-011 @SC-002 @production @http
   Scenario Outline: Development settings cannot bypass production tenant restrictions

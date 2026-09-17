@@ -24,16 +24,21 @@ frontend production output into `.next`. After a production build,
 prints a greeting and exits.
 All packages are private; the npm scope identifies ownership, not publication.
 
-### Local Redis and session setup
+### Local Redis, Keycloak, and session setup
 
-Start the Redis-only Compose service before exercising session setup:
+Start Redis and local Keycloak before exercising session setup or OIDC login
+initiation. Apps stay on the host; Compose publishes loopback only:
 
 ```sh
-docker compose up -d --wait redis
+export KC_BOOTSTRAP_ADMIN_USERNAME=admin
+export KC_BOOTSTRAP_ADMIN_PASSWORD='choose-a-local-password'
+docker compose up -d --wait redis keycloak
 docker compose exec redis redis-cli ping
 ```
 
-See `docs/docker-compose.md` and `docs/session-state.md`. Copy
+Documented issuer identity for browser and host-run Next.js:
+`http://127.0.0.1:8080/realms/pre-ets`. See `docs/docker-compose.md`,
+`docs/session-state.md`, and `docs/authentication.md`. Copy
 `packages/frontend/.env.example` to `packages/frontend/.env.local`, set
 `REDIS_URL=redis://127.0.0.1:6379`, and generate `SESSION_SIGNING_SECRET` with:
 
@@ -45,10 +50,10 @@ Stop with `docker compose down`. Never run `FLUSHALL` against shared Redis.
 
 ### Local tenant resolution
 
-Tenant Display Name for this increment comes from process environment, not
-a database. Session continuity uses the local Redis service above. Copy
-`packages/frontend/.env.example` to `packages/frontend/.env.local` (gitignored)
-and restart after edits.
+Tenant Display Name and OIDC settings for this increment come from process
+environment, not a database. Session continuity uses the local Redis service
+above. Copy `packages/frontend/.env.example` to `packages/frontend/.env.local`
+(gitignored) and restart after edits (including after Keycloak reprovision).
 
 Host association (default, including omitted `TENANT_RESOLUTION`) uses
 `TENANT_CONFIG_RECORDS_JSON` and `{slug}.localhost` locally or
@@ -58,17 +63,22 @@ reads `TENANT_RESOLUTION` or `TENANT_LOCAL_CONFIG_JSON`.
 Unsupported mode values keep host association and log a safe `invalid-mode`
 diagnostic to stderr.
 
-Development-only static mode:
+Unauthenticated document visits to `/` initiate tenant-bound OIDC (or fail);
+they do not serve Display Name landing content. See `.env.example` for
+synthetic `oidc` fields and empty `OIDC_CLIENT_SECRETS_JSON`.
+
+Development-only static mode (include valid `oidc` for login initiation):
 
 ```sh
 TENANT_RESOLUTION=static \
-TENANT_LOCAL_CONFIG_JSON='{"slug":"springfield","config":{"displayName":"Local Demo"}}' \
+TENANT_LOCAL_CONFIG_JSON='{"slug":"springfield","config":{"displayName":"Local Demo","oidc":{"issuer":"http://127.0.0.1:8080/realms/pre-ets","clientId":"springfield-web","clientAuth":"public","connection":"springfield-idp"}}}' \
 pnpm dev:frontend
 ```
 
-Open `http://localhost:3000/` and expect `Tenant: Local Demo`. Change only the
-Display Name, restart, and reload. Invalid or missing static data returns HTTP
-500 with instructions to supply a valid record and restart.
+Open `http://localhost:3000/` and expect login initiation toward the local
+issuer (or a documented failure page)—not Display Name landing. Invalid or
+missing static data returns HTTP 500 with instructions to supply a valid
+record and restart.
 
 See `specs/001-tenant-resolution/quickstart.md` for the full validation
 workflow.

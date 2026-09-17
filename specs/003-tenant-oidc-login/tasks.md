@@ -16,18 +16,18 @@ or `003-tenant-oidc-login` once tasks land).
 wiring Proxy initiation yet. Prefer one focused setup commit for deps + Compose + `.env.example` +
 docker-compose/README alignment (same pattern as session setup slice 1).
 
-- [ ] T001 Add and pin frontend runtime dependency `openid-client` (compatible released major) in
+- [x] T001 Add and pin frontend runtime dependency `openid-client` (compatible released major) in
       `packages/frontend/package.json` and root `pnpm-lock.yaml`; keep Node >=24 / ESM. Do not import
       it from `proxy.ts` in a way that requires secrets or live discovery at build time (FR-006,
       research §5).
-- [ ] T002 Extend root `compose.yaml` to preserve `redis:8.2.9` on `127.0.0.1:6379` and add
+- [x] T002 Extend root `compose.yaml` to preserve `redis:8.2.9` on `127.0.0.1:6379` and add
       `keycloak` with image `quay.io/keycloak/keycloak:26.7.4`, command `start-dev`, publish
       `127.0.0.1:8080:8080`, bootstrap admin via env (no committed passwords), and a healthcheck that
       supports `docker compose up -d --wait redis keycloak`. Start no frontend/backend/Postgres
       (FR-010, `contracts/local-keycloak.md`).
-- [ ] T003 [P] Update `docs/docker-compose.md` and root `README.md` for Redis+Keycloak loopback layout,
+- [x] T003 [P] Update `docs/docker-compose.md` and root `README.md` for Redis+Keycloak loopback layout,
       issuer identity `http://127.0.0.1:8080/realms/pre-ets`, and “apps stay on host” (FR-010, FR-011).
-- [ ] T004 [P] Extend `packages/frontend/.env.example` with synthetic `oidc` examples including
+- [x] T004 [P] Extend `packages/frontend/.env.example` with synthetic `oidc` examples including
       required `clientAuth` (`"public"` \| `"confidential"`), `issuer`, `clientId`, optional
       `connection`, and empty `OIDC_CLIENT_SECRETS_JSON` / optional `OIDC_TX_*` placeholders; no usable
       secrets; document restart-after-change (FR-001, FR-002, data-model).
@@ -40,50 +40,50 @@ docker-compose/README alignment (same pattern as session setup slice 1).
 `clientAuth` = spec “registration mode”), secrets map rules, fixture/test migration, and OIDC module
 seams every story needs. **Do not enable Proxy login redirection until this phase is complete.**
 
-- [ ] T005 Write failing unit cases in `packages/frontend/tests/unit/tenant-oidc-config.test.ts` for
+- [x] T005 Write failing unit cases in `packages/frontend/tests/unit/tenant-oidc-config.test.ts` for
       the **shared** `TenantConfig` parser (not login-boundary-only validation): keep required
       `displayName`; require nested `oidc`; `issuer` absolute URL with https-outside-dev /
       loopback-http-in-dev; nonempty `clientId`; required `clientAuth` closed set `"public"` \|
       `"confidential"` (explicit map: spec “registration mode” → `oidc.clientAuth`); optional nonempty
       `connection`; reject unknown keys; Display Name-only records unusable (FR-001, FR-002, FR-007,
       data-model, `contracts/tenant-oidc-config.md`).
-- [ ] T006 Extend `packages/frontend/src/lib/tenant/types.ts` (and parsers used by `source.ts` /
+- [x] T006 Extend `packages/frontend/src/lib/tenant/types.ts` (and parsers used by `source.ts` /
       operations) so shared `TenantConfig` **keeps `displayName` and requires nested `oidc`** with
       fields/constraints from T005—including required `oidc.clientAuth` as registration mode; keep
       restart/immutability semantics; make T005 pass (FR-001). Do **not** defer `oidc` enforcement to
       login-only validation.
-- [ ] T007 Migrate existing Display Name-only fixtures/tests to the shared `displayName` + `oidc`
+- [x] T007 Migrate existing Display Name-only fixtures/tests to the shared `displayName` + `oidc`
       shape: update `packages/frontend/tests/unit/tenant-source.test.ts` and related tenant
       runtime/operations tests (`tenant-runtime.test.ts`, `tenant-operations.test.ts`, and any other
       Display Name-only tenant fixtures under `packages/frontend/tests/`); then run the existing
       frontend tenant unit suite at this Foundational checkpoint and make it green (FR-001, Copilot
       T006).
-- [ ] T008 [P] Write failing unit cases in `packages/frontend/tests/unit/oidc-secrets.test.ts` for
+- [x] T008 [P] Write failing unit cases in `packages/frontend/tests/unit/oidc-secrets.test.ts` for
       `OIDC_CLIENT_SECRETS_JSON`: lazy parse; malformed map → typed process failure (HTTP 500 at
       Proxy); `"public"` allows absent secret; `"public"` + nonempty secrets-map entry is **valid and
       unused** (never logged/emitted); `"confidential"` requires nonempty slug secret else config
       refusal; never log secret values (FR-002, research §2, analysis U1).
-- [ ] T009 [P] Implement `packages/frontend/src/lib/oidc/secrets.ts` (`resolveOidcClientSecret(slug,
+- [x] T009 [P] Implement `packages/frontend/src/lib/oidc/secrets.ts` (`resolveOidcClientSecret(slug,
       clientAuth)`) per T008 and `contracts/tenant-oidc-config.md`; make T008 pass.
-- [ ] T010 Write failing unit cases in `packages/frontend/tests/unit/oidc-types.test.ts` for
+- [x] T010 Write failing unit cases in `packages/frontend/tests/unit/oidc-types.test.ts` for
       transaction record exact shape `{ tenantId, issuer, clientId, connection?, redirectUri, nonce,
       codeVerifier, sessionId, expiresAt }`, default TTL `600` / `OIDC_TX_TTL_SECONDS`, key prefix
       default `pre-ets:oidc-tx:`, and correlation cookie claims `state` / **`tenant`** / `exp`
       (claim name `tenant` matches session cookie—not `tenantId`) (data-model, research §6).
-- [ ] T011 Define OIDC types/helpers in `packages/frontend/src/lib/oidc/types.ts` per T010; parse
+- [x] T011 Define OIDC types/helpers in `packages/frontend/src/lib/oidc/types.ts` per T010; parse
       `OIDC_TX_*` lazily; make T010 pass.
-- [ ] T012 [P] Implement Redis transaction helpers in `packages/frontend/src/lib/oidc/transaction.ts`:
+- [x] T012 [P] Implement Redis transaction helpers in `packages/frontend/src/lib/oidc/transaction.ts`:
       create with `SET NX EXAT` under `{OIDC_TX_KEY_PREFIX}{state}`; one collision retry; no
       cross-tenant mutation; share session store timeout fail-closed; never persist verifier outside
       Redis (FR-006, research §6).
-- [ ] T013 [P] Implement correlation cookie sign/verify in `packages/frontend/src/lib/oidc/cookie.ts`
+- [x] T013 [P] Implement correlation cookie sign/verify in `packages/frontend/src/lib/oidc/cookie.ts`
       (cookie name `pathable-oidc`; HS256 via `jose`; claims `{ state, tenant, exp }`;
       `OIDC_TX_SIGNING_SECRET` or `SESSION_SIGNING_SECRET`; host-only HttpOnly Lax; Secure outside
       development) (FR-006).
-- [ ] T014 [P] Implement discovery + in-process issuer cache in
+- [x] T014 [P] Implement discovery + in-process issuer cache in
       `packages/frontend/src/lib/oidc/discovery.ts` using `openid-client`; discovery must **not**
       override `clientAuth`; document frontend restart after Keycloak reprovision (research §5, E3).
-- [ ] T015 Implement `initiateLogin` in `packages/frontend/src/lib/oidc/initiate.ts` per
+- [x] T015 Implement `initiateLogin` in `packages/frontend/src/lib/oidc/initiate.ts` per
       `contracts/oidc-login-initiation.md` ordered steps: load oidc → resolve secret by `clientAuth`
       → discover → PKCE/state/nonce → approved `{origin}/auth/callback` → persist tx + correlation
       cookie → auth URL with S256 PKCE, `scope=openid`, `kc_idp_hint` when `connection` set
@@ -106,7 +106,7 @@ each matching provider login page with zero chooser and zero application content
 
 ### Tests for User Story 1
 
-- [ ] T016 [P] [US1] Add failing Proxy/initiation unit cases in
+- [x] T016 [P] [US1] Add failing Proxy/initiation unit cases in
       `packages/frontend/tests/unit/oidc-initiate-proxy.test.ts` (or extend existing proxy tests):
       `/auth/callback` excluded **before** `setupSession`; unauthenticated `reuse` and `create` both
       initiate on document `/`; terminals 403/500/503 unchanged; malformed secrets → HTTP 500;
@@ -121,22 +121,22 @@ each matching provider login page with zero chooser and zero application content
 
 ### Implementation for User Story 1
 
-- [ ] T018 [US1] Complete extended forbidden UX for OIDC-config 403 on the existing forbidden surface
+- [x] T018 [US1] Complete extended forbidden UX for OIDC-config 403 on the existing forbidden surface
       (no new route): explain login cannot start; clear next action; a11y; no secrets; distinct from
       `login-unavailable`. **Dependency of Proxy enablement (T019)**—do this before claiming
       FR-007/SC-005 for config refusal in the US1 MVP (analysis C1; FR-007, FR-008, P4).
-- [ ] T019 [US1] Wire `packages/frontend/src/proxy.ts`: **first branch** exclude `/auth/callback`
+- [x] T019 [US1] Wire `packages/frontend/src/proxy.ts`: **first branch** exclude `/auth/callback`
       (pass-through; no `setupSession`, no initiation); then `setupSession` + unauthenticated ready →
       `initiateLogin` **only** on document entry `/`; matcher covers `/` and `/auth/callback`; never
       SSR landing without authenticated user id (out of scope / always initiate); map malformed
       secrets to HTTP 500; safe diagnostics outcome classes only (FR-003, FR-005, FR-013, E7, E9).
-- [ ] T020 [US1] Add `packages/frontend/src/app/auth/callback/page.tsx` stub outside login re-entry;
+- [x] T020 [US1] Add `packages/frontend/src/app/auth/callback/page.tsx` stub outside login re-entry;
       no code exchange; no initiation (FR-013).
-- [ ] T021 [US1] Add `packages/frontend/src/app/login-unavailable/page.tsx` **outside** `(app)` per
+- [x] T021 [US1] Add `packages/frontend/src/app/login-unavailable/page.tsx` **outside** `(app)` per
       plan E11/P5: PathAble-accessible “login cannot start” + one keyboard-operable next action; no
       secrets/cross-tenant details; read installed
       `agent-guidance/pathable-react/SKILL.md` before composing UI (FR-008, SC-005).
-- [ ] T022 [US1] Apply **Supersedes** updates in the same delivery slice as Proxy initiation:
+- [x] T022 [US1] Apply **Supersedes** updates in the same delivery slice as Proxy initiation:
       `specs/001-tenant-resolution/contracts/landing-page.md` and tenant-context as required by plan
       Compatibility; keep dual-layer regression intent documented (Constitution I / Governance).
 - [ ] T023 [US1] Same-slice **behavioral supersession** retarget for inventoried features (plan
@@ -165,7 +165,7 @@ unauthenticated visit changes; exercise defects independently (SC-002, SC-003).
 
 ### Tests for User Story 2
 
-- [ ] T025 [P] [US2] Add failing unit/HTTP cases for config defects and confidential credentials in
+- [x] T025 [P] [US2] Add failing unit/HTTP cases for config defects and confidential credentials in
       `packages/frontend/tests/unit/oidc-config-failures.test.ts` (and proxy/HTTP as needed): all
       defect rows from `features/tenant-oidc-configuration.feature` including `clientAuth:
       "confidential"` without secret → extended 403 (not `login-unavailable`); public needs no
@@ -178,9 +178,9 @@ unauthenticated visit changes; exercise defects independently (SC-002, SC-003).
 
 ### Implementation for User Story 2
 
-- [ ] T027 [US2] Ensure provider metadata / discovery failures route to `login-unavailable` (T021)
+- [x] T027 [US2] Ensure provider metadata / discovery failures route to `login-unavailable` (T021)
       without collapsing into 403; no auto redirect loop (FR-007, US2 scenario 6).
-- [ ] T028 [US2] Document reload/restart procedure for OIDC JSON + secrets in
+- [x] T028 [US2] Document reload/restart procedure for OIDC JSON + secrets in
       `packages/frontend/.env.example` and operator-facing docs pointers (FR-009, FR-011).
 - [ ] T029 [US2] Run US2 cases via `pnpm test:bdd:oidc` and record evidence in
       `specs/003-tenant-oidc-login/quickstart.md` (SC-002, SC-003, SC-005).
@@ -205,13 +205,13 @@ failure without access or loop (SC-004).
 
 ### Implementation for User Story 3
 
-- [ ] T031 [US3] Finish local provisioning docs in `docs/docker-compose.md`, README, and
+- [x] T031 [US3] Finish local provisioning docs in `docs/docker-compose.md`, README, and
       `contracts/local-keycloak.md` alignment: realm/clients/`clientAuth: "public"`/IdP aliases/
       redirect URIs; no committed secrets (FR-011, FR-012).
-- [ ] T032 [US3] Ensure BDD fixtures can supply synthetic OIDC tenant JSON + optional secrets map and
+- [x] T032 [US3] Ensure BDD fixtures can supply synthetic OIDC tenant JSON + optional secrets map and
       unique `SESSION_KEY_PREFIX` / `OIDC_TX_KEY_PREFIX` for spawned frontends (`tests/bdd/support/**`)
       (FR-010, FR-012).
-- [ ] T033 [US3] Document CI Keycloak policy (E8) in `.github/workflows/ci-bdd.yml` comments and/or
+- [x] T033 [US3] Document CI Keycloak policy (E8) in `.github/workflows/ci-bdd.yml` comments and/or
       workflow: CI runs `@contract`/`@http` without live Keycloak; `@browser` provider-arrival is
       local / `pnpm test:bdd:oidc` with Compose—do not require live Keycloak in CI until explicitly
       added (plan Testing).
@@ -224,7 +224,7 @@ failure without access or loop (SC-004).
 
 ## Phase 6: Polish & Cross-Cutting Concerns
 
-- [ ] T035 [P] Sync `docs/authentication.md` with unauthenticated initiate-for-both, `clientAuth`
+- [x] T035 [P] Sync `docs/authentication.md` with unauthenticated initiate-for-both, `clientAuth`
       (registration mode), cookie-on-success-only, and mid-journey (provider arrival only) claims
       (research §11).
 - [ ] T036 Require OIDC delivery PR keeps `pnpm test:bdd:session` green **after** T023 retarget (E5);

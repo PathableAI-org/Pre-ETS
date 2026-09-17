@@ -1,10 +1,20 @@
 export type HostSuffix = "localhost" | "pathable.com"
 
+export type OidcClientAuth = "confidential" | "public"
+
 export interface TenantConfig {
   readonly displayName: string
+  readonly oidc: TenantOidcConfig
 }
 
 export type TenantMode = "host" | "static"
+
+export interface TenantOidcConfig {
+  readonly clientAuth: OidcClientAuth
+  readonly clientId: string
+  readonly connection?: string
+  readonly issuer: string
+}
 
 export interface TenantRecord {
   readonly config: TenantConfig
@@ -35,9 +45,12 @@ export const INVALID_MODE_DIAGNOSTIC: ModeDiagnostic = {
 
 export const CONFIG_UNAVAILABLE = "Tenant configuration is unavailable."
 export const LOCAL_CONFIG_ERROR =
-  "Supply a valid TENANT_LOCAL_CONFIG_JSON record with slug and Display Name, then restart."
+  "Supply a valid TENANT_LOCAL_CONFIG_JSON record with slug, Display Name, and oidc, then restart."
 
 const SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/
+const ALLOWED_CONFIG_KEYS = new Set(["displayName", "oidc"])
+const ALLOWED_OIDC_KEYS = new Set(["clientAuth", "clientId", "connection", "issuer"])
+const CLIENT_AUTH_VALUES = new Set<OidcClientAuth>(["confidential", "public"])
 
 export function isCanonicalTenantSlug(value: string): boolean {
   return value.length >= 1 && value.length <= 63 && value !== "www" && SLUG_PATTERN.test(value)
@@ -63,7 +76,38 @@ export function parseLocalConfigJson(raw: string | undefined): TenantRecord {
   return record
 }
 
-export function parseTenantRecord(value: unknown): TenantRecord | undefined {
+export function parseTenantConfig(
+  value: unknown,
+  options: { readonly allowLoopbackHttp?: boolean } = {}
+): TenantConfig | undefined {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return undefined
+  }
+
+  const record = value as Record<string, unknown>
+  if (Object.keys(record).some((key) => !ALLOWED_CONFIG_KEYS.has(key))) {
+    return undefined
+  }
+
+  if (typeof record.displayName !== "string" || record.displayName.trim() === "") {
+    return undefined
+  }
+
+  const oidc = parseTenantOidcConfig(record.oidc, options)
+  if (oidc === undefined) {
+    return undefined
+  }
+
+  return {
+    displayName: record.displayName,
+    oidc
+  }
+}
+
+export function parseTenantRecord(
+  value: unknown,
+  options: { readonly allowLoopbackHttp?: boolean } = {}
+): TenantRecord | undefined {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     return undefined
   }
@@ -73,7 +117,7 @@ export function parseTenantRecord(value: unknown): TenantRecord | undefined {
     return undefined
   }
 
-  const config = parseTenantConfig(record.config)
+  const config = parseTenantConfig(record.config, options)
   if (config === undefined) {
     return undefined
   }
@@ -108,24 +152,91 @@ export function selectTenantMode(rawMode: string | undefined, production = false
   }
 }
 
-function parseTenantConfig(value: unknown): TenantConfig | undefined {
+function allowLoopbackHttpDefault(): boolean {
+  return process.env.NODE_ENV === "development"
+}
+
+function isLoopbackHostname(hostname: string): boolean {
+  const host = hostname.toLowerCase()
+  return host === "127.0.0.1" || host === "localhost" || host === "::1" || host === "[::1]"
+}
+
+// fallow-ignore-next-line complexity -- issuer transport rules (https vs loopback http)
+function isValidIssuer(
+  raw: string,
+  options: { readonly allowLoopbackHttp?: boolean }
+): boolean {
+  let url: URL
+  try {
+    url = new URL(raw)
+  } catch {
+    return false
+  }
+
+  if (url.href !== raw && url.toString() !== raw) {
+    // Accept only absolute URLs; relative or incomplete strings fail URL parsing above.
+  }
+
+  if (url.username !== "" || url.password !== "") {
+    return false
+  }
+
+  const protocol = url.protocol.toLowerCase()
+  const allowLoopbackHttp = options.allowLoopbackHttp ?? allowLoopbackHttpDefault()
+
+  if (protocol === "https:") {
+    return true
+  }
+
+  if (protocol === "http:") {
+    return allowLoopbackHttp && isLoopbackHostname(url.hostname)
+  }
+
+  return false
+}
+
+// fallow-ignore-next-line complexity -- nested oidc object exact-shape validation
+function parseTenantOidcConfig(
+  value: unknown,
+  options: { readonly allowLoopbackHttp?: boolean }
+): TenantOidcConfig | undefined {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     return undefined
   }
 
-  const keys = Object.keys(value)
-  if (keys.some((key) => key !== "displayName")) {
+  const oidc = value as Record<string, unknown>
+  if (Object.keys(oidc).some((key) => !ALLOWED_OIDC_KEYS.has(key))) {
     return undefined
   }
 
-  if (!("displayName" in value)) {
+  if (typeof oidc.issuer !== "string" || !isValidIssuer(oidc.issuer, options)) {
     return undefined
   }
 
-  const displayName = value.displayName
-  if (typeof displayName !== "string" || displayName.trim() === "") {
+  if (typeof oidc.clientId !== "string" || oidc.clientId.trim() === "") {
     return undefined
   }
 
-  return { displayName }
+  if (typeof oidc.clientAuth !== "string" || !CLIENT_AUTH_VALUES.has(oidc.clientAuth as OidcClientAuth)) {
+    return undefined
+  }
+
+  if (!("connection" in oidc)) {
+    return {
+      clientAuth: oidc.clientAuth as OidcClientAuth,
+      clientId: oidc.clientId,
+      issuer: oidc.issuer
+    }
+  }
+
+  if (typeof oidc.connection !== "string" || oidc.connection.trim() === "") {
+    return undefined
+  }
+
+  return {
+    clientAuth: oidc.clientAuth as OidcClientAuth,
+    clientId: oidc.clientId,
+    connection: oidc.connection,
+    issuer: oidc.issuer
+  }
 }

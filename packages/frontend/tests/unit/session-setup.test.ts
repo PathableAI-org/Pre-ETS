@@ -13,6 +13,7 @@ import {
   type SessionCookieClaims,
   type SessionRecord
 } from "../../src/lib/session/types.ts"
+import { springfieldConfig } from "./tenant-fixtures.ts"
 
 function fixedSessionId(seed = 3): string {
   const bytes = new Uint8Array(32)
@@ -30,6 +31,7 @@ function mockStore(overrides: Partial<SessionStore> = {}): SessionStore {
 
 function okTenant(tenantId = "springfield") {
   return async () => ({
+    config: springfieldConfig,
     kind: "ok" as const,
     origin: "host-associated" as const,
     tenantId
@@ -88,7 +90,12 @@ describe("setupSession", () => {
         },
         resolveTenant: async () => {
           events.push("resolveTenant")
-          return { kind: "ok", origin: "host-associated", tenantId: "springfield" }
+          return {
+            config: springfieldConfig,
+            kind: "ok",
+            origin: "host-associated",
+            tenantId: "springfield"
+          }
         },
         store,
         verifyCookie: async () => {
@@ -181,6 +188,7 @@ describe("setupSession", () => {
       })
 
       expect(result).toEqual({
+        config: springfieldConfig,
         context: { expiresAt, sessionId, tenantId: "springfield" },
         kind: "ready",
         origin: "host-associated",

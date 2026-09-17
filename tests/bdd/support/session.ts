@@ -25,6 +25,7 @@ import {
 } from "../../../packages/frontend/src/lib/session/types.ts"
 import { createTenantOperations } from "../../../packages/frontend/src/lib/tenant/operations.ts"
 import { assertDisplayedName, assertForbiddenPage, upsertTenant } from "./actions.ts"
+import { syntheticTenantConfig } from "./fixtures.ts"
 import { sendRawGet } from "./raw-http.ts"
 import { ensureBrowser, ensureOwnedProcess, restartOwnedProcess } from "./server.ts"
 import { createRedisClient, decodeJwt, jwtVerify } from "./session-deps.ts"
@@ -234,6 +235,30 @@ export async function assertSignedClaimsMinimal(world: TenantWorld): Promise<voi
   assert.ok(typeof payload.exp === "number")
 }
 
+/**
+ * Unauthenticated `/` must initiate OIDC (or fail) — never SSR Display Name landing.
+ * Accepts IdP redirect (302 with Location) or app-owned failure without landing content.
+ */
+export function assertSpringfieldLoginInitiation(world: TenantWorld): void {
+  const response = world.httpResponse
+  assert.ok(response !== undefined, "expected an HTTP response from the visit")
+  assert.notEqual(response.status, 200, "unauthenticated document / must not SSR landing")
+  assert.equal(response.body.includes("Tenant:"), false, "must not serve Display Name landing")
+  assert.equal(response.body.includes("Springfield Demo"), false)
+
+  if (response.status === 302 || response.status === 303) {
+    const location = response.headers.location ?? response.headers.Location
+    assert.ok(typeof location === "string" && location.length > 0, "expected redirect Location")
+    assert.equal(location.includes("code_verifier"), false)
+    return
+  }
+
+  assert.ok(
+    response.status === 403 || response.status === 503 || response.status === 500,
+    `unexpected status ${String(response.status)} for login initiation`
+  )
+}
+
 export function assertSpringfieldTenantPage(world: TenantWorld): void {
   assertDisplayedName(world, "Springfield Demo")
 }
@@ -361,14 +386,19 @@ export async function runSessionContract(
   const hostSuffix = hostSuffixForHost(parsed.host)
   const tenantOps = createTenantOperations({
     hostRecordsJson: JSON.stringify(world.tenants.map((tenant) => ({
-      config: { displayName: tenant.displayName },
+      // In-process ops go through parseRecordsJson (no loopback allow); use HTTPS.
+      config: syntheticTenantConfig(tenant.displayName, tenant.slug, { production: true }),
       slug: tenant.slug
     }))),
     hostSuffix,
     localConfigJson: world.localStaticRecord === undefined
       ? undefined
       : JSON.stringify({
-        config: { displayName: world.localStaticRecord.displayName },
+        config: syntheticTenantConfig(
+          world.localStaticRecord.displayName,
+          world.localStaticRecord.slug,
+          { production: true }
+        ),
         slug: world.localStaticRecord.slug
       }),
     mode: world.resolutionMode ?? "host",
@@ -701,6 +731,15 @@ async function dockerAvailable(): Promise<boolean> {
 }
 
 function ensureRuntimeForUrl(world: TenantWorld, rawUrl: string): void {
+  if (world.forceDevelopmentRuntime) {
+    world.sessionCookieHostStyle = "localhost"
+    if (world.runtime !== "development") {
+      world.runtime = "development"
+      world.processSignature = undefined
+    }
+    return
+  }
+
   const host = new URL(rawUrl).host
   if (hostSuffixForHost(host) === "pathable.com") {
     world.sessionCookieHostStyle = "pathable"
@@ -853,9 +892,8 @@ async function requestSessionPage(world: TenantWorld, parsed: ParsedUrl): Promis
     port: parsed.port
   })
   applyResponseCookies(world, parsed.host, world.httpResponse)
-  if (world.httpResponse.status === 200) {
-    await captureSessionFromResponse(world, parsed.host)
-  }
+  // Capture session from Set-Cookie on IdP redirect (302) as well as landing (200).
+  await captureSessionFromResponse(world, parsed.host)
 }
 
 function resolveResourcePath(world: TenantWorld, resource: string): string {
@@ -898,7 +936,10 @@ async function sendSessionHttpRequest(options: {
   path: string
   port: number
 }): Promise<HttpExchange> {
-  const extraHeaders: Record<string, string> = {}
+  const extraHeaders: Record<string, string> = {
+    Accept: "text/html,application/xhtml+xml",
+    "Sec-Fetch-Dest": "document"
+  }
   const cookie = cookieHeaderForHost({ sessionCookieJar: options.cookieJar } as TenantWorld, options.host)
   if (cookie !== undefined) {
     extraHeaders.Cookie = cookie

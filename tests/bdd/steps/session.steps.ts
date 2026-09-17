@@ -21,6 +21,7 @@ import {
   assertSessionPersistedBeforeCookie,
   assertSessionServiceFailure,
   assertSignedClaimsMinimal,
+  assertSpringfieldLoginInitiation,
   assertSpringfieldTenantPage,
   clearCookies,
   configureStorageFailure,
@@ -221,6 +222,13 @@ Then(
   }
 )
 
+Then(
+  "the visitor is redirected to initiate Springfield login without tenant application content",
+  function(this: TenantWorld) {
+    assertSpringfieldLoginInitiation(this)
+  }
+)
+
 Then("the HTTP development cookie remains host-only and HttpOnly", function(this: TenantWorld) {
   assertSessionCookieAttributes(this, false)
 })
@@ -356,7 +364,9 @@ Then("persistence succeeds before the session cookie is issued", async function(
 Then("downstream handling of this request receives that same session", function(this: TenantWorld) {
   assert.ok(this.sessionId)
   assert.ok(this.httpResponse)
-  assert.match(this.httpResponse.body, /Tenant: Springfield Demo/)
+  // Unauthenticated `/` initiates OIDC (or fails) and must not SSR Display Name landing.
+  assert.doesNotMatch(this.httpResponse.body, /Tenant: Springfield Demo/)
+  assert.equal(this.sessionTenantId, "springfield")
 })
 
 Given("the visitor has a valid unexpired session for {string}", async function(this: TenantWorld, tenantId: string) {
@@ -396,6 +406,10 @@ Given("the tenant page needs the session more than once during the request", fun
   this.sessionDoubleAccess = true
 })
 
+Given("the tenant request needs the session more than once during setup", function(this: TenantWorld) {
+  this.sessionDoubleAccess = true
+})
+
 Then("exactly one new session is persisted for the request", async function(this: TenantWorld) {
   await ensureSessionContractEvidence(this)
   const createCount = (this.sessionContract?.events ?? []).filter((event) => event === "store.create").length
@@ -409,7 +423,8 @@ Then("every downstream session access receives that session", function(this: Ten
 
   assert.ok(this.sessionId)
   if (this.httpResponse !== undefined) {
-    assert.match(this.httpResponse.body, /Tenant: Springfield Demo/)
+    assert.doesNotMatch(this.httpResponse.body, /Tenant: Springfield Demo/)
+    assert.equal(this.sessionTenantId, "springfield")
   } else {
     assert.equal(this.sessionContract?.result.kind, "ready")
   }

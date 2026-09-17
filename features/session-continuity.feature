@@ -15,7 +15,7 @@ Feature: Tenant session continuity
     And the new session contains tenant id "springfield" and no authenticated identity
     And persistence succeeds before the session cookie is issued
     And downstream handling of this request receives that same session
-    And the visitor receives the existing Springfield tenant page without additional action
+    And the visitor is redirected to initiate Springfield login without tenant application content
 
   @FR-001 @FR-002 @FR-004 @SC-001 @http @contract
   Scenario: Returning visitor reuses a session after tenant validation
@@ -32,12 +32,12 @@ Feature: Tenant session continuity
     And the frontend has restarted while the external session record remains available
     When the visitor opens "https://springfield.pathable.com/"
     Then the original session id and tenant binding are retained
-    And the visitor receives the existing Springfield tenant page without additional action
+    And the visitor is redirected to initiate Springfield login without tenant application content
 
   @FR-003 @FR-012 @contract
   Scenario: Repeated access within one request shares a single session
     Given the visitor has no session cookie
-    And the tenant page needs the session more than once during the request
+    And the tenant request needs the session more than once during setup
     When the visitor opens "https://springfield.pathable.com/"
     Then exactly one new session is persisted for the request
     And every downstream session access receives that session
@@ -81,7 +81,7 @@ Feature: Tenant session continuity
     Given the visitor previously received a session but the browser refused its cookie
     When the visitor opens "https://springfield.pathable.com/"
     Then a new session for "springfield" is issued without reusing the previous id
-    And the visitor receives the existing Springfield tenant page without additional action
+    And the visitor is redirected to initiate Springfield login without tenant application content
 
   @FR-003 @http @contract
   Scenario Outline: Resource fetching does not establish sessions
