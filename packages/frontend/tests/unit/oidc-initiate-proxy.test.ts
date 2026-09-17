@@ -121,6 +121,23 @@ describe("OIDC initiate / proxy contracts", () => {
         )
       ).toBe("http://localhost:3000")
     })
+
+    it("rejects non-loopback hosts in static tenant mode", () => {
+      expect(
+        approvedApplicationOrigin(
+          "springfield.localhost:3000",
+          new URL("https://springfield.localhost:3000/"),
+          { development: true, tenantOrigin: "local-static" }
+        )
+      ).toBeUndefined()
+      expect(
+        approvedApplicationOrigin(
+          "localhost:3000",
+          new URL("http://localhost:3000/"),
+          { development: true, tenantOrigin: "local-static" }
+        )
+      ).toBe("http://localhost:3000")
+    })
   })
 
   describe("authenticated short-circuit predicate", () => {

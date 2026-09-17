@@ -7,11 +7,15 @@ import { hostnameOf } from "../tenant/host.ts"
  *
  * Scheme: request protocol when http/https; reject non-loopback `http:` outside
  * development (research §7 / FR-006 approved return destination).
+ * Static tenant mode additionally requires a loopback Host.
  */
 export function approvedApplicationOrigin(
   hostHeader: string | undefined,
   requestUrl: URL,
-  options: { readonly development?: boolean } = {}
+  options: {
+    readonly development?: boolean
+    readonly tenantOrigin?: "host-associated" | "local-static"
+  } = {}
 ): string | undefined {
   if (hostHeader === undefined || hostHeader.trim() === "") {
     return undefined
@@ -23,6 +27,10 @@ export function approvedApplicationOrigin(
 
   const hostname = hostnameOf(hostHeader)
   if (hostname === undefined) {
+    return undefined
+  }
+
+  if (options.tenantOrigin === "local-static" && !isLoopbackHostname(hostname)) {
     return undefined
   }
 

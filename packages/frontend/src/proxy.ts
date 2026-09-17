@@ -99,7 +99,8 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
 
   const origin = approvedApplicationOrigin(
     request.headers.get("host") ?? undefined,
-    request.nextUrl
+    request.nextUrl,
+    { tenantOrigin: result.origin }
   )
   if (origin === undefined) {
     logOutcome("login-unavailable")
