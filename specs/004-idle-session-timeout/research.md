@@ -18,14 +18,14 @@ authenticated server handlers). The server remains the **sole authority** for
 `idleExpiresAt`; client timers MUST NEVER grant access past that deadline.
 
 While authenticated UI is mounted, the client **MUST** run a **non-authoritative
-revalidation** path (deadline-aligned timer and/or `visibilitychange` / `focus`
-checks) that confirms inactivity with the server. Deadline alignment uses
-`idleExpiresAt` from the forwarded authenticated **`SessionContext`** (and/or
-confirm/read while still authenticated)—not a client-invented clock. On confirmed
-inactivity: remove protected content from the active experience and open the
-PathAble Modal—aligned with recovery Gherkin when access expires **while the
-application is running**. Revalidation discovers and presents recovery; it does
-not invent cause or extend deadlines.
+revalidation** path (deadline-aligned timer at `min(idleExpiresAt, expiresAt)` and/or
+`visibilitychange` / `focus` checks) that confirms inactivity with the server. Deadline
+alignment uses both deadlines from the forwarded authenticated **`SessionContext`**
+(and/or confirm/read while still authenticated)—not a client-invented clock. Absolute-first
+expiry uses the non-inactivity recovery path. On confirmed inactivity: remove protected
+content from the active experience and open the PathAble Modal—aligned with recovery
+Gherkin when access expires **while the application is running**. Revalidation discovers
+and presents recovery; it does not invent cause or extend deadlines.
 
 On idle deadline, authenticated fields (`userId` / `userName` and idle fields)
 MUST be cleared (or the record replaced with an anonymous tenant session) **before**
@@ -94,18 +94,22 @@ an initial deadline; confirm/read remains a refresh source after renewals).
 
 **Decision**:
 
-- **Qualifying**: deliberate `keydown` / pointer (`pointerdown`) / `touchstart` /
-  scroll (`scroll` on document or scrollable roots) from the authenticated UI.
+- **Qualifying**: deliberate user-originated `keydown` / pointer (`pointerdown`) /
+  `touchstart`, or scrolling gated on trusted `wheel` / touch / pointer / keyboard input
+  from the authenticated UI. Bare `scroll` alone (including programmatic `scrollTo` /
+  infinite-scroll layout) is **not** qualifying.
 - **Non-qualifying**: passive reading, visibility-only events, RSC/prefetch,
-  polling, automated keepalives, and protected API calls **by themselves**.
+  polling, automated keepalives, programmatic scroll, and protected API calls **by
+  themselves**.
 - **Reporting**: a narrow authenticated Server Action (preferred) or **POST-only**
   Route Handler with same-origin `Origin`/CSRF validation accepts activity heartbeats
   only for an **authenticated same-tenant session cookie** when server `now <
   idleExpiresAt`. Stamp activity from the **server clock** (omit client `at`). Update
-  via **atomic** conditional Redis transition; updates `lastActivityAt` /
-  `idleExpiresAt` without changing `expiresAt` or `idleDurationMinutes`. Reject late
-  reports and lost races vs clearance (no revival / no overwrite of anonymous
-  clearance). No public diagnostic route. `SameSite=Lax` alone is insufficient.
+  via **atomic** conditional Redis transition that re-samples `now` **at commit time**;
+  updates `lastActivityAt` / `idleExpiresAt` without changing `expiresAt` or
+  `idleDurationMinutes`. Reject late reports and lost races vs clearance (no revival /
+  no overwrite of anonymous clearance). No public diagnostic route. `SameSite=Lax`
+  alone is insufficient.
 - **Debounce / coalescing**: client coalesces bursts; server MUST also coalesce or
   rate-bound renewals (indicative: ignore redundant writes within **~1s** when
   `idleExpiresAt` is unchanged—see `idle-expiration.md`). Neither client nor server
@@ -114,8 +118,8 @@ an initial deadline; confirm/read remains a refresh source after renewals).
 - **Tabs**: same `pathable-session` cookie → same Redis id → shared idle deadline.
   Each shared-session tab MUST run revalidation; after the first successful **server**
   confirmation of inactivity, that tab notifies same-origin siblings via
-  `BroadcastChannel` (or equivalent) with an established `inactivity-confirmed`
-  signal so every tab clears protected content / shows the modal promptly (see §6).
+  `BroadcastChannel` (or equivalent) with `inactivity-confirmed` including **`sessionId`
+  and `sessionEndGeneration`**; receivers ignore foreign session ids (see §6).
   **Server acceptance** remains authoritative. Independent cookies/devices do not
   share activity.
 - **Tenant isolation**: activity handler binds to session tenant; cross-tenant
@@ -216,17 +220,19 @@ introspection (violates ownership).
 - **Multi-tab-safe cause (P1 / E1 / X1)**: The first tab that receives a successful
   **server** confirmation of inactivity MUST notify same-origin shared-session sibling
   tabs via `BroadcastChannel` (or equivalent) with `inactivity-confirmed` including
-  `sessionEndGeneration`. Sibling tabs clear protected content and open the PathAble
-  Modal from that sync signal (FR-008—does **not** invent inactivity from a client
-  timer). Missed BroadcastChannel → re-query confirm/read or SSR recovery against the
-  latch.
+  **`sessionId` and `sessionEndGeneration`**. Receivers MUST ignore foreign session ids
+  (`BroadcastChannel` is origin-wide). Sibling tabs with a matching `sessionId` clear
+  protected content and open the PathAble Modal from that sync signal (FR-008—does
+  **not** invent inactivity from a client timer). Missed BroadcastChannel → re-query
+  confirm/read or SSR recovery against the latch.
 - Missing/evicted/unavailable store, absolute expiry without idle evidence, or
   config/process failures → recovery MUST NOT claim inactivity.
 - While authenticated UI is mounted, non-authoritative client revalidation
-  (deadline-aligned via forwarded `idleExpiresAt` and/or `visibilitychange` /
-  `focus`; see §1) confirms inactivity with the server; on confirmation, remove
-  protected content and open PathAble **`Modal`** without requiring a full
-  navigation. `Modal` requires a client boundary
+  (deadline-aligned via `min(idleExpiresAt, expiresAt)` from forwarded context and/or
+  `visibilitychange` / `focus`; see §1) confirms inactivity with the server; on
+  confirmation, remove protected content and open PathAble **`Modal`** without requiring
+  a full navigation. Absolute-first expiry uses the non-inactivity recovery path.
+  `Modal` requires a client boundary
   (`agent-guidance/.../references/server-and-client.md`); keep page data loading
   on the server.
 - Modal: accessible name/explanation that inactivity ended the session and a
@@ -239,8 +245,8 @@ introspection (violates ownership).
   Cancel/fail leaves access unusable with retry path (`/login-unavailable` or re-shown
   modal as appropriate).
 - Before enabling further interaction after resume from sleep/offline, remove
-  protected content from the active experience and clear temporary session
-  draft fields from Redis; durable backend records untouched.
+  protected content from the active experience. This slice has no draft keys to
+  clear; durable backend records untouched.
 
 **Rationale**: FR-008–010; Principle IV; PathAble Modal guidance; recovery
 Gherkin for running-app expiry and “second tab” multi-tab recovery; current proxy

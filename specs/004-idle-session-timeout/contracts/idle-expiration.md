@@ -51,13 +51,19 @@ GET and cross-site requests.
 **Atomic store transition**: Load-check-write MUST NOT use a blind `SET XX` after a
 separate read. Renewal and idle-clearance MUST compete via an **atomic conditional**
 Redis transition (WATCH/MULTI, Lua, or compare-and-set on expected authenticated shape +
-`idleExpiresAt` / generation). When the race is lost:
+`idleExpiresAt` / generation). The conditional MUST sample authoritative `now` **at
+commit time** inside the Redis script / MULTI (not a wall-clock captured only before
+I/O). A delayed heartbeat whose pre-I/O `now` was still under the deadline MUST still
+fail when commit-time `now >= idleExpiresAt` or `now >= expiresAt` (deadline wins;
+fail closed). Cover with a contract/unit case for a delayed command. When the race is
+lost:
 
 | Lost-race outcome                         | Result                                                                 |
 | ----------------------------------------- | ---------------------------------------------------------------------- |
 | Clearance already wrote anonymous + cause | Deny renewal; **no** overwrite of post-clearance anonymous record      |
 | Newer accepted heartbeat already applied  | Deny or no-op; do not regress `lastActivityAt` / `idleExpiresAt`       |
 | Expected shape / generation mismatch      | Deny; fail closed; no revival                                          |
+| Commit-time clock past deadline           | Deny; run clearance path; no revival                                   |
 
 **Coalescing / rate bound**: server MUST coalesce or rate-limit accepted renewals.
 Indicative default (E4): ignore redundant Redis writes within **~1s** when the computed
@@ -67,7 +73,10 @@ timeout / failure on renewal → fail closed (deny; no revival).
 
 ### Qualifying vs non-qualifying (client duty)
 
-May call renewal only for deliberate keyboard, pointer, touch, or scroll. MUST NOT call for
+May call renewal only for deliberate **user-originated** `keydown`, pointer
+(`pointerdown`), `touchstart`, or scrolling driven by trusted `wheel` / touch /
+pointer / keyboard input. MUST NOT renew on bare `scroll` alone (programmatic
+`scrollTo`, layout, or infinite-scroll callbacks are not qualifying). MUST NOT call for
 passive reading, polling, prefetch, or automated keepalives.
 
 ## Idle expiry side effects
@@ -80,7 +89,9 @@ When idle deadline is reached or detected:
 2. Set anonymous `accessEndedCause: "inactivity"` and a replayable **session-end
    generation / latch** for recovery UX (FR-008/009). See
    [inactivity-recovery.md](./inactivity-recovery.md) and [data-model.md](../data-model.md).
-3. Clear temporary session draft data.
+3. This slice has **no** session draft / unsaved-work keys to delete (see data-model).
+   Protected UI must still be removed from the active experience; login-again MUST NOT
+   restore cleared UI state.
 4. Absolute Redis TTL / `expiresAt` handling remains per session-state rules; anonymous
    continuity MUST NOT restore protected access (FR-007).
 

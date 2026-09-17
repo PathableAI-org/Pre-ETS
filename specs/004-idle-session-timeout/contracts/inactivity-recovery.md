@@ -58,10 +58,13 @@ recovery shell props) MUST include **`sessionEndGeneration`** (opaque handle). S
 and missed-BroadcastChannel recovery validate against this generation when re-querying—do
 **not** infer it from authenticated `SessionContext` (which omits the latch).
 
-**Deadline source for client timers**: Prefer `idleExpiresAt` on the forwarded
-authenticated `SessionContext` (see [data-model.md](../data-model.md)). Confirm/read
-MUST also return `idleExpiresAt` while authenticated so revalidation can reschedule after
-renewals. Do not expose a public diagnostic dump of full session internals.
+**Deadline source for client timers**: Prefer forwarded authenticated `SessionContext`
+fields `idleExpiresAt` **and** `expiresAt` (see [data-model.md](../data-model.md)).
+Schedule non-authoritative revalidation/lock at
+`min(idleExpiresAt, expiresAt)`. Confirm/read MUST return both deadlines while
+authenticated so timers can reschedule after renewals. When absolute expiry binds first
+(or alone), use the **non-inactivity** recovery path. Do not expose a public diagnostic
+dump of full session internals.
 
 **Session-end latch / consume**: Surfacing inactivity MUST NOT permanently erase the only
 cause before siblings can recover:
@@ -109,11 +112,14 @@ On confirm/read transport failure or 5xx:
 Each shared-session tab MUST run revalidation. Ordering for cause:
 
 1. First tab to receive a successful **server** inactivity confirmation clears content,
-   opens the Modal, and broadcasts `inactivity-confirmed` (including `sessionEndGeneration`)
-   to same-origin siblings.
+   opens the Modal, and broadcasts `inactivity-confirmed` including **`sessionId`** (the
+   Redis/cookie sid that ended) **and** `sessionEndGeneration` to same-origin siblings.
 2. Sibling tabs clear protected content and open the inactivity Modal from that
-   established sync signal (counts as established UI evidence from a prior server
-   confirmation—does **not** invent inactivity).
+   established sync signal **only when** the message `sessionId` matches their current
+   (or still-mounted) session id. `BroadcastChannel` is origin-wide—receivers MUST ignore
+   foreign session ids (independent sessions and post-login-again cookies). Matching
+   generation alone is insufficient binding. The signal counts as established UI evidence
+   from a prior server confirmation—does **not** invent inactivity.
 3. If a sibling misses BroadcastChannel (suspended tab, dropped event), it MUST still
    recover by re-querying confirm/read or loading the SSR recovery route against the
    replayable session-end latch—**MUST NOT** be stranded without an inactivity path after
@@ -128,7 +134,7 @@ continue to own session/tenant reads and cause detection on the recovery documen
 
 | Requirement               | Observable                                                                                                       |
 | ------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| Explanation               | User-visible text that inactivity ended the session; MAY note unsaved work was lost (no extend control)          |
+| Explanation               | User-visible text that inactivity ended the session; MAY note possible unsaved work was lost (copy only—no draft keys in this slice; no extend control) |
 | Primary action            | Button accessible name **“Log in again”**                                                                        |
 | Accessible name / purpose | Announced to assistive technology; meaningful modal name                                                         |
 | Focus                     | Moves into modal on open; remains visibly usable; focus not returned to protected content through expired access |
@@ -139,38 +145,43 @@ No advance-warning, countdown, or “extend session” control in this slice.
 
 ## Login again
 
-1. Activating “Log in again” MUST invoke a **dedicated same-origin** Server Action or
-   POST route (indicative: `/auth/login-again`)—**not** a bare document navigation to `/`.
-   Revisiting `/` while the cookie still points at an inactivity latch would re-enter the
-   SSR recovery shell instead of starting OIDC.
-2. That action **rotates session id first**: mint a **new** `sessionId`, set a new
+1. Activating “Log in again” MUST invoke a **dedicated same-origin** Server Action
+   (preferred) or **POST** route (indicative: `/auth/login-again`)—**not** a bare document
+   navigation to `/`. Revisiting `/` while the cookie still points at an inactivity latch
+   would re-enter the SSR recovery shell instead of starting OIDC.
+2. **Transport / CSRF (required)** before minting a new `sessionId` or setting a new
+   cookie: prefer Server Action (framework CSRF). If a Route Handler is used, it MUST be
+   POST-only with same-origin `Origin` (or equivalent CSRF). Reject GET and cross-site
+   requests—same bar as confirm and activity renewal.
+3. That action **rotates session id first**: mint a **new** `sessionId`, set a new
    host-bound `pathable-session` cookie, then start the originating tenant’s existing OIDC
    initiation (same host-bound broker configuration) with the **new** `sid` as the
    transaction target. Do **not** pass the post-clearance anonymous `sid` into the OIDC
    transaction. The callback MUST write authenticated fields only to the **new** Redis key
-   so `accessEndedCause` / drafts are **not** carried into the new authenticated session.
-3. **Old-session tombstone (multi-tab)**: Retain the pre-rotation Redis key as an
+   so cause/latch state is **not** carried into the new authenticated session.
+4. **Old-session tombstone (multi-tab)**: Retain the pre-rotation Redis key as an
    anonymous tombstone (cause and/or `sessionEndGeneration`) for a short recovery window
    after cookie rotation, **or** require each mounted document to run a
    session-mismatch handshake (rendered generation vs current cookie/`confirm`) that
    clears protected UI before accepting a new authenticated context. A sibling that missed
    BroadcastChannel MUST NOT resume with the new cookie while still showing old protected
    content without recovery.
-4. Success establishes a **new** authenticated session with **current** tenant idle policy.
-5. Cleared temporary data MUST NOT be restored.
-6. An existing identity-provider sign-in MAY complete application login without a fresh
+5. Success establishes a **new** authenticated session with **current** tenant idle policy.
+6. There are **no** draft keys in this slice to restore; login-again MUST NOT revive
+   cleared protected UI state from the expired experience.
+7. An existing identity-provider sign-in MAY complete application login without a fresh
    credentials challenge; it still MUST NOT revive the expired application session
    (no in-place upgrade of the pre-recovery `sid`).
-7. Cancel or failure → expired access remains unusable; understandable retry remains available
+8. Cancel or failure → expired access remains unusable; understandable retry remains available
    (`login-unavailable` and/or return to recovery UI).
 
 ## Temporary vs durable data
 
-| Kind                               | On inactivity expiry             |
-| ---------------------------------- | -------------------------------- |
-| Temporary session / unsaved drafts | Cleared                          |
-| Protected UI content in the app    | Removed from active experience   |
-| Durable saved business records     | Intact (backend / durable store) |
+| Kind                               | On inactivity expiry                                      |
+| ---------------------------------- | --------------------------------------------------------- |
+| Session draft / unsaved-work keys  | **None in this slice**—no cleanup op to implement/test   |
+| Protected UI content in the app    | Removed from active experience; not restored on login-again |
+| Durable saved business records     | Intact (backend / durable store)                          |
 
 ## Resume after sleep / offline
 

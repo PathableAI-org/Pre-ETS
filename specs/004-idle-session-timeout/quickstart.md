@@ -31,9 +31,10 @@ These do **not** block design; they block claiming SC-001 / SC-005 / delivery co
    (keep on release checklist before claiming SC-005)
 3. **D-006**: Staffing / sequencing appetite confirmed
 
-Recovery copy MAY acknowledge unsaved-work loss when inactivity ends the session; do not add
-extend-session UI. Structured idle/recovery metrics are deferred (see plan Complexity /
-Deferred)—not a release gate for 004.
+Recovery copy MAY acknowledge possible unsaved-work loss when inactivity ends the session
+(product copy only—this slice has **no** draft keys to clear). Do not add extend-session UI.
+Structured idle/recovery metrics are deferred (see plan Complexity / Deferred)—not a release
+gate for 004.
 
 ## Start local services
 
@@ -63,7 +64,8 @@ Configure tenant JSON with optional `idleTimeoutMinutes` per
    requiring full navigation (client revalidation).
 
 4. **Multi-tab** — shared cookie renews both tabs; first server-confirmed inactivity syncs
-   siblings via BroadcastChannel `inactivity-confirmed`; **both** tabs show inactivity
+   siblings via BroadcastChannel `inactivity-confirmed` (**sessionId** + generation);
+   receivers ignore foreign session ids; **both** matching-session tabs show inactivity
    explanation (not only content clear); independent session unaffected.
 
 5. **Regression** — `pnpm test:bdd:session` and `pnpm test:bdd:oidc` remain green on the delivery
@@ -91,7 +93,7 @@ CUCUMBER_IDLE=1 pnpm test:bdd:dry
 | Polling only                   | Still expires at original idle deadline                   |
 | App running past deadline      | Modal + protected content cleared without full navigation |
 | Modal without idle cause       | Must not claim inactivity                                 |
-| Login again                    | New session; current policy; drafts gone                  |
+| Login again                    | New session; current policy; UI state not restored        |
 
 ## PathAble UI note
 

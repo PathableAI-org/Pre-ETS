@@ -42,8 +42,10 @@ association / static mode. Redis on loopback via Compose.
 **Project Type**: SSR-first web frontend with Redis sessions; backend untouched.
 
 **Performance Goals**: Activity renewal shares existing session store timeout (default 2s) and
-fails closed. Client debounce limits write rate; no new formal latency SLO. Idle enforcement adds
-one deadline comparison on authenticated participating requests.
+fails closed. Client debounce limits write rate; no new formal latency SLO. Idle enforcement
+adds deadline comparisons on Proxy/setup **and** a guarded Redis re-read on protected SSR /
+Server Action / Route Handler paths that treat `userId` as authenticated (same store timeout
+class—not merely an in-memory comparison of forwarded context).
 
 **Constraints**: Server authority for idle/absolute deadlines; no browser grace past
 `idleExpiresAt`; activity stamped from server clock (no client `at`); activity must not
@@ -147,11 +149,11 @@ Proxy/setup are the **primary** request gate, but any server path that treats `u
 authenticated (SSR via `getRequestSession`, Server Actions, Route Handlers outside the
 Proxy matcher) MUST call a centralized protected-op **guard** that re-reads Redis and
 enforces `now < idleExpiresAt` and `now < expiresAt` with tenant bind—fail closed; do not
-trust forwarded context alone after idle expiry. Authenticated `SessionRecord` **and**
-`SessionContext` parsers MUST expand key-count allowlists for idle fields (`idleExpiresAt`
-on context at minimum) with unit coverage; store updates MUST be atomic vs clearance;
-login-again MUST rotate session id via a dedicated action. See
-[data-model.md](./data-model.md). Backend package unchanged.
+trust forwarded context alone after idle expiry. Authenticated `SessionRecord` **and** `SessionContext` parsers MUST expand key-count
+allowlists for idle fields (`expiresAt` retained; `idleExpiresAt` required when
+authenticated) with unit coverage; store updates MUST be atomic vs clearance with
+commit-time clock; login-again MUST rotate session id via a dedicated CSRF-protected
+action. See [data-model.md](./data-model.md). Backend package unchanged.
 
 ## Complexity Tracking
 

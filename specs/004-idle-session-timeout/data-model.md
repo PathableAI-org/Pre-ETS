@@ -67,13 +67,14 @@ Proxy / SSR forward a separate strict-shape context today (`parseSessionContextJ
 `serializeSessionContext`, `sessionContextFromRecord`). Idle-aware authenticated SSR
 MUST extend that shape—not only Redis `SessionRecord`—or authenticated pages fail closed.
 
-| Field          | Type           | Rule                                                                                          |
-| -------------- | -------------- | --------------------------------------------------------------------------------------------- |
-| `sessionId`    | string         | Existing                                                                                      |
-| `tenantId`     | string         | Existing                                                                                      |
-| `userId`       | string \| omit | Existing authenticated presence                                                               |
-| `userName`     | string \| omit | Existing                                                                                      |
-| `idleExpiresAt`| number         | **Required when authenticated** — client deadline-aligned revalidation source                 |
+| Field           | Type           | Rule                                                                                                      |
+| --------------- | -------------- | --------------------------------------------------------------------------------------------------------- |
+| `sessionId`     | string         | Existing                                                                                                  |
+| `tenantId`      | string         | Existing                                                                                                  |
+| `expiresAt`     | number         | **Existing—keep**. Absolute Unix seconds; required for `min(idleExpiresAt, expiresAt)` client timers      |
+| `userId`        | string \| omit | Existing authenticated presence                                                                           |
+| `userName`      | string \| omit | Existing                                                                                                  |
+| `idleExpiresAt` | number         | **Required when authenticated** — idle half of deadline-aligned revalidation                              |
 
 Optionally forward `idleDurationMinutes` if useful for UI; do **not** forward
 `accessEndedCause`, `sessionEndGeneration`, or `lastActivityAt` on authenticated context.
@@ -82,11 +83,12 @@ authenticated context allowlist.
 
 Implementation MUST update:
 
-- `parseSessionContextJson` / key-count allowlist
+- `parseSessionContextJson` / key-count allowlist (retain `expiresAt`; add `idleExpiresAt`
+  when authenticated)
 - `serializeSessionContext`
 - `sessionContextFromRecord`
-- Unit cases: reject-unknown; accept authenticated + `idleExpiresAt`; reject authenticated
-  without idle deadline when idle-aware shape is required
+- Unit cases: reject-unknown; accept authenticated + `expiresAt` + `idleExpiresAt`; reject
+  authenticated without idle deadline when idle-aware shape is required
 
 ### Parser allowlists (E3)
 
@@ -104,20 +106,14 @@ Pre-deployment Redis authenticated records use the legacy **four-key** shape and
 for up to the absolute TTL. Requiring the expanded authenticated allowlist without a policy
 would parse them as missing and force anonymous replacement / OIDC.
 
-**Pinned policy for this slice**: on first idle-aware read of a legacy authenticated record
-(exactly the pre-idle four-key shape), **force reauthentication**—treat as unusable for
-protected access (clear toward anonymous without inventing an inactivity claim, or replace
-with a fresh anonymous tenant session). Do **not** silently invent idle fields from wall
-clock without an explicit product decision to soft-upgrade. Cover with a unit/contract case
-so rollout does not strand users in a parse-fail loop without a defined path.
-
-**Rollback / drain**: Expanding the authenticated allowlist is a one-way Redis shape change.
-A rollback that only disables the client island (or omits idle fields from new writes) will
-treat post-deploy idle-shaped records as missing under the legacy four-key parser. Before
-relying on forced-reauth rollout, define either: (a) dual-read of legacy + idle shapes for a
-drain window, (b) an explicit non-rollback with wait-for-TTL drain of idle-shaped keys, or
-(c) a feature-flagged parser that accepts both shapes until Redis keys expire. Document the
-chosen procedure in implementation tasks.
+**Pinned rollout / rollback**: Parsers MUST **dual-read** legacy four-key authenticated
+records **and** idle-shaped authenticated records for one absolute-TTL drain window after
+deploy (≈ `DEFAULT_SESSION_TTL_SECONDS`). Legacy four-key on first idle-aware read still
+forces reauthentication (no silent soft-upgrade). New writes are idle-shaped only.
+**Rollback** during the drain window keeps the dual-read parser (do not ship a
+four-key-only binary while idle-shaped keys remain). After the drain window, idle-only
+authenticated allowlist is allowed. Do not treat “disable client island only” as a safe
+rollback without dual-read.
 
 Invariants:
 
