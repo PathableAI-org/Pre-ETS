@@ -53,14 +53,17 @@ authenticated writes or Proxy idle enforcement until this phase is complete.**
       `idleExpiresAt`); anonymous optional `accessEndedCause: "inactivity"` +
       `sessionEndGeneration`; required authenticated `SessionContext.idleExpiresAt` while retaining
       `expiresAt`; reject-unknown; anonymous unchanged (no idle auth fields); **explicit
-      `serializeSessionRecord` / parse round-trip** for new idle + cause/latch fields; dual-read
-      discriminant `legacyAuthenticated: true` for four-key authenticated JSON (data-model E3 /
-      rollout).
+      `serializeSessionRecord` / `parseSessionRecord` round-trip** for new idle + cause/latch fields;
+      Phase A dual-read via **`parseSessionRecord`** accepting legacy four-key authenticated JSON
+      with discriminant `legacyAuthenticated: true` (Redis `SessionStore.read` path—not only
+      context parsers) (data-model E3 / rollout).
 - [ ] T007 Extend `packages/frontend/src/lib/session/types.ts`: authenticated `SessionRecord` idle
       fields; anonymous cause/latch; `SessionContext` required `idleExpiresAt` when authenticated
-      (keep `expiresAt`); update `parseSessionContextJson` / key-count allowlists,
-      `serializeSessionContext`, `sessionContextFromRecord`, and **`serializeSessionRecord`** so
-      T006 passes—do not only update types without serialize/parse (FR-004, data-model).
+      (keep `expiresAt`); update **`parseSessionRecord`** (dual-read + `legacyAuthenticated`
+      marker for four-key authenticated records), `serializeSessionRecord`,
+      `parseSessionContextJson` / key-count allowlists, `serializeSessionContext`, and
+      `sessionContextFromRecord` so T006 passes—do not only update types or context parsers
+      without Redis record parse/serialize (FR-004, data-model).
 - [ ] T008 [P] Write failing unit cases in `packages/frontend/tests/unit/session-idle.test.ts` for
       deadline helpers: `idleExpiresAt = lastActivityAt + idleDurationMinutes * 60`; activity MUST
       NOT extend `expiresAt`; `now >= idleExpiresAt` deadline wins; missing store ≠ inactivity
@@ -139,9 +142,10 @@ Authentication prerequisite (OIDC callback writing `userId` / `userName`) must b
       `packages/frontend/tests/unit/session-activity-cas.test.ts`: renew vs clearance under
       per-session lock; post-apply re-check prevents chaining renewals on not-yet-validated writes;
       lost CAS vs anonymous clearance does not overwrite (T010/T011 protocol).
-- [ ] T020 [P] [US1] Scaffold/replace pending expiration steps in `tests/bdd/steps/idle.steps.ts`
+- [ ] T020 [US1] Scaffold/replace pending expiration steps in `tests/bdd/steps/idle.steps.ts`
       for `features/idle-session-expiration.feature` (`@contract` / clock / shared-tab /
-      independent-session / delayed-activity scenarios).
+      independent-session / delayed-activity scenarios). Same file as later US2/US3 step work—
+      do **not** parallelize with T028/T038.
 
 ### Implementation for User Story 1
 
@@ -206,10 +210,11 @@ not restore the client fixture. Client timing alone must never grant continued a
       BroadcastChannel payload shape (`sessionId` + `sessionEndGeneration`); session-mismatch +
       tombstone handoff after cookie rotation; confirm/5xx → fail closed for visible protected UI
       (generic auth-unavailable, **not** inactivity claim); SSR recovery signal vs generic OIDC.
-- [ ] T028 [P] [US2] Extend `tests/bdd/steps/idle.steps.ts` for
+- [ ] T028 [US2] Extend `tests/bdd/steps/idle.steps.ts` for
       `features/idle-session-recovery.feature` (`@browser` modal focus/keyboard, running-app expiry
       without full navigation, multi-tab both show inactivity explanation + missed-BroadcastChannel
       latch recovery, login-again cancel/fail, client-only “Unsent practice note” fixture).
+      Depends on T020 (shared step file—no `[P]`).
 
 ### Implementation for User Story 2
 
@@ -222,14 +227,17 @@ not restore the client fixture. Client timing alone must never grant continued a
       **tombstone handoff** lookup of mounted old `sessionId` when cookie rotated; consume string
       `accessEndedCause` only while generation latch remains; no full session diagnostic dump
       (`contracts/inactivity-recovery.md`).
-- [ ] T030 [US2] Add cause-bearing SSR recovery route under
-      `packages/frontend/src/app/(recovery)/…` **OUTSIDE** `(app)` (no `getRequestSession`
-      authenticated layout that rejects anonymous): PathAble Modal shell + “Log in again”; Server
-      Components own session/tenant/cause presentation (FR-009, plan Structure Decision).
+- [ ] T030 [US2] Add cause-bearing SSR recovery shell **OUTSIDE** `(app)`:
+      `packages/frontend/src/app/(recovery)/layout.tsx` (no `getRequestSession` authenticated
+      layout that rejects anonymous) and
+      `packages/frontend/src/app/(recovery)/session-ended/page.tsx` (PathAble Modal shell +
+      “Log in again”; Server Components own session/tenant/cause presentation) (FR-009, plan
+      Structure Decision).
 - [ ] T031 [US2] Wire `packages/frontend/src/proxy.ts` to **branch on typed setup
-      `inactivity-recovery` signal** and forward to the SSR recovery shell **before** generic OIDC
-      initiation; anonymous without recovery signal continues existing OIDC redirect; update Proxy
-      matcher/routes as needed (FR-008, FR-009).
+      `inactivity-recovery` signal** and forward to
+      `/session-ended` (`packages/frontend/src/app/(recovery)/session-ended/page.tsx`) **before**
+      generic OIDC initiation; anonymous without recovery signal continues existing OIDC redirect;
+      update Proxy matcher/routes as needed (FR-008, FR-009).
 - [ ] T032 [US2] Implement inactivity recovery client island in
       `packages/frontend/src/components/session/inactivity-recovery-island.tsx`: **MUST** schedule
       deadline-aligned timer at `min(idleExpiresAt, expiresAt)` while authenticated UI is mounted
@@ -281,9 +289,10 @@ and cross-tenant changes. No new administration application.
       integers **5–30** inclusive accepted; fractional, `<5`, `>30`, non-integer, boolean/string
       disable, `null` → whole-source fail-fast (`CONFIG_UNAVAILABLE`) without substituting **30**
       (`contracts/tenant-idle-policy.md`, FR-001–FR-003).
-- [ ] T038 [P] [US3] Scaffold/wire policy scenarios in `tests/bdd/steps/idle.steps.ts` for
+- [ ] T038 [US3] Scaffold/wire policy scenarios in `tests/bdd/steps/idle.steps.ts` for
       `features/tenant-idle-timeout-policy.feature` (Springfield vs Shelbyville isolation; policy
-      fixed at auth; login-again uses new policy).
+      fixed at auth; login-again uses new policy). Depends on T020/T028 (shared step file—no
+      `[P]`).
 
 ### Implementation for User Story 3
 
@@ -328,10 +337,12 @@ and cross-tenant changes. No new administration application.
 - [ ] T048 Run root quality gates from `package.json`: `pnpm typecheck`, **`pnpm build`**,
       `pnpm lint`, `pnpm format:check`, `pnpm check:unused` for touched workspaces under
       `packages/frontend/` (lint before format; no generated Cucumber reports committed).
-- [ ] T049 [P] Surface release checklist items (do not invent product claims): D-001/FR-011 policy
-      approval memo for **5–30** and default **30**, D-005/SC-005 workflow thresholds, D-006
-      delivery appetite—track outside Spec Kit per quickstart; observability metrics remain deferred
-      out of scope.
+- [ ] T049 [P] Author `specs/004-idle-session-timeout/checklists/release-gates.md` with unchecked
+      checklist items for D-001/FR-011 (policy approval memo for **5–30** and default **30**),
+      D-005/SC-005 (workflow / interruption thresholds), and D-006 (delivery appetite), each
+      linking to `quickstart.md` § “Release gates outside automated green”; leave items unchecked
+      until ops completes them—do not invent product claims. Note observability metrics remain
+      deferred out of scope (plan Complexity / Deferred).
 
 ---
 
@@ -374,10 +385,11 @@ and cross-tenant changes. No new administration application.
 - After T007: T008/T010/T012 unit scaffolds in parallel; T009/T011/T013 implementations follow
   their tests
 - T014→T015 sequential on `setup.ts` (do not mark same-file work `[P]`)
-- After Foundational: US1 test tasks T017–T020 in parallel; US2 tests T027–T028 and US3 tests
-  T037–T038 can start once interfaces stabilize
+- After Foundational: US1 unit/contract tests T017–T019 in parallel; then T020 BDD steps
+  (shared `idle.steps.ts`). US2 unit tests T027 can start once interfaces stabilize; T028/T038
+  BDD extensions of `idle.steps.ts` are **sequential** after T020 (no `[P]` on shared step file)
 - T033 Modal UI can proceed in parallel with T029 confirm/read once island contract is agreed
-- T043 / T044 / T045 / T049 documentation tasks in parallel during Polish
+- T043 / T044 / T045 / T049 documentation/checklist tasks in parallel during Polish
 
 ---
 
@@ -388,7 +400,7 @@ and cross-tenant changes. No new administration application.
 Task: "Add unit coverage in packages/frontend/tests/unit/session-activity.test.ts"
 Task: "Add contract/HTTP clock tests in packages/frontend/tests/unit/session-setup.test.ts and session-idle-expiration-http.test.ts"
 Task: "Add concurrent CAS race tests in packages/frontend/tests/unit/session-activity-cas.test.ts"
-Task: "Scaffold Cucumber steps in tests/bdd/steps/idle.steps.ts for idle-session-expiration.feature"
+Task: "Scaffold Cucumber steps in tests/bdd/steps/idle.steps.ts for idle-session-expiration.feature (after unit tests; before US2/US3 step edits)"
 
 # After foundational types/CAS exist, implementation sequence:
 Task: "Phase B idle writes + stamp fields in packages/frontend/src/lib/oidc/callback.ts"
@@ -408,7 +420,7 @@ Task: "Recovery BDD steps in tests/bdd/steps/idle.steps.ts for idle-session-reco
 
 # Server confirm + Modal can fork after confirm contract is sketched:
 Task: "confirm/read CSRF action under packages/frontend/src/app/"
-Task: "SSR recovery shell under packages/frontend/src/app/(recovery)/"
+Task: "SSR recovery shell at packages/frontend/src/app/(recovery)/session-ended/page.tsx (+ layout)"
 Task: "InactivityEnded Modal in packages/frontend/src/components/session/inactivity-ended-modal.tsx"
 # Then: Proxy recovery branch, deadline timer island, login-again rotation + mismatch handshake
 ```
