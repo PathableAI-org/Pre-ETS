@@ -22,6 +22,14 @@ A protected operation is any server path that would treat the session as authent
 All such paths MUST re-check `now < idleExpiresAt` and `now < expiresAt` (and tenant bind)
 before success. Centralize the check so new handlers cannot skip it.
 
+**Clock sampling (required)**: Do **not** reuse a `nowSeconds` sampled only before Redis
+I/O or tenant resolution. After the session record is loaded, sample a **fresh**
+application-clock value **immediately before** any success outcome (forwarding
+authenticated context, returning authenticated confirm, accepting renewal). If that
+fresh check fails the deadlines, run clearance/denial (and persist cause/latch when idle
+binds—see outcome table) instead of succeeding. Cover slow-read crossing `idleExpiresAt`
+in contract tests.
+
 ## Activity renewal interface
 
 `recordQualifyingActivity()` (name indicative)—**no client-supplied session target**:
@@ -57,25 +65,32 @@ separate read. Renewal and idle-clearance MUST compete via an **atomic condition
 Redis transition (WATCH/MULTI, Lua, or compare-and-set on expected authenticated shape +
 `idleExpiresAt` / generation).
 
-**Clock authority (pinned)**: The **application clock** remains authoritative. A
-pre-I/O `now0` alone is **not** sufficient for deadline-wins: a heartbeat can sample
-`now0 < idleExpiresAt`, stall, and commit after the deadline using a stale stamp.
+**Clock authority + serialization (pinned)**: The **application clock** remains
+authoritative. A pre-I/O `now0` alone is **not** sufficient, and a lone post-apply
+`now1` check is **not** sufficient either: concurrent renewals can observe an extended
+deadline from a not-yet-validated write and renew again before clearance CAS runs.
 
 Pinned fail-closed protocol:
 
-1. Sample `now0` immediately before Redis I/O; optimistic-deny if `now0` is already past
+1. Acquire a **per-session idle mutation lock** (short-lived Redis `SET NX` / equivalent
+   covering renew **and** clearance for that `sessionId`). Concurrent heartbeats and
+   expiry clearance **serialize** on this lock. Fail closed if the lock cannot be
+   acquired within the store timeout.
+2. Under the lock: load record; sample `now0`; optimistic-deny/clear if already past
    either deadline.
-2. CAS using `now0` as the candidate activity stamp (pass as ARGV / local compare)—do
-   **not** use Redis `TIME` as the product clock.
-3. On store timeout, WATCH conflict, or aborted EXEC → fail closed (deny; no write).
-4. **Post-apply re-check (required)**: after a successful EXEC, sample fresh application
-   `now1`. Let `preRenewalIdleExpiresAt` be the idle deadline that was in force before this
-   renewal. If `now1 >= preRenewalIdleExpiresAt` or `now1 >= expiresAt`, the commit is a
-   **lost race against the deadline**—immediately run the idle/absolute clearance CAS
-   (deadline wins) and return deny / ended to the caller. Do not leave an extended
-   `idleExpiresAt` when application time has already crossed the prior deadline.
-5. Cover with a contract/unit case: commit-after-deadline (delayed heartbeat) must not
-   extend access.
+3. CAS using `now0` as the candidate activity stamp (pass as ARGV / local compare)—do
+   **not** use Redis `TIME` as the product clock. Prefer a monotonic
+   `sessionRevision` (or expected `idleExpiresAt` + shape) in the CAS predicate.
+4. On store timeout, WATCH conflict, or aborted EXEC → release lock; fail closed (deny;
+   no write).
+5. **Post-apply re-check (still under the same lock)**: sample fresh `now1`. Let
+   `preRenewalIdleExpiresAt` be the idle deadline before this renewal. If
+   `now1 >= preRenewalIdleExpiresAt` or `now1 >= expiresAt`, **revert or clear** via CAS
+   on the revision just written (deadline wins)—no other renewal may observe the
+   extended deadline until this step completes because they wait on the same lock.
+6. Release lock. Cover deterministic A/B interleaving (renew → delayed post-check vs
+   concurrent renew) in contract/unit tests: the original deadline must not remain
+   bypassed by a chain of renewals built on a not-yet-validated write.
 
 When the race is lost:
 
@@ -84,8 +99,8 @@ When the race is lost:
 | Clearance already wrote anonymous + cause | Deny renewal; **no** overwrite of post-clearance anonymous record      |
 | Newer accepted heartbeat already applied  | Deny or no-op; do not regress `lastActivityAt` / `idleExpiresAt`       |
 | Expected shape / generation mismatch      | Deny; fail closed; no revival                                          |
-| Store timeout / aborted EXEC              | Deny; fail closed; no revival                                          |
-| Post-apply `now1` past prior deadline     | Clearance wins; deny; no extended access                               |
+| Store timeout / aborted EXEC / lock miss  | Deny; fail closed; no revival                                          |
+| Post-apply `now1` past prior deadline     | Revert/clear under lock; deny; no extended access                      |
 
 **Coalescing / rate bound**: server MUST coalesce or rate-limit accepted renewals.
 Indicative default (E4): ignore redundant Redis writes within **~1s** when the computed
@@ -95,11 +110,13 @@ timeout / failure on renewal → fail closed (deny; no revival).
 
 ### Qualifying vs non-qualifying (client duty)
 
-May call renewal only for deliberate **user-originated** `keydown`, pointer
-(`pointerdown`), `touchstart`, or scrolling driven by trusted `wheel` / touch /
-pointer / keyboard input. MUST NOT renew on bare `scroll` alone (programmatic
-`scrollTo`, layout, or infinite-scroll callbacks are not qualifying). MUST NOT call for
-passive reading, polling, prefetch, or automated keepalives.
+May call renewal only for deliberate **user-originated** DOM events with
+`event.isTrusted === true`: `keydown`, pointer (`pointerdown`), `touchstart`, or scrolling
+driven by trusted `wheel` / touch / pointer / keyboard input. MUST NOT renew on
+script-generated (untrusted) events, bare `scroll` alone (programmatic `scrollTo`, layout,
+or infinite-scroll callbacks), passive reading, polling, prefetch, or automated keepalives.
+Assistive-technology input that the browser marks `isTrusted === true` **does** qualify;
+synthetic events from scripts do not.
 
 ## Idle expiry side effects
 
@@ -152,19 +169,28 @@ be non-mutating.
 
 ## HTTP / outcome classes (indicative)
 
-| Condition                                                          | Authenticated access | Cause label                                                      |
-| ------------------------------------------------------------------ | -------------------- | ---------------------------------------------------------------- |
-| Authenticated; `now < idleExpiresAt` and `now < expiresAt`         | Allowed              | n/a                                                              |
-| `now >= idleExpiresAt` and `now < expiresAt`                       | Denied               | `inactivity`                                                     |
-| `now >= expiresAt` and `now < idleExpiresAt`                       | Denied               | **not** inactivity (absolute binds first)                        |
-| `now >= idleExpiresAt` and `now >= expiresAt` (incl. equality)     | Denied               | `inactivity` when `idleExpiresAt <= expiresAt`; else not inactivity |
-| Missing session                                                    | Denied               | not inactivity                                                   |
-| Store timeout / 503                                                | Denied               | not inactivity                                                   |
-| Anonymous replacement after idle                                   | Denied for protected | `inactivity` if cause/latch retained                             |
+Inactivity labeling requires **persisted** cause/latch evidence (FR-008). Observing that
+both deadlines have passed on a still-present authenticated record is **not** enough to
+tell the client “inactivity” until this request (or a prior one) has atomically performed
+idle clearance and written `accessEndedCause` / `sessionEndGeneration`. After Redis `EXAT`
+removes the key, missing session → **not** inactivity unless a separate retained latch key
+still exists (this slice keeps cause/latch on the anonymous record until that record’s
+`expiresAt`—once gone, no inactivity claim).
 
-**Equality pin**: when `idleExpiresAt === expiresAt` and `now >=` that instant, label
-**inactivity** (idle evidence is established and idle was not strictly after absolute).
-Cover equality in contract tests so implementations do not diverge on cause accuracy.
+| Condition                                                              | Authenticated access | Cause label                                      |
+| ---------------------------------------------------------------------- | -------------------- | ------------------------------------------------ |
+| Authenticated; fresh `now` `< idleExpiresAt` and `< expiresAt`         | Allowed              | n/a                                              |
+| First observation: fresh `now >= idleExpiresAt` and `now < expiresAt`  | Denied               | Persist cause/latch atomically → `inactivity`    |
+| First observation: fresh `now >= expiresAt` and `now < idleExpiresAt`  | Denied               | Absolute; **not** inactivity; no idle cause write |
+| Both past on still-present record (`idleExpiresAt <= expiresAt`)       | Denied               | Atomic idle clearance + latch → `inactivity`     |
+| Both past on still-present record (`idleExpiresAt > expiresAt`)        | Denied               | Absolute path; **not** inactivity                |
+| Missing session / EXAT eviction without retained latch                 | Denied               | **not** inactivity                               |
+| Anonymous with retained cause/latch                                    | Denied for protected | `inactivity`                                     |
+| Store timeout / 503                                                    | Denied               | not inactivity                                   |
+
+**Equality pin**: when `idleExpiresAt === expiresAt` and fresh `now >=` that instant on a
+still-present record, perform atomic idle clearance + latch and label **inactivity**.
+Cover equality and missing-after-EXAT in contract tests.
 
 Exact status codes for document vs non-document follow existing Proxy patterns (SSR recovery
 UI vs `401`/`403` as applicable); contract tests care about **authorization outcome** and

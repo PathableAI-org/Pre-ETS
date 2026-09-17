@@ -64,7 +64,10 @@ assessment research S2/S5; FR-004, FR-006; constitution II.
 
 Anonymous records are `{ tenantId, expiresAt }` plus optional cause/latch after
 inactivity clearance. Missing session / store miss / absolute expiry WITHOUT a
-prior recorded inactivity cause MUST NOT be labeled inactivity (FR-008).
+**persisted** inactivity cause/latch MUST NOT be labeled inactivity (FR-008). First
+observation that idle binds (still-present record, fresh `now >= idleExpiresAt` with
+idle binding before or with absolute) MUST atomically clear and persist cause/latch in
+that same request before any client-facing inactivity claim.
 
 When idle expiry is detected server-side, clear authenticated + idle fields via an
 **atomic** conditional Redis transition (deadline wins over concurrent heartbeats),
@@ -95,21 +98,24 @@ an initial deadline; confirm/read remains a refresh source after renewals).
 
 **Decision**:
 
-- **Qualifying**: deliberate user-originated `keydown` / pointer (`pointerdown`) /
-  `touchstart`, or scrolling gated on trusted `wheel` / touch / pointer / keyboard input
-  from the authenticated UI. Bare `scroll` alone (including programmatic `scrollTo` /
-  infinite-scroll layout) is **not** qualifying.
+- **Qualifying**: deliberate user-originated DOM events with `event.isTrusted === true`:
+  `keydown` / pointer (`pointerdown`) / `touchstart`, or scrolling gated on trusted
+  `wheel` / touch / pointer / keyboard input from the authenticated UI. Bare `scroll`
+  alone (including programmatic `scrollTo` / infinite-scroll layout) and
+  script-generated (untrusted) events are **not** qualifying. Assistive-technology
+  input the browser marks trusted **does** qualify.
 - **Non-qualifying**: passive reading, visibility-only events, RSC/prefetch,
-  polling, automated keepalives, programmatic scroll, and protected API calls **by
-  themselves**.
+  polling, automated keepalives, programmatic scroll, untrusted synthetic events, and
+  protected API calls **by themselves**.
 - **Reporting**: a narrow authenticated Server Action (preferred) or **POST-only**
   Route Handler with same-origin `Origin`/CSRF validation accepts activity heartbeats
   only for the **cookie-bound** session (derive `sessionId`/`tenantId` from the verified
   host-bound cookie—never trust caller-supplied targets) when server `now0 <
   idleExpiresAt`. Stamp activity from the **application clock** (omit client `at`).
-  Update via **atomic** conditional Redis transition with application `nowSeconds`
-  sampled before I/O **plus post-apply `now1` re-check** (if `now1` is past the
-  pre-renewal deadline, clear and deny—deadline wins on delayed commit; **not** Redis
+  Update under a **per-session idle mutation lock** via atomic Redis CAS with
+  application `nowSeconds` sampled before I/O **plus post-apply `now1` re-check** still
+  under the lock (if `now1` is past the pre-renewal deadline, revert/clear—deadline
+  wins; concurrent renewals cannot chain off a not-yet-validated write; **not** Redis
   `TIME` as product clock); updates `lastActivityAt` / `idleExpiresAt` without changing
   `expiresAt` or `idleDurationMinutes`. Reject late reports and lost races vs clearance
   (no revival / no overwrite of anonymous clearance). No public diagnostic route.
@@ -239,9 +245,10 @@ introspection (violates ownership).
   supplemental `visibilitychange` / `focus`; see §1) confirms with the server; on
   confirmation, remove protected content and open PathAble **`Modal`** without requiring
   a full navigation. Absolute-first expiry uses the non-inactivity recovery path.
-  `Modal` requires a client boundary
-  (`agent-guidance/.../references/server-and-client.md`); keep page data loading
-  on the server.
+  `Modal` requires a client boundary—read the installed package guidance at
+  `node_modules/@pathableai/react/agent-guidance/pathable-react/SKILL.md` and
+  `…/references/server-and-client.md` (same paths as [quickstart.md](./quickstart.md));
+  keep page data loading on the server.
 - Modal: accessible name/explanation that inactivity ended the session and a
   button **“Log in again”**. Copy MAY acknowledge possible unsaved-work loss (no Redis
   draft keys in this slice; no advance-warning / extend UI).
@@ -249,7 +256,9 @@ introspection (violates ownership).
   **rotates** to a new `sessionId` + cookie, then starts the existing tenant OIDC
   initiation journey; callback MUST NOT authenticate into the pre-recovery `sid`.
   Mounted siblings MUST run a **server-driven session-mismatch handshake** (confirm/read
-  returns cookie-bound `sessionId` or mismatch bit—clients cannot read HttpOnly cookies).
+  returns cookie-bound `sessionId` or mismatch bit—clients cannot read HttpOnly cookies)
+  with **tombstone handoff** on the old sid so missed-BroadcastChannel tabs can still
+  receive inactivity confirmation after rotation.
   Cancel/fail leaves access unusable with
   retry path (`/login-unavailable` or re-shown modal as appropriate).
 - Before enabling further interaction after resume from sleep/offline, remove

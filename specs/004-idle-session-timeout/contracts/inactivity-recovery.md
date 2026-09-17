@@ -177,16 +177,23 @@ No advance-warning, countdown, or “extend session” control in this slice.
    so cause/latch state is **not** carried into the new authenticated session.
 4. **Old-session handling after rotation (multi-tab)**: Because `pathable-session` is a
    shared HttpOnly cookie, rotating it in one tab updates the cookie for all siblings—the
-   pre-rotation Redis key is **no longer addressable** via cookie-bound confirm/read.
+   pre-rotation Redis key is **no longer the cookie-bound confirm target**.
    Therefore every mounted authenticated document **MUST** run a **session-mismatch
-   handshake** via confirm/read: pass the rendered/mounted `sessionId` (and any held
-   `sessionEndGeneration`); the server returns the cookie-bound `sessionId` and/or an
-   explicit `mismatch` bit. On mismatch or ended inactivity for the mounted sid, clear
-   protected UI and show recovery (or generic unavailable) before accepting a new
-   authenticated context. An optional tombstone on the old Redis key MAY remain for audit
-   until `expiresAt`, but it is **not** a sufficient sibling-recovery path by itself. A
-   sibling that missed BroadcastChannel MUST NOT resume with the new cookie while still
-   showing old protected content without recovery.
+   handshake** via confirm/read:
+
+   - Client passes rendered/mounted `sessionId` and any held `sessionEndGeneration`.
+   - Server returns cookie-bound `sessionId` and/or an explicit `mismatch` bit.
+   - **When mismatched**, the server MUST still attempt a **tombstone handoff**: look up
+     the mounted (old) `sessionId` Redis key; if it retains matching
+     `sessionEndGeneration` / `accessEndedCause: "inactivity"`, return confirmed
+     inactivity for that generation so the sibling can show the required inactivity
+     Modal—not only generic unavailable. Login-again MUST leave that tombstone until the
+     old key’s `expiresAt` (or until handoff consume) so missed-BroadcastChannel tabs can
+     complete FR-008/010 recovery after rotation.
+   - On mismatch without a validating tombstone, clear protected UI and use generic
+     unavailable / non-inactivity recovery—do not invent inactivity.
+   - A sibling that missed BroadcastChannel MUST NOT resume with the new cookie while
+     still showing old protected content without recovery.
 5. Success establishes a **new** authenticated session with **current** tenant idle policy.
 6. There are **no** draft keys in this slice to restore; login-again MUST NOT revive
    cleared protected UI state from the expired experience.

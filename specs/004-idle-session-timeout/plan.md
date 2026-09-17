@@ -135,9 +135,10 @@ packages/frontend/
 ├── src/lib/oidc/initiate.ts             # login-again action: mint new sessionId + cookie before OIDC
 ├── src/lib/oidc/callback.ts             # stamp idle fields on **new** sid only
 ├── src/proxy.ts                         # idle gate; branch on setup recovery signal vs OIDC
-├── src/app/(app)/…                      # recovery presentation wiring
+├── src/app/(recovery)/…                 # inactivity Modal shell — OUTSIDE (app); no getRequestSession layout
+├── src/app/(app)/…                      # authenticated app only (layout may call getRequestSession)
 ├── src/app/… or route/action            # dedicated CSRF-protected login-again (not bare `/`)
-├── src/components/…                     # client island: **deadline timer** + activity + Modal (+ tab sync)
+├── src/components/…                     # client island: **deadline timer** + trusted activity + Modal (+ tab sync)
 └── tests/unit/                          # policy, idle math, activity CAS, context parsers, cause/latch
 docs/session-state.md
 docs/multi-tenancy.md
@@ -159,11 +160,14 @@ trust forwarded context alone after idle expiry. Authenticated `SessionRecord` *
 retained; `idleExpiresAt` required when authenticated) with unit coverage; dual-read MUST
 surface `legacyAuthenticated` so `canReuse` rejects legacy four-key records (two-phase
 rollout: dual-read before idle writes; drain uses configured TTL); store updates MUST be
-atomic vs clearance using application `nowSeconds` with **post-apply re-check** (deadline
-wins on delayed commit); activity/confirm MUST derive session identity from the cookie;
-login-again MUST rotate session id via a dedicated CSRF-protected action with server-driven
-session-mismatch handshake (confirm returns cookie-bound `sessionId` / mismatch bit). See
-[data-model.md](./data-model.md). Backend package unchanged.
+atomic vs clearance using application `nowSeconds` with **per-session idle lock** +
+post-apply re-check (deadline wins on delayed commit); activity/confirm MUST derive
+session identity from the cookie and require `event.isTrusted` for DOM heartbeats;
+recovery UI MUST live **outside** `(app)` (authenticated layout calls
+`getRequestSession` and rejects anonymous); login-again MUST rotate session id via a
+dedicated CSRF-protected action with server-driven mismatch + **tombstone handoff** for
+missed-BroadcastChannel siblings. See [data-model.md](./data-model.md). Backend package
+unchanged.
 
 ## Complexity Tracking
 
