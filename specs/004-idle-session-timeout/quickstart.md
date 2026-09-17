@@ -74,15 +74,23 @@ Configure tenant JSON with optional `idleTimeoutMinutes` per
 ### Planned BDD partition
 
 Gherkin already exists under `features/idle-session-*.feature` and
-`features/tenant-idle-timeout-policy.feature` (`@idle-session-timeout`). Wire discovery similar to
-OIDC (`CUCUMBER_IDLE=1` / `pnpm test:bdd:idle`) so default CI does not fail on pending stubs.
+`features/tenant-idle-timeout-policy.feature` (`@idle-session-timeout`). Wire discovery
+similar to OIDC (`CUCUMBER_IDLE=1` / `pnpm test:bdd:idle`) so default CI does not fail on
+pending stubs. Treat “Unsent practice note” steps as **client-only UI fixtures** (see
+[data-model.md](./data-model.md)).
+
+### After tasks wire idle BDD
+
+**Post-wiring only** (after `cucumber.mjs` reads `CUCUMBER_IDLE` and adds idle feature
+paths, and `package.json` defines `test:bdd:idle`):
 
 ```sh
-CUCUMBER_IDLE=1 pnpm test:bdd:dry
-# or, once wired: pnpm test:bdd:idle -- --dry-run
-# Bare `pnpm test:bdd:dry` only enables session+OIDC partitions today—do not treat it as
-# idle discovery until cucumber.mjs / package.json include CUCUMBER_IDLE=1.
+CUCUMBER_IDLE=1 pnpm exec cucumber-js --dry-run
+# or: pnpm test:bdd:idle -- --dry-run
 ```
+
+Until that wiring lands, these commands do **not** discover idle scenarios—do not treat a
+green bare `pnpm test:bdd:dry` (session+OIDC only) as idle coverage.
 
 ## Expected outcomes (smoke)
 

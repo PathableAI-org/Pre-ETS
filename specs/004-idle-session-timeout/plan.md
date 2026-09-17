@@ -10,10 +10,10 @@
 Add tenant-configurable authenticated **idle** expiration (whole minutes 5–30, default 30)
 on the existing frontend Redis session, enforced authoritatively on the server independently of
 browser timers. Qualifying deliberate interaction renews the idle deadline without extending
-absolute lifetime; confirmed inactivity clears authenticated access and temporary drafts, then
-presents an accessible PathAble **Modal** with **“Log in again”** into the existing tenant OIDC
-journey. Tenant policy extends env-based `TenantConfig`; no new admin app or backend session
-store.
+absolute lifetime; confirmed inactivity ends authenticated access, removes protected UI from the
+active experience (this slice has **no** session draft keys), then presents an accessible
+PathAble **Modal** with **“Log in again”** into the existing tenant OIDC journey. Tenant policy
+extends env-based `TenantConfig`; no new admin app or backend session store.
 
 Research decisions: [research.md](./research.md). Validation: [quickstart.md](./quickstart.md).
 Contracts: [contracts/](./contracts/). Data shapes: [data-model.md](./data-model.md).
@@ -33,7 +33,9 @@ Compose Redis (+ Keycloak for login-again) unchanged in role.
 
 **Testing**: Vitest frontend unit suite; Cucumber/Playwright BDD with new `@idle-session-timeout`
 partition (features already drafted). Contract/HTTP layers for authoritative clock denial;
-`@browser` for modal a11y and recovery. Retain `pnpm test:bdd:session` / `pnpm test:bdd:oidc`
+`@browser` for modal a11y and recovery. Gherkin “Unsent practice note” is a **client-only
+protected UI fixture** in step implementations (DOM clear + non-restoration)—**not** a Redis
+draft key (none exist in this slice). Retain `pnpm test:bdd:session` / `pnpm test:bdd:oidc`
 regression on delivery PR.
 
 **Target Platform**: Host-run Next.js Node server; production HTTPS tenant hosts; local HTTP host
@@ -48,21 +50,22 @@ Server Action / Route Handler paths that treat `userId` as authenticated (same s
 class—not merely an in-memory comparison of forwarded context).
 
 **Constraints**: Server authority for idle/absolute deadlines; no browser grace past
-`idleExpiresAt`; activity stamped from server clock (no client `at`); activity must not
-extend `expiresAt`; renewal/clearance via atomic Redis CAS (deadline wins); missing store ≠
-inactivity claim; tenant isolation on policy and activity; PathAble Modal behind justified
-client island only; while authenticated UI is mounted, client MUST run non-authoritative
-revalidation using forwarded `idleExpiresAt` (deadline-aligned and/or
-`visibilitychange`/`focus`); Proxy MUST offer a cause-bearing SSR recovery route before
-generic OIDC redirect; session-end generation latch + BroadcastChannel
-`inactivity-confirmed` so siblings are not stranded after string-cause consume; login-again
-MUST use a dedicated same-origin action that rotates `sessionId`/cookie (no bare `/`, no
-in-place upgrade of expired sid); POST-only + CSRF for mutating confirm and heartbeats;
-confirm/5xx MUST fail closed for visible protected UI (generic unavailable, not inactivity);
-protected server accessors MUST NOT trust forwarded context without a Redis/idle guard
-re-read; no advance warning/extend; no new admin UI; secrets/credentials never in fixtures;
-update `docs/session-state.md`, `docs/multi-tenancy.md`, and `docs/authentication.md` when
-behavior ships.
+`idleExpiresAt`; activity stamped from **application clock** sampled before Redis I/O
+(no client `at`); store timeout / WATCH abort cancels writes (fail closed); activity must
+not extend `expiresAt`; renewal/clearance via atomic Redis CAS (deadline wins); missing
+store ≠ inactivity claim; tenant isolation on policy and activity; PathAble Modal behind
+justified client island only; while authenticated UI is mounted, client **MUST** schedule a
+deadline-aligned timer at `min(idleExpiresAt, expiresAt)` (visibility/focus are
+**supplemental** only); Proxy MUST offer a cause-bearing SSR recovery route before generic
+OIDC redirect; session-end latch retained until the ended session’s absolute `expiresAt`;
+BroadcastChannel `inactivity-confirmed` includes `sessionId` + generation; login-again MUST
+use a dedicated CSRF-protected action that rotates `sessionId`/cookie; mounted tabs MUST
+run session-mismatch handshake after rotation; POST-only + CSRF for mutating confirm and
+heartbeats; confirm/5xx MUST fail closed for visible protected UI; protected accessors MUST
+use guard Redis re-read; legacy four-key reads MUST surface a marker so `canReuse` rejects
+them; no advance warning/extend; no new admin UI; secrets never in fixtures; update
+`docs/session-state.md`, `docs/multi-tenancy.md`, and `docs/authentication.md` when behavior
+ships.
 
 **Scale/Scope**: Authenticated session idle lifecycle for participating app routes; optional
 tenant policy field; recovery modal + login-again. Out of scope: HIPAA certification, general
@@ -77,9 +80,9 @@ _GATE: Evaluated before Phase 0 and re-evaluated after Phase 1 design._
 | Principle                          | Pre-research assessment                                                                  | Post-design assessment and evidence                                                                                                                                                                                    |
 | ---------------------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | I. Evidence-grounded specification | PASS: Clarified FR/SC; assessment decision; open D-001/D-005 called out as release gates | PASS: [research.md](./research.md) resolves enforcement, activity, policy, cause, prerequisite inventory; D-001/D-005/D-006 remain explicit non-code release gates in quickstart—not silent product invention          |
-| II. Explicit ownership             | PASS: Frontend owns session, tenant config, auth orchestration, modal                    | PASS: All design under `packages/frontend` + Redis; backend untouched; no shared writable domain tables; drafts cleared in Redis only                                                                                  |
+| II. Explicit ownership             | PASS: Frontend owns session, tenant config, auth orchestration, modal                    | PASS: All design under `packages/frontend` + Redis; backend untouched; no shared writable domain tables; **no** session draft keys in this slice—protected UI non-restoration only |
 | III. Tenant isolation              | PASS: Host-bound sessions; cross-tenant activity forbidden                               | PASS: Contracts require tenant bind on activity/policy; cookie host-only unchanged; independent sessions stay independent                                                                                              |
-| IV. Accessible SSR UI              | PASS: Modal a11y in FR-009; PathAble required                                            | PASS: PathAble `Modal` with documented client boundary; required revalidation + cause-bearing SSR recovery route; session-end latch; server owns cause/`idleExpiresAt`; keyboard/focus/name in recovery contract |
+| IV. Accessible SSR UI              | PASS: Modal a11y in FR-009; PathAble required                                            | PASS: PathAble `Modal` with client boundary; **required** deadline-aligned timer while mounted (+ supplemental visibility/focus); cause-bearing SSR recovery; latch; keyboard/focus/name |
 | V. Meaningful behavioral tests     | PASS: Gherkin inventory exists for 004                                                   | PASS: Unit + contract clocks + `@browser` modal/recovery; no string-inventory-only a11y; timing precision documented; public test endpoints forbidden                                                                  |
 | VI. Simplicity and quality         | PASS: Extends existing session/tenant modules                                            | PASS: No new framework; optional config field + session fields + activity handler + modal island; existing quality gates retained                                                                                      |
 
@@ -121,9 +124,9 @@ docs/multi-tenancy.md                    # update on implement
 ```text
 packages/frontend/
 ├── src/lib/tenant/types.ts              # optional idleTimeoutMinutes + validation
-├── src/lib/session/types.ts             # SessionRecord + SessionContext idle fields / allowlists
+├── src/lib/session/types.ts             # SessionRecord + SessionContext idle fields; legacy shape marker
 ├── src/lib/session/store.ts             # atomic conditional update/clear (CAS) helpers
-├── src/lib/session/setup.ts             # enforce idle on reuse/authenticated paths; legacy reauth
+├── src/lib/session/setup.ts             # enforce idle; reject canReuse when legacyAuthenticated
 ├── src/lib/session/idle.ts              # deadline helpers / end-for-inactivity (indicative)
 ├── src/lib/session/guard.ts             # centralized protected-op check (Redis + idle/absolute)
 ├── src/lib/session/index.ts             # getRequestSession → guard-backed for protected SSR/handlers
@@ -131,8 +134,8 @@ packages/frontend/
 ├── src/lib/oidc/callback.ts             # stamp idle fields on **new** sid only
 ├── src/proxy.ts                         # idle gate; cause-bearing recovery forward vs OIDC
 ├── src/app/(app)/…                      # recovery presentation wiring
-├── src/app/… or route/action            # dedicated same-origin login-again (not bare `/`)
-├── src/components/…                     # client island: activity + revalidation + Modal (+ tab sync)
+├── src/app/… or route/action            # dedicated CSRF-protected login-again (not bare `/`)
+├── src/components/…                     # client island: **deadline timer** + activity + Modal (+ tab sync)
 └── tests/unit/                          # policy, idle math, activity CAS, context parsers, cause/latch
 docs/session-state.md
 docs/multi-tenancy.md
@@ -143,17 +146,20 @@ tests/bdd/steps/                         # idle step defs (tasks phase)
 ```
 
 **Structure Decision**: Keep idle timeout inside the frontend session and tenant owners beside
-OIDC. Client island owns activity capture, **required** non-authoritative deadline
-revalidation (while authenticated UI is mounted), multi-tab UI sync, and PathAble Modal.
-Proxy/setup are the **primary** request gate, but any server path that treats `userId` as
-authenticated (SSR via `getRequestSession`, Server Actions, Route Handlers outside the
+OIDC. Client island owns activity capture, a **required** deadline-aligned timer while
+authenticated UI is mounted (visibility/focus supplemental), multi-tab UI sync, and PathAble
+Modal. Proxy/setup are the **primary** request gate, but any server path that treats `userId`
+as authenticated (SSR via `getRequestSession`, Server Actions, Route Handlers outside the
 Proxy matcher) MUST call a centralized protected-op **guard** that re-reads Redis and
 enforces `now < idleExpiresAt` and `now < expiresAt` with tenant bind—fail closed; do not
-trust forwarded context alone after idle expiry. Authenticated `SessionRecord` **and** `SessionContext` parsers MUST expand key-count
-allowlists for idle fields (`expiresAt` retained; `idleExpiresAt` required when
-authenticated) with unit coverage; store updates MUST be atomic vs clearance with
-commit-time clock; login-again MUST rotate session id via a dedicated CSRF-protected
-action. See [data-model.md](./data-model.md). Backend package unchanged.
+trust forwarded context alone after idle expiry. Authenticated `SessionRecord` **and**
+`SessionContext` parsers MUST expand key-count allowlists for idle fields (`expiresAt`
+retained; `idleExpiresAt` required when authenticated) with unit coverage; dual-read MUST
+surface `legacyAuthenticated` so `canReuse` rejects legacy four-key records; store updates
+MUST be atomic vs clearance using application `nowSeconds` sampled before I/O (abort on
+store timeout—not Redis `TIME`); login-again MUST rotate session id via a dedicated
+CSRF-protected action with session-mismatch handshake for siblings. See
+[data-model.md](./data-model.md). Backend package unchanged.
 
 ## Complexity Tracking
 

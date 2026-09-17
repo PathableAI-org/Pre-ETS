@@ -47,7 +47,7 @@ this slice.
 | `tenantId`              | string                    | Canonical slug                                                                                                                                                            |
 | `expiresAt`             | number                    | Absolute Unix seconds; Redis `EXAT` align                                                                                                                                 |
 | `accessEndedCause`      | `"inactivity"` \| omitted | Set only after confirmed idle clearance; may be cleared after first recovery UI read                                                                                      |
-| `sessionEndGeneration`  | number \| omitted         | Monotonic latch for this session end; retained for a short window (including as a post-rotation tombstone when a sibling may still hold the old UI) so missed BroadcastChannel tabs can confirm inactivity |
+| `sessionEndGeneration`  | number \| omitted         | Monotonic latch for this session end; retained until the ended session’s absolute `expiresAt` (same Redis key lifetime) so missed BroadcastChannel tabs can confirm inactivity while the key exists |
 
 ### Authenticated `SessionRecord` (extended)
 
@@ -108,12 +108,23 @@ would parse them as missing and force anonymous replacement / OIDC.
 
 **Pinned rollout / rollback**: Parsers MUST **dual-read** legacy four-key authenticated
 records **and** idle-shaped authenticated records for one absolute-TTL drain window after
-deploy (≈ `DEFAULT_SESSION_TTL_SECONDS`). Legacy four-key on first idle-aware read still
-forces reauthentication (no silent soft-upgrade). New writes are idle-shaped only.
-**Rollback** during the drain window keeps the dual-read parser (do not ship a
-four-key-only binary while idle-shaped keys remain). After the drain window, idle-only
-authenticated allowlist is allowed. Do not treat “disable client island only” as a safe
-rollback without dual-read.
+deploy (≈ `DEFAULT_SESSION_TTL_SECONDS`). Dual-read is insufficient unless the read
+result **preserves which shape was found**:
+
+- `parseSessionRecord` / `SessionStore.read` MUST expose a discriminant such as
+  `legacyAuthenticated: true` when the Redis JSON is the pre-idle four-key authenticated
+  shape (even if a `SessionRecord`-like view is also returned for diagnostics).
+- `setupSession.canReuse` (and any path that would continue authenticated access) MUST
+  **reject** `legacyAuthenticated`—treat as unusable for protected reuse (force
+  reauthentication / fresh anonymous→OIDC). Do **not** accept a legacy four-key record
+  exactly like an idle-shaped authenticated session.
+- Cover with unit/contract cases: dual-read parses both shapes; `canReuse` false for
+  legacy; idle-shaped authenticated may reuse when deadlines allow.
+
+New writes are idle-shaped only. **Rollback** during the drain window keeps the dual-read
+parser (do not ship a four-key-only binary while idle-shaped keys remain). After the drain
+window, idle-only authenticated allowlist is allowed. Do not treat “disable client island
+only” as a safe rollback without dual-read.
 
 Invariants:
 
@@ -138,21 +149,31 @@ and missed-BroadcastChannel recovery (see [inactivity-recovery.md](./contracts/i
 
 **Multi-tab-safe consume (P1 / E1 / X1)**: The first tab with a successful **server**
 confirmation of inactivity notifies same-origin shared-session siblings via
-`BroadcastChannel` (or equivalent) with `inactivity-confirmed` **including
-`sessionEndGeneration`**. Sibling tabs may clear protected content and open the inactivity
-Modal from that signal (established UI evidence from a prior server confirmation—FR-008;
-not client-timer authority). Latch + SSR recovery route MUST NOT require every tab to
+`BroadcastChannel` (or equivalent) with `inactivity-confirmed` **including `sessionId`
+and `sessionEndGeneration`**. Receivers ignore foreign session ids. Sibling tabs may clear
+protected content and open the inactivity Modal from that signal (established UI evidence
+from a prior server confirmation—FR-008; not client-timer authority). Latch retained until
+absolute `expiresAt`. After cookie rotation, session-mismatch handshake is required
+(tombstone alone is insufficient). Latch + SSR recovery MUST NOT require every tab to
 re-read a still-present string cause after the first tab consumed it.
 
 ## Temporary session data
 
 **This slice**: the current authenticated `SessionRecord` has **no** draft / unsaved-work
 keys (`types.ts` today is identity + absolute expiry only, plus the idle fields above).
-Acceptance for FR-007 / recovery copy that mentions unsaved work is scoped to:
-(1) **non-restoration**—login-again MUST NOT revive cleared UI state; (2) when draft keys
-are later added to the session record, list them here and clear them atomically in the
-idle-clearance CAS transition. Do not invent a draft schema for 004. Durable
-backend/business records are not session fields and remain intact.
+Acceptance for FR-007 / recovery Gherkin that mentions “Unsent practice note” is scoped
+to a **client-only protected UI fixture** in BDD steps:
+
+1. Seed/expose the note in the authenticated UI (DOM / client state)—**not** as a Redis
+   session field.
+2. On confirmed inactivity, remove it from the active experience with other protected
+   content.
+3. Login-again MUST NOT restore it.
+
+When real draft keys are later added to the session record, list them here and clear them
+atomically in the idle-clearance CAS transition. Do not invent a Redis draft schema for
+004. Durable backend/business records (e.g. Gherkin “Saved practice note”) are not session
+fields and remain intact.
 
 ## State transitions
 

@@ -71,29 +71,34 @@ cause before siblings can recover:
 
 1. On first successful server confirmation of inactivity for a session end, assign (or
    retain) a monotonic **`sessionEndGeneration`** on the anonymous record and treat that
-   generation as a **replayable latch** for a short retention window.
-2. Broadcast `inactivity-confirmed` **with that generation** to same-origin siblings.
+   generation as a **replayable latch** retained until the ended session’s absolute
+   **`expiresAt`** (same Redis `EXAT` / record lifetime)—not an unspecified “short”
+   window.
+2. Broadcast `inactivity-confirmed` with **`sessionId` and that generation** to
+   same-origin siblings.
 3. Clearing the string field `accessEndedCause` after the first recovery UI read is
    allowed **only if** the generation latch remains queryable so a sibling (or a tab
    that missed BroadcastChannel) can still confirm inactivity via confirm/read or the
-   SSR recovery route.
+   SSR recovery route **while the ended session key still exists**.
 4. Do not expose a public diagnostic dump of full session internals, idle fields, or
    renewal state.
 
 ## Running-app revalidation (required)
 
-While authenticated UI is mounted, the client **MUST** schedule non-authoritative
-revalidation (deadline-aligned timer and/or `visibilitychange` / `focus`) using the
-confirm/read interface above and `idleExpiresAt` from context/confirm. On confirmed
-inactivity:
+While authenticated UI is mounted, the client **MUST** schedule a **deadline-aligned
+timer** at `min(idleExpiresAt, expiresAt)` from context/confirm and invoke confirm/read
+when it fires. `visibilitychange` / `focus` MAY trigger **supplemental** immediate
+confirm/read—they MUST NOT be the sole revalidation mechanism (a continuously visible,
+focused tab past the deadline must still confirm via the timer). On confirmed inactivity:
 
 1. Remove protected content from the active experience
 2. Open the PathAble Modal
 3. Notify same-origin shared-session siblings (see Multi-tab)
 
-The server remains sole authority for `idleExpiresAt`; revalidation MUST NEVER grant
-access past that deadline. This path covers expiry **while the application is running**
-(recovery Gherkin)—not only after a later full navigation.
+The server remains sole authority for deadlines; revalidation MUST NEVER grant access past
+them. Absolute-first expiry uses the non-inactivity recovery path. This path covers expiry
+**while the application is running** (recovery Gherkin)—not only after a later full
+navigation.
 
 ### Revalidation transport / 5xx
 
@@ -159,13 +164,18 @@ No advance-warning, countdown, or “extend session” control in this slice.
    transaction target. Do **not** pass the post-clearance anonymous `sid` into the OIDC
    transaction. The callback MUST write authenticated fields only to the **new** Redis key
    so cause/latch state is **not** carried into the new authenticated session.
-4. **Old-session tombstone (multi-tab)**: Retain the pre-rotation Redis key as an
-   anonymous tombstone (cause and/or `sessionEndGeneration`) for a short recovery window
-   after cookie rotation, **or** require each mounted document to run a
-   session-mismatch handshake (rendered generation vs current cookie/`confirm`) that
-   clears protected UI before accepting a new authenticated context. A sibling that missed
-   BroadcastChannel MUST NOT resume with the new cookie while still showing old protected
-   content without recovery.
+4. **Old-session handling after rotation (multi-tab)**: Because `pathable-session` is a
+   shared HttpOnly cookie, rotating it in one tab updates the cookie for all siblings—the
+   pre-rotation Redis key is **no longer addressable** via cookie-bound confirm/read.
+   Therefore every mounted authenticated document **MUST** run a **session-mismatch
+   handshake**: compare the rendered/mounted `sessionId` (and any held
+   `sessionEndGeneration`) against the current cookie + confirm/read result; on mismatch
+   or ended inactivity for the mounted sid, clear protected UI and show recovery (or
+   generic unavailable) before accepting a new authenticated context. An optional
+   tombstone on the old Redis key MAY remain for audit until `expiresAt`, but it is **not**
+   a sufficient sibling-recovery path by itself. A sibling that missed BroadcastChannel
+   MUST NOT resume with the new cookie while still showing old protected content without
+   recovery.
 5. Success establishes a **new** authenticated session with **current** tenant idle policy.
 6. There are **no** draft keys in this slice to restore; login-again MUST NOT revive
    cleared protected UI state from the expired experience.

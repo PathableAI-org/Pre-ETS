@@ -51,19 +51,23 @@ GET and cross-site requests.
 **Atomic store transition**: Load-check-write MUST NOT use a blind `SET XX` after a
 separate read. Renewal and idle-clearance MUST compete via an **atomic conditional**
 Redis transition (WATCH/MULTI, Lua, or compare-and-set on expected authenticated shape +
-`idleExpiresAt` / generation). The conditional MUST sample authoritative `now` **at
-commit time** inside the Redis script / MULTI (not a wall-clock captured only before
-I/O). A delayed heartbeat whose pre-I/O `now` was still under the deadline MUST still
-fail when commit-time `now >= idleExpiresAt` or `now >= expiresAt` (deadline wins;
-fail closed). Cover with a contract/unit case for a delayed command. When the race is
-lost:
+`idleExpiresAt` / generation).
+
+**Clock authority (pinned)**: The **application clock** remains authoritative. Sample
+`nowSeconds` **immediately before** starting the Redis conditional write and pass that
+value into the CAS (Lua ARGV or application-side compare before EXEC). Do **not** claim
+Redis `TIME` as the product clock, and do **not** claim an impossible “re-sample
+application now inside MULTI.” Cancellation-safe protocol: if the store times out, WATCH
+detects a conflict, or EXEC is aborted before apply, the write MUST NOT land (fail closed;
+deny renewal / no revival). Cover with a contract/unit case for a delayed heartbeat that
+exceeds `storeTimeoutMs` without extending the deadline. When the race is lost:
 
 | Lost-race outcome                         | Result                                                                 |
 | ----------------------------------------- | ---------------------------------------------------------------------- |
 | Clearance already wrote anonymous + cause | Deny renewal; **no** overwrite of post-clearance anonymous record      |
 | Newer accepted heartbeat already applied  | Deny or no-op; do not regress `lastActivityAt` / `idleExpiresAt`       |
 | Expected shape / generation mismatch      | Deny; fail closed; no revival                                          |
-| Commit-time clock past deadline           | Deny; run clearance path; no revival                                   |
+| Store timeout / aborted EXEC              | Deny; fail closed; no revival                                          |
 
 **Coalescing / rate bound**: server MUST coalesce or rate-limit accepted renewals.
 Indicative default (E4): ignore redundant Redis writes within **~1s** when the computed

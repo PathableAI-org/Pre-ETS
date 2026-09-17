@@ -18,10 +18,11 @@ authenticated server handlers). The server remains the **sole authority** for
 `idleExpiresAt`; client timers MUST NEVER grant access past that deadline.
 
 While authenticated UI is mounted, the client **MUST** run a **non-authoritative
-revalidation** path (deadline-aligned timer at `min(idleExpiresAt, expiresAt)` and/or
-`visibilitychange` / `focus` checks) that confirms inactivity with the server. Deadline
-alignment uses both deadlines from the forwarded authenticated **`SessionContext`**
-(and/or confirm/read while still authenticated)—not a client-invented clock. Absolute-first
+revalidation** path: a **deadline-aligned timer** at `min(idleExpiresAt, expiresAt)`, with
+optional supplemental `visibilitychange` / `focus` confirms. Deadline alignment uses both
+deadlines from the forwarded authenticated **`SessionContext`** (and/or confirm/read while
+still authenticated)—not a client-invented clock. Event listeners alone are **not**
+sufficient (a continuously visible focused tab must still fire the timer). Absolute-first
 expiry uses the non-inactivity recovery path. On confirmed inactivity: remove protected
 content from the active experience and open the PathAble Modal—aligned with recovery
 Gherkin when access expires **while the application is running**. Revalidation discovers
@@ -104,12 +105,13 @@ an initial deadline; confirm/read remains a refresh source after renewals).
 - **Reporting**: a narrow authenticated Server Action (preferred) or **POST-only**
   Route Handler with same-origin `Origin`/CSRF validation accepts activity heartbeats
   only for an **authenticated same-tenant session cookie** when server `now <
-  idleExpiresAt`. Stamp activity from the **server clock** (omit client `at`). Update
-  via **atomic** conditional Redis transition that re-samples `now` **at commit time**;
-  updates `lastActivityAt` / `idleExpiresAt` without changing `expiresAt` or
-  `idleDurationMinutes`. Reject late reports and lost races vs clearance (no revival /
-  no overwrite of anonymous clearance). No public diagnostic route. `SameSite=Lax`
-  alone is insufficient.
+  idleExpiresAt`. Stamp activity from the **application clock** (omit client `at`).
+  Update via **atomic** conditional Redis transition that compares using application
+  `nowSeconds` sampled immediately before I/O (pass into CAS; cancel/abort on store
+  timeout—**not** Redis `TIME` as product clock); updates `lastActivityAt` /
+  `idleExpiresAt` without changing `expiresAt` or `idleDurationMinutes`. Reject late
+  reports and lost races vs clearance (no revival / no overwrite of anonymous
+  clearance). No public diagnostic route. `SameSite=Lax` alone is insufficient.
 - **Debounce / coalescing**: client coalesces bursts; server MUST also coalesce or
   rate-bound renewals (indicative: ignore redundant writes within **~1s** when
   `idleExpiresAt` is unchanged—see `idle-expiration.md`). Neither client nor server
@@ -211,8 +213,7 @@ introspection (violates ownership).
 - On **confirmed** idle expiry, set `accessEndedCause: "inactivity"` **and** a
   monotonic **`sessionEndGeneration`** on the **post-clearance anonymous** session
   record. The string cause MAY clear after the first recovery UI read; the generation
-  latch remains queryable for a short retention window (or until cookie rotation) so
-  siblings and tabs that missed BroadcastChannel are not stranded.
+  latch remains queryable until the ended session’s absolute **`expiresAt`**.
 - **Cause-bearing SSR recovery route**: When the anonymous record has inactivity
   evidence, the Proxy MUST forward to an SSR recovery shell (Modal + “Log in again”)
   instead of starting generic OIDC initiation. Protected content stays denied.
@@ -224,26 +225,28 @@ introspection (violates ownership).
   (`BroadcastChannel` is origin-wide). Sibling tabs with a matching `sessionId` clear
   protected content and open the PathAble Modal from that sync signal (FR-008—does
   **not** invent inactivity from a client timer). Missed BroadcastChannel → re-query
-  confirm/read or SSR recovery against the latch.
+  confirm/read or SSR recovery against the latch **while the ended key exists**; after
+  login-again cookie rotation, mounted tabs MUST run a **session-mismatch handshake**
+  (tombstone alone is insufficient because the shared cookie no longer addresses the old
+  sid).
 - Missing/evicted/unavailable store, absolute expiry without idle evidence, or
   config/process failures → recovery MUST NOT claim inactivity.
 - While authenticated UI is mounted, non-authoritative client revalidation
-  (deadline-aligned via `min(idleExpiresAt, expiresAt)` from forwarded context and/or
-  `visibilitychange` / `focus`; see §1) confirms inactivity with the server; on
+  (**required deadline-aligned timer** at `min(idleExpiresAt, expiresAt)`, plus optional
+  supplemental `visibilitychange` / `focus`; see §1) confirms with the server; on
   confirmation, remove protected content and open PathAble **`Modal`** without requiring
   a full navigation. Absolute-first expiry uses the non-inactivity recovery path.
   `Modal` requires a client boundary
   (`agent-guidance/.../references/server-and-client.md`); keep page data loading
   on the server.
 - Modal: accessible name/explanation that inactivity ended the session and a
-  button **“Log in again”**. Copy MAY acknowledge that unsaved work was lost
-  (no advance-warning / extend UI).
-- “Log in again” invokes a **dedicated same-origin** action that **rotates** to a new
-  `sessionId` + cookie, then starts the existing tenant OIDC initiation journey; callback
-  MUST NOT authenticate into the pre-recovery `sid`. Retain a short-lived old-sid
-  tombstone (or require session-mismatch handshake) so a suspended sibling is not stranded.
-  Cancel/fail leaves access unusable with retry path (`/login-unavailable` or re-shown
-  modal as appropriate).
+  button **“Log in again”**. Copy MAY acknowledge possible unsaved-work loss (no Redis
+  draft keys in this slice; no advance-warning / extend UI).
+- “Log in again” invokes a **dedicated same-origin** CSRF-protected action that
+  **rotates** to a new `sessionId` + cookie, then starts the existing tenant OIDC
+  initiation journey; callback MUST NOT authenticate into the pre-recovery `sid`.
+  Mounted siblings MUST mismatch-handshake. Cancel/fail leaves access unusable with
+  retry path (`/login-unavailable` or re-shown modal as appropriate).
 - Before enabling further interaction after resume from sleep/offline, remove
   protected content from the active experience. This slice has no draft keys to
   clear; durable backend records untouched.
