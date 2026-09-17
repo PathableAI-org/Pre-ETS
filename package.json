@@ -27,7 +27,7 @@
     "check:changes": "fallow audit --gate new-only --gate-marker pre-commit"
   },
   "devDependencies": {
-    "@dprint/json": "0.23.0",
+    "@dprint/json": "0.24.0",
     "@dprint/markdown": "0.24.0",
     "@dprint/typescript": "0.96.1",
     "@eslint/js": "10.0.1",
@@ -36,7 +36,7 @@
     "dprint": "0.57.4",
     "dprint-plugin-yaml": "0.6.0",
     "eslint": "10.10.0",
-    "eslint-plugin-perfectionist": "5.11.0",
+    "eslint-plugin-perfectionist": "5.11.1",
     "fallow": "3.25.0",
     "globals": "17.12.0",
     "husky": "9.1.7",
