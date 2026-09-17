@@ -2,10 +2,6 @@
   "name": "@pathableai/pre-ets",
   "private": true,
   "type": "module",
-  "packageManager": "pnpm@12.4.1",
-  "engines": {
-    "node": ">=24"
-  },
   "scripts": {
     "start:frontend": "pnpm --filter @pathableai/pre-ets-frontend start",
     "start:backend": "pnpm --filter @pathableai/pre-ets-backend start",
@@ -27,11 +23,11 @@
     "check:changes": "fallow audit --gate new-only --gate-marker pre-commit"
   },
   "devDependencies": {
+    "@cucumber/cucumber": "13.2.1",
     "@dprint/json": "0.24.0",
     "@dprint/markdown": "0.24.0",
     "@dprint/typescript": "0.96.1",
     "@eslint/js": "10.0.1",
-    "@cucumber/cucumber": "13.2.1",
     "@types/node": "24.13.5",
     "dprint": "0.57.4",
     "dprint-plugin-yaml": "0.6.0",
@@ -44,5 +40,9 @@
     "playwright": "1.63.0",
     "typescript": "6.0.3",
     "typescript-eslint": "8.70.0"
+  },
+  "packageManager": "pnpm@12.4.1",
+  "engines": {
+    "node": ">=24"
   }
 }
