@@ -25,8 +25,9 @@ demonstrated before callback work.
 OIDC branch; local Compose services (Redis, Keycloak) may remain. Operational detail lives in
 [quickstart.md](./quickstart.md).
 
-Research decisions are in [research.md](./research.md). This plan is Phase 0 research and Phase 1
-design only; it does not make pending OIDC Cucumber steps pass.
+Research decisions are in [research.md](./research.md). Actionable implementation work is sequenced in
+[tasks.md](./tasks.md) (intentional `speckit-tasks` output kept with this plan). Completing those
+tasks—not this plan alone—makes pending OIDC Cucumber steps pass.
 
 ## Technical Context
 
@@ -152,6 +153,7 @@ delivery PR.
 specs/003-tenant-oidc-login/
 ├── spec.md
 ├── plan.md
+├── tasks.md
 ├── research.md
 ├── data-model.md
 ├── quickstart.md
@@ -162,7 +164,9 @@ specs/003-tenant-oidc-login/
     └── local-keycloak.md
 ```
 
-`tasks.md` is generated later by speckit-tasks, not by this planning command.
+[tasks.md](./tasks.md) is intentional `speckit-tasks` output included with this plan (dependency-ordered
+implementation checklist). Keep it in this slice; do not treat planning as “design-only until tasks
+are generated later.”
 
 ### Source Code (planned changes)
 
@@ -175,8 +179,8 @@ README.md                                    # Local OIDC prerequisites pointer
 packages/frontend/
 ├── .env.example                             # OIDC fields + OIDC_CLIENT_SECRETS_JSON (empty)
 ├── package.json                             # add openid-client (pin compatible release)
-├── src/proxy.ts                             # setup → unauthenticated initiate; cookie on 302 only
-├── src/lib/tenant/                          # extend TenantConfig parsers; keep restart semantics
+├── src/proxy.ts                             # callback first; then setup → initiate on `/` only
+├── src/lib/tenant/                          # shared parser: displayName + required oidc; migrate fixtures
 ├── src/lib/oidc/
 │   ├── types.ts                             # transaction record, config validation helpers
 │   ├── secrets.ts                           # server-only slug→secret map
@@ -209,10 +213,16 @@ again later” link/button with visible focus); no credentials or other tenant�
 1. Keep Proxy matcher coverage for `/` (including document navigations). Add `/auth/callback` to the
    matcher only so Proxy can strip reserved headers and **pass through without** login initiation or
    recursive redirect. Do not invent operational health endpoints for FR-013.
-2. Run existing `setupSession` first. Terminal `403` / `500` / `503` remain authoritative and unchanged.
+2. **Proxy branch order**: exclude `/auth/callback` **before** `setupSession` (first branch—pass
+   through stub only). Run `setupSession` and login initiation **only** on document entry `/`.
+   Terminal session `403` / `500` / `503` remain authoritative and unchanged. Malformed
+   `OIDC_CLIENT_SECRETS_JSON` maps to process-config **HTTP 500** (no initiation; no session cookie).
 3. Ready `outcome === "reuse"` or `"create"` **without authenticated identity** → enter the
    login-initiation path for document navigations (validate OIDC, discover, persist tx, redirect—or
    fail closed). **Never** SSR `(app)` landing / Display Name for unauthenticated requests.
+   Spec FR wording “registration mode” maps to config field **`oidc.clientAuth`**. Extended
+   forbidden UX for OIDC-config 403 is a **dependency of Proxy enablement** (Foundational/early US1)—
+   US1 MVP must not claim FR-007/SC-005 for config refusal until that UX exists.
 4. **Authenticated short-circuit (E7)**: name the future gate now—session record gains an
    **authenticated user id** (per `docs/session-state.md` “Authenticated user”). That field is the
    **sole** short-circuit out of initiation into SSR landing. Until the field is present on the
@@ -224,9 +234,9 @@ again later” link/button with visible focus); no credentials or other tenant�
    - **`reuse` + initiate**: do not re-set `pathable-session` unless cookie attributes require it;
      do **not** SSR landing; still issue correlation cookie + Redis tx on successful redirect.
    - **Never** `Set-Cookie` `pathable-session` on: OIDC config 403, `login-unavailable`, transaction
-     failure, or non-document `401`. Redis create orphans may TTL-expire; optional best-effort delete.
-     HTTP acceptance (BDD `@http`/`@contract`) MUST assert absence of that Set-Cookie on those
-     failure classes (E2).
+     failure, process-config `500` (malformed secrets), or non-document `401`. Redis create orphans
+     may TTL-expire; optional best-effort delete. HTTP acceptance (BDD `@http`/`@contract`) MUST
+     assert absence of that Set-Cookie on those failure classes (E2).
    - Valid settings + non-document request (RSC/prefetch) → `401` without IdP `Location` or
      application content. **Early proof (E4)**: before broad BDD, prove one real Next 16.3.5 RSC /
      `Accept` shape for `/` and record the chosen signal + client-visible outcome in research/contract.

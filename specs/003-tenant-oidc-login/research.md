@@ -13,20 +13,22 @@ landing” decisions remain **superseded**.
 
 **Decision**: Extend `TenantConfig` with a required nested `oidc` object alongside `displayName`:
 
-| Field             | Type                           | Rule                                                                                                                                                                                                                                  |
-| ----------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `displayName`     | string                         | Existing nonempty trimmed text                                                                                                                                                                                                        |
-| `oidc.issuer`     | string                         | Absolute URL; `https:` required outside development; development may use `http:` only for loopback Keycloak                                                                                                                           |
-| `oidc.clientId`   | string                         | Nonempty trimmed client identifier                                                                                                                                                                                                    |
-| `oidc.clientAuth` | `"public"` \| `"confidential"` | Required closed set. Trusted registration mode for **this application’s** broker client—not inferred from discovery. `"public"` = PKCE-only (no client secret). `"confidential"` = nonempty server-only secret required for that slug |
-| `oidc.connection` | string \| omitted              | Nonempty trimmed broker connection id when the registration requires IdP selection; omit only when issuer+client alone reach the tenant login experience                                                                              |
+| Field             | Type                           | Rule                                                                                                                                                                                                                                                                                           |
+| ----------------- | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `displayName`     | string                         | Existing nonempty trimmed text                                                                                                                                                                                                                                                                 |
+| `oidc.issuer`     | string                         | Absolute URL; `https:` required outside development; development may use `http:` only for loopback Keycloak                                                                                                                                                                                    |
+| `oidc.clientId`   | string                         | Nonempty trimmed client identifier                                                                                                                                                                                                                                                             |
+| `oidc.clientAuth` | `"public"` \| `"confidential"` | Required closed set. **Explicit map**: spec “registration mode” = this field. Trusted registration mode for **this application’s** broker client—not inferred from discovery. `"public"` = PKCE-only (no client secret). `"confidential"` = nonempty server-only secret required for that slug |
+| `oidc.connection` | string \| omitted              | Nonempty trimmed broker connection id when the registration requires IdP selection; omit only when issuer+client alone reach the tenant login experience                                                                                                                                       |
 
 Reject unknown keys at record and `oidc` object levels (same strictness as today’s Display Name parser).
-Missing or invalid `clientAuth` is unusable OIDC config (HTTP 403 extended forbidden). A Display
-Name-only record is invalid for login initiation and yields HTTP 403 with **extended forbidden copy**
-(login cannot start + next action + a11y; no secrets)—not the `login-unavailable` page. Update
-`.env.example` and local docs with Springfield/Shelbyville synthetic OIDC examples (`clientAuth:
-"public"` for local Keycloak). Restart remains the documented reload procedure.
+The **shared** `TenantConfig` parser keeps required `displayName` and **requires nested `oidc`**
+alongside it (not login-boundary-only validation). Missing or invalid `clientAuth` is unusable OIDC
+config (HTTP 403 extended forbidden). A Display Name-only record fails shared parse and yields HTTP
+403 with **extended forbidden copy** (login cannot start + next action + a11y; no secrets)—not the
+`login-unavailable` page. Foundational work migrates existing Display Name-only fixtures/tests.
+Update `.env.example` and local docs with Springfield/Shelbyville synthetic OIDC examples
+(`clientAuth: "public"` for local Keycloak). Restart remains the documented reload procedure.
 
 **Rationale**: Matches Gherkin columns (`issuer`, `client`, `connection`) plus an explicit
 registration-mode field so “missing required credential” is implementable without guessing from
@@ -111,9 +113,10 @@ from the React tree (cannot set cookies + redirect cleanly on first paint); pres
 
 ## 4. Initiation boundary and session cookie rules (E1)
 
-**Decision**: Perform initiation in `src/proxy.ts` (or a dedicated module invoked only from Proxy)
-immediately after a ready unauthenticated `"reuse"` or `"create"` outcome on a participating document
-navigation.
+**Decision**: Perform initiation in `src/proxy.ts` (or a dedicated module invoked only from Proxy).
+**Branch order**: exclude `/auth/callback` **before** `setupSession` (first branch—pass-through stub
+only). Run `setupSession` and initiation only on document entry `/`, immediately after a ready
+unauthenticated `"reuse"` or `"create"` outcome.
 
 **Successful document IdP `302` MUST**:
 
@@ -124,9 +127,9 @@ navigation.
 3. `Location` = broker authorization URL from `openid-client`.
 
 **Never** `Set-Cookie` `pathable-session` on: OIDC config 403, `login-unavailable`, transaction
-failure, or non-document `401`. Redis rows created by setup on a failed `create` path may
-TTL-expire; optional best-effort delete is allowed. Never serve tenant application HTML on initiation
-or failure responses in this slice.
+failure, process-config `500` (malformed secrets), or non-document `401`. Redis rows created by setup
+on a failed `create` path may TTL-expire; optional best-effort delete is allowed. Never serve tenant
+application HTML on initiation or failure responses in this slice.
 
 Keep Redis I/O limited to session setup + one transaction write + discovery (cached).
 
@@ -178,9 +181,11 @@ Transaction record (exact fields in [data-model.md](./data-model.md)):
 TTL: default 600 seconds (`OIDC_TX_TTL_SECONDS`), absolute `EXAT` from the application clock. PKCE
 verifier exists only in this server record. Issue HttpOnly host-only cookie `pathable-oidc` (signed
 with `SESSION_SIGNING_SECRET` or a dedicated `OIDC_TX_SIGNING_SECRET` defaulting to the session
-secret) carrying `{ state, tenantId, exp }` so callback (later) can correlate browser ↔ Redis without
-trusting query alone. If the transaction cannot be written or the correlation cookie cannot be minted,
-do not redirect to the provider and do not attach `pathable-session` on a `create` failure path.
+secret) carrying `{ state, tenant, exp }` so callback (later) can correlate browser ↔ Redis without
+trusting query alone. The tenant claim name is **`tenant`** (same as the session cookie claim)—not
+`tenantId` (that name remains on Redis session/transaction records only). If the transaction cannot
+be written or the correlation cookie cannot be minted, do not redirect to the provider and do not
+attach `pathable-session` on a `create` failure path.
 
 **Rationale**: FR-006 requires server-side verifier and binding to browser, tenant, issuer, client,
 connection, and approved return destination. Redis is already the frontend ephemeral store.

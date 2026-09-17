@@ -165,10 +165,10 @@ it does not make the product a CLI or API consumer.
 
 | File                                                                   | Purpose                                                                                   | Scenarios | Outlines | Example rows | Expanded cases |
 | ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- | --------- | -------- | ------------ | -------------- |
-| [tenant-oidc-login.feature](tenant-oidc-login.feature)                 | Tenant login arrival, isolation, session decisions, caller input, and request exclusions. | 6         | 6        | 25           | 31             |
+| [tenant-oidc-login.feature](tenant-oidc-login.feature)                 | Tenant login arrival, isolation, session decisions, caller input, and request exclusions. | 6         | 7        | 27           | 33             |
 | [tenant-oidc-configuration.feature](tenant-oidc-configuration.feature) | Connection settings, secret boundaries, validation, reload, and accessible failures.      | 4         | 5        | 19           | 23             |
 | [local-oidc-development.feature](local-oidc-development.feature)       | Local Keycloak setup, issuer reachability, static mode, restrictions, and recovery.       | 6         | 3        | 6            | 12             |
-| **Total**                                                              |                                                                                           | **16**    | **14**   | **50**       | **66**         |
+| **Total**                                                              |                                                                                           | **16**    | **15**   | **52**       | **68**         |
 
 ### OIDC traceability and verification boundaries
 
@@ -245,10 +245,11 @@ See [the traceability report](TRACEABILITY.md) for requirement-level coverage an
 
 ### OIDC artifact validation and execution status
 
-The installed Cucumber Gherkin parser successfully parsed and expanded all **66 cases**. Unique scenario names,
+The installed Cucumber Gherkin parser successfully parsed and expanded all **68 cases**. Unique scenario names,
 outline substitution, and the FR/SC tag inventory were checked. This validates acceptance artifacts only.
-The existing Cucumber configuration explicitly lists the tenant and session files; these new OIDC files are
-**not yet wired into that runner and have no generated step bindings**. The BDD scaffold step should add
-bindings and discovery before implementation. Existing dry-run commands do not validate OIDC behavior.
-The nine-file repository inventory now contains **160 expanded cases**: 52 tenant, 42 session, and 66 OIDC.
+OIDC features and `tests/bdd/steps/oidc.steps.ts` are wired when `CUCUMBER_OIDC=1` (or via
+`pnpm test:bdd:oidc` / `pnpm test:bdd:dry`, which also sets that flag). Step definitions remain pending
+stubs until implementation; dry-run checks discovery and bindings, not runtime behavior. Default
+`pnpm test:bdd` still omits OIDC so unimplemented stubs do not fail unlabeled PR CI.
+The nine-file repository inventory now contains **162 expanded cases**: 52 tenant, 42 session, and 68 OIDC.
 Earlier tenant/session execution notes above describe their own suites and are not OIDC implementation evidence.

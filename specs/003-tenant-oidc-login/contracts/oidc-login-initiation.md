@@ -21,16 +21,20 @@ authenticated `/` may SSR Display Name.
 
 ## Participating requests
 
-| Path                                             | Proxy behavior                                                         |
-| ------------------------------------------------ | ---------------------------------------------------------------------- |
-| `/` document navigation, unauthenticated         | `setupSession` then initiate (`reuse` or `create`); never SSR landing  |
-| `/` non-document (RSC/prefetch), unauthenticated | `setupSession`; on need-login, `401` without IdP `Location`            |
-| `/login-unavailable`                             | Outside `(app)`; unmatched by initiation; works without session cookie |
-| `/auth/callback`                                 | Strip reserved headers; pass through stub; **no** initiation           |
-| Assets / unmatched paths                         | No session setup or initiation                                         |
+| Path                                             | Proxy behavior                                                                                        |
+| ------------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
+| `/auth/callback`                                 | **First branch**: strip reserved headers; pass through stub; **no** `setupSession`; **no** initiation |
+| `/` document navigation, unauthenticated         | `setupSession` then initiate (`reuse` or `create`); never SSR landing                                 |
+| `/` non-document (RSC/prefetch), unauthenticated | `setupSession`; on need-login, `401` without IdP `Location`                                           |
+| `/login-unavailable`                             | Outside `(app)`; unmatched by initiation; works without session cookie                                |
+| Assets / unmatched paths                         | No session setup or initiation                                                                        |
 
-Trusted inputs: session cookie, OIDC correlation cookie (when present on later slices), Host (host
-mode). Ignore query-string tenant/issuer/client/connection/return-host overrides.
+**Proxy branch order**: exclude `/auth/callback` **before** `setupSession`. Setup and initiation run
+only on document entry `/`.
+
+Trusted inputs: session cookie, OIDC correlation cookie (when present on later slices; claims
+`state` / `tenant` / `exp`), Host (host mode). Ignore query-string tenant/issuer/client/connection/
+return-host overrides.
 
 Connection hint: config `oidc.connection` maps to Keycloak `kc_idp_hint` locally; other brokers are
 a follow-up mapping.
@@ -42,9 +46,11 @@ unauthenticated `"reuse"` or `"create"`:
 
 1. Load tenant record/`oidc` for `tenantId` (including required `clientAuth`). Unusable → typed
    config refusal (`403` extended forbidden UX—not `login-unavailable`).
-2. Resolve client secret using trusted `clientAuth` (not discovery): `"public"` → secret optional /
-   unused; `"confidential"` → nonempty `OIDC_CLIENT_SECRETS_JSON[slug]` required or config refusal
-   (`403` extended forbidden—missing required server-only credential).
+2. Resolve client secret using trusted `clientAuth` (spec “registration mode” = `oidc.clientAuth`;
+   not discovery): `"public"` → secret optional / unused (nonempty map entry still valid and unused);
+   `"confidential"` → nonempty `OIDC_CLIENT_SECRETS_JSON[slug]` required or config refusal
+   (`403` extended forbidden—missing required server-only credential). Malformed secrets JSON →
+   typed process failure (**HTTP 500** at Proxy).
 3. Discover issuer metadata (`openid-client`); cache by issuer; failure → provider failure. Discovery
    must not override `clientAuth`.
 4. Generate `state`, `nonce`, PKCE verifier/challenge.
@@ -66,9 +72,10 @@ PKCE verifier must not appear in the authorization URL, HTML, or client bundles.
 | Unauthenticated ready + valid oidc + non-document                                                                  | `401`                             | **No**                                             | No IdP redirect; no application content                                                                                                 |
 | Unknown tenant / invalid host                                                                                      | `403` `Access denied.`            | **No**                                             | No tx; no OIDC cookies                                                                                                                  |
 | Missing/invalid tenant oidc config (incl. missing/invalid `clientAuth`, or `confidential` without nonempty secret) | `403` **extended forbidden** UX   | **No**                                             | “Login cannot start” + next action + a11y; no secrets; **not** `login-unavailable`; no tx; no IdP redirect; Redis create orphan may TTL |
+| Malformed `OIDC_CLIENT_SECRETS_JSON` (process config)                                                              | `500` generic                     | **No**                                             | Lazy parse typed process failure; no initiation; no tx                                                                                  |
 | Discovery / tx establishment failure                                                                               | Accessible `login-unavailable`    | **No**                                             | No IdP redirect; no application content; distinct from config 403                                                                       |
 | `/login-unavailable`                                                                                               | Accessible failure page (P5)      | **No** (must work without cookie)                  | Outside `(app)`; no initiation                                                                                                          |
-| `/auth/callback`                                                                                                   | Stub page (non-initiating)        | N/A                                                | No login redirect loop                                                                                                                  |
+| `/auth/callback`                                                                                                   | Stub page (non-initiating)        | N/A                                                | Pass-through **before** `setupSession`; no login redirect loop                                                                          |
 | Terminal session store failure                                                                                     | Existing `503` / `500`            | Session rules unchanged                            | No initiation                                                                                                                           |
 | Session with authenticated user id (later; E7)                                                                     | SSR landing                       | Per later auth design                              | Sole short-circuit; out of scope                                                                                                        |
 
@@ -79,12 +86,13 @@ page. Unknown-tenant host refusal may remain plain `Access denied.`; login-confi
 still convey that login cannot start plus a clear next action without leaking secrets.
 
 **HTTP cookie-absence acceptance (E2)**: `@http` / `@contract` (or equivalent BDD step) MUST assert
-that create-path **config 403**, **`login-unavailable`**, **tx failure**, and **non-document `401`**
-responses do **not** include `Set-Cookie: pathable-session` (BDD agent adds Gherkin). Unit contracts
-remain required in addition.
+that create-path **config 403**, **`login-unavailable`**, **tx failure**, **process-config `500`**,
+and **non-document `401`** responses do **not** include `Set-Cookie: pathable-session` (BDD agent
+adds Gherkin). Unit contracts remain required in addition.
 
-**Verification case**: unit/HTTP proof that config 403, `login-unavailable`, tx failure, and
-non-document `401` responses do **not** include `Set-Cookie: pathable-session=…` for a new create.
+**Verification case**: unit/HTTP proof that config 403, `login-unavailable`, tx failure,
+process-config `500`, and non-document `401` responses do **not** include
+`Set-Cookie: pathable-session=…` for a new create.
 
 **Diagnostics (E9)**: outcome class only (`reuse` / `redirect` / `403-config` / `login-unavailable` /
 `401-nondoc`)—never verifiers, secrets, or raw tokens.

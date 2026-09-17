@@ -28,23 +28,26 @@ Transport rules for `issuer` (and derived authorization endpoints):
 - Development: `http:` allowed only for loopback hosts (`127.0.0.1`, `localhost`) used by local Keycloak
 - Non-loopback `http:` is never accepted
 
-Display Name-only records (no valid `oidc`) are rejected by the OIDC-aware parser used for login
-initiation and yield HTTP 403 with **extended forbidden copy** (login cannot start + next action +
-a11y; no secrets)—distinct from `/login-unavailable`. Shared issuer or Display Name across tenants
-does not merge identity; `connection` and `clientId` remain tenant-specific. Missing/invalid
-`clientAuth` is unusable OIDC config (same 403 extended forbidden class).
+The **shared** `TenantConfig` parser keeps required `displayName` and **requires nested `oidc`**
+alongside it (not login-boundary-only validation). Display Name-only records (no valid `oidc`) fail
+shared parse and yield HTTP 403 with **extended forbidden copy** (login cannot start + next action +
+a11y; no secrets)—distinct from `/login-unavailable`. Spec “registration mode” is stored as
+`oidc.clientAuth`. Shared issuer or Display Name across tenants does not merge identity; `connection`
+and `clientId` remain tenant-specific. Missing/invalid `clientAuth` is unusable OIDC config (same 403
+extended forbidden class).
 
 ### Server-only secrets map
 
 Env `OIDC_CLIENT_SECRETS_JSON`: JSON object `Record<slug, secretString>`. Not part of `TenantConfig`.
 Meaning depends on `oidc.clientAuth` for that tenant:
 
-- `"public"` — secret entry optional; initiation does not require or send a client secret
+- `"public"` — secret entry optional; initiation does not require or send a client secret. A nonempty
+  secrets-map entry for a `"public"` tenant is **valid and unused** (never logged/emitted)
 - `"confidential"` — nonempty secret for the slug is **required**; absent/blank → HTTP 403 extended
   forbidden (defect: missing required server-only credential)
 
-Invalid JSON / non-object shapes fail closed at lazy parse (HTTP 500). Values never appear in logs,
-HTML, redirects, or committed examples.
+Invalid JSON / non-object shapes fail closed at lazy parse (process-config **HTTP 500**; Proxy maps
+the typed process failure). Values never appear in logs, HTML, redirects, or committed examples.
 
 ## Session context (unchanged ownership)
 
@@ -83,11 +86,11 @@ closed. No update-in-place of another tenant’s transaction.
 
 Cookie name: `pathable-oidc`. Compact signed token (HS256 via `jose`).
 
-| Claim    | Type    | Rule                                 |
-| -------- | ------- | ------------------------------------ |
-| `state`  | string  | Matches Redis transaction key suffix |
-| `tenant` | string  | Canonical slug                       |
-| `exp`    | integer | Aligns with transaction expiry       |
+| Claim    | Type    | Rule                                                                            |
+| -------- | ------- | ------------------------------------------------------------------------------- |
+| `state`  | string  | Matches Redis transaction key suffix                                            |
+| `tenant` | string  | Canonical slug; claim name **`tenant`** (matches session cookie)—not `tenantId` |
+| `exp`    | integer | Aligns with transaction expiry                                                  |
 
 Attributes: `Path=/`, `HttpOnly`, `SameSite=Lax`, host-only (no `Domain`), `Secure` outside
 development. Short-lived; not an authentication session. Signing secret:
@@ -117,9 +120,11 @@ document GET `/`
               → invalid/missing oidc → 403 extended forbidden
                  (login cannot start + next action + a11y; not login-unavailable;
                   no Set-Cookie pathable-session; Redis create orphan may TTL)
+              → malformed OIDC_CLIENT_SECRETS_JSON → 500 process-config
+                 (no Set-Cookie pathable-session)
               → discover metadata (cached) → fail → login-unavailable
                  (no Set-Cookie pathable-session)
-              → persist transaction + correlation cookie → fail → login-unavailable
+              → persist transaction + correlation cookie (claims state/tenant/exp) → fail → login-unavailable
                  (no Set-Cookie pathable-session)
               → 302 Location=authorization URL
                  + Set-Cookie pathable-session ONLY when outcome was create
@@ -128,7 +133,7 @@ document GET `/`
                  (reuse: keep existing session cookie; do not SSR landing)
 non-document `/` needing login → 401, no IdP Location, no pathable-session Set-Cookie
 `/login-unavailable` → outside (app); no initiation; works without session cookie
-`/auth/callback` → pass-through stub (no initiation, no completion)
+`/auth/callback` → Proxy first branch: pass-through stub (no setupSession, no initiation, no completion)
 later: session record with authenticated user id (E7 sole short-circuit) → SSR landing (out of scope)
 ```
 

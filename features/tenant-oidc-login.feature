@@ -115,6 +115,23 @@ Feature: Tenant OIDC login entry
     And session presence alone is not represented as authenticated identity
     And the response does not trigger an automatic redirect loop
 
+  @FR-005 @FR-007 @FR-008 @SC-002 @SC-003 @http @contract
+  Scenario Outline: An anonymous reusable session with invalid login configuration is refused
+    Given the session capability reports an existing valid session bound to "springfield"
+    And that session was presented on entry and contains no authenticated user identity
+    And Springfield's login configuration has defect "<defect>"
+    When the visitor navigates to "https://springfield.pathable.com/"
+    Then the existing forbidden handling returns HTTP 403 without a login redirect or a new forbidden destination
+    And the forbidden response uses extended copy explaining that login cannot start with a clear next action
+    And that response is not the login-unavailable route
+    And no tenant application landing page or Display Name content is served
+    And the response does not include a Set-Cookie header for "pathable-session"
+
+    Examples:
+      | defect                                  |
+      | missing issuer                          |
+      | missing required server-only credential |
+
   @FR-005 @FR-006 @SC-002 @SC-003 @contract
   Scenario Outline: Replacement sessions preserve login entry after unusable references
     Given the visitor presents a session evaluated as "<condition>" by the existing session capability
