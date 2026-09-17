@@ -1,4 +1,4 @@
-/** True when Proxy must pass through without setupSession or initiation. */
+/** True when Proxy must complete login instead of initiating. */
 export function isAuthCallbackPath(pathname: string): boolean {
   return pathname === "/auth/callback"
 }

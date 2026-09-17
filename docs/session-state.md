@@ -83,9 +83,13 @@ lookup of someone else’s record. Store outages return HTTP 503 with no new coo
 
 ## Authenticated user
 
-If the user has already completed login, a later feature may attach an
-authenticated user id to the session record. That work is out of scope here.
-This slice establishes anonymous tenant-bound sessions only.
+After a successful OIDC callback, the session record stores `userId` (ID token
+`sub`) and `userName` (ID token `name`, else `preferred_username`, else `sub`).
+Access and refresh tokens are not written to Redis. The signed session cookie
+still carries only `sid` / `tenant` / `exp`.
 
-Downstream frontend modules receive the slug and session context through the
-server-only accessor. They do not invent a second place to store the current user.
+When `userId` is present on the Redis record, Proxy short-circuits document
+navigations to `/`: it forwards session context (including `userName`) to SSR
+and does not re-initiate login. Downstream modules read identity through the
+server-only session accessor; they do not invent a second place to store the
+current user.

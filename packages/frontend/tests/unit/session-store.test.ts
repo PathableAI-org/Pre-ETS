@@ -272,6 +272,33 @@ describe("RedisSessionStore", () => {
       })
     })
 
+    it("updates records with SET EXAT overwrite (no NX)", async () => {
+      const setMock = vi.fn().mockResolvedValue("OK")
+      const clientFactory = vi.fn(() => ({
+        connect: vi.fn().mockResolvedValue(undefined),
+        get: vi.fn().mockResolvedValue(null),
+        isOpen: true,
+        set: setMock
+      }))
+
+      const store = new RedisSessionStore(testConfig(), { clientFactory })
+      const id = fixedSessionId(16)
+      const record: SessionRecord = {
+        expiresAt: 1_700_300_000,
+        tenantId: "springfield",
+        userId: "user-1",
+        userName: "Demo User"
+      }
+
+      await expect(store.update(id, record)).resolves.toEqual({ kind: "updated" })
+      expect(setMock).toHaveBeenCalledWith(`${KEY_PREFIX}${id}`, serializeSessionRecord(record), {
+        expiration: {
+          type: "EXAT",
+          value: record.expiresAt
+        }
+      })
+    })
+
     it("reports collision when SET NX returns null", async () => {
       const setMock = vi.fn().mockResolvedValue(null)
       const clientFactory = vi.fn(() => ({

@@ -9,6 +9,7 @@ import {
   type SessionConfig,
   SessionConfigError,
   type SessionContext,
+  sessionContextFromRecord,
   type SessionCookieClaims,
   type SessionOutcomeClass,
   type SessionRecord
@@ -102,11 +103,7 @@ export async function setupSession(
   ) {
     return {
       config: tenant.config,
-      context: {
-        expiresAt: loaded.stored.expiresAt,
-        sessionId: loaded.candidate.sid,
-        tenantId: tenant.tenantId
-      },
+      context: sessionContextFromRecord(loaded.candidate.sid, loaded.stored),
       kind: "ready",
       origin: tenant.origin,
       outcome: "reuse"

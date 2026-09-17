@@ -14,6 +14,7 @@ const SESSION_ID = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 
 function mockStore(): OidcTransactionStore {
   return {
+    consume: vi.fn().mockResolvedValue({ kind: "missing" }),
     create: vi.fn().mockResolvedValue({ kind: "unavailable" })
   }
 }

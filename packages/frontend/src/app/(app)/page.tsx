@@ -5,7 +5,7 @@ import { getRequestSession } from "../../lib/session/index.ts"
 export const dynamic = "force-dynamic"
 
 export default async function HomePage() {
-  const { tenantConfig } = await getRequestSession()
+  const { context, tenantConfig } = await getRequestSession()
 
   return (
     <Page>
@@ -13,6 +13,9 @@ export default async function HomePage() {
         <Stack gap="lg">
           <Heading level={1}>Welcome to the Pre-ETS workspace</Heading>
           <Text>{`Tenant: ${tenantConfig.displayName}`}</Text>
+          {context.userName !== undefined
+            ? <Text>{`Signed in as: ${context.userName}`}</Text>
+            : null}
           <Text>
             This Next.js App Router landing page is server-rendered with PathAble React components.
           </Text>

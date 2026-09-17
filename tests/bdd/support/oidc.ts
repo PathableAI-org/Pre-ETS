@@ -356,7 +356,14 @@ export function assertSupportingRequestHandling(world: TenantWorld, category?: s
 
   switch (resolved) {
     case "authentication return route": {
-      assert.ok(response.status === 200 || response.status === 404)
+      // Document callback completes or fails closed (303 home / login-unavailable / 403).
+      assert.ok(
+        response.status === 200
+          || response.status === 303
+          || response.status === 302
+          || response.status === 403
+          || response.status === 404
+      )
       assert.doesNotMatch(response.headers.location ?? "", /openid-connect/)
       break
     }

@@ -3,8 +3,8 @@ import { Alert, Container, Heading, Link, Page, Stack, Text } from "@pathableai/
 export const dynamic = "force-dynamic"
 
 /**
- * Reserved authentication return path. Callback code exchange is out of scope;
- * Proxy pass-through must not re-enter login initiation.
+ * Fallback only: Proxy handles `/auth/callback` document navigations via
+ * `completeLogin` and redirects away before this page renders on the happy path.
  */
 export default function AuthCallbackPage() {
   return (
@@ -12,8 +12,8 @@ export default function AuthCallbackPage() {
       <Container>
         <Stack gap="lg">
           <Heading level={1}>Authentication return</Heading>
-          <Alert heading="Callback not completed" status="info">
-            This path is reserved for the identity provider return. Sign-in completion is not available in this release.
+          <Alert heading="Sign-in could not continue" status="info">
+            The identity provider return was not completed by the request boundary. Return home and try again.
           </Alert>
           <Text>
             <Link href="/">Return to the application entry</Link>

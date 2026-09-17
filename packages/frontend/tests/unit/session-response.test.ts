@@ -28,6 +28,7 @@ function mockStore(overrides: Partial<SessionStore> = {}): SessionStore {
   return {
     create: vi.fn().mockResolvedValue({ kind: "created" }),
     read: vi.fn().mockResolvedValue({ kind: "missing" }),
+    update: vi.fn().mockResolvedValue({ kind: "updated" }),
     ...overrides
   }
 }

@@ -81,6 +81,17 @@ describe("session types", () => {
       expect(serializeSessionRecord(record)).toBe(JSON.stringify(record))
     })
 
+    it("accepts authenticated { tenantId, expiresAt, userId, userName } JSON", () => {
+      const record = {
+        expiresAt: now + 3600,
+        tenantId: "springfield",
+        userId: "user-1",
+        userName: "Demo User"
+      }
+      expect(parseSessionRecord(record)).toEqual(record)
+      expect(serializeSessionRecord(record)).toBe(JSON.stringify(record))
+    })
+
     it("rejects extra keys, missing keys, wrong types, and empty tenantId", () => {
       expect(parseSessionRecord({ expiresAt: now, extra: 1, tenantId: "springfield" })).toBeUndefined()
       expect(parseSessionRecord({ tenantId: "springfield" })).toBeUndefined()
@@ -91,6 +102,17 @@ describe("session types", () => {
       expect(parseSessionRecord({ expiresAt: now, tenantId: "" })).toBeUndefined()
       expect(parseSessionRecord({ expiresAt: now, tenantId: "   " })).toBeUndefined()
       expect(parseSessionRecord({ expiresAt: 0, tenantId: "springfield" })).toBeUndefined()
+      expect(parseSessionRecord({
+        expiresAt: now,
+        tenantId: "springfield",
+        userId: "user-1"
+      })).toBeUndefined()
+      expect(parseSessionRecord({
+        expiresAt: now,
+        tenantId: "springfield",
+        userId: "",
+        userName: "Demo"
+      })).toBeUndefined()
     })
 
     it("rejects expiresAt values outside the Date representable range", () => {
@@ -113,6 +135,17 @@ describe("session types", () => {
       expect(parseSessionContextJson(serializeSessionContext(context))).toEqual(context)
     })
 
+    it("round-trips authenticated session context JSON", () => {
+      const context = {
+        expiresAt: now + 3600,
+        sessionId: fixedSessionId(),
+        tenantId: "springfield",
+        userId: "user-1",
+        userName: "Demo User"
+      }
+      expect(parseSessionContextJson(serializeSessionContext(context))).toEqual(context)
+    })
+
     it("rejects malformed or extended session context JSON", () => {
       expect(parseSessionContextJson("{")).toBeUndefined()
       expect(parseSessionContextJson(JSON.stringify({
@@ -125,6 +158,12 @@ describe("session types", () => {
         expiresAt: now,
         sessionId: "not-valid",
         tenantId: "springfield"
+      }))).toBeUndefined()
+      expect(parseSessionContextJson(JSON.stringify({
+        expiresAt: now,
+        sessionId: fixedSessionId(),
+        tenantId: "springfield",
+        userId: "user-1"
       }))).toBeUndefined()
     })
   })

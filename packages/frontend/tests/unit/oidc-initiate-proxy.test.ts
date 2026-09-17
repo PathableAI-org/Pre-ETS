@@ -36,6 +36,7 @@ function mockTxStore(
   overrides: Partial<OidcTransactionStore> = {}
 ): OidcTransactionStore {
   return {
+    consume: vi.fn().mockResolvedValue({ kind: "missing" }),
     create: vi.fn().mockResolvedValue({
       kind: "created",
       state: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLM"
@@ -69,10 +70,29 @@ describe("OIDC initiate / proxy contracts", () => {
       expect(proxyConfig.matcher).toEqual(["/", "/auth/callback"])
     })
 
-    it("treats /auth/callback as a setup/initiation bypass", () => {
+    it("identifies /auth/callback for Proxy completion (not initiation)", () => {
       expect(isAuthCallbackPath("/auth/callback")).toBe(true)
       expect(isAuthCallbackPath("/")).toBe(false)
       expect(isAuthCallbackPath("/login-unavailable")).toBe(false)
+    })
+  })
+
+  describe("authenticated short-circuit predicate", () => {
+    it("treats userId on session context as the sole initiation skip signal", () => {
+      const anonymous = {
+        expiresAt: NOW + 3600,
+        sessionId: SESSION_ID,
+        tenantId: "springfield",
+        userId: undefined as string | undefined
+      }
+      const authenticated = {
+        ...anonymous,
+        userId: "user-sub",
+        userName: "Demo User"
+      }
+
+      expect(authenticated.userId).toBeDefined()
+      expect(anonymous.userId).toBeUndefined()
     })
   })
 

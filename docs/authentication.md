@@ -48,11 +48,14 @@ request URL → slug → tenant configuration → session setup → OIDC initiat
    fall through to another tenant’s identity provider. Shared tenant config
    requires Display Name **and** nested OIDC settings including required
    `clientAuth` (`public` or `confidential`—the app’s registration mode).
-2. After the session module returns a ready anonymous outcome (`reuse` or
-   `create`) for a **document** navigation to `/`, the Proxy **initiates OIDC**.
-   It does **not** SSR tenant application or Display Name content. Creating or
-   reusing an anonymous session does not suppress login. Non-document requests
-   that need login receive `401` without an IdP redirect.
+2. After the session module returns a ready outcome (`reuse` or `create`) for a
+   **document** navigation to `/`:
+   - If the session record already has an authenticated `userId`, Proxy
+     short-circuits to SSR the landing page (tenant Display Name + signed-in
+     user name). It does **not** call initiation.
+   - Otherwise Proxy **initiates OIDC**. Creating or reusing an anonymous
+     session does not suppress login. Non-document requests that need login
+     receive `401` without an IdP redirect.
 3. The Next.js app starts a standard OIDC authorization request against the
    broker with `openid-client` (PKCE S256, `scope=openid`) using only the
    resolved tenant’s issuer, client id, and optional connection (`kc_idp_hint`
@@ -69,12 +72,18 @@ request URL → slug → tenant configuration → session setup → OIDC initiat
    provider-failure page. Discovery or transaction failures redirect to
    `/login-unavailable`. Malformed `OIDC_CLIENT_SECRETS_JSON` yields HTTP 500.
 6. The broker authenticates the user at the tenant’s identity provider (SAML
-   or OIDC). PathAble sees only the broker’s OIDC tokens afterward. **Callback
-   code exchange and authenticated identity are out of scope for the initiation
-   slice**; `/auth/callback` is a non-initiating stub until that work lands.
-7. A successful later callback will create a session already bound to that slug.
-   The session’s tenant cannot change. Display Name landing on `/` applies only
-   after an authenticated user id exists on the session.
+   or OIDC). PathAble sees only the broker’s OIDC tokens afterward.
+7. On `GET /auth/callback` (document navigation), Proxy runs callback
+   completion: verify `pathable-oidc` against query `state`, consume the Redis
+   transaction once, exchange the authorization code (PKCE + confidential
+   secret when required), validate ID token `nonce`, and write `userId` /
+   `userName` onto the existing Redis session (no tokens stored). Success
+   clears `pathable-oidc` and redirects `303` to `/`. Failures clear the
+   correlation cookie without authenticating and redirect to
+   `/login-unavailable` or return extended 403 as appropriate. Non-document
+   callback requests receive `401`.
+8. The next document visit to `/` with an authenticated session short-circuits
+   to the landing page showing tenant Display Name and the signed-in user name.
 
 ACS URLs and other SAML endpoints live on the broker so tenant metadata stays
 stable when the Next.js app moves. Downstream frontend modules receive the

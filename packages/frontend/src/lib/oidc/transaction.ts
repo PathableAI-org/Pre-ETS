@@ -9,17 +9,25 @@ import {
   serializeOidcTransactionRecord
 } from "./types.ts"
 
+export type OidcTransactionConsumeResult =
+  | { readonly kind: "missing" }
+  | { readonly kind: "record"; readonly record: OidcTransactionRecord }
+  | { readonly kind: "unavailable" }
+
 export type OidcTransactionCreateResult =
   | { readonly kind: "collision" }
   | { readonly kind: "created"; readonly state: string }
   | { readonly kind: "unavailable" }
 
 export interface OidcTransactionStore {
+  consume(state: string): Promise<OidcTransactionConsumeResult>
   create(state: string, record: OidcTransactionRecord): Promise<OidcTransactionCreateResult>
 }
 
+// fallow-ignore-next-line code-duplication -- Redis client surface mirrors session store
 interface RedisLikeClient {
   connect(): Promise<unknown>
+  getDel(key: string): Promise<null | string>
   readonly isOpen: boolean
   on?(event: "error", listener: (error: unknown) => void): unknown
   set(
@@ -32,6 +40,7 @@ interface RedisLikeClient {
   ): Promise<unknown>
 }
 
+// fallow-ignore-next-line code-duplication -- options bag mirrors session store
 interface RedisOidcTransactionStoreOptions {
   readonly clientFactory?: (url: string) => RedisLikeClient
   readonly keyPrefix?: string
@@ -56,6 +65,36 @@ export class RedisOidcTransactionStore implements OidcTransactionStore {
     this.keyPrefix = options.keyPrefix ?? config.keyPrefix
     this.timeoutMs = options.timeoutMs ?? config.storeTimeoutMs
     this.clientFactory = options.clientFactory ?? defaultClientFactory
+  }
+
+  async consume(state: string): Promise<OidcTransactionConsumeResult> {
+    if (!isOidcState(state)) {
+      return { kind: "missing" }
+    }
+
+    try {
+      const client = await this.connectedClient()
+      const raw = await this.withTimeout(client.getDel(this.keyFor(state)))
+      if (raw === null) {
+        return { kind: "missing" }
+      }
+
+      let parsed: unknown
+      try {
+        parsed = JSON.parse(raw)
+      } catch {
+        return { kind: "missing" }
+      }
+
+      const record = parseOidcTransactionRecord(parsed)
+      if (record === undefined) {
+        return { kind: "missing" }
+      }
+
+      return { kind: "record", record }
+    } catch {
+      return { kind: "unavailable" }
+    }
   }
 
   async create(state: string, record: OidcTransactionRecord): Promise<OidcTransactionCreateResult> {

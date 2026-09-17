@@ -683,7 +683,8 @@ function createStoreForWorld(world: TenantWorld, config: SessionConfig): Session
   if (world.redisUrl === CLOSED_REDIS_URL) {
     return {
       create: () => Promise.reject(new SessionStoreError("Session store unavailable.")),
-      read: () => Promise.reject(new SessionStoreError("Session store unavailable."))
+      read: () => Promise.reject(new SessionStoreError("Session store unavailable.")),
+      update: () => Promise.reject(new SessionStoreError("Session store unavailable."))
     }
   }
 
@@ -705,6 +706,10 @@ function createTracingStore(
     async read(id) {
       events.push("store.read")
       return await inner.read(id)
+    },
+    async update(id, record) {
+      events.push("store.update")
+      return await inner.update(id, record)
     }
   }
 }

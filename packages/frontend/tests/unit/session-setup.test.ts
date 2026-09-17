@@ -25,6 +25,7 @@ function mockStore(overrides: Partial<SessionStore> = {}): SessionStore {
   return {
     create: vi.fn().mockResolvedValue({ kind: "created" }),
     read: vi.fn().mockResolvedValue({ kind: "missing" }),
+    update: vi.fn().mockResolvedValue({ kind: "updated" }),
     ...overrides
   }
 }
@@ -195,6 +196,46 @@ describe("setupSession", () => {
         outcome: "reuse"
       })
       expect(vi.mocked(store.create)).not.toHaveBeenCalled()
+    })
+
+    it("forwards authenticated user fields when reusing a session", async () => {
+      const config = testConfig()
+      const now = 1_700_000_000
+      const expiresAt = now + 3600
+      const sessionId = fixedSessionId(31)
+      const store = mockStore({
+        read: vi.fn().mockResolvedValue({
+          kind: "record",
+          record: {
+            expiresAt,
+            tenantId: "springfield",
+            userId: "user-sub",
+            userName: "Demo User"
+          }
+        })
+      })
+      const request = await signedRequest({ exp: expiresAt, sid: sessionId, tenant: "springfield" }, config)
+
+      const result = await setupSession(request, {
+        config,
+        nowSeconds: () => now,
+        resolveTenant: okTenant(),
+        store
+      })
+
+      expect(result).toEqual({
+        config: springfieldConfig,
+        context: {
+          expiresAt,
+          sessionId,
+          tenantId: "springfield",
+          userId: "user-sub",
+          userName: "Demo User"
+        },
+        kind: "ready",
+        origin: "host-associated",
+        outcome: "reuse"
+      })
     })
 
     it("creates once per request with clock-controlled TTL alignment", async () => {
