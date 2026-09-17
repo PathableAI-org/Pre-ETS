@@ -22,7 +22,7 @@ host-run frontend talks to both over the network:
 - **Redis** — frontend session store and short-lived OIDC transaction keys
   (official `redis:8.2.9`)
 - **Keycloak** — local OIDC broker (pinned `quay.io/keycloak/keycloak:26.7.4`,
-  `start-dev`)
+  `start-dev --import-realm`, tracked realm JSON under `docker/keycloak/`)
 
 Pin image tags. Do not use `latest`. Local ports and credentials are for a
 machine-local developer environment only; they are not production values.
@@ -62,15 +62,28 @@ credentials or mTLS.
 
 ## Keycloak
 
-Use the official image `quay.io/keycloak/keycloak:26.7.4` with `start-dev`.
-That mode is one container, no TLS, and an embedded database. It is for local
-manual testing only.
+Use the official image `quay.io/keycloak/keycloak:26.7.4` with
+`start-dev --import-realm`. That mode is one container, no TLS, and an embedded
+database. It is for local manual testing only.
 
-Publish the HTTP port on loopback only (`127.0.0.1:8080:8080`). Set bootstrap
-admin credentials through environment variables
-(`KC_BOOTSTRAP_ADMIN_USERNAME`, `KC_BOOTSTRAP_ADMIN_PASSWORD`)—do not commit
-passwords. Compose requires those variables to be set in the shell or a local
-`.env` (gitignored) before `docker compose up`.
+Publish the HTTP port on loopback only (`127.0.0.1:8080:8080`). Bootstrap admin
+defaults to `admin` / `admin` (override with `KC_BOOTSTRAP_ADMIN_USERNAME` /
+`KC_BOOTSTRAP_ADMIN_PASSWORD` in the shell or a gitignored root `.env`).
+
+On first boot, Keycloak imports the tracked realm file
+[`docker/keycloak/pre-ets-realm.json`](../docker/keycloak/pre-ets-realm.json):
+
+- Realm `pre-ets`
+- Public PKCE clients `springfield-web` and `shelbyville-web`
+- Redirect URIs for static mode (`http://localhost:3000/auth/callback`) and
+  host mode (`http://springfield.localhost:3000/auth/callback`,
+  `http://shelbyville.localhost:3000/auth/callback`)
+- Test user `demo` / `demo` (local-only)
+
+Import runs only when the realm is absent. After editing the JSON, recreate the
+Keycloak container (`docker compose up -d --force-recreate keycloak`) or
+`docker compose down` and bring services back up. Restart the frontend after
+recreate (discovery metadata is cached for the process lifetime).
 
 Documented issuer identity for both the browser and the host-run Next.js
 process:
@@ -78,14 +91,9 @@ process:
 `http://127.0.0.1:8080/realms/pre-ets`
 
 Prefer `127.0.0.1` consistently in fixtures to avoid `localhost` resolution
-mismatches. After the container is up, create realm `pre-ets`, two public
-OpenID Connect clients with PKCE (for example `springfield-web` and
-`shelbyville-web`), distinguishable IdP aliases matching tenant
-`oidc.connection` values, and valid redirect URIs for local tenant hosts from
-[multi-tenancy.md](./multi-tenancy.md), for example
-`http://springfield.localhost:3000/auth/callback`. Restart the frontend after
-Keycloak recreate or reprovision (discovery metadata is cached for the process
-lifetime).
+mismatches. Optional tenant `oidc.connection` / `kc_idp_hint` Identity Providers
+are not part of the imported realm; omit `connection` for the built-in login
+form.
 
 This local broker stands in for Authentik or Keycloak in other environments.
 Do not add a second local identity stack (Better Auth, Auth.js, a mock that
@@ -111,16 +119,20 @@ Compose file.
 
 ## Running the apps against Compose
 
-1. Export Keycloak bootstrap admin credentials (or put them in a local Compose
-   `.env`), then start services with
-   `docker compose up -d --wait redis keycloak` and confirm Redis `PONG`.
+1. Start services with `docker compose up -d --wait redis keycloak` and confirm
+   Redis `PONG`. Confirm realm import with:
+   `curl -sS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8080/realms/pre-ets/.well-known/openid-configuration`
+   (expect `200`).
 2. Copy `packages/frontend/.env.example` to `.env.local` if needed; set
-   `REDIS_URL`, generate `SESSION_SIGNING_SECRET`, and supply synthetic tenant
-   OIDC fixtures pointing at `http://127.0.0.1:8080/realms/pre-ets`.
-3. Provision the Keycloak realm/clients/IdP aliases as documented above.
-4. Run the frontend (and later the backend) on the host with the workspace
-   start scripts. Restart the frontend after tenant JSON, secrets, or Keycloak
-   reprovision changes.
+   `REDIS_URL`, generate `SESSION_SIGNING_SECRET`, and keep the example
+   **static** tenant JSON (issuer `http://127.0.0.1:8080/realms/pre-ets`,
+   client `springfield-web`).
+3. Run `pnpm dev:frontend` and open `http://localhost:3000/` — you should land
+   on the Keycloak login form (`demo` / `demo`). For two-tenant host checks,
+   switch `TENANT_RESOLUTION=host` and use `*.localhost` hosts from
+   [multi-tenancy.md](./multi-tenancy.md).
+4. Restart the frontend after tenant JSON, secrets, or Keycloak recreate.
 
-An unknown tenant host still fails closed. Compose does not create tenants; it
-only provides the session store and local broker those modules use.
+An unknown tenant host still fails closed in host mode. Compose does not create
+application tenants; it provides Redis and the imported local broker those
+modules use.

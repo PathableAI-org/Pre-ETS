@@ -37,16 +37,19 @@ docker compose up -d --wait redis keycloak
 docker compose exec redis redis-cli ping
 ```
 
-Expect Redis `PONG` on `127.0.0.1:6379` and Keycloak reachable on `http://127.0.0.1:8080`. Follow
-[contracts/local-keycloak.md](./contracts/local-keycloak.md) to provision realm, clients, connections,
-redirect URIs, and test users from a clean provider state.
+Expect Redis `PONG` on `127.0.0.1:6379` and Keycloak on `http://127.0.0.1:8080`. Compose imports
+tracked realm [`docker/keycloak/pre-ets-realm.json`](../../docker/keycloak/pre-ets-realm.json) on
+first boot (see [contracts/local-keycloak.md](./contracts/local-keycloak.md)). Confirm:
 
-Copy `packages/frontend/.env.example` → `.env.local` if needed. Retain session settings (`REDIS_URL`,
-`SESSION_SIGNING_SECRET`, …). Extend tenant JSON with `oidc` for Springfield and Shelbyville using the
-local issuer `http://127.0.0.1:8080/realms/pre-ets`, distinct `clientId` / `connection` values, and
-`clientAuth: "public"`. Leave `OIDC_CLIENT_SECRETS_JSON` empty for public clients. Restart the
-frontend after config changes
-**and** after Keycloak recreate/reprovision (discovery cache is process-lifetime).
+```sh
+curl -sS -o /dev/null -w '%{http_code}\n' \
+  http://127.0.0.1:8080/realms/pre-ets/.well-known/openid-configuration
+```
+
+Copy `packages/frontend/.env.example` → `.env.local` if needed. Prefer **static** mode from the
+example (`TENANT_RESOLUTION=static` + `TENANT_LOCAL_CONFIG_JSON` for `springfield-web`). Leave
+`OIDC_CLIENT_SECRETS_JSON` empty. Restart the frontend after config changes **and** after Keycloak
+recreate (discovery cache is process-lifetime).
 
 ```sh
 pnpm dev:frontend

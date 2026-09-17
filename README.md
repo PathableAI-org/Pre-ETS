@@ -27,26 +27,33 @@ All packages are private; the npm scope identifies ownership, not publication.
 ### Local Redis, Keycloak, and session setup
 
 Start Redis and local Keycloak before exercising session setup or OIDC login
-initiation. Apps stay on the host; Compose publishes loopback only:
+initiation. Apps stay on the host; Compose publishes loopback only. Keycloak
+imports the tracked realm at `docker/keycloak/pre-ets-realm.json` on first boot
+(admin defaults `admin` / `admin`; override with `KC_BOOTSTRAP_*` if you want):
 
 ```sh
-export KC_BOOTSTRAP_ADMIN_USERNAME=admin
-export KC_BOOTSTRAP_ADMIN_PASSWORD='choose-a-local-password'
 docker compose up -d --wait redis keycloak
 docker compose exec redis redis-cli ping
+curl -sS -o /dev/null -w '%{http_code}\n' \
+  http://127.0.0.1:8080/realms/pre-ets/.well-known/openid-configuration
 ```
 
-Documented issuer identity for browser and host-run Next.js:
-`http://127.0.0.1:8080/realms/pre-ets`. See `docs/docker-compose.md`,
-`docs/session-state.md`, and `docs/authentication.md`. Copy
-`packages/frontend/.env.example` to `packages/frontend/.env.local`, set
-`REDIS_URL=redis://127.0.0.1:6379`, and generate `SESSION_SIGNING_SECRET` with:
+Copy `packages/frontend/.env.example` to `packages/frontend/.env.local`, keep
+`TENANT_RESOLUTION=static`, set `REDIS_URL=redis://127.0.0.1:6379`, and generate
+`SESSION_SIGNING_SECRET` with:
 
 ```sh
 node -e 'console.log(require("node:crypto").randomBytes(32).toString("base64url"))'
 ```
 
+Then `pnpm dev:frontend` and open `http://localhost:3000/` — expect Keycloak
+login (`demo` / `demo`). Issuer:
+`http://127.0.0.1:8080/realms/pre-ets`. See `docs/docker-compose.md`,
+`docs/session-state.md`, and `docs/authentication.md`.
+
 Stop with `docker compose down`. Never run `FLUSHALL` against shared Redis.
+After editing the realm JSON, recreate Keycloak
+(`docker compose up -d --force-recreate keycloak`) and restart the frontend.
 
 ### Local tenant resolution
 

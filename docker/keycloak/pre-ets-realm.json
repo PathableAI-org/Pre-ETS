@@ -1,0 +1,79 @@
+{
+  "realm": "pre-ets",
+  "enabled": true,
+  "displayName": "Pre-ETS local",
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": false,
+  "editUsernameAllowed": false,
+  "bruteForceProtected": false,
+  "users": [
+    {
+      "username": "demo",
+      "enabled": true,
+      "email": "demo@example.local",
+      "emailVerified": true,
+      "firstName": "Demo",
+      "lastName": "User",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "demo",
+          "temporary": false
+        }
+      ]
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "springfield-web",
+      "name": "Springfield Web",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "frontchannelLogout": true,
+      "fullScopeAllowed": true,
+      "redirectUris": [
+        "http://localhost:3000/auth/callback",
+        "http://springfield.localhost:3000/auth/callback"
+      ],
+      "webOrigins": [
+        "http://localhost:3000",
+        "http://springfield.localhost:3000"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:3000/*##http://springfield.localhost:3000/*"
+      }
+    },
+    {
+      "clientId": "shelbyville-web",
+      "name": "Shelbyville Web",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "frontchannelLogout": true,
+      "fullScopeAllowed": true,
+      "redirectUris": [
+        "http://shelbyville.localhost:3000/auth/callback"
+      ],
+      "webOrigins": [
+        "http://shelbyville.localhost:3000"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://shelbyville.localhost:3000/*"
+      }
+    }
+  ]
+}

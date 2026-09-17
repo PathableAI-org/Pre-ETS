@@ -12,12 +12,17 @@ services:
 
   keycloak:
     image: quay.io/keycloak/keycloak:26.7.4
-    command: ["start-dev"]
+    # Import tracked realm JSON on first boot (realm absent). Recreate the
+    # container to re-import after editing docker/keycloak/pre-ets-realm.json.
+    command: ["start-dev", "--import-realm"]
     ports:
       - "127.0.0.1:8080:8080"
+    volumes:
+      - ./docker/keycloak/pre-ets-realm.json:/opt/keycloak/data/import/pre-ets-realm.json:ro
     environment:
-      KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_BOOTSTRAP_ADMIN_USERNAME:?set KC_BOOTSTRAP_ADMIN_USERNAME}
-      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD:?set KC_BOOTSTRAP_ADMIN_PASSWORD}
+      # Local-only defaults. Override via shell or a gitignored root `.env`.
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_BOOTSTRAP_ADMIN_USERNAME:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD:-admin}
     healthcheck:
       test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8080"]
       interval: 5s
