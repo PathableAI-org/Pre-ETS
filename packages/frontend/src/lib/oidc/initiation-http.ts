@@ -1,3 +1,5 @@
+import { hostnameOf } from "../tenant/host.ts"
+
 /**
  * Build the approved application origin for `redirect_uri` from the same Host
  * header used for tenant resolution, with an enforced scheme. Never use
@@ -19,7 +21,7 @@ export function approvedApplicationOrigin(
     return undefined
   }
 
-  const hostname = hostnameOfHostHeader(hostHeader)
+  const hostname = hostnameOf(hostHeader)
   if (hostname === undefined) {
     return undefined
   }
@@ -52,30 +54,6 @@ export function sessionCookieForRedirect(
   cookieValue: string | undefined
 ): string | undefined {
   return setupOutcome === "create" ? cookieValue : undefined
-}
-
-function hostnameOfHostHeader(rawHost: string): string | undefined {
-  const separator = rawHost.lastIndexOf(":")
-  if (separator === -1) {
-    return rawHost
-  }
-
-  if (rawHost.indexOf(":") !== separator) {
-    return undefined
-  }
-
-  const hostname = rawHost.slice(0, separator)
-  const portText = rawHost.slice(separator + 1)
-  if (hostname === "" || !/^[1-9]\d{0,4}$/.test(portText)) {
-    return undefined
-  }
-
-  const port = Number(portText)
-  if (!Number.isInteger(port) || port < 1 || port > 65535) {
-    return undefined
-  }
-
-  return hostname
 }
 
 function isLoopbackHostname(hostname: string): boolean {
