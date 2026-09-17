@@ -1,6 +1,6 @@
 # Acceptance scenarios
 
-Active feature: [003-tenant-oidc-login](../specs/003-tenant-oidc-login/spec.md).
+Active feature: [004-idle-session-timeout](../specs/004-idle-session-timeout/spec.md).
 
 ## Tenant-resolution acceptance scenarios
 
@@ -251,5 +251,89 @@ OIDC features and `tests/bdd/steps/oidc.steps.ts` are wired when `CUCUMBER_OIDC=
 `pnpm test:bdd:oidc` / `pnpm test:bdd:dry`, which also sets that flag). Step definitions remain pending
 stubs until implementation; dry-run checks discovery and bindings, not runtime behavior. Default
 `pnpm test:bdd` still omits OIDC so unimplemented stubs do not fail unlabeled PR CI.
-The nine-file repository inventory now contains **162 expanded cases**: 52 tenant, 42 session, and 68 OIDC.
+The nine-file inventory preceding feature 004 contains **162 expanded cases**: 52 tenant, 42 session, and 68 OIDC.
 Earlier tenant/session execution notes above describe their own suites and are not OIDC implementation evidence.
+
+## Idle-session timeout scenarios
+
+Source: [idle-session timeout specification](../specs/004-idle-session-timeout/spec.md).
+Consumer type: **Human end user of UI**, detected from `next`, `react`, and `react-dom` in
+`packages/frontend/package.json`. Authorized tenant representatives use the existing trusted configuration
+management process; these scenarios do not introduce an administration screen or new administrator role.
+
+| File                                                                     | Purpose                                                                                                                     | Scenarios | Outlines | Example rows | Expanded cases |
+| ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------- | --------- | -------- | ------------ | -------------- |
+| [idle-session-expiration.feature](idle-session-expiration.feature)       | Authoritative deadlines, qualifying activity, shared tabs, independent sessions, lifetime limits, and failed authorization. | 5         | 7        | 27           | 32             |
+| [idle-session-recovery.feature](idle-session-recovery.feature)           | Accessible inactivity explanation, temporary-data clearing, tenant login recovery, and resumed-browser protection.          | 6         | 3        | 11           | 17             |
+| [tenant-idle-timeout-policy.feature](tenant-idle-timeout-policy.feature) | Default and all permitted durations, invalid choices, configuration authority, persistence, and new-session-only changes.   | 4         | 4        | 40           | 44             |
+| **Total**                                                                |                                                                                                                             | **15**    | **14**   | **78**       | **93**         |
+
+### Idle-timeout traceability and execution layers
+
+Within `@idle-session-timeout` files, requirement and success-criterion tags refer only to feature **004**.
+`@US1`, `@US2`, and `@US3` map to the corresponding specification stories. All 23 source acceptance scenarios
+are represented, expanded into boundary, failure, and alternative-flow cases.
+
+| Requirements / outcomes                    | Coverage and remaining evidence                                                                                                                                                                                                                                                                               |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| FR-001–002; SC-001 permitted-value portion | Policy scenarios exercise all 26 whole-minute choices, the default, rejection, and invalid stored configuration.                                                                                                                                                                                              |
+| FR-003; SC-004                             | Policy scenarios cover authorized management, tenant isolation, persistence, and shorter/longer changes for new sessions only. Expiration and recovery cover isolated policy and login-again sessions.                                                                                                        |
+| FR-004–007; SC-002, SC-004                 | Expiration scenarios cover deadlines, browser independence, qualifying versus passive activity, shared tabs, separate sessions, late/concurrent reports, absolute lifetime, and anonymous continuity.                                                                                                         |
+| FR-008; SC-003 cause accuracy              | Expiration and recovery scenarios distinguish missing, evicted, unavailable, and otherwise expired access from established inactivity.                                                                                                                                                                        |
+| FR-009–010; SC-003                         | Recovery scenarios cover meaningful modal semantics, keyboard/focus operation, assistive technology, tenant authentication, existing provider sign-in, failure, clearing, and preserved durable records.                                                                                                      |
+| FR-011; SC-001 approval/rationale portion  | **Policy/document review required:** identify the approver, justify the default and full supported range against risk/client obligations, and check regulatory currency. Scenario tags cannot establish legal sufficiency or approval.                                                                        |
+| FR-012; SC-005                             | **Validation planning remains incomplete:** agree the protected-operation inventory, representative workflows, timing precision, interruption/data-loss thresholds, evidence retention, and evidence owner. These scenarios cover known behavior but do not supply the unresolved workflow-impact thresholds. |
+
+- `@browser` requires the composed experience: semantic modal name/description, real focus movement, keyboard
+  activation of the named button, removal of protected content, and successful or failed recovery outcomes.
+  Matching text alone does not prove accessibility or successful login.
+- `@contract` verifies authoritative time, access rejection, isolation, policy persistence, and temporary-state
+  clearing through the appropriate owned boundaries. Browser behavior cannot establish server enforcement.
+  Mixed browser/contract cases need complementary evidence; do not expose a diagnostic UI or public test endpoint.
+- Policy approval and workflow-impact evidence remain review obligations, not invented automated pass conditions.
+
+### Idle-timeout fixture meanings and assumptions
+
+- Every scenario and Examples row has isolated synthetic tenants, users, configuration, time, sessions, and data.
+  `Given` steps describe setup within that case, never work left over from another case. The example note titles
+  are synthetic temporary and durable records; they do not select a new domain workflow or prescribe a schema.
+- Times are on one synthetic date, measured by authoritative time. Browser clock offsets are separate inputs.
+  Second-level examples illustrate ordering, not an allowed enforcement grace period or a selected timing tolerance.
+  Unless explicitly overridden, the absolute deadline is later than the idle deadline. No absolute-lifetime policy
+  is introduced by the example values.
+- A protected-work attempt is an authorization-boundary observation. It does not implicitly supply preceding
+  qualifying activity. The selected rules count deliberate keyboard/pointer/touch/scroll input, not the protected
+  request itself. Contract cases must be able to attempt expired access while the browser is closed or offline.
+  “Accepted for evaluation” of a late activity report does not mean it qualifies to renew the session.
+- Qualifying activity in a shared session applies across its tabs. A separate browser session or device has its
+  own inactivity period; a per-device configurable policy is not introduced. Expired-access clearing is scoped to
+  the affected session, and must not delete durable business records.
+- Invalid choices describe semantic inputs rather than a chosen configuration encoding: `5.5 minutes` is a
+  fractional duration, `disable expiration` requests disablement, and `malformed text` is an unusable explicit
+  value. An omitted choice is distinct from invalid stored configuration. Exact schema and error copy/status
+  belong to planning and the existing configuration boundary.
+- “Establishes” or “proposes” a tenant duration means the trusted management process from assumption D-002;
+  it does not imply a new product form, endpoint, or role. Persistence is checked across the session boundary.
+- Authenticated sessions and successful recovery are prerequisites supplied by separately sequenced authentication
+  work. Feature 003's provider-page arrival does not satisfy them. Planning must enumerate protected operations
+  and independent credentials (D-003); one placeholder operation cannot prove revocation of every credential.
+- The user selected existing provider sign-in as an allowed way to complete new application authentication.
+  It does not silently revive the expired session. Recovery begins with the user's “Log in again” action.
+- A suspended application cannot guarantee an exact repaint instant. On resumption, protected content must be
+  removed before further interaction; expired access remains authoritatively denied throughout.
+- No new business-policy choices were needed. The spec's D-001–D-006 dependencies remain explicit, particularly
+  SC-005's unresolved workflow-impact thresholds. No warning countdown, autosave, broader logout, or new
+  authentication implementation is added by these acceptance artifacts.
+
+### Idle-timeout artifact validation and execution status
+
+The installed Cucumber Gherkin parser parsed and expanded **93 cases** across the three files. Scenario names,
+outline substitutions, structure, and requirement tags were checked. These are acceptance artifacts authored before
+implementation; parser success is not runtime evidence.
+
+`cucumber.mjs` currently lists only the tenant, session, and OIDC feature sets. The new idle-timeout files have no
+step scaffolds or runner wiring in this change, so existing BDD commands do not execute or discover them.
+The separate scaffold workflow must add explicit failing bindings and appropriate runner integration before
+execution can establish coverage. Existing suites and the unrelated traceability report were left intact.
+
+The complete **12-file** inventory contains **255 expanded cases**: 52 tenant, 42 session, 68 OIDC, and 93 idle-timeout.
