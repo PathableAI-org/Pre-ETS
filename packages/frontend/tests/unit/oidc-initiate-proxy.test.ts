@@ -9,7 +9,11 @@ import type { OidcTransactionStore } from "../../src/lib/oidc/transaction.ts"
 import { isDocumentNavigation } from "../../src/lib/oidc/document-navigation.ts"
 import { extendedForbiddenBody } from "../../src/lib/oidc/forbidden-body.ts"
 import { initiateLogin } from "../../src/lib/oidc/initiate.ts"
-import { isAuthCallbackPath, sessionCookieForRedirect } from "../../src/lib/oidc/initiation-http.ts"
+import {
+  approvedApplicationOrigin,
+  isAuthCallbackPath,
+  sessionCookieForRedirect
+} from "../../src/lib/oidc/initiation-http.ts"
 import { OidcSecretsConfigError } from "../../src/lib/oidc/secrets.ts"
 import {
   DEFAULT_OIDC_TX_TTL_SECONDS,
@@ -74,6 +78,48 @@ describe("OIDC initiate / proxy contracts", () => {
       expect(isAuthCallbackPath("/auth/callback")).toBe(true)
       expect(isAuthCallbackPath("/")).toBe(false)
       expect(isAuthCallbackPath("/login-unavailable")).toBe(false)
+    })
+  })
+
+  describe("approvedApplicationOrigin", () => {
+    it("builds origin from Host header and request scheme", () => {
+      expect(
+        approvedApplicationOrigin(
+          "springfield.localhost:3000",
+          new URL("https://springfield.localhost:3000/"),
+          { development: false }
+        )
+      ).toBe("https://springfield.localhost:3000")
+    })
+
+    it("ignores a divergent nextUrl host when Host is trusted", () => {
+      expect(
+        approvedApplicationOrigin(
+          "springfield.pathable.com",
+          new URL("https://attacker.example/"),
+          { development: false }
+        )
+      ).toBe("https://springfield.pathable.com")
+    })
+
+    it("rejects non-loopback http outside development", () => {
+      expect(
+        approvedApplicationOrigin(
+          "springfield.pathable.com",
+          new URL("http://springfield.pathable.com/"),
+          { development: false }
+        )
+      ).toBeUndefined()
+    })
+
+    it("allows loopback http", () => {
+      expect(
+        approvedApplicationOrigin(
+          "localhost:3000",
+          new URL("http://localhost:3000/"),
+          { development: false }
+        )
+      ).toBe("http://localhost:3000")
     })
   })
 

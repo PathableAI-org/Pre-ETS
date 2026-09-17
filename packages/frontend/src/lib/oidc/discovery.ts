@@ -1,9 +1,10 @@
 import * as client from "openid-client"
 
 /**
- * Discovers OIDC issuer metadata and caches Configuration by issuer URL for the
- * process lifetime. Restart the frontend after Keycloak recreate/reprovision.
- * Discovery must not override trusted tenant `clientAuth`.
+ * Discovers OIDC issuer metadata and caches Configuration by issuer + client
+ * identity + authentication mode for the process lifetime. Restart the frontend
+ * after Keycloak recreate/reprovision. Discovery must not override trusted
+ * tenant `clientAuth`.
  */
 
 export interface DiscoveredOidcClient {
@@ -23,7 +24,8 @@ export async function discoverOidcIssuer(
     readonly discovery?: DiscoveryFn
   } = {}
 ): Promise<DiscoveredOidcClient> {
-  const cached = cache.get(issuer)
+  const key = discoveryCacheKey(issuer, clientId, options.clientSecret)
+  const cached = cache.get(key)
   if (cached !== undefined) {
     return cached
   }
@@ -51,12 +53,21 @@ export async function discoverOidcIssuer(
     authorizationEndpoint,
     configuration
   }
-  cache.set(issuer, discovered)
+  cache.set(key, discovered)
   return discovered
 }
 
 export function resetOidcDiscoveryCacheForTests(): void {
   cache.clear()
+}
+
+function discoveryCacheKey(
+  issuer: string,
+  clientId: string,
+  clientSecret: string | undefined
+): string {
+  const authMode = clientSecret === undefined ? "public" : "confidential"
+  return `${issuer}\0${clientId}\0${authMode}`
 }
 
 /** openid-client defaults to HTTPS-only; local Keycloak/BDD mocks use loopback HTTP. */

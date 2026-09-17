@@ -67,8 +67,9 @@ Use the official image `quay.io/keycloak/keycloak:26.7.4` with
 database. It is for local manual testing only.
 
 Publish the HTTP port on loopback only (`127.0.0.1:8080:8080`). Bootstrap admin
-defaults to `admin` / `admin` (override with `KC_BOOTSTRAP_ADMIN_USERNAME` /
-`KC_BOOTSTRAP_ADMIN_PASSWORD` in the shell or a gitignored root `.env`).
+credentials are required via `KC_BOOTSTRAP_ADMIN_USERNAME` and
+`KC_BOOTSTRAP_ADMIN_PASSWORD` in the shell or a gitignored root `.env` (Compose
+fails fast when either is unset).
 
 On first boot, Keycloak imports the tracked realm file
 [`docker/keycloak/pre-ets-realm.json`](../docker/keycloak/pre-ets-realm.json):

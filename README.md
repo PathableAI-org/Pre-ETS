@@ -28,10 +28,13 @@ All packages are private; the npm scope identifies ownership, not publication.
 
 Start Redis and local Keycloak before exercising session setup or OIDC login
 initiation. Apps stay on the host; Compose publishes loopback only. Keycloak
-imports the tracked realm at `docker/keycloak/pre-ets-realm.json` on first boot
-(admin defaults `admin` / `admin`; override with `KC_BOOTSTRAP_*` if you want):
+imports the tracked realm at `docker/keycloak/pre-ets-realm.json` on first boot.
+Set `KC_BOOTSTRAP_ADMIN_USERNAME` and `KC_BOOTSTRAP_ADMIN_PASSWORD` in the shell
+or a gitignored root `.env` (Compose fails if either is unset):
 
 ```sh
+export KC_BOOTSTRAP_ADMIN_USERNAME=admin
+export KC_BOOTSTRAP_ADMIN_PASSWORD=admin
 docker compose up -d --wait redis keycloak
 docker compose exec redis redis-cli ping
 curl -sS -o /dev/null -w '%{http_code}\n' \

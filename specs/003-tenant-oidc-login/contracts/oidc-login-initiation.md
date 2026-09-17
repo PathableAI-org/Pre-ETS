@@ -51,8 +51,8 @@ unauthenticated `"reuse"` or `"create"`:
    `"confidential"` → nonempty `OIDC_CLIENT_SECRETS_JSON[slug]` required or config refusal
    (`403` extended forbidden—missing required server-only credential). Malformed secrets JSON →
    typed process failure (**HTTP 500** at Proxy).
-3. Discover issuer metadata (`openid-client`); cache by issuer; failure → provider failure. Discovery
-   must not override `clientAuth`.
+3. Discover issuer metadata (`openid-client`); cache by issuer + client id + auth mode; failure →
+   provider failure. Discovery must not override `clientAuth`.
 4. Generate `state`, `nonce`, PKCE verifier/challenge.
 5. Compute `redirectUri` = approved `{scheme}://{tenant-host}/auth/callback`.
 6. Persist Redis transaction; mint correlation cookie; failure → transaction failure (no redirect).

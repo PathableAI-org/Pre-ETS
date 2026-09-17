@@ -4,16 +4,16 @@ Status: local-development contract for FR-010–FR-012 and SC-004.
 
 ## Compose service
 
-| Property        | Value                                                                                             |
-| --------------- | ------------------------------------------------------------------------------------------------- |
-| Service name    | `keycloak`                                                                                        |
-| Image           | `quay.io/keycloak/keycloak:26.7.4`                                                                |
-| Command         | `start-dev --import-realm`                                                                        |
-| Publish         | `127.0.0.1:8080:8080`                                                                             |
-| Realm import    | Tracked `docker/keycloak/pre-ets-realm.json` mounted at `/opt/keycloak/data/import/`              |
-| Admin bootstrap | Defaults `admin` / `admin`; override via `KC_BOOTSTRAP_ADMIN_*` (shell or gitignored root `.env`) |
-| Coexistence     | Existing `redis:8.2.9` on `127.0.0.1:6379` preserved                                              |
-| App processes   | Frontend/backend remain on the host—not Compose services                                          |
+| Property        | Value                                                                                                                         |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Service name    | `keycloak`                                                                                                                    |
+| Image           | `quay.io/keycloak/keycloak:26.7.4`                                                                                            |
+| Command         | `start-dev --import-realm`                                                                                                    |
+| Publish         | `127.0.0.1:8080:8080`                                                                                                         |
+| Realm import    | Tracked `docker/keycloak/pre-ets-realm.json` mounted at `/opt/keycloak/data/import/`                                          |
+| Admin bootstrap | Required `KC_BOOTSTRAP_ADMIN_USERNAME` / `KC_BOOTSTRAP_ADMIN_PASSWORD` (shell or gitignored root `.env`; no Compose defaults) |
+| Coexistence     | Existing `redis:8.2.9` on `127.0.0.1:6379` preserved                                                                          |
+| App processes   | Frontend/backend remain on the host—not Compose services                                                                      |
 
 `docker compose up -d --wait redis keycloak` is the documented happy path. Healthcheck must support
 `--wait`. Import applies when realm `pre-ets` is absent; recreate the Keycloak container after editing

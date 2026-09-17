@@ -22,7 +22,9 @@ export type SessionStoreReadResult =
   | { readonly kind: "missing" }
   | { readonly kind: "record"; readonly record: SessionRecord }
 
-export type SessionStoreUpdateResult = { readonly kind: "updated" }
+export interface SessionStoreUpdateResult {
+  readonly kind: "updated"
+}
 
 interface RedisLikeClient {
   connect(): Promise<unknown>

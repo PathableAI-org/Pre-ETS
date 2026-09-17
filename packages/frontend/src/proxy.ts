@@ -4,7 +4,7 @@ import { completeLogin } from "./lib/oidc/callback.ts"
 import { isDocumentNavigation } from "./lib/oidc/document-navigation.ts"
 import { extendedForbiddenBody } from "./lib/oidc/forbidden-body.ts"
 import { initiateLogin } from "./lib/oidc/initiate.ts"
-import { isAuthCallbackPath, sessionCookieForRedirect } from "./lib/oidc/initiation-http.ts"
+import { approvedApplicationOrigin, isAuthCallbackPath, sessionCookieForRedirect } from "./lib/oidc/initiation-http.ts"
 import { RedisOidcTransactionStore } from "./lib/oidc/transaction.ts"
 import {
   getOidcTxConfig,
@@ -61,6 +61,14 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   const deps = sessionDependencies(config, txConfig)
 
   if (isAuthCallbackPath(request.nextUrl.pathname)) {
+    if (request.method !== "GET") {
+      logOutcome("401-nonget-callback")
+      return new NextResponse(null, {
+        headers: { "Cache-Control": CACHE_CONTROL },
+        status: 401
+      })
+    }
+
     return await handleAuthCallback(request, deps, txConfig)
   }
 
@@ -89,12 +97,26 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
     })
   }
 
+  const origin = approvedApplicationOrigin(
+    request.headers.get("host") ?? undefined,
+    request.nextUrl
+  )
+  if (origin === undefined) {
+    logOutcome("login-unavailable")
+    const unavailable = NextResponse.redirect(
+      new URL(LOGIN_UNAVAILABLE_PATH, request.nextUrl.origin),
+      303
+    )
+    unavailable.headers.set("Cache-Control", CACHE_CONTROL)
+    return unavailable
+  }
+
   let initiation
   try {
     initiation = await initiateLogin(
       {
         nowSeconds: Math.floor(Date.now() / 1000),
-        origin: request.nextUrl.origin,
+        origin,
         sessionId: result.context.sessionId,
         setupOutcome: result.outcome,
         tenantId: result.context.tenantId,

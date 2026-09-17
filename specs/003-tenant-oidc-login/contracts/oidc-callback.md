@@ -17,6 +17,7 @@ cookie, and lets Proxy short-circuit `/` to SSR landing.
 | ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
 | Document `GET /auth/callback?code&state` (happy path)               | Consume tx; exchange code; update session; clear `pathable-oidc`; `303` `/`              |
 | Document callback missing/invalid code, state, cookie, nonce, or tx | Clear `pathable-oidc`; `303` `/login-unavailable` (or extended `403` for config refusal) |
+| Non-GET `/auth/callback`                                            | `401`; fail closed (contract is GET-only)                                                |
 | Non-document `/auth/callback`                                       | `401`; fail closed                                                                       |
 | Document `/` with session `userId` set                              | SSR landing; **no** `initiateLogin`                                                      |
 | Document `/` without `userId`                                       | Existing initiation contract                                                             |
@@ -30,7 +31,7 @@ Do **not** re-run `initiateLogin` on the callback path.
 
 ## Completion steps
 
-1. Require document navigation; refuse otherwise with `401`.
+1. Require document `GET`; refuse non-GET or non-document with `401`.
 2. Resolve tenant from Host; refuse unknown/config errors.
 3. Require `code` + `state` query params; IdP `error` → fail closed.
 4. Verify `pathable-oidc` (`state` / `tenant` / `exp`); require cookie `state` ===

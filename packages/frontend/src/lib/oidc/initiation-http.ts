@@ -1,3 +1,42 @@
+/**
+ * Build the approved application origin for `redirect_uri` from the same Host
+ * header used for tenant resolution, with an enforced scheme. Never use
+ * `nextUrl.origin` alone — forwarded Host/proto can diverge from the binder.
+ *
+ * Scheme: request protocol when http/https; reject non-loopback `http:` outside
+ * development (research §7 / FR-006 approved return destination).
+ */
+export function approvedApplicationOrigin(
+  hostHeader: string | undefined,
+  requestUrl: URL,
+  options: { readonly development?: boolean } = {}
+): string | undefined {
+  if (hostHeader === undefined || hostHeader.trim() === "") {
+    return undefined
+  }
+
+  if (/[\s,/\\?#@]/.test(hostHeader) || hostHeader.includes("://")) {
+    return undefined
+  }
+
+  const hostname = hostnameOfHostHeader(hostHeader)
+  if (hostname === undefined) {
+    return undefined
+  }
+
+  const protocol = requestUrl.protocol
+  if (protocol !== "http:" && protocol !== "https:") {
+    return undefined
+  }
+
+  const development = options.development ?? process.env.NODE_ENV === "development"
+  if (protocol === "http:" && !isLoopbackHostname(hostname) && !development) {
+    return undefined
+  }
+
+  return `${protocol}//${hostHeader}`
+}
+
 /** True when Proxy must complete login instead of initiating. */
 export function isAuthCallbackPath(pathname: string): boolean {
   return pathname === "/auth/callback"
@@ -13,4 +52,33 @@ export function sessionCookieForRedirect(
   cookieValue: string | undefined
 ): string | undefined {
   return setupOutcome === "create" ? cookieValue : undefined
+}
+
+function hostnameOfHostHeader(rawHost: string): string | undefined {
+  const separator = rawHost.lastIndexOf(":")
+  if (separator === -1) {
+    return rawHost
+  }
+
+  if (rawHost.indexOf(":") !== separator) {
+    return undefined
+  }
+
+  const hostname = rawHost.slice(0, separator)
+  const portText = rawHost.slice(separator + 1)
+  if (hostname === "" || !/^[1-9]\d{0,4}$/.test(portText)) {
+    return undefined
+  }
+
+  const port = Number(portText)
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    return undefined
+  }
+
+  return hostname
+}
+
+function isLoopbackHostname(hostname: string): boolean {
+  const host = hostname.toLowerCase()
+  return host === "127.0.0.1" || host === "localhost" || host === "::1" || host === "[::1]"
 }
