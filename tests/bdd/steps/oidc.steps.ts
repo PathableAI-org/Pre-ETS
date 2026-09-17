@@ -119,6 +119,15 @@ Given(
 )
 
 Given(
+  "Springfield's trusted OIDC settings use client auth {string}",
+  function(this: TenantWorld, _clientAuth: string) {
+    throw new Error(
+      "Pending: Springfield's trusted OIDC settings use client auth {string}"
+    )
+  }
+)
+
+Given(
   "its trusted OIDC settings supply {string}",
   function(this: TenantWorld, _selection: string) {
     throw new Error(
@@ -200,6 +209,15 @@ Given(
 )
 
 Given(
+  "Springfield initiation is forced into failure class {string}",
+  function(this: TenantWorld, _failure: string) {
+    throw new Error(
+      "Pending: Springfield initiation is forced into failure class {string}"
+    )
+  }
+)
+
+Given(
   "Springfield previously could not initiate login because its issuer was missing",
   function(this: TenantWorld) {
     throw new Error(
@@ -231,15 +249,6 @@ Given(
   function(this: TenantWorld, _defect: string) {
     throw new Error(
       "Pending: Springfield's login configuration has defect {string}"
-    )
-  }
-)
-
-Given(
-  "Springfield's OIDC settings are {string}",
-  function(this: TenantWorld, _settings: string) {
-    throw new Error(
-      "Pending: Springfield's OIDC settings are {string}"
     )
   }
 )
@@ -479,6 +488,15 @@ When(
 )
 
 When(
+  "the visitor issues the corresponding Springfield request for that failure class",
+  function(this: TenantWorld) {
+    throw new Error(
+      "Pending: the visitor issues the corresponding Springfield request for that failure class"
+    )
+  }
+)
+
+When(
   "the visitor navigates to {string}",
   function(this: TenantWorld, _value1: string) {
     throw new Error(
@@ -650,6 +668,15 @@ Then(
 )
 
 Then(
+  "login is initiated again for Springfield's configured provider connection",
+  function(this: TenantWorld) {
+    throw new Error(
+      "Pending: login is initiated again for Springfield's configured provider connection"
+    )
+  }
+)
+
+Then(
   "login is initiated only after Springfield is resolved through the trusted tenant boundary",
   function(this: TenantWorld) {
     throw new Error(
@@ -803,6 +830,15 @@ Then(
 )
 
 Then(
+  "no tenant application landing page or Display Name content is served",
+  function(this: TenantWorld) {
+    throw new Error(
+      "Pending: no tenant application landing page or Display Name content is served"
+    )
+  }
+)
+
+Then(
   "no tenant chooser or tenant application content is served before the redirect",
   function(this: TenantWorld) {
     throw new Error(
@@ -897,6 +933,15 @@ Then(
   function(this: TenantWorld) {
     throw new Error(
       "Pending: that credential is absent from browser content, browser-visible configuration, redirect URLs, and captured diagnostics"
+    )
+  }
+)
+
+Then(
+  "that response is not the login-unavailable route",
+  function(this: TenantWorld) {
+    throw new Error(
+      "Pending: that response is not the login-unavailable route"
     )
   }
 )
@@ -1037,19 +1082,28 @@ Then(
 )
 
 Then(
-  "the existing session flow continues with the Springfield landing page and its Display Name",
+  "the existing session service is preserved and remains available",
   function(this: TenantWorld) {
     throw new Error(
-      "Pending: the existing session flow continues with the Springfield landing page and its Display Name"
+      "Pending: the existing session service is preserved and remains available"
     )
   }
 )
 
 Then(
-  "the existing session service is preserved and remains available",
+  "the extended forbidden copy is accessible and exposes no credentials or other tenant's details",
   function(this: TenantWorld) {
     throw new Error(
-      "Pending: the existing session service is preserved and remains available"
+      "Pending: the extended forbidden copy is accessible and exposes no credentials or other tenant's details"
+    )
+  }
+)
+
+Then(
+  "the forbidden response uses extended copy explaining that login cannot start with a clear next action",
+  function(this: TenantWorld) {
+    throw new Error(
+      "Pending: the forbidden response uses extended copy explaining that login cannot start with a clear next action"
     )
   }
 )
@@ -1136,10 +1190,28 @@ Then(
 )
 
 Then(
+  "the response does not include a Set-Cookie header for {string}",
+  function(this: TenantWorld, _cookieName: string) {
+    throw new Error(
+      "Pending: the response does not include a Set-Cookie header for {string}"
+    )
+  }
+)
+
+Then(
   "the response does not trigger an automatic redirect loop",
   function(this: TenantWorld) {
     throw new Error(
       "Pending: the response does not trigger an automatic redirect loop"
+    )
+  }
+)
+
+Then(
+  "the response matches failure class {string}",
+  function(this: TenantWorld, _failure: string) {
+    throw new Error(
+      "Pending: the response matches failure class {string}"
     )
   }
 )
@@ -1248,15 +1320,6 @@ Then(
   function(this: TenantWorld) {
     throw new Error(
       "Pending: this entry feature does not redirect that request to an HTML login page"
-    )
-  }
-)
-
-Then(
-  "this entry feature initiates no new login",
-  function(this: TenantWorld) {
-    throw new Error(
-      "Pending: this entry feature initiates no new login"
     )
   }
 )

@@ -165,10 +165,10 @@ it does not make the product a CLI or API consumer.
 
 | File                                                                   | Purpose                                                                                   | Scenarios | Outlines | Example rows | Expanded cases |
 | ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- | --------- | -------- | ------------ | -------------- |
-| [tenant-oidc-login.feature](tenant-oidc-login.feature)                 | Tenant login arrival, isolation, session decisions, caller input, and request exclusions. | 5         | 6        | 24           | 29             |
+| [tenant-oidc-login.feature](tenant-oidc-login.feature)                 | Tenant login arrival, isolation, session decisions, caller input, and request exclusions. | 6         | 7        | 27           | 33             |
 | [tenant-oidc-configuration.feature](tenant-oidc-configuration.feature) | Connection settings, secret boundaries, validation, reload, and accessible failures.      | 4         | 5        | 19           | 23             |
 | [local-oidc-development.feature](local-oidc-development.feature)       | Local Keycloak setup, issuer reachability, static mode, restrictions, and recovery.       | 6         | 3        | 6            | 12             |
-| **Total**                                                              |                                                                                           | **15**    | **14**   | **49**       | **64**         |
+| **Total**                                                              |                                                                                           | **16**    | **15**   | **52**       | **68**         |
 
 ### OIDC traceability and verification boundaries
 
@@ -204,16 +204,24 @@ reload/restart, and configuration/provider recovery. No scenario tag alone prove
   callback completion, token exchange, logout, or backend authorization is claimed.
 - Session validity and rejection remain authoritative in feature 002. The recovery cases use its ready/create outcome, and refusal cases use its terminal outcome; there is no
   sessionless result variant. The entry decision distinguishes a reusable session presented with the request
-  from a new or replacement session created during setup. The latter must not suppress the current redirect.
-  The user retained session presence as this slice's entry condition; a tenant-bound session does not establish
-  authenticated user identity or a complete access-control boundary. Unidentified tenants remain forbidden.
+  from a new or replacement session created during setup for lifecycle and cookie rules, but **neither
+  unauthenticated ready outcome** (`reuse` or `create`) suppresses login initiation or grants Display Name
+  landing. A tenant-bound anonymous session does not establish authenticated user identity. Unidentified
+  tenants remain forbidden. Re-initiating login on later unauthenticated document visits until callback
+  exists is expected; that must not become an automatic Proxy↔IdP redirect loop.
 - Caller override attempts may be rejected or ignored; the specification fixes the security outcome but not
   which response to use. Neither path may select caller-supplied destinations or grant application access.
-- Missing or unusable required tenant login configuration follows existing forbidden handling with HTTP 403,
-  as clarified by the user. Provider metadata and transaction failures remain distinct app-owned failures.
-  These cases do not invent a forbidden route, exact error copy, OIDC field names, credential mechanisms,
-  or a new recovery control. If an interactive recovery action is
-  offered, its keyboard behavior must satisfy the scenario; guidance-only errors need no invented button.
+- Missing or unusable required tenant login configuration returns HTTP 403 with **extended forbidden**
+  copy: explains that login cannot start, offers a clear next action, remains accessible, and exposes no
+  secrets or cross-tenant details. That outcome is **not** the `login-unavailable` route; provider metadata
+  and transaction (and similar) service failures use `login-unavailable`. Initiation failure responses for
+  config 403, `login-unavailable`, transaction failure, and non-document 401 must not include
+  `Set-Cookie` for `pathable-session`. Planned OIDC fields include `issuer`, `clientId`, required
+  `clientAuth` (`public` \| `confidential`), and optional `connection`; secrets are supplied only via
+  `OIDC_CLIENT_SECRETS_JSON` and are required when `clientAuth` is `confidential`. Defect
+  “missing required server-only credential” means confidential mode without a usable secret—not a
+  public client with an absent map entry. If an interactive recovery action is offered, its keyboard
+  behavior must satisfy the scenario; guidance-only errors need no invented button.
 - Request-category examples require planning to map concrete existing resource, health, initiation, and return
   routes and non-navigation behavior. They do not authorize adding health endpoints or implementing callbacks.
   Exact response codes for non-navigation requests remain a planning decision.
@@ -223,14 +231,25 @@ reload/restart, and configuration/provider recovery. No scenario tag alone prove
   Keycloak version, provisioning commands, transaction storage/encoding, and return route paths remain planning choices.
   Authorization-code initiation with PKCE and tenant-bound state/nonce is required by FR-006; it is not optional planning scope.
 
+### Cross-feature impact (OIDC / 001 session landing)
+
+When 003 Proxy initiation ships (**same delivery slice**), retarget inventoried unauthenticated `/`
+scenarios in session + 001 landing/local features (`session-continuity.feature`,
+`session-recovery.feature`, `local-session-development.feature`, `tenant-landing-page.feature`,
+`local-host-tenant-resolution.feature`, `local-static-tenant-configuration.feature`) to
+initiate-or-fail (see [`specs/003-tenant-oidc-login/plan.md`](../specs/003-tenant-oidc-login/plan.md)
+Behavioral supersession inventory). Do not mass-edit those files in the planning/BDD-authoring pass.
+OIDC delivery PR MUST keep `pnpm test:bdd:session` green after retarget.
+
 See [the traceability report](TRACEABILITY.md) for requirement-level coverage and separate repository-review obligations.
 
 ### OIDC artifact validation and execution status
 
-The installed Cucumber Gherkin parser successfully parsed and expanded all **64 cases**. Unique scenario names,
+The installed Cucumber Gherkin parser successfully parsed and expanded all **68 cases**. Unique scenario names,
 outline substitution, and the FR/SC tag inventory were checked. This validates acceptance artifacts only.
-The existing Cucumber configuration explicitly lists the tenant and session files; these new OIDC files are
-**not yet wired into that runner and have no generated step bindings**. The BDD scaffold step should add
-bindings and discovery before implementation. Existing dry-run commands do not validate OIDC behavior.
-The nine-file repository inventory now contains **158 expanded cases**: 52 tenant, 42 session, and 64 OIDC.
+OIDC features and `tests/bdd/steps/oidc.steps.ts` are wired when `CUCUMBER_OIDC=1` (or via
+`pnpm test:bdd:oidc` / `pnpm test:bdd:dry`, which also sets that flag). Step definitions remain pending
+stubs until implementation; dry-run checks discovery and bindings, not runtime behavior. Default
+`pnpm test:bdd` still omits OIDC so unimplemented stubs do not fail unlabeled PR CI.
+The nine-file repository inventory now contains **162 expanded cases**: 52 tenant, 42 session, and 68 OIDC.
 Earlier tenant/session execution notes above describe their own suites and are not OIDC implementation evidence.

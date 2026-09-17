@@ -4,9 +4,9 @@ Feature: Tenant OIDC connection configuration
 
   Background:
     Given isolated OIDC tenant fixtures are configured:
-      | tenant      | display name | issuer                                  | client          | connection      |
-      | springfield | Springfield  | https://identity.example/realms/pre-ets | springfield-web | springfield-idp |
-      | shelbyville | Shelbyville  | https://identity.example/realms/pre-ets | shelbyville-web | shelbyville-idp |
+      | tenant      | display name | issuer                                  | client          | client auth | connection      |
+      | springfield | Springfield  | https://identity.example/realms/pre-ets | springfield-web | public      | springfield-idp |
+      | shelbyville | Shelbyville  | https://identity.example/realms/pre-ets | shelbyville-web | public      | shelbyville-idp |
     And the visitor has no existing session
     And the existing session capability is available
 
@@ -25,7 +25,8 @@ Feature: Tenant OIDC connection configuration
 
   @FR-002 @SC-003 @http @contract
   Scenario: Required client credentials remain server-only
-    Given Springfield's provider registration requires a client credential
+    Given Springfield's trusted OIDC settings use client auth "confidential"
+    And Springfield's provider registration requires a client credential
     And a synthetic credential is supplied at runtime through the planned server-only mechanism
     When the visitor navigates to "https://springfield.pathable.com/"
     Then server-side authentication work can access the supplied credential
@@ -38,11 +39,14 @@ Feature: Tenant OIDC connection configuration
     And Shelbyville retains a valid login configuration
     When the visitor navigates to "https://springfield.pathable.com/"
     Then the existing forbidden handling returns HTTP 403 without a login redirect or a new forbidden destination
-    And the visitor receives an app-owned error explaining that login cannot start and a clear next action
+    And the forbidden response uses extended copy explaining that login cannot start with a clear next action
+    And that response is not the login-unavailable route
+    And the extended forbidden copy is accessible and exposes no credentials or other tenant's details
     And no login is initiated and no tenant application content is served
     And no default provider or other tenant's configuration is substituted
     And a safe diagnostic identifies a configuration failure without credentials or other tenant details
     And the response does not trigger an automatic redirect loop
+    And the response does not include a Set-Cookie header for "pathable-session"
 
     Examples:
       | defect                                    |
@@ -55,6 +59,9 @@ Feature: Tenant OIDC connection configuration
       | app-detectable unusable broker connection |
       | missing required server-only credential   |
       | invalid approved return destination       |
+
+    # "missing required server-only credential" means trusted clientAuth "confidential" without a
+    # nonempty OIDC_CLIENT_SECRETS_JSON entry for that tenant—not a public client with an absent secret.
 
   @FR-004 @FR-007 @FR-008 @SC-003 @browser @contract
   Scenario Outline: Unavailable required metadata prevents initiation
