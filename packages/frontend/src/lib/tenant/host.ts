@@ -32,7 +32,7 @@ export function bindHost(rawHost: string | undefined, suffix: HostSuffix): strin
   return slug
 }
 
-function hostnameOf(rawHost: string): string | undefined {
+export function hostnameOf(rawHost: string): string | undefined {
   const separator = rawHost.lastIndexOf(":")
   if (separator === -1) {
     return rawHost

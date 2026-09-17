@@ -1,54 +1,54 @@
 # Contract: Local Keycloak Provider
 
-Status: proposed local-development contract for FR-010–FR-012 and SC-004.
+Status: local-development contract for FR-010–FR-012 and SC-004.
 
 ## Compose service
 
-| Property        | Value                                                                                             |
-| --------------- | ------------------------------------------------------------------------------------------------- |
-| Service name    | `keycloak`                                                                                        |
-| Image           | `quay.io/keycloak/keycloak:26.7.4`                                                                |
-| Command         | `start-dev`                                                                                       |
-| Publish         | `127.0.0.1:8080:8080`                                                                             |
-| Admin bootstrap | `KC_BOOTSTRAP_ADMIN_USERNAME` / `KC_BOOTSTRAP_ADMIN_PASSWORD` via local env—not committed secrets |
-| Coexistence     | Existing `redis:8.2.9` on `127.0.0.1:6379` preserved                                              |
-| App processes   | Frontend/backend remain on the host—not Compose services                                          |
+| Property        | Value                                                                                                                         |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Service name    | `keycloak`                                                                                                                    |
+| Image           | `quay.io/keycloak/keycloak:26.7.4`                                                                                            |
+| Command         | `start-dev --import-realm`                                                                                                    |
+| Publish         | `127.0.0.1:8080:8080`                                                                                                         |
+| Realm import    | Tracked `docker/keycloak/pre-ets-realm.json` mounted at `/opt/keycloak/data/import/`                                          |
+| Admin bootstrap | Required `KC_BOOTSTRAP_ADMIN_USERNAME` / `KC_BOOTSTRAP_ADMIN_PASSWORD` (shell or gitignored root `.env`; no Compose defaults) |
+| Coexistence     | Existing `redis:8.2.9` on `127.0.0.1:6379` preserved                                                                          |
+| App processes   | Frontend/backend remain on the host—not Compose services                                                                      |
 
-`docker compose up -d --wait redis keycloak` must become the documented happy path. Healthcheck must
-support `--wait`.
+`docker compose up -d --wait redis keycloak` is the documented happy path. Healthcheck must support
+`--wait`. Import applies when realm `pre-ets` is absent; recreate the Keycloak container after editing
+the JSON.
 
 ## Issuer identity
 
-Document a single issuer URL used by **both** the browser and the host-run Next.js process, e.g.
-`http://127.0.0.1:8080/realms/pre-ets`. Prefer `127.0.0.1` consistently in fixtures to avoid
-`localhost` resolution mismatches.
+Document a single issuer URL used by **both** the browser and the host-run Next.js process:
 
-## Manual provisioning (minimum)
+`http://127.0.0.1:8080/realms/pre-ets`
 
-From a clean local provider state, operators create:
+Prefer `127.0.0.1` consistently in fixtures to avoid `localhost` resolution mismatches.
 
-1. Realm `pre-ets` (name may match docs; keep synthetic).
-2. Two public OpenID Connect clients with PKCE (e.g. `springfield-web`, `shelbyville-web`); tenant
+## Imported provisioning (minimum)
+
+The tracked realm JSON must provide:
+
+1. Realm `pre-ets` with `sslRequired: none` for loopback HTTP.
+2. Two public OpenID Connect clients with PKCE S256 (`springfield-web`, `shelbyville-web`); tenant
    fixtures set `oidc.clientAuth` to `"public"`.
-3. Valid redirect URIs for local tenant hosts, e.g.
-   `http://springfield.localhost:3000/auth/callback`,
-   `http://shelbyville.localhost:3000/auth/callback`, and static-mode callback on
-   `http://localhost:3000/auth/callback` when exercised.
-4. Distinguishable identity-provider connections / IdP entries whose aliases match tenant
-   `oidc.connection` values (`springfield-idp`, `shelbyville-idp`) so Keycloak `kc_idp_hint` selects
-   different login experiences (Keycloak-local mapping; other brokers may differ later).
-5. At least one test user per connection as needed to recognize the login UI—**no** production
-   accounts or real client records.
+3. Valid redirect URIs for static mode (`http://localhost:3000/auth/callback`) and host mode
+   (`http://springfield.localhost:3000/auth/callback`, `http://shelbyville.localhost:3000/auth/callback`).
+4. At least one local test user (`demo` / `demo`) so the built-in login UI is recognizable—**no**
+   production accounts or real client records.
 
-Automated realm import is optional; documented click-ops or CLI steps are sufficient for SC-004.
+Optional Identity Provider aliases (`springfield-idp`, `shelbyville-idp`) for `kc_idp_hint` are **not**
+required for the default static path. Omit tenant `oidc.connection` unless those IdPs are added.
 
 ## Application fixtures
 
-Synthetic `TENANT_CONFIG_RECORDS_JSON` / static JSON must point `issuer`, `clientId`,
-`clientAuth` (`"public"` for these clients), and `connection` at the local realm.
-`OIDC_CLIENT_SECRETS_JSON` stays empty for public clients. Frontend restart after fixture edits
-**and** after Keycloak recreate/reprovision (in-process discovery cache is process-
-lifetime; stale metadata until restart).
+Simplest local path: `TENANT_RESOLUTION=static` with `TENANT_LOCAL_CONFIG_JSON` pointing
+`issuer` / `clientId` / `clientAuth: "public"` at the imported realm (see
+`packages/frontend/.env.example`). Host-mode `TENANT_CONFIG_RECORDS_JSON` remains available for
+two-tenant checks. `OIDC_CLIENT_SECRETS_JSON` stays empty for public clients. Frontend restart after
+fixture edits **and** after Keycloak recreate (in-process discovery cache is process-lifetime).
 
 ## CI vs local (E8)
 
@@ -71,4 +71,5 @@ landing.
 
 - Production broker deployment
 - Second local IdP stack (Auth.js, Better Auth, mock skip-browser login)
-- Committing bootstrap passwords or client secrets
+- Committing production secrets (local-only admin/demo credentials in Compose defaults / realm JSON
+  are intentional development fixtures)

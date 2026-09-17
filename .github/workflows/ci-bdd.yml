@@ -1,5 +1,10 @@
 name: CI BDD
 
+# E8 / T033: CI runs @contract/@http without a live Keycloak service. Browser
+# provider-arrival (@browser) for OIDC requires local Compose Keycloak via
+# `pnpm test:bdd:oidc` until Keycloak is explicitly added to this workflow.
+# Path filters already cover packages/frontend/src/** (includes lib/oidc + proxy).
+
 on:
   pull_request:
     types: [opened, synchronize, reopened, labeled, unlabeled]
@@ -106,7 +111,11 @@ jobs:
           echo "SESSION_TTL_SECONDS=86400" >> "$GITHUB_ENV"
           echo "SESSION_STORE_TIMEOUT_MS=2000" >> "$GITHUB_ENV"
           echo "SESSION_KEY_PREFIX=ci:bdd:${{ github.run_id }}:" >> "$GITHUB_ENV"
+          echo "OIDC_TX_KEY_PREFIX=ci:bdd:oidc-tx:${{ github.run_id }}:" >> "$GITHUB_ENV"
       - name: Run production-first Cucumber partitions
+        # No live Keycloak in CI (E8). OIDC @http/@contract scenarios that do not
+        # require provider-page arrival may run via the main partition; @browser
+        # IdP arrival remains local until Keycloak is added here.
         run: pnpm test:bdd
-      - name: Run session contract partition (HTTP/browser gated until T017/T021/T025/T028)
+      - name: Run session contract partition
         run: pnpm test:bdd:session:contract

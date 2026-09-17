@@ -1,3 +1,5 @@
+import type { TenantConfig } from "../tenant/types.ts"
+
 import { signSessionCookie, verifySessionCookie } from "./cookie.ts"
 import { type SessionStore, SessionStoreError } from "./store.ts"
 import {
@@ -7,6 +9,7 @@ import {
   type SessionConfig,
   SessionConfigError,
   type SessionContext,
+  sessionContextFromRecord,
   type SessionCookieClaims,
   type SessionOutcomeClass,
   type SessionRecord
@@ -32,6 +35,7 @@ export interface SetupSessionDependencies {
 
 export type SetupSessionResult =
   | {
+    readonly config: TenantConfig
     readonly context: SessionContext
     readonly cookieValue?: string
     readonly kind: "ready"
@@ -47,13 +51,14 @@ export type SetupSessionResult =
 
 export type TenantResolveResult =
   | {
-    readonly kind: "config-error"
-    readonly message: string
-  }
-  | {
+    readonly config: TenantConfig
     readonly kind: "ok"
     readonly origin: "host-associated" | "local-static"
     readonly tenantId: string
+  }
+  | {
+    readonly kind: "config-error"
+    readonly message: string
   }
   | {
     readonly kind: "unknown"
@@ -97,11 +102,8 @@ export async function setupSession(
     && canReuse(loaded.candidate, loaded.stored, tenant.tenantId, nowSeconds)
   ) {
     return {
-      context: {
-        expiresAt: loaded.stored.expiresAt,
-        sessionId: loaded.candidate.sid,
-        tenantId: tenant.tenantId
-      },
+      config: tenant.config,
+      context: sessionContextFromRecord(loaded.candidate.sid, loaded.stored),
       kind: "ready",
       origin: tenant.origin,
       outcome: "reuse"
@@ -115,6 +117,7 @@ export async function setupSession(
     origin: tenant.origin,
     signCookie,
     store: deps.store,
+    tenantConfig: tenant.config,
     tenantId: tenant.tenantId
   })
 }
@@ -122,13 +125,14 @@ export async function setupSession(
 export function toTenantResolveResult(
   resolved:
     | {
-      readonly kind: "config-error"
-      readonly message: string
-    }
-    | {
+      readonly config: TenantConfig
       readonly kind: "ok"
       readonly origin: "host-associated" | "local-static"
       readonly tenantId: string
+    }
+    | {
+      readonly kind: "config-error"
+      readonly message: string
     }
     | {
       readonly kind: "unknown"
@@ -136,6 +140,7 @@ export function toTenantResolveResult(
 ): TenantResolveResult {
   if (resolved.kind === "ok") {
     return {
+      config: resolved.config,
       kind: "ok",
       origin: resolved.origin,
       tenantId: resolved.tenantId
@@ -174,6 +179,7 @@ async function createFreshSession(input: {
     config: SessionConfig
   ) => Promise<string>
   readonly store: SessionStore
+  readonly tenantConfig: TenantConfig
   readonly tenantId: string
 }): Promise<SetupSessionResult> {
   let expiresAt: number
@@ -208,6 +214,7 @@ async function createFreshSession(input: {
       const created = await input.store.create(sessionId, record)
       if (created.kind === "created") {
         return {
+          config: input.tenantConfig,
           context: {
             expiresAt,
             sessionId,

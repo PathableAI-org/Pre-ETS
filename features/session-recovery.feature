@@ -88,7 +88,7 @@ Feature: Safe session recovery
     And storage has recovered with "<record state>"
     When the visitor retries "https://springfield.pathable.com/"
     Then session setup has outcome "<outcome>"
-    And the visitor receives the existing Springfield tenant page without additional action
+    And the visitor is redirected to initiate Springfield login without tenant application content
 
     Examples:
       | record state                        | outcome                      |

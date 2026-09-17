@@ -282,7 +282,7 @@ error toast (violates SSR-first and initiation timing); attach create cookie the
 - Image: `quay.io/keycloak/keycloak:26.7.4` (pinned; not `latest`)
 - Command: `start-dev`
 - Ports: `127.0.0.1:8080:8080`
-- Env: `KC_BOOTSTRAP_ADMIN_USERNAME` / `KC_BOOTSTRAP_ADMIN_PASSWORD` from Compose env file or shell
+- Env: required `KC_BOOTSTRAP_ADMIN_USERNAME` / `KC_BOOTSTRAP_ADMIN_PASSWORD` from Compose env file or shell (no committed defaults)
   env—**not** committed real passwords; document placeholders
 - Healthcheck suitable for `docker compose up -d --wait keycloak`
 - Preserve existing `redis:8.2.9` unchanged
