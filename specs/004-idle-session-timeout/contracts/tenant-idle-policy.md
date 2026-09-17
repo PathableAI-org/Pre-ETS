@@ -12,11 +12,12 @@ Trusted tenant configuration (env JSON today) MAY include `idleTimeoutMinutes`.
 | --------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
 | Key omitted                                   | Effective duration **30** for new authenticated sessions                                                    |
 | Integer `n` where `5 <= n <= 30`              | Effective duration `n` for new authenticated sessions                                                       |
-| Fractional, `<5`, `>30`, non-integer, disable | Reject; do not replace a previously loaded valid in-process config parse for that record—record is unusable |
-| Unauthorized / cross-tenant change attempt    | Denied by existing host-bound config ownership (no cross-tenant write API in this slice)                    |
+| Fractional, `<5`, `>30`, non-integer, disable | Reject; **whole-source fail-fast**—any invalid record makes the tenant source unusable (`CONFIG_UNAVAILABLE`) for all tenants until fixed + process restart (matches current static source parse) |
+| Unauthorized / cross-tenant change attempt    | Denied by existing host-bound config ownership (no cross-tenant write API in this slice)                                                                                                          |
 
 No new administration application or roles. Reload semantics match existing tenant JSON
-(restart process).
+(restart process). There is **no** per-record last-known-good retention across a failed
+array parse in this slice.
 
 ## Session binding
 

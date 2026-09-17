@@ -24,19 +24,40 @@ before success. Centralize the check so new handlers cannot skip it.
 
 ## Activity renewal interface
 
-`recordQualifyingActivity({ sessionId, tenantId, at })` (name indicative):
+`recordQualifyingActivity({ sessionId, tenantId })` (name indicative):
 
 Accepted **only** for an authenticated same-tenant session cookie (host-bound
 `pathable-session` matching the session tenant). No public diagnostic route for
 idle state or renewal.
 
+**Clock**: The external request MUST **omit** any client-supplied activity timestamp.
+The handler stamps `at` from the **authoritative application clock** (`nowSeconds`).
+Inject the clock only in tests. Invariant: `lastActivityAt` MUST NOT exceed authoritative
+server time—future or delayed client reports MUST NOT extend access.
+
+**Transport / CSRF**: Prefer a Server Action (framework CSRF). If a Route Handler is used,
+it MUST be **POST-only** and MUST validate same-origin `Origin` (or equivalent CSRF)
+before accepting a heartbeat. Cookie `SameSite=Lax` alone is **not** sufficient—reject
+GET and cross-site requests.
+
 1. Load session; missing → deny without inactivity claim.
 2. Tenant mismatch → deny; no mutation.
 3. Not authenticated → deny; no idle renewal.
-4. If `at >= idleExpiresAt` or `at >= expiresAt` → deny; ensure authenticated access ended;
-   do not revive.
-5. Else set `lastActivityAt = at`, recompute `idleExpiresAt`; leave `expiresAt` and
+4. If `now >= idleExpiresAt` or `now >= expiresAt` → deny; ensure authenticated access
+   ended; do not revive.
+5. Else set `lastActivityAt = now`, recompute `idleExpiresAt`; leave `expiresAt` and
    `idleDurationMinutes` unchanged.
+
+**Atomic store transition**: Load-check-write MUST NOT use a blind `SET XX` after a
+separate read. Renewal and idle-clearance MUST compete via an **atomic conditional**
+Redis transition (WATCH/MULTI, Lua, or compare-and-set on expected authenticated shape +
+`idleExpiresAt` / generation). When the race is lost:
+
+| Lost-race outcome                         | Result                                                                 |
+| ----------------------------------------- | ---------------------------------------------------------------------- |
+| Clearance already wrote anonymous + cause | Deny renewal; **no** overwrite of post-clearance anonymous record      |
+| Newer accepted heartbeat already applied  | Deny or no-op; do not regress `lastActivityAt` / `idleExpiresAt`       |
+| Expected shape / generation mismatch      | Deny; fail closed; no revival                                          |
 
 **Coalescing / rate bound**: server MUST coalesce or rate-limit accepted renewals.
 Indicative default (E4): ignore redundant Redis writes within **~1s** when the computed
@@ -54,24 +75,24 @@ passive reading, polling, prefetch, or automated keepalives.
 When idle deadline is reached or detected:
 
 1. Authenticated access ends (clear `userId` / `userName` / idle fields, or replace with
-   anonymous tenant session).
-2. Set anonymous `accessEndedCause: "inactivity"` for recovery UX (FR-008/009).
-   Consume-once clears that field after recovery UI read—**once per session end**.
-   Multi-tab-safe: first successful server confirmation notifies same-origin siblings via
-   `BroadcastChannel` `inactivity-confirmed`; siblings MUST NOT be stranded without an
-   inactivity path after Redis consume (see [inactivity-recovery.md](./inactivity-recovery.md)).
+   anonymous tenant session) via the same **atomic** conditional transition family as
+   renewal—deadline wins over concurrent heartbeats.
+2. Set anonymous `accessEndedCause: "inactivity"` and a replayable **session-end
+   generation / latch** for recovery UX (FR-008/009). See
+   [inactivity-recovery.md](./inactivity-recovery.md) and [data-model.md](../data-model.md).
 3. Clear temporary session draft data.
 4. Absolute Redis TTL / `expiresAt` handling remains per session-state rules; anonymous
    continuity MUST NOT restore protected access (FR-007).
 
 ## Ordering
 
-| Event                               | Result                                                                |
-| ----------------------------------- | --------------------------------------------------------------------- |
-| Activity with `at < idleExpiresAt`  | Restart idle period                                                   |
-| Activity with `at >= idleExpiresAt` | No revival; access remains ended                                      |
-| Absolute expiry                     | Access ended; claim inactivity only if idle evidence also established |
-| Store miss / 503                    | Deny access; **no** inactivity assertion                              |
+| Event                              | Result                                                                |
+| ---------------------------------- | --------------------------------------------------------------------- |
+| Activity with `now < idleExpiresAt`  | Restart idle period                                                   |
+| Activity with `now >= idleExpiresAt` | No revival; access remains ended                                      |
+| Absolute expiry                    | Access ended; claim inactivity only if idle evidence also established |
+| Store miss / 503                   | Deny access; **no** inactivity assertion                              |
+| Lost CAS vs clearance              | Deny; anonymous clearance retained                                    |
 
 ## Multi-tab / multi-session
 
@@ -84,10 +105,12 @@ When idle deadline is reached or detected:
 ## Session confirm / read (running-app)
 
 Authenticated same-tenant session cookie only. Returns whether access is still
-authenticated vs ended, and whether cause is `inactivity` when applicable. Consume of
-`accessEndedCause` occurs on recovery UI read (once per session end)—not as a public
-diagnostic dump of session internals. Full shape and failure stance:
-[inactivity-recovery.md](./inactivity-recovery.md).
+authenticated vs ended, and whether cause is `inactivity` when applicable. While still
+authenticated, the response (or forwarded `SessionContext`) MUST expose `idleExpiresAt`
+so the client can schedule deadline-aligned revalidation—see
+[inactivity-recovery.md](./inactivity-recovery.md) and [data-model.md](../data-model.md).
+Consume of `accessEndedCause` follows the session-end latch rules (not a public
+diagnostic dump of session internals).
 
 ## HTTP / outcome classes (indicative)
 

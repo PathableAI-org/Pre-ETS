@@ -7,7 +7,12 @@ walkthrough—see [plan.md](./plan.md), [data-model.md](./data-model.md), and [c
 ## Prerequisites
 
 - Node >=24, root-pinned pnpm, Docker Compose Redis (+ Keycloak for login-again journeys)
-- Synthetic tenants only; secrets in untracked `packages/frontend/.env.local`
+- Synthetic tenants only; keep secrets out of git:
+  - **Root** `.env` (or exported shell vars) for Compose Keycloak bootstrap:
+    `KC_BOOTSTRAP_ADMIN_USERNAME` / `KC_BOOTSTRAP_ADMIN_PASSWORD` (see `compose.yaml` /
+    `docs/docker-compose.md`)—required before `docker compose up … keycloak`
+  - `packages/frontend/.env.local` for Next.js session / OIDC / tenant JSON vars (see
+    package `.env.example`)
 - Authenticated session path available (OIDC callback writing `userId` / `userName`)—required for
   US1 runtime verification
 - Read contracts:

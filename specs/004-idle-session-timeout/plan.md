@@ -46,15 +46,18 @@ fails closed. Client debounce limits write rate; no new formal latency SLO. Idle
 one deadline comparison on authenticated participating requests.
 
 **Constraints**: Server authority for idle/absolute deadlines; no browser grace past
-`idleExpiresAt`; activity must not extend `expiresAt`; missing store ≠ inactivity claim; tenant
-isolation on policy and activity; PathAble Modal behind justified client island only; while
-authenticated UI is mounted, client MUST run non-authoritative revalidation (deadline-aligned
-and/or `visibilitychange`/`focus`); first successful **server** inactivity confirmation notifies
-same-origin shared-session siblings via `BroadcastChannel` (or equivalent)
-`inactivity-confirmed` so siblings clear content / open Modal without needing a still-present
-Redis `accessEndedCause` after consume-once; no advance warning/extend; no new admin UI;
-secrets/credentials never in fixtures; update `docs/session-state.md` / `docs/multi-tenancy.md`
-when behavior ships.
+`idleExpiresAt`; activity stamped from server clock (no client `at`); activity must not
+extend `expiresAt`; renewal/clearance via atomic Redis CAS (deadline wins); missing store ≠
+inactivity claim; tenant isolation on policy and activity; PathAble Modal behind justified
+client island only; while authenticated UI is mounted, client MUST run non-authoritative
+revalidation using forwarded `idleExpiresAt` (deadline-aligned and/or
+`visibilitychange`/`focus`); Proxy MUST offer a cause-bearing SSR recovery route before
+generic OIDC redirect; session-end generation latch + BroadcastChannel
+`inactivity-confirmed` so siblings are not stranded after string-cause consume; login-again
+MUST rotate `sessionId`/cookie (no in-place upgrade of expired sid); POST-only + CSRF for
+route-handler heartbeats; no advance warning/extend; no new admin UI; secrets/credentials
+never in fixtures; update `docs/session-state.md` / `docs/multi-tenancy.md` when behavior
+ships.
 
 **Scale/Scope**: Authenticated session idle lifecycle for participating app routes; optional
 tenant policy field; recovery modal + login-again. Out of scope: HIPAA certification, general
@@ -71,7 +74,7 @@ _GATE: Evaluated before Phase 0 and re-evaluated after Phase 1 design._
 | I. Evidence-grounded specification | PASS: Clarified FR/SC; assessment decision; open D-001/D-005 called out as release gates | PASS: [research.md](./research.md) resolves enforcement, activity, policy, cause, prerequisite inventory; D-001/D-005/D-006 remain explicit non-code release gates in quickstart—not silent product invention          |
 | II. Explicit ownership             | PASS: Frontend owns session, tenant config, auth orchestration, modal                    | PASS: All design under `packages/frontend` + Redis; backend untouched; no shared writable domain tables; drafts cleared in Redis only                                                                                  |
 | III. Tenant isolation              | PASS: Host-bound sessions; cross-tenant activity forbidden                               | PASS: Contracts require tenant bind on activity/policy; cookie host-only unchanged; independent sessions stay independent                                                                                              |
-| IV. Accessible SSR UI              | PASS: Modal a11y in FR-009; PathAble required                                            | PASS: PathAble `Modal` with documented client boundary; required non-authoritative revalidation drives clear + Modal while app is running; server owns cause/`idleExpiresAt`; keyboard/focus/name in recovery contract |
+| IV. Accessible SSR UI              | PASS: Modal a11y in FR-009; PathAble required                                            | PASS: PathAble `Modal` with documented client boundary; required revalidation + cause-bearing SSR recovery route; session-end latch; server owns cause/`idleExpiresAt`; keyboard/focus/name in recovery contract |
 | V. Meaningful behavioral tests     | PASS: Gherkin inventory exists for 004                                                   | PASS: Unit + contract clocks + `@browser` modal/recovery; no string-inventory-only a11y; timing precision documented; public test endpoints forbidden                                                                  |
 | VI. Simplicity and quality         | PASS: Extends existing session/tenant modules                                            | PASS: No new framework; optional config field + session fields + activity handler + modal island; existing quality gates retained                                                                                      |
 
@@ -113,15 +116,16 @@ docs/multi-tenancy.md                    # update on implement
 ```text
 packages/frontend/
 ├── src/lib/tenant/types.ts              # optional idleTimeoutMinutes + validation
-├── src/lib/session/types.ts             # authenticated idle fields + parsers (expand key allowlists)
-├── src/lib/session/store.ts             # update/clear helpers as needed
-├── src/lib/session/setup.ts             # enforce idle on reuse/authenticated paths
+├── src/lib/session/types.ts             # SessionRecord + SessionContext idle fields / allowlists
+├── src/lib/session/store.ts             # atomic conditional update/clear (CAS) helpers
+├── src/lib/session/setup.ts             # enforce idle on reuse/authenticated paths; legacy reauth
 ├── src/lib/session/idle.ts              # deadline helpers / end-for-inactivity (indicative)
-├── src/lib/oidc/callback.ts             # stamp idle fields at authentication
-├── src/proxy.ts                         # authenticated path respects idle expiry + cause
+├── src/lib/oidc/initiate.ts             # login-again: mint new sessionId + cookie before OIDC
+├── src/lib/oidc/callback.ts             # stamp idle fields on **new** sid only
+├── src/proxy.ts                         # idle gate; cause-bearing recovery forward vs OIDC
 ├── src/app/(app)/…                      # recovery presentation wiring
 ├── src/components/…                     # client island: activity + revalidation + Modal (+ tab sync)
-└── tests/unit/                          # policy, idle math, activity, cause, parser allowlists
+└── tests/unit/                          # policy, idle math, activity CAS, context parsers, cause/latch
 docs/session-state.md
 docs/multi-tenancy.md
 cucumber.mjs / package.json              # idle BDD partition when steps wired
@@ -133,9 +137,10 @@ tests/bdd/steps/                         # idle step defs (tasks phase)
 OIDC. Client island owns activity capture, **required** non-authoritative deadline
 revalidation (while authenticated UI is mounted), multi-tab UI sync, and PathAble Modal;
 Proxy/setup remain the authoritative gate and sole source of `idleExpiresAt`. Authenticated
-`SessionRecord` parsers MUST expand key-count allowlists for idle fields with unit coverage
-(reject-unknown / accept-new idle fields / anonymous unchanged)—see [data-model.md](./data-model.md).
-Backend package unchanged.
+`SessionRecord` **and** `SessionContext` parsers MUST expand key-count allowlists for idle
+fields (`idleExpiresAt` on context at minimum) with unit coverage; store updates MUST be
+atomic vs clearance; login-again MUST rotate session id. See
+[data-model.md](./data-model.md). Backend package unchanged.
 
 ## Complexity Tracking
 

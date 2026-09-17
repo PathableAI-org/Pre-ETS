@@ -19,11 +19,13 @@ authenticated server handlers). The server remains the **sole authority** for
 
 While authenticated UI is mounted, the client **MUST** run a **non-authoritative
 revalidation** path (deadline-aligned timer and/or `visibilitychange` / `focus`
-checks) that confirms inactivity with the server. On confirmed inactivity: remove
-protected content from the active experience and open the PathAble Modal—aligned
-with recovery Gherkin when access expires **while the application is running**.
-Revalidation discovers and presents recovery; it does not invent cause or extend
-deadlines.
+checks) that confirms inactivity with the server. Deadline alignment uses
+`idleExpiresAt` from the forwarded authenticated **`SessionContext`** (and/or
+confirm/read while still authenticated)—not a client-invented clock. On confirmed
+inactivity: remove protected content from the active experience and open the
+PathAble Modal—aligned with recovery Gherkin when access expires **while the
+application is running**. Revalidation discovers and presents recovery; it does
+not invent cause or extend deadlines.
 
 On idle deadline, authenticated fields (`userId` / `userName` and idle fields)
 MUST be cleared (or the record replaced with an anonymous tenant session) **before**
@@ -48,37 +50,45 @@ assessment research S2/S5; FR-004, FR-006; constitution II.
 
 ## 2. Session record shape for idle policy
 
-**Decision**: Extend authenticated `SessionRecord` / forwarded context with
-idle-specific fields fixed at authentication time:
+**Decision**: Extend authenticated `SessionRecord` **and** forwarded
+`SessionContext` with idle-specific fields fixed at authentication time:
 
-| Field                 | Meaning                                                                            |
-| --------------------- | ---------------------------------------------------------------------------------- |
-| `idleDurationMinutes` | Whole minutes 5–30 copied from tenant policy at auth                               |
-| `lastActivityAt`      | Unix seconds of last **accepted** qualifying activity (or auth time)               |
-| `idleExpiresAt`       | Unix seconds deadline = `lastActivityAt + idleDurationMinutes * 60`                |
-| `accessEndedCause`    | On post-clearance anonymous record only; `"inactivity"` with consume-once (see §6) |
+| Field                  | Where                         | Meaning                                                                                 |
+| ---------------------- | ----------------------------- | --------------------------------------------------------------------------------------- |
+| `idleDurationMinutes`  | Redis authenticated record    | Whole minutes 5–30 copied from tenant policy at auth                                    |
+| `lastActivityAt`       | Redis authenticated record    | Unix seconds of last **accepted** qualifying activity (or auth time); **server clock**  |
+| `idleExpiresAt`        | Redis **and** SessionContext  | Deadline = `lastActivityAt + idleDurationMinutes * 60`; required on authenticated context |
+| `accessEndedCause`     | Anonymous Redis only          | `"inactivity"` after clearance; may clear after first recovery read (see §6)            |
+| `sessionEndGeneration` | Anonymous Redis only          | Replayable latch so siblings / missed BroadcastChannel are not stranded                 |
 
-Anonymous records are `{ tenantId, expiresAt }` plus optional `accessEndedCause`
-after inactivity clearance. Missing session / store miss / absolute expiry WITHOUT
-a prior recorded inactivity cause MUST NOT be labeled inactivity (FR-008).
+Anonymous records are `{ tenantId, expiresAt }` plus optional cause/latch after
+inactivity clearance. Missing session / store miss / absolute expiry WITHOUT a
+prior recorded inactivity cause MUST NOT be labeled inactivity (FR-008).
 
-When idle expiry is detected server-side, clear authenticated + idle fields (or
-rotate to a fresh anonymous session for the same tenant), set
-`accessEndedCause: "inactivity"` on that anonymous record (consume-once; see §6),
-and reject protected operations.
+When idle expiry is detected server-side, clear authenticated + idle fields via an
+**atomic** conditional Redis transition (deadline wins over concurrent heartbeats),
+set cause + `sessionEndGeneration` on the anonymous record, and reject protected
+operations.
+
+**Rollout**: Legacy four-key authenticated Redis records MUST force reauthentication
+on first idle-aware read (no silent soft-upgrade inventing idle fields)—see
+[data-model.md](./data-model.md).
 
 **Rationale**: Policy fixed at session creation (FR-003); shared tabs share one
 Redis record so activity naturally propagates (FR-005); cause evidence is explicit
-rather than inferred from key absence.
+rather than inferred from key absence; forwarding `idleExpiresAt` is required for
+deadline-aligned client revalidation without a public diagnostic dump.
 
 **Alternatives considered**: Store only `lastActivityAt` and recompute deadline
 each read (equivalent if duration is fixed—kept explicit `idleExpiresAt` for
 clear deadline comparisons in tests); put cause only in a cookie without Redis
 evidence (weaker for multi-tab consistency); delete key entirely on idle expiry
-without cause (violates FR-008 labeling rules).
+without cause (violates FR-008 labeling rules); leave SessionContext unchanged and
+schedule timers only from confirm/read (rejected as sole path—SSR mount still needs
+an initial deadline; confirm/read remains a refresh source after renewals).
 
-**Evidence**: Spec entities; FR-003, FR-005, FR-008; existing `SessionRecord`
-parsers in `types.ts`.
+**Evidence**: Spec entities; FR-003, FR-005, FR-008; existing `SessionRecord` /
+`SessionContext` parsers in `types.ts`.
 
 ## 3. Qualifying activity and cross-tab sharing
 
@@ -88,11 +98,14 @@ parsers in `types.ts`.
   scroll (`scroll` on document or scrollable roots) from the authenticated UI.
 - **Non-qualifying**: passive reading, visibility-only events, RSC/prefetch,
   polling, automated keepalives, and protected API calls **by themselves**.
-- **Reporting**: a narrow authenticated Server Action or Route Handler accepts
-  activity heartbeats only for an **authenticated same-tenant session cookie** when
-  `now < idleExpiresAt`; updates `lastActivityAt` / `idleExpiresAt` without changing
-  `expiresAt` or `idleDurationMinutes`. Reject late reports after the deadline (no
-  revival). No public diagnostic route.
+- **Reporting**: a narrow authenticated Server Action (preferred) or **POST-only**
+  Route Handler with same-origin `Origin`/CSRF validation accepts activity heartbeats
+  only for an **authenticated same-tenant session cookie** when server `now <
+  idleExpiresAt`. Stamp activity from the **server clock** (omit client `at`). Update
+  via **atomic** conditional Redis transition; updates `lastActivityAt` /
+  `idleExpiresAt` without changing `expiresAt` or `idleDurationMinutes`. Reject late
+  reports and lost races vs clearance (no revival / no overwrite of anonymous
+  clearance). No public diagnostic route. `SameSite=Lax` alone is insufficient.
 - **Debounce / coalescing**: client coalesces bursts; server MUST also coalesce or
   rate-bound renewals (indicative: ignore redundant writes within **~1s** when
   `idleExpiresAt` is unchanged—see `idle-expiration.md`). Neither client nor server
@@ -127,8 +140,8 @@ on activity (rejected—FR-006).
 | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
 | Key omitted                                                                | Default **30** minutes for new authenticated sessions                                      |
 | Integer 5–30                                                               | That duration for new authenticated sessions                                               |
-| Present but invalid (fraction, `<5`, `>30`, non-integer, disable sentinel) | **Fail closed** at tenant-config parse / trusted config boundary—do not substitute default |
-| Attempt to disable                                                         | Rejected; existing valid policy unchanged                                                  |
+| Present but invalid (fraction, `<5`, `>30`, non-integer, disable sentinel) | **Whole-source fail-fast** (`CONFIG_UNAVAILABLE`)—do not substitute default; no per-record last-known-good across a failed array parse |
+| Attempt to disable                                                         | Rejected; source remains unusable until config fixed + restart                                                                         |
 
 Persistence for this slice continues the **existing trusted process**: process
 environment tenant JSON (`TENANT_CONFIG_RECORDS_JSON` /
@@ -167,6 +180,9 @@ No independently usable access/refresh tokens are stored in Redis today
 (`docs/session-state.md`); broker IdP sessions may remain and MAY satisfy
 login-again without a fresh credentials challenge (FR-010)—that MUST create a
 **new** application session with current policy, not revive the expired one.
+**Session-id rotation**: mint a new `pathable-session` cookie / Redis key before
+OIDC callback authentication; do **not** upgrade the post-clearance anonymous
+record in place (today’s callback binds to `tx.sessionId`).
 
 Backend domain authorization is out of scope; when domain PHI APIs appear, they
 MUST verify broker tokens independently and MUST NOT trust Redis. This feature
@@ -188,53 +204,57 @@ introspection (violates ownership).
 
 **Decision**:
 
-- On **confirmed** idle expiry, set `accessEndedCause: "inactivity"` on the
-  **post-clearance anonymous** session record. Consume-once clears the field after
-  recovery UI read so later anonymous navigations do not re-claim inactivity without
-  fresh evidence—**once per session end**, not once per tab. No alternate short-lived
-  marker path for this slice.
+- On **confirmed** idle expiry, set `accessEndedCause: "inactivity"` **and** a
+  monotonic **`sessionEndGeneration`** on the **post-clearance anonymous** session
+  record. The string cause MAY clear after the first recovery UI read; the generation
+  latch remains queryable for a short retention window (or until cookie rotation) so
+  siblings and tabs that missed BroadcastChannel are not stranded.
+- **Cause-bearing SSR recovery route**: When the anonymous record has inactivity
+  evidence, the Proxy MUST forward to an SSR recovery shell (Modal + “Log in again”)
+  instead of starting generic OIDC initiation. Protected content stays denied.
+  Anonymous without inactivity evidence keeps today’s OIDC redirect.
 - **Multi-tab-safe cause (P1 / E1 / X1)**: The first tab that receives a successful
   **server** confirmation of inactivity MUST notify same-origin shared-session sibling
-  tabs via `BroadcastChannel` (or equivalent) with an established `inactivity-confirmed`
-  signal. Sibling tabs clear protected content and open the PathAble Modal from that
-  sync signal. That counts as established UI evidence from a prior server confirmation
-  (FR-008)—it does **not** invent inactivity from a client timer. Redis consume-once
-  MUST NOT strand siblings: after the first tab consumes `accessEndedCause`, siblings
-  MUST NOT be required to re-read a still-present Redis cause to present inactivity.
+  tabs via `BroadcastChannel` (or equivalent) with `inactivity-confirmed` including
+  `sessionEndGeneration`. Sibling tabs clear protected content and open the PathAble
+  Modal from that sync signal (FR-008—does **not** invent inactivity from a client
+  timer). Missed BroadcastChannel → re-query confirm/read or SSR recovery against the
+  latch.
 - Missing/evicted/unavailable store, absolute expiry without idle evidence, or
   config/process failures → recovery MUST NOT claim inactivity.
 - While authenticated UI is mounted, non-authoritative client revalidation
-  (deadline-aligned and/or `visibilitychange` / `focus`; see §1) confirms
-  inactivity with the server; on confirmation, remove protected content and open
-  PathAble **`Modal`** without requiring a full navigation—covering expiry
-  **while the application is running**. Document SSR may also present the modal
-  when cause is present on load. `Modal` requires a client boundary
+  (deadline-aligned via forwarded `idleExpiresAt` and/or `visibilitychange` /
+  `focus`; see §1) confirms inactivity with the server; on confirmation, remove
+  protected content and open PathAble **`Modal`** without requiring a full
+  navigation. `Modal` requires a client boundary
   (`agent-guidance/.../references/server-and-client.md`); keep page data loading
-  on the server. Shared-session tabs MUST stay consistent (§3 + multi-tab-safe cause).
+  on the server.
 - Modal: accessible name/explanation that inactivity ended the session and a
   button **“Log in again”**. Copy MAY acknowledge that unsaved work was lost
   (no advance-warning / extend UI).
-- “Log in again” starts the existing tenant OIDC initiation journey; cancel/fail
-  leaves access unusable with retry path (`/login-unavailable` or re-shown modal
-  as appropriate).
+- “Log in again” **rotates** to a new `sessionId` + cookie, then starts the existing
+  tenant OIDC initiation journey; callback MUST NOT authenticate into the
+  pre-recovery `sid`. Cancel/fail leaves access unusable with retry path
+  (`/login-unavailable` or re-shown modal as appropriate).
 - Before enabling further interaction after resume from sleep/offline, remove
   protected content from the active experience and clear temporary session
   draft fields from Redis; durable backend records untouched.
 
 **Rationale**: FR-008–010; Principle IV; PathAble Modal guidance; recovery
-Gherkin for running-app expiry and “second tab” multi-tab recovery.
+Gherkin for running-app expiry and “second tab” multi-tab recovery; current proxy
+cannot render Modal on anonymous document load without an explicit recovery fork.
 
-**Alternatives considered**: Dual-path cause (anonymous field **or** ephemeral
-marker—rejected; fork tasks/tests); infer inactivity from any anonymous
+**Alternatives considered**: Dual-path cause without a generation latch (rejected—
+BroadcastChannel is non-replayable); infer inactivity from any anonymous
 replacement (rejected—FR-008); optional-only client timers without mandatory
-revalidation (rejected); retain Redis cause until login-again instead of
-consume-once + BroadcastChannel latch (rejected for this slice—preferred pin is
-sync-from-first-server-confirmation so consume-once cannot strand siblings);
-custom modal markup bypassing PathAble (rejected—Principle IV); advance warning /
-extend button (out of scope).
+revalidation (rejected); retain string cause forever until login-again (weaker UX
+for later anonymous navigations); in-place OIDC upgrade of expired `sid` (rejected—
+revives expired application session); custom modal markup bypassing PathAble
+(rejected—Principle IV); advance warning / extend button (out of scope).
 
 **Evidence**: Spec US2; FR-008/010; PathAble skill Modal listing; Gherkin
-`features/idle-session-recovery.feature`.
+`features/idle-session-recovery.feature`; `packages/frontend/src/proxy.ts`
+authenticated short-circuit / OIDC initiation ordering.
 
 ## 7. Testing and time authority
 
