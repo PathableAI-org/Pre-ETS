@@ -75,7 +75,6 @@ export class MemoryRedis {
     return this.liveValue(key)
   }
 
-  // fallow-ignore-next-line complexity -- NX/XX + PX TTL memory Redis stand-in
   private async setImpl(
     key: string,
     value: string,
@@ -85,23 +84,33 @@ export class MemoryRedis {
       await this.beforeSet(key, value, options)
     }
     const existing = this.peek(key)
-    if (options?.condition === "NX" && existing !== null) {
-      return null
-    }
-    if (options?.condition === "XX" && existing === null) {
+    if (!passesSetCondition(existing, options?.condition)) {
       return null
     }
 
-    let pxExpiresAtMs: number | undefined
-    if (options?.expiration?.type === "PX") {
-      pxExpiresAtMs = Date.now() + options.expiration.value
-    }
-
-    if (pxExpiresAtMs === undefined) {
-      this.entries.set(key, { value })
-    } else {
-      this.entries.set(key, { pxExpiresAtMs, value })
-    }
+    this.entries.set(key, entryForSet(value, options))
     return "OK"
   }
+}
+
+/** Build a memory entry, applying PX TTL when present. */
+export function entryForSet(value: string, options?: RedisSetOptions): MemoryEntry {
+  if (options?.expiration?.type === "PX") {
+    return { pxExpiresAtMs: Date.now() + options.expiration.value, value }
+  }
+  return { value }
+}
+
+/** NX/XX predicate for MemoryRedis SET (exported for unit coverage). */
+export function passesSetCondition(
+  existing: null | string,
+  condition: "NX" | "XX" | undefined
+): boolean {
+  if (condition === "NX") {
+    return existing === null
+  }
+  if (condition === "XX") {
+    return existing !== null
+  }
+  return true
 }

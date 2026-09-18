@@ -12,28 +12,21 @@ function fixedSessionId(seed = 9): string {
   return Buffer.from(bytes).toString("base64url")
 }
 
-// fallow-ignore-next-line complexity -- test fixture with optional latch/cause overrides
 function idleRecord(now: number, overrides: Partial<SessionRecord> = {}): SessionRecord {
-  const idleDurationMinutes = overrides.idleDurationMinutes ?? DEFAULT_IDLE_DURATION_MINUTES
   const lastActivityAt = overrides.lastActivityAt ?? now
-  const idleExpiresAt = overrides.idleExpiresAt
-    ?? computeIdleExpiresAt(lastActivityAt, idleDurationMinutes)
-
-  return {
-    expiresAt: overrides.expiresAt ?? now + 86_400,
-    idleDurationMinutes,
-    idleExpiresAt,
-    lastActivityAt,
-    tenantId: overrides.tenantId ?? "springfield",
-    userId: overrides.userId ?? "user-1",
-    userName: overrides.userName ?? "Demo User",
-    ...("accessEndedCause" in overrides
-      ? { accessEndedCause: overrides.accessEndedCause }
-      : {}),
-    ...("sessionEndGeneration" in overrides
-      ? { sessionEndGeneration: overrides.sessionEndGeneration }
-      : {})
-  }
+  const idleDurationMinutes = overrides.idleDurationMinutes ?? DEFAULT_IDLE_DURATION_MINUTES
+  return Object.assign(
+    {
+      expiresAt: now + 86_400,
+      idleDurationMinutes,
+      idleExpiresAt: computeIdleExpiresAt(lastActivityAt, idleDurationMinutes),
+      lastActivityAt,
+      tenantId: "springfield",
+      userId: "user-1",
+      userName: "Demo User"
+    } satisfies SessionRecord,
+    overrides
+  )
 }
 
 function testConfig(overrides: Partial<SessionConfig> = {}): SessionConfig {

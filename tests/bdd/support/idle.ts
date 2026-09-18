@@ -145,38 +145,18 @@ export class MemoryIdleStore implements SessionStore {
     return Promise.resolve({ kind: "record", legacyAuthenticated: false, record })
   }
 
-  // fallow-ignore-next-line complexity -- harness renew mirrors store coalesce/deny rules
   renewIdleActivity(
     sessionId: string,
     nowSeconds: number,
     expectedTenantId: string
   ): Promise<RenewIdleActivityResult> {
     const record = this.records.get(sessionId)
-    if (record?.tenantId !== expectedTenantId) {
-      return Promise.resolve({ kind: "denied" })
+    const planned = planBddIdleRenewal(record, nowSeconds, expectedTenantId)
+    if (planned.kind !== "renew") {
+      return Promise.resolve(planned)
     }
-    if (
-      record.userId === undefined
-      || record.idleDurationMinutes === undefined
-      || record.idleExpiresAt === undefined
-      || record.lastActivityAt === undefined
-    ) {
-      return Promise.resolve({ kind: "denied" })
-    }
-    if (nowSeconds >= record.idleExpiresAt || nowSeconds >= record.expiresAt) {
-      return Promise.resolve({ kind: "denied" })
-    }
-
-    const next: SessionRecord = {
-      ...record,
-      idleExpiresAt: computeIdleExpiresAt(nowSeconds, record.idleDurationMinutes),
-      lastActivityAt: nowSeconds
-    }
-    if (next.idleExpiresAt === record.idleExpiresAt) {
-      return Promise.resolve({ kind: "coalesced", record })
-    }
-    this.records.set(sessionId, next)
-    return Promise.resolve({ kind: "renewed", record: next })
+    this.records.set(sessionId, planned.record)
+    return Promise.resolve({ kind: "renewed", record: planned.record })
   }
 
   update(id: string, record: SessionRecord): Promise<SessionStoreUpdateResult> {
@@ -410,6 +390,36 @@ export function parseIdleClock(time: string): number {
   return IDLE_DAY_BASE_SECONDS + hours * 3600 + minutes * 60 + seconds
 }
 
+/** Pure BDD idle renewal planner (keeps MemoryIdleStore.renewIdleActivity thin). */
+export function planBddIdleRenewal(
+  record: SessionRecord | undefined,
+  nowSeconds: number,
+  expectedTenantId: string
+):
+  | Extract<RenewIdleActivityResult, { kind: "coalesced" | "denied" }>
+  | { readonly kind: "renew"; readonly record: SessionRecord }
+{
+  if (record?.tenantId !== expectedTenantId) {
+    return { kind: "denied" }
+  }
+  if (!isBddIdleAuthenticated(record)) {
+    return { kind: "denied" }
+  }
+  if (nowSeconds >= record.idleExpiresAt || nowSeconds >= record.expiresAt) {
+    return { kind: "denied" }
+  }
+
+  const next: SessionRecord = {
+    ...record,
+    idleExpiresAt: computeIdleExpiresAt(nowSeconds, record.idleDurationMinutes),
+    lastActivityAt: nowSeconds
+  }
+  if (next.idleExpiresAt === record.idleExpiresAt) {
+    return { kind: "coalesced", record }
+  }
+  return { kind: "renew", record: next }
+}
+
 export function replaceWithAnonymousSession(world: TenantWorld, tenantId: string): void {
   const state = ensureIdleContract(world)
   const sessionId = fixedSessionId(9)
@@ -560,8 +570,6 @@ function applyInactivityRecoveryToTab(tab: IdleTabClientState): void {
   tab.recoveryModal = inactivityModal()
 }
 
-// --- US3 tenant idle timeout policy (in-process contract harness) ---
-
 function emptyTabClient(temporaryWorkExposed: boolean): IdleTabClientState {
   return {
     broadcastReceived: false,
@@ -571,6 +579,8 @@ function emptyTabClient(temporaryWorkExposed: boolean): IdleTabClientState {
     temporaryWorkExposed
   }
 }
+
+// --- US3 tenant idle timeout policy (in-process contract harness) ---
 
 function fixedSessionId(seed: number): string {
   const bytes = new Uint8Array(32)
@@ -587,6 +597,20 @@ function inactivityModal(): IdleRecoveryModalState {
     open: true,
     primaryActionName: "Log in again"
   }
+}
+
+function isBddIdleAuthenticated(
+  record: SessionRecord
+): record is SessionRecord & {
+  readonly idleDurationMinutes: number
+  readonly idleExpiresAt: number
+  readonly lastActivityAt: number
+  readonly userId: string
+} {
+  return record.userId !== undefined
+    && record.idleDurationMinutes !== undefined
+    && record.idleExpiresAt !== undefined
+    && record.lastActivityAt !== undefined
 }
 
 const DEFAULT_POLICY_ABSOLUTE = parseIdleClock("17:00:00")

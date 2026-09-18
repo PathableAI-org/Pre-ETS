@@ -4,6 +4,7 @@ import { Alert, Container, Page, Stack, Text } from "@pathableai/react"
 import { type ReactNode, useEffect, useEffectEvent, useRef, useState } from "react"
 
 import { confirmSessionAction } from "../../app/(app)/session/confirm.ts"
+import { canRunConfirm, executeConfirmPass } from "../../lib/session/confirm-pass.ts"
 import {
   INACTIVITY_BROADCAST_CHANNEL,
   inactivityConfirmedMessage,
@@ -67,43 +68,22 @@ export function InactivityRecoveryIsland({
     }
   })
 
-  // fallow-ignore-next-line complexity -- confirm outcome: refresh / inactivity / mismatch / fail-closed
   const runConfirm = useEffectEvent(async (_reason: "deadline" | "supplemental") => {
-    if (confirming.current || state.kind !== "active") {
+    if (!canRunConfirm(confirming.current, state.kind)) {
       return
     }
     confirming.current = true
     try {
-      const result = await confirmSessionAction({
-        mountedSessionId: sessionId,
-        ...(heldGeneration.current !== undefined
-          ? { sessionEndGeneration: heldGeneration.current }
-          : {})
+      await executeConfirmPass({
+        applyInactivity,
+        confirm: confirmSessionAction,
+        heldGeneration: heldGeneration.current,
+        sessionId,
+        setDeadlines,
+        setUnavailable: () => {
+          setState({ kind: "unavailable" })
+        }
       })
-
-      if (result.status === "authenticated") {
-        setDeadlines({
-          expiresAt: result.expiresAt,
-          idleExpiresAt: result.idleExpiresAt
-        })
-        return
-      }
-
-      if (result.status === "ended-inactivity") {
-        applyInactivity(result.sessionId, result.sessionEndGeneration, true)
-        return
-      }
-
-      if (result.status === "unavailable") {
-        // Fail closed for visible protected UI — no inactivity claim.
-        setState({ kind: "unavailable" })
-        return
-      }
-
-      // ended-other / mismatch without tombstone — generic unavailable.
-      setState({ kind: "unavailable" })
-    } catch {
-      setState({ kind: "unavailable" })
     } finally {
       confirming.current = false
     }

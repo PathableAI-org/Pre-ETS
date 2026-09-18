@@ -72,6 +72,21 @@ export type TenantResolveResult =
     readonly kind: "unknown"
   }
 
+interface ReuseSessionInput {
+  readonly candidate: SessionCookieClaims
+  readonly clock: () => number
+  readonly origin: "host-associated" | "local-static"
+  readonly store: SessionStore
+  readonly stored: SessionRecord
+  readonly tenantConfig: TenantConfig
+  readonly tenantId: string
+}
+
+type ReuseSessionResult =
+  | Extract<SetupSessionResult, { kind: "inactivity-recovery" | "ready" }>
+  | Extract<SetupSessionResult, { kind: "terminal" }>
+  | undefined
+
 export async function setupSession(
   request: Request,
   deps: SetupSessionDependencies
@@ -174,6 +189,43 @@ export function toTenantResolveResult(
   }
 
   return { kind: "unknown" }
+}
+
+async function clearIdleForReuseRecovery(
+  input: ReuseSessionInput,
+  freshNow: number
+): Promise<ReuseSessionResult> {
+  try {
+    const cleared = await input.store.clearForInactivity(
+      input.candidate.sid,
+      freshNow,
+      input.tenantId
+    )
+    if (cleared.kind !== "cleared" && cleared.kind !== "already_cleared") {
+      // Clearance denied / lost race — fail closed without authenticated reuse.
+      return undefined
+    }
+    if (cleared.record.sessionEndGeneration === undefined) {
+      return undefined
+    }
+    return {
+      config: input.tenantConfig,
+      context: sessionContextFromRecord(input.candidate.sid, cleared.record),
+      kind: "inactivity-recovery",
+      origin: input.origin,
+      sessionEndGeneration: cleared.record.sessionEndGeneration
+    }
+  } catch (error) {
+    if (error instanceof SessionStoreError) {
+      return {
+        kind: "terminal",
+        message: "Service unavailable.",
+        outcome: "503",
+        status: 503
+      }
+    }
+    throw error
+  }
 }
 
 async function createFreshSession(input: {
@@ -422,111 +474,84 @@ function structuralCookieMatches(
     && candidate.exp === stored.expiresAt
 }
 
-/**
- * Reuse path after structural cookie match. Authenticated success samples a fresh
- * clock after Redis load. When idle binds (including equality pin), atomically clear
- * for inactivity and return the typed recovery signal. Consumable anonymous
- * inactivity evidence yields the same signal (not stuffed into SessionContext).
- */
-// fallow-ignore-next-line complexity -- reuse: auth valid / idle-clear / latch / absolute end
-async function tryReuseLoadedSession(input: {
-  readonly candidate: SessionCookieClaims
-  readonly clock: () => number
-  readonly origin: "host-associated" | "local-static"
-  readonly store: SessionStore
-  readonly stored: SessionRecord
-  readonly tenantConfig: TenantConfig
-  readonly tenantId: string
-}): Promise<
-  | Extract<SetupSessionResult, { kind: "inactivity-recovery" | "ready" }>
-  | Extract<SetupSessionResult, { kind: "terminal" }>
-  | undefined
-> {
-  const { stored } = input
-
-  if (
-    stored.userId === undefined
-    && stored.accessEndedCause === "inactivity"
-    && stored.sessionEndGeneration !== undefined
-  ) {
-    // Absolute cookie/record may still be live for latch retention.
-    const freshNow = input.clock()
-    if (freshNow >= stored.expiresAt) {
-      return undefined
-    }
-
-    return {
-      config: input.tenantConfig,
-      context: sessionContextFromRecord(input.candidate.sid, stored),
-      kind: "inactivity-recovery",
-      origin: input.origin,
-      sessionEndGeneration: stored.sessionEndGeneration
-    }
-  }
-
-  if (stored.userId !== undefined) {
-    // Fresh clock after Redis load before authenticated success or clearance.
-    const freshNow = input.clock()
-    const classification = classifyAccessEnd(freshNow, stored)
-
-    if (classification === "still-valid") {
-      return {
-        config: input.tenantConfig,
-        context: sessionContextFromRecord(input.candidate.sid, stored),
-        kind: "ready",
-        origin: input.origin,
-        outcome: "reuse"
-      }
-    }
-
-    if (classification === "idle") {
-      try {
-        const cleared = await input.store.clearForInactivity(
-          input.candidate.sid,
-          freshNow,
-          input.tenantId
-        )
-        if (cleared.kind === "cleared" || cleared.kind === "already_cleared") {
-          if (cleared.record.sessionEndGeneration === undefined) {
-            return undefined
-          }
-          return {
-            config: input.tenantConfig,
-            context: sessionContextFromRecord(input.candidate.sid, cleared.record),
-            kind: "inactivity-recovery",
-            origin: input.origin,
-            sessionEndGeneration: cleared.record.sessionEndGeneration
-          }
-        }
-      } catch (error) {
-        if (error instanceof SessionStoreError) {
-          return {
-            kind: "terminal",
-            message: "Service unavailable.",
-            outcome: "503",
-            status: 503
-          }
-        }
-        throw error
-      }
-      // Clearance denied / lost race — fail closed without authenticated reuse.
-      return undefined
-    }
-
-    // Absolute-only (or missing idle shape) — no inactivity claim; force fresh.
+function tryReuseAnonymousSession(input: ReuseSessionInput): ReuseSessionResult {
+  if (input.clock() >= input.stored.expiresAt) {
     return undefined
   }
 
+  return {
+    config: input.tenantConfig,
+    context: sessionContextFromRecord(input.candidate.sid, input.stored),
+    kind: "ready",
+    origin: input.origin,
+    outcome: "reuse"
+  }
+}
+
+async function tryReuseAuthenticatedSession(
+  input: ReuseSessionInput
+): Promise<ReuseSessionResult> {
+  // Fresh clock after Redis load before authenticated success or clearance.
   const freshNow = input.clock()
-  if (freshNow >= stored.expiresAt) {
+  const classification = classifyAccessEnd(freshNow, input.stored)
+
+  if (classification === "still-valid") {
+    return {
+      config: input.tenantConfig,
+      context: sessionContextFromRecord(input.candidate.sid, input.stored),
+      kind: "ready",
+      origin: input.origin,
+      outcome: "reuse"
+    }
+  }
+
+  if (classification === "idle") {
+    return await clearIdleForReuseRecovery(input, freshNow)
+  }
+
+  // Absolute-only (or missing idle shape) — no inactivity claim; force fresh.
+  return undefined
+}
+
+function tryReuseInactivityLatch(input: ReuseSessionInput): ReuseSessionResult {
+  const { stored } = input
+  if (
+    stored.userId !== undefined
+    || stored.accessEndedCause !== "inactivity"
+    || stored.sessionEndGeneration === undefined
+  ) {
+    return undefined
+  }
+
+  // Absolute cookie/record may still be live for latch retention.
+  if (input.clock() >= stored.expiresAt) {
     return undefined
   }
 
   return {
     config: input.tenantConfig,
     context: sessionContextFromRecord(input.candidate.sid, stored),
-    kind: "ready",
+    kind: "inactivity-recovery",
     origin: input.origin,
-    outcome: "reuse"
+    sessionEndGeneration: stored.sessionEndGeneration
   }
+}
+
+/**
+ * Reuse path after structural cookie match. Authenticated success samples a fresh
+ * clock after Redis load. When idle binds (including equality pin), atomically clear
+ * for inactivity and return the typed recovery signal. Consumable anonymous
+ * inactivity evidence yields the same signal (not stuffed into SessionContext).
+ */
+async function tryReuseLoadedSession(input: ReuseSessionInput): Promise<ReuseSessionResult> {
+  const latch = tryReuseInactivityLatch(input)
+  if (latch !== undefined) {
+    return latch
+  }
+
+  if (input.stored.userId !== undefined) {
+    return await tryReuseAuthenticatedSession(input)
+  }
+
+  return tryReuseAnonymousSession(input)
 }

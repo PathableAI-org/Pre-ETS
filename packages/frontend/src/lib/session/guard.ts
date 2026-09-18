@@ -64,27 +64,51 @@ export async function assertGuardedSession(
  * fresh clock after load, dual deadlines. When idle binds (including equality pin),
  * atomically clear for inactivity. Missing/store error never claim inactivity.
  */
-// fallow-ignore-next-line complexity -- guard branches: missing / tenant / idle-clear / dual deadlines
 export async function guardAuthenticatedAccess(
   input: GuardAuthenticatedAccessInput,
   deps: GuardAuthenticatedAccessDependencies
 ): Promise<GuardAuthenticatedAccessResult> {
-  let readResult
+  const loaded = await readGuardRecord(input.sessionId, deps.store)
+  if (loaded.kind === "deny") {
+    return loaded
+  }
+
+  return await evaluateGuardRecord(input, deps, loaded.record, loaded.legacyAuthenticated)
+}
+
+async function clearIdleAndDeny(
+  input: GuardAuthenticatedAccessInput,
+  store: SessionStore,
+  nowSeconds: number
+): Promise<GuardAuthenticatedAccessResult> {
   try {
-    readResult = await deps.store.read(input.sessionId)
+    await store.clearForInactivity(input.sessionId, nowSeconds, input.tenantId)
   } catch (error) {
     if (error instanceof SessionStoreError) {
       return deny("store-error", false)
     }
     throw error
   }
+  return deny("inactivity", true)
+}
 
-  if (readResult.kind !== "record") {
-    return deny("missing", false)
-  }
+function defaultNowSeconds(): number {
+  return Math.floor(Date.now() / 1000)
+}
 
-  const { legacyAuthenticated, record } = readResult
+function deny(reason: GuardDenyReason, inactivity: boolean): Extract<
+  GuardAuthenticatedAccessResult,
+  { kind: "deny" }
+> {
+  return { inactivity, kind: "deny", reason }
+}
 
+async function evaluateGuardRecord(
+  input: GuardAuthenticatedAccessInput,
+  deps: GuardAuthenticatedAccessDependencies,
+  record: SessionRecord,
+  legacyAuthenticated: boolean
+): Promise<GuardAuthenticatedAccessResult> {
   if (record.tenantId !== input.tenantId) {
     return deny("tenant", false)
   }
@@ -110,27 +134,40 @@ export async function guardAuthenticatedAccess(
   }
 
   if (isInactivityClaim(classification)) {
-    try {
-      await deps.store.clearForInactivity(input.sessionId, nowSeconds, input.tenantId)
-    } catch (error) {
-      if (error instanceof SessionStoreError) {
-        return deny("store-error", false)
-      }
-      throw error
-    }
-    return deny("inactivity", true)
+    return await clearIdleAndDeny(input, deps.store, nowSeconds)
   }
 
   return deny("absolute", false)
 }
 
-function defaultNowSeconds(): number {
-  return Math.floor(Date.now() / 1000)
-}
-
-function deny(reason: GuardDenyReason, inactivity: boolean): Extract<
-  GuardAuthenticatedAccessResult,
-  { kind: "deny" }
+async function readGuardRecord(
+  sessionId: string,
+  store: SessionStore
+): Promise<
+  | Extract<GuardAuthenticatedAccessResult, { kind: "deny" }>
+  | {
+    readonly kind: "record"
+    readonly legacyAuthenticated: boolean
+    readonly record: SessionRecord
+  }
 > {
-  return { inactivity, kind: "deny", reason }
+  let readResult
+  try {
+    readResult = await store.read(sessionId)
+  } catch (error) {
+    if (error instanceof SessionStoreError) {
+      return deny("store-error", false)
+    }
+    throw error
+  }
+
+  if (readResult.kind !== "record") {
+    return deny("missing", false)
+  }
+
+  return {
+    kind: "record",
+    legacyAuthenticated: readResult.legacyAuthenticated,
+    record: readResult.record
+  }
 }

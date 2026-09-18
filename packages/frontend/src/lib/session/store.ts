@@ -19,6 +19,15 @@ export type ClearForInactivityResult =
   | { readonly kind: "cleared"; readonly record: SessionRecord }
   | { readonly kind: "denied" }
 
+export type IdleRenewalPlan =
+  | { readonly kind: "coalesced"; readonly record: SessionRecord }
+  | { readonly kind: "denied" }
+  | {
+    readonly kind: "write"
+    readonly preRenewalIdleExpiresAt: number
+    readonly renewed: SessionRecord
+  }
+
 export type RenewIdleActivityResult =
   | { readonly kind: "cleared"; readonly record: SessionRecord }
   | { readonly kind: "coalesced"; readonly record: SessionRecord }
@@ -257,7 +266,6 @@ export class RedisSessionStore implements SessionStore {
     throw new SessionStoreError("Session store operation timed out.")
   }
 
-  // fallow-ignore-next-line complexity -- CAS renew: coalesce, write, post-apply re-check
   private async applyIdleRenewal(
     sessionId: string,
     nowSeconds: number,
@@ -267,53 +275,28 @@ export class RedisSessionStore implements SessionStore {
       readonly record: SessionRecord
     }
   ): Promise<RenewIdleActivityResult> {
-    const { client, raw, record } = ctx
-    if (!isIdleAuthenticatedRecord(record)) {
-      return { kind: "denied" }
+    const plan = planIdleRenewal(ctx.record, nowSeconds)
+    if (plan.kind !== "write") {
+      return plan
     }
 
-    // now0: caller-supplied application clock (pre-CAS stamp).
-    if (nowSeconds >= record.idleExpiresAt || nowSeconds >= record.expiresAt) {
-      return { kind: "denied" }
-    }
-
-    const renewed = stampQualifyingActivity(record, nowSeconds)
-    if (
-      renewed.idleExpiresAt === undefined
-      || renewed.lastActivityAt === undefined
-      || renewed.idleDurationMinutes === undefined
-    ) {
-      return { kind: "denied" }
-    }
-    if (renewed.idleExpiresAt < record.idleExpiresAt) {
-      // Do not regress a newer accepted heartbeat.
-      return { kind: "denied" }
-    }
-    // ~1s coalesce: same computed idleExpiresAt ⇒ skip Redis write.
-    if (renewed.idleExpiresAt === record.idleExpiresAt) {
-      return { kind: "coalesced", record }
-    }
-
-    const preRenewalIdleExpiresAt = record.idleExpiresAt
-    const cas = await this.compareAndSetSession(client, sessionId, raw, renewed)
+    const cas = await this.compareAndSetSession(
+      ctx.client,
+      sessionId,
+      ctx.raw,
+      plan.renewed
+    )
     if (cas !== "ok") {
       return { kind: "denied" }
     }
 
-    // Post-apply re-check (still under lock): deadline wins over the extended write.
-    const now1 = this.clock()
-    if (now1 >= preRenewalIdleExpiresAt || now1 >= record.expiresAt) {
-      return await this.revertOrClearAfterFailedPostCheck(
-        client,
-        sessionId,
-        renewed,
-        record,
-        now1,
-        preRenewalIdleExpiresAt
-      )
-    }
-
-    return { kind: "renewed", record: renewed }
+    return await this.finishIdleRenewalAfterCas(
+      ctx.client,
+      sessionId,
+      plan.renewed,
+      ctx.record,
+      plan.preRenewalIdleExpiresAt
+    )
   }
 
   private async compareAndSetSession(
@@ -376,6 +359,29 @@ export class RedisSessionStore implements SessionStore {
       this.client = undefined
       throw toStoreError(error)
     }
+  }
+
+  private async finishIdleRenewalAfterCas(
+    client: RedisLikeClient,
+    sessionId: string,
+    renewed: SessionRecord,
+    prior: SessionRecord,
+    preRenewalIdleExpiresAt: number
+  ): Promise<RenewIdleActivityResult> {
+    // Post-apply re-check (still under lock): deadline wins over the extended write.
+    const now1 = this.clock()
+    if (now1 >= preRenewalIdleExpiresAt || now1 >= prior.expiresAt) {
+      return await this.revertOrClearAfterFailedPostCheck(
+        client,
+        sessionId,
+        renewed,
+        prior,
+        now1,
+        preRenewalIdleExpiresAt
+      )
+    }
+
+    return { kind: "renewed", record: renewed }
   }
 
   private idleLockKeyFor(id: string): string {
@@ -528,6 +534,46 @@ export class RedisSessionStore implements SessionStore {
 
 export class SessionStoreError extends Error {
   override readonly name = "SessionStoreError"
+}
+
+/**
+ * Pure pre-CAS idle renewal decision (exported for unit coverage / CRAP).
+ */
+export function planIdleRenewal(
+  record: SessionRecord,
+  nowSeconds: number
+): IdleRenewalPlan {
+  if (!isIdleAuthenticatedRecord(record)) {
+    return { kind: "denied" }
+  }
+
+  // now0: caller-supplied application clock (pre-CAS stamp).
+  if (nowSeconds >= record.idleExpiresAt || nowSeconds >= record.expiresAt) {
+    return { kind: "denied" }
+  }
+
+  const renewed = stampQualifyingActivity(record, nowSeconds)
+  if (
+    renewed.idleExpiresAt === undefined
+    || renewed.lastActivityAt === undefined
+    || renewed.idleDurationMinutes === undefined
+  ) {
+    return { kind: "denied" }
+  }
+  if (renewed.idleExpiresAt < record.idleExpiresAt) {
+    // Do not regress a newer accepted heartbeat.
+    return { kind: "denied" }
+  }
+  // ~1s coalesce: same computed idleExpiresAt ⇒ skip Redis write.
+  if (renewed.idleExpiresAt === record.idleExpiresAt) {
+    return { kind: "coalesced", record }
+  }
+
+  return {
+    kind: "write",
+    preRenewalIdleExpiresAt: record.idleExpiresAt,
+    renewed
+  }
 }
 
 function defaultClientFactory(url: string): RedisLikeClient {

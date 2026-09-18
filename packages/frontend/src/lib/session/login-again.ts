@@ -53,11 +53,16 @@ export type LoginAgainResult =
     readonly kind: "unavailable"
   }
 
+interface LoginAgainPrepared {
+  readonly config: SessionConfig
+  readonly kind: "ready"
+  readonly sessionExpiresAt: number
+}
+
 /**
  * Rotate a new anonymous session id + cookie, leave the old Redis tombstone intact,
  * then start OIDC initiation targeting only the new sid.
  */
-// fallow-ignore-next-line complexity -- rotate + create retry + initiate outcome mapping
 export async function loginAgain(
   input: LoginAgainInput,
   deps: LoginAgainDependencies
@@ -66,6 +71,102 @@ export async function loginAgain(
     return { kind: "unavailable" }
   }
 
+  const prepared = await prepareLoginAgain(
+    { ...input, cookieValue: input.cookieValue },
+    deps
+  )
+  if (prepared.kind !== "ready") {
+    return prepared
+  }
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const result = await rotateAndInitiate(input, deps, prepared)
+    if (result !== "retry") {
+      return result
+    }
+  }
+
+  return { kind: "unavailable" }
+}
+
+/** Map OIDC initiation outcome onto login-again result (exported for unit coverage). */
+export function mapInitiationToLoginAgain(
+  initiation: InitiateLoginOutcome,
+  sessionCookieValue: string,
+  sessionExpiresAt: number,
+  sessionId: string
+): LoginAgainResult {
+  if (initiation.kind === "redirect") {
+    return {
+      expiresAt: initiation.expiresAt,
+      kind: "redirect",
+      location: initiation.location,
+      oidcCookieValue: initiation.oidcCookieValue,
+      sessionCookieValue,
+      sessionExpiresAt,
+      sessionId
+    }
+  }
+  if (initiation.kind === "config-refusal") {
+    return { kind: "config-refusal" }
+  }
+  if (initiation.kind === "process-config") {
+    return { kind: "process-config" }
+  }
+  return { kind: "login-unavailable" }
+}
+
+async function createRotatedSession(
+  store: SessionStore,
+  sessionId: string,
+  record: SessionRecord
+): Promise<"ok" | "retry" | Extract<LoginAgainResult, { kind: "unavailable" }>> {
+  try {
+    const created = await store.create(sessionId, record)
+    if (created.kind !== "created") {
+      return "retry"
+    }
+    return "ok"
+  } catch (error) {
+    if (error instanceof SessionStoreError) {
+      return { kind: "unavailable" }
+    }
+    throw error
+  }
+}
+
+async function initiateOnRotatedSession(
+  input: LoginAgainInput,
+  deps: LoginAgainDependencies,
+  sessionId: string,
+  sessionCookieValue: string,
+  sessionExpiresAt: number
+): Promise<LoginAgainResult> {
+  const initiate = deps.initiate ?? initiateLogin
+  let initiation: InitiateLoginOutcome
+  try {
+    initiation = await initiate(
+      {
+        nowSeconds: input.nowSeconds,
+        origin: input.origin,
+        sessionId,
+        setupOutcome: "create",
+        tenantId: input.tenantId,
+        tenantRecord: input.tenantRecord
+      },
+      deps.initiateDeps
+    )
+  } catch {
+    return { kind: "unavailable" }
+  }
+
+  return mapInitiationToLoginAgain(initiation, sessionCookieValue, sessionExpiresAt, sessionId)
+}
+
+async function prepareLoginAgain(
+  input: LoginAgainInput & { readonly cookieValue: string },
+  deps: LoginAgainDependencies
+): Promise<Extract<LoginAgainResult, { kind: "process-config" | "unavailable" }> | LoginAgainPrepared> {
   let config: SessionConfig
   try {
     config = deps.config ?? getSessionConfig()
@@ -87,80 +188,49 @@ export async function loginAgain(
     return { kind: "process-config" }
   }
 
+  return { config, kind: "ready", sessionExpiresAt }
+}
+
+async function rotateAndInitiate(
+  input: LoginAgainInput,
+  deps: LoginAgainDependencies,
+  prepared: LoginAgainPrepared
+): Promise<"retry" | LoginAgainResult> {
   const createId = deps.createId ?? generateSessionId
   const signCookie = deps.signCookie ?? signSessionCookie
-
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    const sessionId = createId()
-    const record: SessionRecord = {
-      expiresAt: sessionExpiresAt,
-      tenantId: input.tenantId
-    }
-
-    let sessionCookieValue: string
-    try {
-      sessionCookieValue = await signCookie(
-        {
-          exp: sessionExpiresAt,
-          sid: sessionId,
-          tenant: input.tenantId
-        },
-        config
-      )
-    } catch {
-      return { kind: "process-config" }
-    }
-
-    try {
-      const created = await deps.store.create(sessionId, record)
-      if (created.kind !== "created") {
-        continue
-      }
-    } catch (error) {
-      if (error instanceof SessionStoreError) {
-        return { kind: "unavailable" }
-      }
-      throw error
-    }
-
-    const initiate = deps.initiate ?? initiateLogin
-    let initiation: InitiateLoginOutcome
-    try {
-      initiation = await initiate(
-        {
-          nowSeconds: input.nowSeconds,
-          origin: input.origin,
-          sessionId,
-          setupOutcome: "create",
-          tenantId: input.tenantId,
-          tenantRecord: input.tenantRecord
-        },
-        deps.initiateDeps
-      )
-    } catch {
-      return { kind: "unavailable" }
-    }
-
-    if (initiation.kind === "redirect") {
-      return {
-        expiresAt: initiation.expiresAt,
-        kind: "redirect",
-        location: initiation.location,
-        oidcCookieValue: initiation.oidcCookieValue,
-        sessionCookieValue,
-        sessionExpiresAt,
-        sessionId
-      }
-    }
-
-    if (initiation.kind === "config-refusal") {
-      return { kind: "config-refusal" }
-    }
-    if (initiation.kind === "process-config") {
-      return { kind: "process-config" }
-    }
-    return { kind: "login-unavailable" }
+  const sessionId = createId()
+  const record: SessionRecord = {
+    expiresAt: prepared.sessionExpiresAt,
+    tenantId: input.tenantId
   }
 
-  return { kind: "unavailable" }
+  let sessionCookieValue: string
+  try {
+    sessionCookieValue = await signCookie(
+      {
+        exp: prepared.sessionExpiresAt,
+        sid: sessionId,
+        tenant: input.tenantId
+      },
+      prepared.config
+    )
+  } catch {
+    return { kind: "process-config" }
+  }
+
+  const created = await createRotatedSession(deps.store, sessionId, record)
+  if (created === "retry") {
+    return "retry"
+  }
+  if (created !== "ok") {
+    return created
+  }
+
+  return await initiateOnRotatedSession(
+    input,
+    deps,
+    sessionId,
+    sessionCookieValue,
+    prepared.sessionExpiresAt
+  )
 }
