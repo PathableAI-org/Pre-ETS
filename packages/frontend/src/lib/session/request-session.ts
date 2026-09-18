@@ -1,8 +1,10 @@
+import { redirect, unauthorized } from "next/navigation"
+
 import type { TenantConfig } from "../tenant/types.ts"
 import type { SessionStore } from "./store.ts"
 
 import { getCurrentTenantConfig } from "../tenant/index.ts"
-import { assertGuardedSession, type GuardAuthenticatedAccessDependencies } from "./guard.ts"
+import { guardAuthenticatedAccess, type GuardAuthenticatedAccessDependencies } from "./guard.ts"
 import { parseSessionContextJson, type SessionContext } from "./types.ts"
 
 export interface RequestSession {
@@ -32,6 +34,8 @@ export function parseRequestSessionContext(rawHeader: null | string): SessionCon
 
 /**
  * Header → guarded session resolution (store + tenant config).
+ * Authenticated header that fails Redis re-validation fail-closes via auth interrupts
+ * (not an opaque Error) so a stale cookie cannot crash SSR.
  */
 export async function resolveRequestSession(
   rawHeader: null | string,
@@ -44,7 +48,28 @@ export async function resolveRequestSession(
   const guardDeps: GuardAuthenticatedAccessDependencies = deps.nowSeconds === undefined
     ? { store }
     : { nowSeconds: deps.nowSeconds, store }
-  const guarded = await assertGuardedSession(context, guardDeps)
-  const tenantConfig = await getCurrentTenantConfig(guarded.tenantId)
-  return { context: guarded, tenantConfig }
+
+  if (context.userId === undefined) {
+    const tenantConfig = await getCurrentTenantConfig(context.tenantId)
+    return { context, tenantConfig }
+  }
+
+  const result = await guardAuthenticatedAccess(
+    {
+      sessionId: context.sessionId,
+      tenantId: context.tenantId
+    },
+    guardDeps
+  )
+
+  if (result.kind !== "allow") {
+    // Stale/mismatched cookie: Proxy forwarded userId but Redis no longer grants access.
+    if (result.inactivity) {
+      redirect("/inactivity")
+    }
+    unauthorized()
+  }
+
+  const tenantConfig = await getCurrentTenantConfig(result.context.tenantId)
+  return { context: result.context, tenantConfig }
 }

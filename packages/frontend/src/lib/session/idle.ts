@@ -19,6 +19,8 @@ export type AccessEndClassification =
  *
  * Equality pin: when `idleExpiresAt === expiresAt` and `now >=` that instant → `"idle"`.
  * Absolute-only when `now >= expiresAt` and `now < idleExpiresAt`.
+ * Authenticated records without idle fields are `"missing"` (force reauth) — never
+ * `"still-valid"` — so setup reuse cannot disagree with the idle guard.
  */
 export function classifyAccessEnd(
   now: number,
@@ -31,11 +33,17 @@ export function classifyAccessEnd(
   const idleExpiresAt = record.idleExpiresAt
   const expiresAt = record.expiresAt
 
-  if (idleExpiresAt === undefined || record.userId === undefined) {
+  // Anonymous (no userId): only absolute expiry matters for classification callers.
+  if (record.userId === undefined) {
     if (isAbsoluteDeadlineElapsed(now, expiresAt)) {
       return "absolute"
     }
     return "still-valid"
+  }
+
+  // Authenticated without idle shape — Phase A legacy / corrupt; not reusable as auth.
+  if (idleExpiresAt === undefined) {
+    return "missing"
   }
 
   if (!isIdleDeadlineElapsed(now, idleExpiresAt) && !isAbsoluteDeadlineElapsed(now, expiresAt)) {

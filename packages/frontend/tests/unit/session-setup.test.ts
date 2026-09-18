@@ -283,6 +283,43 @@ describe("setupSession", () => {
       expect(createId).toHaveBeenCalled()
     })
 
+    it("rejects authenticated records missing idle fields even when not marked legacy", async () => {
+      const config = testConfig()
+      const now = 1_700_000_000
+      const expiresAt = now + 3600
+      const sessionId = fixedSessionId(36)
+      const createId = vi.fn(() => fixedSessionId(37))
+      const store = mockStore({
+        read: vi.fn().mockResolvedValue({
+          kind: "record",
+          // Parser would set legacyAuthenticated for true four-key JSON; defend the reuse path.
+          legacyAuthenticated: false,
+          record: {
+            expiresAt,
+            tenantId: "springfield",
+            userId: "user-sub",
+            userName: "Demo User"
+          }
+        })
+      })
+      const request = await signedRequest({ exp: expiresAt, sid: sessionId, tenant: "springfield" }, config)
+
+      const result = await setupSession(request, {
+        config,
+        createId,
+        nowSeconds: () => now,
+        resolveTenant: okTenant(),
+        store
+      })
+
+      expect(result.kind).toBe("ready")
+      if (result.kind === "ready") {
+        expect(result.outcome).toBe("create")
+        expect(result.context.userId).toBeUndefined()
+      }
+      expect(createId).toHaveBeenCalled()
+    })
+
     it("returns inactivity-recovery when anonymous latch is present", async () => {
       const config = testConfig()
       const now = 1_700_000_000

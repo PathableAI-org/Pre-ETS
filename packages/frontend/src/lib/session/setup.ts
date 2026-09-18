@@ -491,6 +491,11 @@ function tryReuseAnonymousSession(input: ReuseSessionInput): ReuseSessionResult 
 async function tryReuseAuthenticatedSession(
   input: ReuseSessionInput
 ): Promise<ReuseSessionResult> {
+  // Idle-shaped auth only — legacy / missing idle fields force fresh (matches guard).
+  if (input.stored.idleExpiresAt === undefined) {
+    return undefined
+  }
+
   // Fresh clock after Redis load before authenticated success or clearance.
   const freshNow = input.clock()
   const classification = classifyAccessEnd(freshNow, input.stored)
@@ -509,7 +514,7 @@ async function tryReuseAuthenticatedSession(
     return await clearIdleForReuseRecovery(input, freshNow)
   }
 
-  // Absolute-only (or missing idle shape) — no inactivity claim; force fresh.
+  // Absolute-only or missing idle shape — no inactivity claim; force fresh.
   return undefined
 }
 

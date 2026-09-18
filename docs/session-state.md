@@ -94,7 +94,11 @@ and does not re-initiate login. Downstream modules read identity through the
 server-only session accessor; they do not invent a second place to store the
 current user. Authenticated SSR / Server Actions that treat `userId` as proof of
 access re-read Redis through the session guard—they do not trust the forwarded
-header alone.
+header alone. When that re-read denies access (stale cookie, pre-idle legacy
+shape, missing record, or store failure), SSR fail-closes with an auth interrupt
+(`unauthorized` / inactivity redirect) instead of throwing an opaque Error.
+Pre-idle authenticated cookies are rejected at Proxy reuse and forced through a
+fresh anonymous session before login can stamp idle fields.
 
 ## Idle timeout rollout (Phase A → B → drain)
 

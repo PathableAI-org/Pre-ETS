@@ -92,6 +92,17 @@ describe("session idle helpers", () => {
       expect(isInactivityClaim(classification)).toBe(false)
     })
 
+    it("authenticated without idle fields is missing (not still-valid)", () => {
+      const record: SessionRecord = {
+        expiresAt: 1_700_086_400,
+        tenantId: "springfield",
+        userId: "user-1",
+        userName: "Demo User"
+      }
+      expect(classifyAccessEnd(1_700_000_060, record)).toBe("missing")
+      expect(isInactivityClaim(classifyAccessEnd(1_700_000_060, record))).toBe(false)
+    })
+
     it("returns still-valid when now is before both deadlines", () => {
       const record = authenticatedIdleRecord()
       const lastActivityAt = record.lastActivityAt ?? 0
