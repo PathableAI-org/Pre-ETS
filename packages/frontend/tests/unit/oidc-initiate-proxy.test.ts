@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/require-await, @typescript-eslint/unbound-method */
 import type { Configuration } from "openid-client"
 
 import { randomBytes } from "node:crypto"
@@ -232,7 +231,11 @@ describe("OIDC initiate / proxy contracts", () => {
         + "&state=abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLM"
         + "&kc_idp_hint=springfield-idp"
 
-      const store = mockTxStore()
+      const create = vi.fn().mockResolvedValue({
+        kind: "created",
+        state: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLM"
+      })
+      const store = mockTxStore({ create })
       const result = await initiateLogin(
         {
           nowSeconds: NOW,
@@ -244,15 +247,16 @@ describe("OIDC initiate / proxy contracts", () => {
         },
         {
           buildAuthorizationUrl: () => new URL(location),
-          calculatePKCECodeChallenge: async () => "challenge",
-          discover: async () => ({
-            authorizationEndpoint: "https://identity.example/auth",
-            configuration: {} as Configuration
-          }),
+          calculatePKCECodeChallenge: () => Promise.resolve("challenge"),
+          discover: () =>
+            Promise.resolve({
+              authorizationEndpoint: "https://identity.example/auth",
+              configuration: {} as Configuration
+            }),
           randomNonce: () => "nonce-value",
           randomPKCECodeVerifier: () => VERIFIER,
           resolveSecret: () => ({ kind: "none" }),
-          signCookie: async () => "oidc-cookie",
+          signCookie: () => Promise.resolve("oidc-cookie"),
           store,
           txConfig: testTxConfig()
         }
@@ -267,10 +271,14 @@ describe("OIDC initiate / proxy contracts", () => {
         expect(result.expiresAt).toBe(NOW + DEFAULT_OIDC_TX_TTL_SECONDS)
       }
 
-      expect(vi.mocked(store.create)).toHaveBeenCalledTimes(1)
-      const record = vi.mocked(store.create).mock.calls[0]?.[1]
-      expect(record?.codeVerifier).toBe(VERIFIER)
-      expect(record?.redirectUri).toBe("https://springfield.localhost/auth/callback")
+      expect(create).toHaveBeenCalledTimes(1)
+      expect(create).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          codeVerifier: VERIFIER,
+          redirectUri: "https://springfield.localhost/auth/callback"
+        })
+      )
     })
 
     it("ignores caller query overrides for issuer/client/connection/return host", async () => {
@@ -298,20 +306,20 @@ describe("OIDC initiate / proxy contracts", () => {
             }
             return url
           },
-          calculatePKCECodeChallenge: async () => "c",
-          discover: async (issuer, clientId) => {
+          calculatePKCECodeChallenge: () => Promise.resolve("c"),
+          discover: (issuer, clientId) => {
             expect(issuer).toBe(springfieldConfig.oidc.issuer)
             expect(clientId).toBe(springfieldConfig.oidc.clientId)
             expect(request.url).toContain("evil.example")
-            return {
+            return Promise.resolve({
               authorizationEndpoint: "https://identity.example/auth",
               configuration: {} as Configuration
-            }
+            })
           },
           randomNonce: () => "n",
           randomPKCECodeVerifier: () => VERIFIER,
           resolveSecret: () => ({ kind: "none" }),
-          signCookie: async () => "oidc-cookie",
+          signCookie: () => Promise.resolve("oidc-cookie"),
           store: mockTxStore(),
           txConfig: testTxConfig()
         }
@@ -390,9 +398,7 @@ describe("OIDC initiate / proxy contracts", () => {
           tenantRecord: springfieldRecord
         },
         {
-          discover: async () => {
-            throw new Error("discovery failed")
-          },
+          discover: () => Promise.reject(new Error("discovery failed")),
           resolveSecret: () => ({ kind: "none" }),
           store: mockTxStore()
         }
@@ -412,11 +418,12 @@ describe("OIDC initiate / proxy contracts", () => {
           tenantRecord: springfieldRecord
         },
         {
-          calculatePKCECodeChallenge: async () => "challenge",
-          discover: async () => ({
-            authorizationEndpoint: "https://identity.example/auth",
-            configuration: {} as Configuration
-          }),
+          calculatePKCECodeChallenge: () => Promise.resolve("challenge"),
+          discover: () =>
+            Promise.resolve({
+              authorizationEndpoint: "https://identity.example/auth",
+              configuration: {} as Configuration
+            }),
           randomNonce: () => "nonce",
           randomPKCECodeVerifier: () => VERIFIER,
           resolveSecret: () => ({ kind: "none" }),

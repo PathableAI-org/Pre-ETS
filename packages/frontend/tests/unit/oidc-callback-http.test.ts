@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/unbound-method */
 import type { AddressInfo } from "node:net"
 
 import { exportJWK, generateKeyPair, type JWK, SignJWT } from "jose"
@@ -59,13 +58,13 @@ describe("completeLogin HTTP callback with mock IdP", () => {
       { exp: NOW + 600, state: STATE, tenant: "springfield" },
       txConfig
     )
-    const sessionStore = mockSessionStore()
-    const store = mockTxStore({
-      consume: vi.fn().mockResolvedValue({
-        kind: "record",
-        record: txRecord(mockIdp.issuer)
-      })
+    const update = vi.fn().mockResolvedValue({ kind: "updated" })
+    const sessionStore = mockSessionStore({ update })
+    const consume = vi.fn().mockResolvedValue({
+      kind: "record",
+      record: txRecord(mockIdp.issuer)
     })
+    const store = mockTxStore({ consume })
 
     const callbackUrl = `https://springfield.localhost/auth/callback?code=mock-auth-code&state=${STATE}`
     const result = await completeLogin(
@@ -94,8 +93,8 @@ describe("completeLogin HTTP callback with mock IdP", () => {
       location: "https://springfield.localhost/",
       outcomeClass: "callback-success"
     })
-    expect(vi.mocked(store.consume)).toHaveBeenCalledWith(STATE)
-    expect(vi.mocked(sessionStore.update)).toHaveBeenCalledWith(SESSION_ID, {
+    expect(consume).toHaveBeenCalledWith(STATE)
+    expect(update).toHaveBeenCalledWith(SESSION_ID, {
       expiresAt: NOW + 86_400,
       tenantId: "springfield",
       userId: "mock-user-sub",
@@ -104,14 +103,15 @@ describe("completeLogin HTTP callback with mock IdP", () => {
   })
 })
 
-function mockSessionStore(): SessionStore {
+function mockSessionStore(overrides: Partial<SessionStore> = {}): SessionStore {
   return {
     create: vi.fn().mockResolvedValue({ kind: "created" }),
     read: vi.fn().mockResolvedValue({
       kind: "record",
       record: { expiresAt: NOW + 86_400, tenantId: "springfield" }
     }),
-    update: vi.fn().mockResolvedValue({ kind: "updated" })
+    update: vi.fn().mockResolvedValue({ kind: "updated" }),
+    ...overrides
   }
 }
 

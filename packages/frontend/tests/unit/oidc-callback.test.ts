@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/require-await, @typescript-eslint/unbound-method */
 import type { Configuration } from "openid-client"
 
 import { randomBytes } from "node:crypto"
@@ -109,10 +108,10 @@ describe("completeLogin", () => {
       { exp: NOW + 600, state: STATE, tenant: "springfield" },
       txConfig
     )
-    const sessionStore = mockSessionStore()
-    const store = mockTxStore({
-      consume: vi.fn().mockResolvedValue({ kind: "record", record: txRecord() })
-    })
+    const update = vi.fn().mockResolvedValue({ kind: "updated" })
+    const sessionStore = mockSessionStore({ update })
+    const consume = vi.fn().mockResolvedValue({ kind: "record", record: txRecord() })
+    const store = mockTxStore({ consume })
 
     const result = await completeLogin(
       {
@@ -125,19 +124,21 @@ describe("completeLogin", () => {
         tenantRecord: springfieldRecord
       },
       {
-        authorizationCodeGrant: (async () => ({
-          access_token: "access",
-          claims: () => ({
-            name: "Demo User",
-            sub: "user-sub"
+        authorizationCodeGrant: (() =>
+          Promise.resolve({
+            access_token: "access",
+            claims: () => ({
+              name: "Demo User",
+              sub: "user-sub"
+            }),
+            expiresIn: () => 3600,
+            token_type: "bearer"
+          })) as unknown as NonNullable<CompleteLoginDeps["authorizationCodeGrant"]>,
+        discover: () =>
+          Promise.resolve({
+            authorizationEndpoint: "https://identity.example/auth",
+            configuration: {} as Configuration
           }),
-          expiresIn: () => 3600,
-          token_type: "bearer"
-        })) as unknown as NonNullable<CompleteLoginDeps["authorizationCodeGrant"]>,
-        discover: async () => ({
-          authorizationEndpoint: "https://identity.example/auth",
-          configuration: {} as Configuration
-        }),
         resolveSecret: () => ({ kind: "none" }),
         sessionStore,
         store,
@@ -150,8 +151,8 @@ describe("completeLogin", () => {
       location: "https://springfield.localhost/",
       outcomeClass: "callback-success"
     })
-    expect(vi.mocked(store.consume)).toHaveBeenCalledWith(STATE)
-    expect(vi.mocked(sessionStore.update)).toHaveBeenCalledWith(SESSION_ID, {
+    expect(consume).toHaveBeenCalledWith(STATE)
+    expect(update).toHaveBeenCalledWith(SESSION_ID, {
       expiresAt: NOW + 86_400,
       tenantId: "springfield",
       userId: "user-sub",
@@ -234,10 +235,11 @@ describe("completeLogin", () => {
       },
       {
         authorizationCodeGrant: grant,
-        discover: async () => ({
-          authorizationEndpoint: "https://identity.example/auth",
-          configuration: {} as Configuration
-        }),
+        discover: () =>
+          Promise.resolve({
+            authorizationEndpoint: "https://identity.example/auth",
+            configuration: {} as Configuration
+          }),
         resolveSecret: () => ({ kind: "none" }),
         sessionStore: mockSessionStore(),
         store: mockTxStore({
@@ -272,13 +274,12 @@ describe("completeLogin", () => {
         tenantRecord: springfieldRecord
       },
       {
-        authorizationCodeGrant: async () => {
-          throw new Error("nonce mismatch")
-        },
-        discover: async () => ({
-          authorizationEndpoint: "https://identity.example/auth",
-          configuration: {} as Configuration
-        }),
+        authorizationCodeGrant: () => Promise.reject(new Error("nonce mismatch")),
+        discover: () =>
+          Promise.resolve({
+            authorizationEndpoint: "https://identity.example/auth",
+            configuration: {} as Configuration
+          }),
         resolveSecret: () => ({ kind: "none" }),
         sessionStore: mockSessionStore(),
         store: mockTxStore({
@@ -347,16 +348,18 @@ describe("completeLogin", () => {
         tenantRecord: springfieldRecord
       },
       {
-        authorizationCodeGrant: (async () => ({
-          access_token: "access",
-          claims: () => ({ sub: "user-sub" }),
-          expiresIn: () => 3600,
-          token_type: "bearer"
-        })) as unknown as NonNullable<CompleteLoginDeps["authorizationCodeGrant"]>,
-        discover: async () => ({
-          authorizationEndpoint: "https://identity.example/auth",
-          configuration: {} as Configuration
-        }),
+        authorizationCodeGrant: (() =>
+          Promise.resolve({
+            access_token: "access",
+            claims: () => ({ sub: "user-sub" }),
+            expiresIn: () => 3600,
+            token_type: "bearer"
+          })) as unknown as NonNullable<CompleteLoginDeps["authorizationCodeGrant"]>,
+        discover: () =>
+          Promise.resolve({
+            authorizationEndpoint: "https://identity.example/auth",
+            configuration: {} as Configuration
+          }),
         resolveSecret: () => ({ kind: "none" }),
         sessionStore: mockSessionStore({
           update: vi.fn().mockRejectedValue(new SessionStoreError("Session store unavailable."))
