@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto"
 
+import { parsePositiveSafeInteger, parseStoreTimeoutMs } from "../env/positive-int.ts"
 import {
   DEFAULT_SESSION_STORE_TIMEOUT_MS,
   isSafeUnixSeconds,
@@ -274,12 +275,19 @@ function parseOidcTxConfig(env: NodeJS.ProcessEnv | Record<string, string | unde
     throw new OidcTxConfigError("Invalid OIDC transaction signing secret.")
   }
 
+  const createError = (message: string): Error => new OidcTxConfigError(message)
   const ttlSeconds = parsePositiveSafeInteger(
     env.OIDC_TX_TTL_SECONDS,
     DEFAULT_OIDC_TX_TTL_SECONDS,
-    "OIDC_TX_TTL_SECONDS"
+    "OIDC_TX_TTL_SECONDS",
+    createError
   )
-  const storeTimeoutMs = parseStoreTimeoutMs(env.SESSION_STORE_TIMEOUT_MS)
+  const storeTimeoutMs = parseStoreTimeoutMs(
+    env.SESSION_STORE_TIMEOUT_MS,
+    DEFAULT_SESSION_STORE_TIMEOUT_MS,
+    NODE_TIMER_MAX_MS,
+    createError
+  )
   const keyPrefix = env.OIDC_TX_KEY_PREFIX === undefined || env.OIDC_TX_KEY_PREFIX === ""
     ? DEFAULT_OIDC_TX_KEY_PREFIX
     : env.OIDC_TX_KEY_PREFIX
@@ -290,37 +298,6 @@ function parseOidcTxConfig(env: NodeJS.ProcessEnv | Record<string, string | unde
     storeTimeoutMs,
     ttlSeconds
   }
-}
-
-function parsePositiveSafeInteger(
-  raw: string | undefined,
-  fallback: number,
-  name: string
-): number {
-  // fallow-ignore-next-line code-duplication -- same positive-integer env parse as session config
-  if (raw === undefined || raw === "") {
-    return fallback
-  }
-
-  if (!/^[1-9]\d*$/.test(raw)) {
-    throw new OidcTxConfigError(`${name} must be a positive integer.`)
-  }
-
-  const value = Number(raw)
-  if (!Number.isSafeInteger(value) || value <= 0) {
-    throw new OidcTxConfigError(`${name} must be a positive safe integer.`)
-  }
-
-  return value
-}
-
-function parseStoreTimeoutMs(raw: string | undefined): number {
-  const value = parsePositiveSafeInteger(raw, DEFAULT_SESSION_STORE_TIMEOUT_MS, "SESSION_STORE_TIMEOUT_MS")
-  if (value > NODE_TIMER_MAX_MS) {
-    throw new OidcTxConfigError("SESSION_STORE_TIMEOUT_MS exceeds the Node timer-safe range.")
-  }
-
-  return value
 }
 
 function readRequiredNonemptyStrings<const Keys extends readonly string[]>(

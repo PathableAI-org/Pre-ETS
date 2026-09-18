@@ -1,5 +1,7 @@
 import { randomBytes } from "node:crypto"
 
+import { parsePositiveSafeInteger, parseStoreTimeoutMs } from "../env/positive-int.ts"
+
 export const SESSION_COOKIE_NAME = "pathable-session"
 export const DEFAULT_SESSION_KEY_PREFIX = "pre-ets:session:"
 export const DEFAULT_SESSION_TTL_SECONDS = 86_400
@@ -144,12 +146,19 @@ export function parseSessionConfig(env: NodeJS.ProcessEnv | Record<string, strin
   assertRedisUrl(redisUrl)
 
   const signingSecret = parseSigningSecret(requireNonEmpty(env.SESSION_SIGNING_SECRET, "SESSION_SIGNING_SECRET"))
+  const createError = (message: string): Error => new SessionConfigError(message)
   const ttlSeconds = parsePositiveSafeInteger(
     env.SESSION_TTL_SECONDS,
     DEFAULT_SESSION_TTL_SECONDS,
-    "SESSION_TTL_SECONDS"
+    "SESSION_TTL_SECONDS",
+    createError
   )
-  const storeTimeoutMs = parseStoreTimeoutMs(env.SESSION_STORE_TIMEOUT_MS)
+  const storeTimeoutMs = parseStoreTimeoutMs(
+    env.SESSION_STORE_TIMEOUT_MS,
+    DEFAULT_SESSION_STORE_TIMEOUT_MS,
+    NODE_TIMER_MAX_MS,
+    createError
+  )
   const keyPrefix = env.SESSION_KEY_PREFIX === undefined || env.SESSION_KEY_PREFIX === ""
     ? DEFAULT_SESSION_KEY_PREFIX
     : env.SESSION_KEY_PREFIX
@@ -425,36 +434,6 @@ function parseOptionalAuthPair(record: Record<string, unknown>): OptionalAuthPai
   }
 
   return { kind: "present", userId, userName }
-}
-
-function parsePositiveSafeInteger(
-  raw: string | undefined,
-  fallback: number,
-  name: string
-): number {
-  if (raw === undefined || raw === "") {
-    return fallback
-  }
-
-  if (!/^[1-9]\d*$/.test(raw)) {
-    throw new SessionConfigError(`${name} must be a positive integer.`)
-  }
-
-  const value = Number(raw)
-  if (!Number.isSafeInteger(value) || value <= 0) {
-    throw new SessionConfigError(`${name} must be a positive safe integer.`)
-  }
-
-  return value
-}
-
-function parseStoreTimeoutMs(raw: string | undefined): number {
-  const value = parsePositiveSafeInteger(raw, DEFAULT_SESSION_STORE_TIMEOUT_MS, "SESSION_STORE_TIMEOUT_MS")
-  if (value > NODE_TIMER_MAX_MS) {
-    throw new SessionConfigError("SESSION_STORE_TIMEOUT_MS exceeds the Node timer-safe range.")
-  }
-
-  return value
 }
 
 function requireNonEmpty(value: string | undefined, name: string): string {
