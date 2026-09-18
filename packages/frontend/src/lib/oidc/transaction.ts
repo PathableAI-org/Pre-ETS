@@ -1,5 +1,6 @@
 import {
-  type RedisLikeClient,
+  createDefaultRedisClient,
+  type RedisOidcClient,
   type RedisStoreOptions,
   resolveRedisStoreConfig,
   withRedisTimeout
@@ -29,18 +30,18 @@ export interface OidcTransactionStore {
 }
 
 export class RedisOidcTransactionStore implements OidcTransactionStore {
-  private client: RedisLikeClient | undefined
-  private readonly clientFactory: (url: string) => RedisLikeClient
-  private connectPromise: Promise<RedisLikeClient> | undefined
+  private client: RedisOidcClient | undefined
+  private readonly clientFactory: (url: string) => RedisOidcClient
+  private connectPromise: Promise<RedisOidcClient> | undefined
   private readonly keyPrefix: string
   private readonly timeoutMs: number
   private readonly url: string
 
   constructor(
     config: Pick<OidcTxConfig, "keyPrefix" | "storeTimeoutMs"> & { readonly redisUrl: string },
-    options: RedisStoreOptions = {}
+    options: RedisStoreOptions<RedisOidcClient> = {}
   ) {
-    const resolved = resolveRedisStoreConfig(config, options)
+    const resolved = resolveRedisStoreConfig(config, options, createDefaultRedisClient)
     this.url = resolved.url
     this.keyPrefix = resolved.keyPrefix
     this.timeoutMs = resolved.timeoutMs
@@ -104,7 +105,7 @@ export class RedisOidcTransactionStore implements OidcTransactionStore {
     }
   }
 
-  private async connectedClient(): Promise<RedisLikeClient> {
+  private async connectedClient(): Promise<RedisOidcClient> {
     if (this.client?.isOpen) {
       return this.client
     }
@@ -127,7 +128,7 @@ export class RedisOidcTransactionStore implements OidcTransactionStore {
     return `${this.keyPrefix}${state}`
   }
 
-  private async openClient(): Promise<RedisLikeClient> {
+  private async openClient(): Promise<RedisOidcClient> {
     const client = this.clientFactory(this.url)
     this.client = client
     await this.withTimeout(client.connect())

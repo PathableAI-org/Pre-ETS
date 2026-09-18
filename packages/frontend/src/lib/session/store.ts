@@ -1,5 +1,6 @@
 import {
-  type RedisLikeClient,
+  createDefaultRedisClient,
+  type RedisSessionClient,
   type RedisStoreOptions,
   resolveRedisStoreConfig,
   withRedisTimeout
@@ -31,15 +32,15 @@ export type SessionStoreUpdateResult =
   | { readonly kind: "updated" }
 
 export class RedisSessionStore implements SessionStore {
-  private client: RedisLikeClient | undefined
-  private readonly clientFactory: (url: string) => RedisLikeClient
-  private connectPromise: Promise<RedisLikeClient> | undefined
+  private client: RedisSessionClient | undefined
+  private readonly clientFactory: (url: string) => RedisSessionClient
+  private connectPromise: Promise<RedisSessionClient> | undefined
   private readonly keyPrefix: string
   private readonly timeoutMs: number
   private readonly url: string
 
-  constructor(config: SessionConfig, options: RedisStoreOptions = {}) {
-    const resolved = resolveRedisStoreConfig(config, options)
+  constructor(config: SessionConfig, options: RedisStoreOptions<RedisSessionClient> = {}) {
+    const resolved = resolveRedisStoreConfig(config, options, createDefaultRedisClient)
     this.url = resolved.url
     this.keyPrefix = resolved.keyPrefix
     this.timeoutMs = resolved.timeoutMs
@@ -115,7 +116,7 @@ export class RedisSessionStore implements SessionStore {
     return result === null ? { kind: "missing" } : { kind: "updated" }
   }
 
-  private async connectedClient(): Promise<RedisLikeClient> {
+  private async connectedClient(): Promise<RedisSessionClient> {
     if (this.client?.isOpen) {
       return this.client
     }
@@ -142,7 +143,7 @@ export class RedisSessionStore implements SessionStore {
     return `${this.keyPrefix}${id}`
   }
 
-  private async openClient(): Promise<RedisLikeClient> {
+  private async openClient(): Promise<RedisSessionClient> {
     const client = this.clientFactory(this.url)
     this.client = client
     await this.withTimeout(client.connect())

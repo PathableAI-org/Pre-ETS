@@ -161,7 +161,6 @@ describe("RedisSessionStore", () => {
         const client = {
           connect: vi.fn().mockResolvedValue(undefined),
           get: getMock,
-          getDel: vi.fn().mockResolvedValue(null),
           isOpen: true,
           set: setMock
         }
@@ -252,7 +251,6 @@ describe("RedisSessionStore", () => {
       const clientFactory = vi.fn(() => ({
         connect: vi.fn().mockResolvedValue(undefined),
         get: vi.fn().mockResolvedValue(null),
-        getDel: vi.fn().mockResolvedValue(null),
         isOpen: true,
         set: setMock
       }))
@@ -279,7 +277,6 @@ describe("RedisSessionStore", () => {
       const clientFactory = vi.fn(() => ({
         connect: vi.fn().mockResolvedValue(undefined),
         get: vi.fn().mockResolvedValue(null),
-        getDel: vi.fn().mockResolvedValue(null),
         isOpen: true,
         set: setMock
       }))

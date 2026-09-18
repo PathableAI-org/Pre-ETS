@@ -1,9 +1,7 @@
 import { createClient } from "redis"
 
-export interface RedisLikeClient {
+export interface RedisConnectableClient {
   connect(): Promise<unknown>
-  get(key: string): Promise<null | string>
-  getDel(key: string): Promise<null | string>
   readonly isOpen: boolean
   on?(event: "error", listener: (error: unknown) => void): unknown
   set(
@@ -16,15 +14,28 @@ export interface RedisLikeClient {
   ): Promise<unknown>
 }
 
-export interface RedisStoreConfig {
-  readonly clientFactory: (url: string) => RedisLikeClient
+/** Default redis.js client surface used by both stores. */
+export type RedisLikeClient = RedisConnectableClient & {
+  get(key: string): Promise<null | string>
+  getDel(key: string): Promise<null | string>
+}
+
+export type RedisOidcClient = RedisConnectableClient & {
+  getDel(key: string): Promise<null | string>
+}
+
+export type RedisSessionClient = RedisConnectableClient & {
+  get(key: string): Promise<null | string>
+}
+export interface RedisStoreConfig<C extends RedisConnectableClient = RedisLikeClient> {
+  readonly clientFactory: (url: string) => C
   readonly keyPrefix: string
   readonly timeoutMs: number
   readonly url: string
 }
 
-export interface RedisStoreOptions {
-  readonly clientFactory?: (url: string) => RedisLikeClient
+export interface RedisStoreOptions<C extends RedisConnectableClient = RedisLikeClient> {
+  readonly clientFactory?: (url: string) => C
   readonly keyPrefix?: string
   readonly timeoutMs?: number
   readonly url?: string
@@ -40,16 +51,17 @@ export function createDefaultRedisClient(url: string): RedisLikeClient {
   return client
 }
 
-export function resolveRedisStoreConfig(
+export function resolveRedisStoreConfig<C extends RedisConnectableClient>(
   defaults: {
     readonly keyPrefix: string
     readonly redisUrl: string
     readonly storeTimeoutMs: number
   },
-  options: RedisStoreOptions = {}
-): RedisStoreConfig {
+  options: RedisStoreOptions<C>,
+  defaultClientFactory: (url: string) => C
+): RedisStoreConfig<C> {
   return {
-    clientFactory: options.clientFactory ?? createDefaultRedisClient,
+    clientFactory: options.clientFactory ?? defaultClientFactory,
     keyPrefix: options.keyPrefix ?? defaults.keyPrefix,
     timeoutMs: options.timeoutMs ?? defaults.storeTimeoutMs,
     url: options.url ?? defaults.redisUrl
