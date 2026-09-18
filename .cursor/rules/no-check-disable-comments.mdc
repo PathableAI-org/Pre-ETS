@@ -1,0 +1,23 @@
+---
+description: Agents must never disable lint/check tools via comments; fix root causes or ask a human
+alwaysApply: true
+---
+
+# No check-disable comments
+
+Coding agents MUST NOT disable ESLint, Fallow, TypeScript, or any other check with comments or config suppressions.
+
+## Forbidden (agents)
+
+- `eslint-disable`, `eslint-disable-next-line`, `eslint-disable-line`
+- `@ts-ignore`, `@ts-expect-error`, `@ts-nocheck`
+- Fallow / knip / biome / oxlint / prettier ignore comments used to silence findings
+- File-level or inline suppressions added only to pass pre-commit or CI
+
+## Required instead
+
+1. Fix the underlying error or warning.
+2. If a finding seems like a false positive or truly needs a disable, **stop and ask the human user**. Do not add the suppression yourself.
+3. Only human developers may approve and add check disables.
+
+Pre-commit hook failures are signals to fix code, not to silence the checker.

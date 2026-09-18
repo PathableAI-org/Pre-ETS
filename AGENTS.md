@@ -21,6 +21,11 @@
 - Validate with `pnpm typecheck`, `pnpm build`, and `pnpm lint`.
 - Run `pnpm check:unused` before committing; investigate findings rather than
   adding blanket suppressions. `pnpm fallow` provides broader analysis.
+- Coding agents MUST NOT disable ESLint, Fallow, TypeScript, or any other check
+  via comments or suppressions (`eslint-disable`, `@ts-ignore`,
+  `@ts-expect-error`, ignore directives, and similar). Always fix the underlying
+  error or warning. Only human developers may disable a check; if an agent
+  believes a finding truly needs a disable, it must stop and ask the user.
 - Each workspace owns a `dprint.json` inheriting the root settings. Root formatting
   scripts process top-level files, `.github`, and `docs`, then delegate to each
   workspace. Keep shared formatting policy at the root and sorting in
