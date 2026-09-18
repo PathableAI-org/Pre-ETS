@@ -1,9 +1,11 @@
 import { type NextRequest, NextResponse } from "next/server"
 
-import { completeLogin } from "./lib/oidc/callback.ts"
+import type { TenantConfig } from "./lib/tenant/types.ts"
+
+import { completeLogin, type CompleteLoginOutcome } from "./lib/oidc/callback.ts"
 import { isDocumentNavigation } from "./lib/oidc/document-navigation.ts"
 import { extendedForbiddenBody } from "./lib/oidc/forbidden-body.ts"
-import { initiateLogin } from "./lib/oidc/initiate.ts"
+import { initiateLogin, type InitiateLoginOutcome } from "./lib/oidc/initiate.ts"
 import { approvedApplicationOrigin, isAuthCallbackPath, sessionCookieForRedirect } from "./lib/oidc/initiation-http.ts"
 import { RedisOidcTransactionStore } from "./lib/oidc/transaction.ts"
 import {
@@ -37,124 +39,20 @@ let store: RedisSessionStore | undefined
 let oidcStore: RedisOidcTransactionStore | undefined
 let operations: ReturnType<typeof createEnvTenantOperations> | undefined
 
-// fallow-ignore-next-line complexity -- request-boundary: callback, setup, short-circuit, initiate
 export async function proxy(request: NextRequest): Promise<NextResponse> {
   const requestHeaders = new Headers(request.headers)
   stripReservedHeaders(requestHeaders)
 
-  const config = loadProxyConfig()
-  if (config === undefined) {
-    return terminalResponse(500)
+  const loaded = loadProxyRuntime()
+  if (loaded.kind === "terminal") {
+    return loaded.response
   }
-
-  let txConfig: OidcTxConfig
-  try {
-    txConfig = getOidcTxConfig()
-  } catch (error) {
-    if (error instanceof OidcTxConfigError) {
-      return terminalResponse(500)
-    }
-
-    throw error
-  }
-
-  const deps = sessionDependencies(config, txConfig)
 
   if (isAuthCallbackPath(request.nextUrl.pathname)) {
-    if (request.method !== "GET") {
-      logOutcome("401-nonget-callback")
-      return new NextResponse(null, {
-        headers: { "Cache-Control": CACHE_CONTROL },
-        status: 401
-      })
-    }
-
-    return await handleAuthCallback(request, deps, txConfig)
+    return await routeAuthCallback(request, loaded.deps, loaded.txConfig)
   }
 
-  const result = await setupSession(request, {
-    config,
-    resolveTenant: async () => await mapTenantResolve(deps.operations, request),
-    signCookie: signSessionCookie,
-    store: deps.store,
-    verifyCookie: verifySessionCookie
-  })
-
-  if (result.kind === "terminal") {
-    return terminalResponse(result.status, result.message)
-  }
-
-  if (result.context.userId !== undefined) {
-    logOutcome(result.outcome === "reuse" ? "authenticated-reuse" : "authenticated-create")
-    return readyResponse(requestHeaders, result.context, result.origin, result.cookieValue)
-  }
-
-  if (!isDocumentNavigation(request)) {
-    logOutcome("401-nondoc")
-    return new NextResponse(null, {
-      headers: { "Cache-Control": CACHE_CONTROL },
-      status: 401
-    })
-  }
-
-  const origin = approvedApplicationOrigin(
-    request.headers.get("host") ?? undefined,
-    request.nextUrl,
-    { tenantOrigin: result.origin }
-  )
-  if (origin === undefined) {
-    logOutcome("login-unavailable")
-    return loginUnavailableRedirect(303)
-  }
-
-  let initiation
-  try {
-    initiation = await initiateLogin(
-      {
-        nowSeconds: Math.floor(Date.now() / 1000),
-        origin,
-        sessionId: result.context.sessionId,
-        setupOutcome: result.outcome,
-        tenantId: result.context.tenantId,
-        tenantRecord: {
-          config: result.config,
-          slug: result.context.tenantId
-        }
-      },
-      {
-        store: deps.oidcStore,
-        txConfig
-      }
-    )
-  } catch {
-    return terminalResponse(500)
-  }
-
-  if (initiation.kind === "redirect") {
-    logOutcome(result.outcome === "reuse" ? "reuse" : "redirect")
-    const response = NextResponse.redirect(initiation.location, 302)
-    response.headers.set("Cache-Control", CACHE_CONTROL)
-    attachOidcCookie(response, initiation.expiresAt, initiation.oidcCookieValue)
-    const sessionCookie = sessionCookieForRedirect(result.outcome, result.cookieValue)
-    if (sessionCookie !== undefined) {
-      attachSessionCookie(response, result.context.expiresAt, sessionCookie)
-    }
-
-    return response
-  }
-
-  if (initiation.kind === "config-refusal") {
-    logOutcome("403-config")
-    return extendedForbiddenResponse()
-  }
-
-  if (initiation.kind === "process-config") {
-    logOutcome("process-config")
-    return terminalResponse(500)
-  }
-
-  logOutcome("login-unavailable")
-  return loginUnavailableRedirect(302)
+  return await handleSessionRequest(request, requestHeaders, loaded.deps, loaded.txConfig)
 }
 
 export const config = {
@@ -212,7 +110,6 @@ function extendedForbiddenResponse(): NextResponse {
   })
 }
 
-// fallow-ignore-next-line complexity -- callback tenant resolve + completeLogin outcome mapping
 async function handleAuthCallback(
   request: NextRequest,
   deps: ReturnType<typeof sessionDependencies>,
@@ -239,7 +136,7 @@ async function handleAuthCallback(
     return response
   }
 
-  let completion
+  let completion: CompleteLoginOutcome
   try {
     completion = await completeLogin(
       {
@@ -263,6 +160,170 @@ async function handleAuthCallback(
     return response
   }
 
+  return mapCompleteLoginOutcome(completion)
+}
+
+async function handleSessionRequest(
+  request: NextRequest,
+  requestHeaders: Headers,
+  deps: ReturnType<typeof sessionDependencies>,
+  txConfig: OidcTxConfig
+): Promise<NextResponse> {
+  const result = await setupSession(request, {
+    config: deps.sessionConfig,
+    resolveTenant: async () => await mapTenantResolve(deps.operations, request),
+    signCookie: signSessionCookie,
+    store: deps.store,
+    verifyCookie: verifySessionCookie
+  })
+
+  if (result.kind === "terminal") {
+    return terminalResponse(result.status, result.message)
+  }
+
+  if (result.context.userId !== undefined) {
+    logOutcome(result.outcome === "reuse" ? "authenticated-reuse" : "authenticated-create")
+    return readyResponse(requestHeaders, result.context, result.origin, result.cookieValue)
+  }
+
+  return await initiateForUnauthenticated(request, deps, txConfig, result)
+}
+
+function handleUnauthenticatedNavigation(request: NextRequest): NextResponse | undefined {
+  if (!isDocumentNavigation(request)) {
+    logOutcome("401-nondoc")
+    return new NextResponse(null, {
+      headers: { "Cache-Control": CACHE_CONTROL },
+      status: 401
+    })
+  }
+
+  return undefined
+}
+
+async function initiateForUnauthenticated(
+  request: NextRequest,
+  deps: ReturnType<typeof sessionDependencies>,
+  txConfig: OidcTxConfig,
+  result: {
+    readonly config: TenantConfig
+    readonly context: SessionContext
+    readonly cookieValue?: string
+    readonly origin: "host-associated" | "local-static"
+    readonly outcome: "create" | "reuse"
+  }
+): Promise<NextResponse> {
+  const unauthenticated = handleUnauthenticatedNavigation(request)
+  if (unauthenticated !== undefined) {
+    return unauthenticated
+  }
+
+  const origin = approvedApplicationOrigin(
+    request.headers.get("host") ?? undefined,
+    request.nextUrl,
+    { tenantOrigin: result.origin }
+  )
+  if (origin === undefined) {
+    logOutcome("login-unavailable")
+    return loginUnavailableRedirect(303)
+  }
+
+  let initiation: InitiateLoginOutcome
+  try {
+    initiation = await initiateLogin(
+      {
+        nowSeconds: Math.floor(Date.now() / 1000),
+        origin,
+        sessionId: result.context.sessionId,
+        setupOutcome: result.outcome,
+        tenantId: result.context.tenantId,
+        tenantRecord: {
+          config: result.config,
+          slug: result.context.tenantId
+        }
+      },
+      {
+        store: deps.oidcStore,
+        txConfig
+      }
+    )
+  } catch {
+    return terminalResponse(500)
+  }
+
+  return mapInitiateLoginOutcome(initiation, {
+    sessionCookieValue: result.cookieValue,
+    sessionExpiresAt: result.context.expiresAt,
+    setupOutcome: result.outcome
+  })
+}
+
+function loadProxyConfig() {
+  try {
+    return getSessionConfig()
+  } catch (error) {
+    if (error instanceof SessionConfigError) {
+      return undefined
+    }
+
+    throw error
+  }
+}
+
+function loadProxyRuntime():
+  | {
+    readonly deps: ReturnType<typeof sessionDependencies>
+    readonly kind: "ready"
+    readonly txConfig: OidcTxConfig
+  }
+  | {
+    readonly kind: "terminal"
+    readonly response: NextResponse
+  }
+{
+  const config = loadProxyConfig()
+  if (config === undefined) {
+    return { kind: "terminal", response: terminalResponse(500) }
+  }
+
+  let txConfig: OidcTxConfig
+  try {
+    txConfig = getOidcTxConfig()
+  } catch (error) {
+    if (error instanceof OidcTxConfigError) {
+      return { kind: "terminal", response: terminalResponse(500) }
+    }
+
+    throw error
+  }
+
+  return {
+    deps: sessionDependencies(config, txConfig),
+    kind: "ready",
+    txConfig
+  }
+}
+
+/** Relative Location avoids constructing an absolute URL from an untrusted Host. */
+function loginUnavailableRedirect(status: 302 | 303): NextResponse {
+  return new NextResponse(null, {
+    headers: {
+      "Cache-Control": CACHE_CONTROL,
+      Location: LOGIN_UNAVAILABLE_PATH
+    },
+    status
+  })
+}
+
+function logOutcome(outcomeClass: string): void {
+  try {
+    console.error(JSON.stringify({ outcomeClass }))
+  } catch {
+    // Diagnostics must never change the response.
+  }
+}
+
+function mapCompleteLoginOutcome(completion: CompleteLoginOutcome): NextResponse {
   if (completion.kind === "redirect") {
     logOutcome("callback-success")
     const response = NextResponse.redirect(completion.location, 303)
@@ -291,35 +352,39 @@ async function handleAuthCallback(
   return unavailable
 }
 
-function loadProxyConfig() {
-  try {
-    return getSessionConfig()
-  } catch (error) {
-    if (error instanceof SessionConfigError) {
-      return undefined
+function mapInitiateLoginOutcome(
+  initiation: InitiateLoginOutcome,
+  session: {
+    readonly sessionCookieValue: string | undefined
+    readonly sessionExpiresAt: number
+    readonly setupOutcome: "create" | "reuse"
+  }
+): NextResponse {
+  if (initiation.kind === "redirect") {
+    logOutcome(session.setupOutcome === "reuse" ? "reuse" : "redirect")
+    const response = NextResponse.redirect(initiation.location, 302)
+    response.headers.set("Cache-Control", CACHE_CONTROL)
+    attachOidcCookie(response, initiation.expiresAt, initiation.oidcCookieValue)
+    const sessionCookie = sessionCookieForRedirect(session.setupOutcome, session.sessionCookieValue)
+    if (sessionCookie !== undefined) {
+      attachSessionCookie(response, session.sessionExpiresAt, sessionCookie)
     }
 
-    throw error
+    return response
   }
-}
 
-/** Relative Location avoids constructing an absolute URL from an untrusted Host. */
-function loginUnavailableRedirect(status: 302 | 303): NextResponse {
-  return new NextResponse(null, {
-    headers: {
-      "Cache-Control": CACHE_CONTROL,
-      Location: LOGIN_UNAVAILABLE_PATH
-    },
-    status
-  })
-}
-
-function logOutcome(outcomeClass: string): void {
-  try {
-    console.error(JSON.stringify({ outcomeClass }))
-  } catch {
-    // Diagnostics must never change the response.
+  if (initiation.kind === "config-refusal") {
+    logOutcome("403-config")
+    return extendedForbiddenResponse()
   }
+
+  if (initiation.kind === "process-config") {
+    logOutcome("process-config")
+    return terminalResponse(500)
+  }
+
+  logOutcome("login-unavailable")
+  return loginUnavailableRedirect(302)
 }
 
 async function mapTenantResolve(
@@ -356,6 +421,22 @@ function readyResponse(
   return response
 }
 
+async function routeAuthCallback(
+  request: NextRequest,
+  deps: ReturnType<typeof sessionDependencies>,
+  txConfig: OidcTxConfig
+): Promise<NextResponse> {
+  if (request.method !== "GET") {
+    logOutcome("401-nonget-callback")
+    return new NextResponse(null, {
+      headers: { "Cache-Control": CACHE_CONTROL },
+      status: 401
+    })
+  }
+
+  return await handleAuthCallback(request, deps, txConfig)
+}
+
 function sessionDependencies(config: SessionConfig, txConfig: OidcTxConfig) {
   store ??= new RedisSessionStore(config)
   oidcStore ??= new RedisOidcTransactionStore({
@@ -364,7 +445,7 @@ function sessionDependencies(config: SessionConfig, txConfig: OidcTxConfig) {
     storeTimeoutMs: txConfig.storeTimeoutMs
   })
   operations ??= createEnvTenantOperations()
-  return { oidcStore, operations, store }
+  return { oidcStore, operations, sessionConfig: config, store }
 }
 
 function stripReservedHeaders(headers: Headers): void {

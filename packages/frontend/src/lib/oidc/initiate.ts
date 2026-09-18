@@ -1,11 +1,13 @@
 import * as client from "openid-client"
 
 import type { TenantConfig, TenantRecord } from "../tenant/types.ts"
+import type { DiscoveredOidcClient } from "./discovery.ts"
+import type { discoverOidcIssuer } from "./discovery.ts"
+import type { OidcSecretResolution } from "./secrets.ts"
 import type { OidcTransactionStore } from "./transaction.ts"
 
 import { signOidcCorrelationCookie } from "./cookie.ts"
-import { discoverOidcIssuer } from "./discovery.ts"
-import { type OidcSecretResolution, OidcSecretsConfigError, resolveOidcClientSecret } from "./secrets.ts"
+import { resolveClientAndDiscover, type ResolveClientAndDiscoverDeps } from "./resolve-client.ts"
 import {
   absoluteOidcExpirySeconds,
   generateOidcState,
@@ -59,7 +61,6 @@ export type InitiateLoginOutcome =
     readonly outcomeClass: "process-config"
   }
 
-// fallow-ignore-next-line complexity -- ordered OIDC initiation steps with typed outcomes
 export async function initiateLogin(
   input: InitiateLoginInput,
   deps: InitiateLoginDeps
@@ -69,36 +70,193 @@ export async function initiateLogin(
     return { kind: "config-refusal", outcomeClass: "403-config" }
   }
 
-  let secretResolution: OidcSecretResolution
-  try {
-    secretResolution = (deps.resolveSecret ?? resolveOidcClientSecret)(
-      input.tenantId,
-      oidc.clientAuth
-    )
-  } catch (error) {
-    if (error instanceof OidcSecretsConfigError) {
-      return { kind: "process-config", outcomeClass: "process-config" }
-    }
-
-    throw error
+  const resolved = await resolveClientAndDiscover(
+    {
+      clientAuth: oidc.clientAuth,
+      clientId: oidc.clientId,
+      issuer: oidc.issuer,
+      tenantId: input.tenantId
+    },
+    resolveDiscoverDeps(deps)
+  )
+  if (resolved.kind !== "ok") {
+    return mapResolveFailure(resolved.kind)
   }
 
-  if (secretResolution.kind === "config-refusal") {
-    return { kind: "config-refusal", outcomeClass: "403-config" }
+  const prepared = await prepareTransaction(input, oidc, deps)
+  if (prepared.kind !== "ok") {
+    return prepared
   }
 
-  const clientSecret = secretResolution.kind === "secret" ? secretResolution.secret : undefined
+  return await buildRedirectOutcome({
+    buildAuthorizationUrl: deps.buildAuthorizationUrl ?? client.buildAuthorizationUrl,
+    clientSecret: resolved.clientSecret,
+    codeChallenge: prepared.codeChallenge,
+    codeVerifier: prepared.codeVerifier,
+    discovered: resolved.discovered,
+    expiresAt: prepared.expiresAt,
+    nonce: prepared.nonce,
+    oidc,
+    redirectUri: prepared.redirectUri,
+    signCookie: deps.signCookie ?? signOidcCorrelationCookie,
+    state: prepared.state,
+    tenantId: input.tenantId,
+    txConfig: prepared.txConfig
+  })
+}
 
-  let discovered: Awaited<ReturnType<typeof discoverOidcIssuer>>
+function approvedCallbackUri(origin: string): string {
+  const base = new URL(origin)
+  return `${base.origin}/auth/callback`
+}
+
+function buildAuthorizationLocation(input: {
+  readonly buildAuthorizationUrl: typeof client.buildAuthorizationUrl
+  readonly clientSecret: string | undefined
+  readonly codeChallenge: string
+  readonly codeVerifier: string
+  readonly discovered: DiscoveredOidcClient
+  readonly nonce: string
+  readonly oidc: TenantConfig["oidc"]
+  readonly redirectUri: string
+  readonly state: string
+}): InitiateLoginOutcome | { readonly kind: "ok"; readonly location: string } {
+  const parameters: Record<string, string> = {
+    client_id: input.oidc.clientId,
+    code_challenge: input.codeChallenge,
+    code_challenge_method: "S256",
+    nonce: input.nonce,
+    redirect_uri: input.redirectUri,
+    response_type: "code",
+    scope: "openid",
+    state: input.state
+  }
+
+  if (input.oidc.connection !== undefined) {
+    parameters.kc_idp_hint = input.oidc.connection
+  }
+
+  let location: string
   try {
-    const discover = deps.discover ?? discoverOidcIssuer
-    discovered = clientSecret === undefined
-      ? await discover(oidc.issuer, oidc.clientId)
-      : await discover(oidc.issuer, oidc.clientId, { clientSecret })
+    location = input.buildAuthorizationUrl(input.discovered.configuration, parameters).toString()
   } catch {
     return { kind: "login-unavailable", outcomeClass: "login-unavailable" }
   }
 
+  if (
+    location.includes(input.codeVerifier)
+    || (input.clientSecret !== undefined && location.includes(input.clientSecret))
+  ) {
+    return { kind: "login-unavailable", outcomeClass: "login-unavailable" }
+  }
+
+  return { kind: "ok", location }
+}
+
+async function buildRedirectOutcome(input: {
+  readonly buildAuthorizationUrl: typeof client.buildAuthorizationUrl
+  readonly clientSecret: string | undefined
+  readonly codeChallenge: string
+  readonly codeVerifier: string
+  readonly discovered: DiscoveredOidcClient
+  readonly expiresAt: number
+  readonly nonce: string
+  readonly oidc: TenantConfig["oidc"]
+  readonly redirectUri: string
+  readonly signCookie: typeof signOidcCorrelationCookie
+  readonly state: string
+  readonly tenantId: string
+  readonly txConfig: OidcTxConfig
+}): Promise<InitiateLoginOutcome> {
+  const located = buildAuthorizationLocation(input)
+  if (located.kind !== "ok") {
+    return located
+  }
+
+  const oidcCookieValue = await input.signCookie(
+    {
+      exp: input.expiresAt,
+      state: input.state,
+      tenant: input.tenantId
+    },
+    input.txConfig
+  )
+
+  return {
+    expiresAt: input.expiresAt,
+    kind: "redirect",
+    location: located.location,
+    oidcCookieValue,
+    outcomeClass: "redirect"
+  }
+}
+
+function buildTransactionRecord(input: {
+  readonly codeVerifier: string
+  readonly expiresAt: number
+  readonly nonce: string
+  readonly oidc: TenantConfig["oidc"]
+  readonly redirectUri: string
+  readonly sessionId: string
+  readonly tenantId: string
+}): OidcTransactionRecord {
+  if (input.oidc.connection === undefined) {
+    return {
+      clientId: input.oidc.clientId,
+      codeVerifier: input.codeVerifier,
+      expiresAt: input.expiresAt,
+      issuer: input.oidc.issuer,
+      nonce: input.nonce,
+      redirectUri: input.redirectUri,
+      sessionId: input.sessionId,
+      tenantId: input.tenantId
+    }
+  }
+
+  return {
+    clientId: input.oidc.clientId,
+    codeVerifier: input.codeVerifier,
+    connection: input.oidc.connection,
+    expiresAt: input.expiresAt,
+    issuer: input.oidc.issuer,
+    nonce: input.nonce,
+    redirectUri: input.redirectUri,
+    sessionId: input.sessionId,
+    tenantId: input.tenantId
+  }
+}
+
+function mapResolveFailure(
+  kind: "config-refusal" | "login-unavailable" | "process-config"
+): InitiateLoginOutcome {
+  if (kind === "config-refusal") {
+    return { kind: "config-refusal", outcomeClass: "403-config" }
+  }
+
+  if (kind === "process-config") {
+    return { kind: "process-config", outcomeClass: "process-config" }
+  }
+
+  return { kind: "login-unavailable", outcomeClass: "login-unavailable" }
+}
+
+async function prepareTransaction(
+  input: InitiateLoginInput,
+  oidc: TenantConfig["oidc"],
+  deps: InitiateLoginDeps
+): Promise<
+  | InitiateLoginOutcome
+  | {
+    readonly codeChallenge: string
+    readonly codeVerifier: string
+    readonly expiresAt: number
+    readonly kind: "ok"
+    readonly nonce: string
+    readonly redirectUri: string
+    readonly state: string
+    readonly txConfig: OidcTxConfig
+  }
+> {
   const txConfig = deps.txConfig ?? getOidcTxConfig()
   const expiresAt = absoluteOidcExpirySeconds(input.nowSeconds, txConfig.ttlSeconds)
   const redirectUri = approvedCallbackUri(input.origin)
@@ -106,86 +264,41 @@ export async function initiateLogin(
   const calculatePKCECodeChallenge = deps.calculatePKCECodeChallenge
     ?? client.calculatePKCECodeChallenge
   const randomNonce = deps.randomNonce ?? client.randomNonce
-  const buildAuthorizationUrl = deps.buildAuthorizationUrl ?? client.buildAuthorizationUrl
   const codeVerifier = randomPKCECodeVerifier()
   const codeChallenge = await calculatePKCECodeChallenge(codeVerifier)
   const nonce = randomNonce()
   const state = generateOidcState()
 
-  const record: OidcTransactionRecord = oidc.connection === undefined
-    ? {
-      clientId: oidc.clientId,
-      codeVerifier,
-      expiresAt,
-      issuer: oidc.issuer,
-      nonce,
-      redirectUri,
-      sessionId: input.sessionId,
-      tenantId: input.tenantId
-    }
-    : {
-      clientId: oidc.clientId,
-      codeVerifier,
-      connection: oidc.connection,
-      expiresAt,
-      issuer: oidc.issuer,
-      nonce,
-      redirectUri,
-      sessionId: input.sessionId,
-      tenantId: input.tenantId
-    }
+  const record = buildTransactionRecord({
+    codeVerifier,
+    expiresAt,
+    nonce,
+    oidc,
+    redirectUri,
+    sessionId: input.sessionId,
+    tenantId: input.tenantId
+  })
 
   const createResult = await deps.store.create(state, record)
   if (createResult.kind !== "created") {
     return { kind: "login-unavailable", outcomeClass: "login-unavailable" }
   }
 
-  const parameters: Record<string, string> = {
-    client_id: oidc.clientId,
-    code_challenge: codeChallenge,
-    code_challenge_method: "S256",
-    nonce,
-    redirect_uri: redirectUri,
-    response_type: "code",
-    scope: "openid",
-    state: createResult.state
-  }
-
-  if (oidc.connection !== undefined) {
-    parameters.kc_idp_hint = oidc.connection
-  }
-
-  let location: string
-  try {
-    location = buildAuthorizationUrl(discovered.configuration, parameters).toString()
-  } catch {
-    return { kind: "login-unavailable", outcomeClass: "login-unavailable" }
-  }
-
-  if (location.includes(codeVerifier) || (clientSecret !== undefined && location.includes(clientSecret))) {
-    return { kind: "login-unavailable", outcomeClass: "login-unavailable" }
-  }
-
-  const signCookie = deps.signCookie ?? signOidcCorrelationCookie
-  const oidcCookieValue = await signCookie(
-    {
-      exp: expiresAt,
-      state: createResult.state,
-      tenant: input.tenantId
-    },
-    txConfig
-  )
-
   return {
+    codeChallenge,
+    codeVerifier,
     expiresAt,
-    kind: "redirect",
-    location,
-    oidcCookieValue,
-    outcomeClass: "redirect"
+    kind: "ok",
+    nonce,
+    redirectUri,
+    state: createResult.state,
+    txConfig
   }
 }
 
-function approvedCallbackUri(origin: string): string {
-  const base = new URL(origin)
-  return `${base.origin}/auth/callback`
+function resolveDiscoverDeps(deps: InitiateLoginDeps): ResolveClientAndDiscoverDeps {
+  return {
+    ...(deps.discover === undefined ? {} : { discover: deps.discover }),
+    ...(deps.resolveSecret === undefined ? {} : { resolveSecret: deps.resolveSecret })
+  }
 }

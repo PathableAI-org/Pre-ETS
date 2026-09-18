@@ -54,6 +54,16 @@ const BASE64URL_SECRET_PATTERN = /^[A-Za-z0-9_-]+$/
 let cachedConfig: SessionConfig | undefined
 let cachedConfigError: SessionConfigError | undefined
 
+type OptionalAuthPair =
+  | {
+    readonly kind: "absent"
+  }
+  | {
+    readonly kind: "present"
+    readonly userId: string
+    readonly userName: string
+  }
+
 export function absoluteExpirySeconds(nowSeconds: number, ttlSeconds: number): number {
   if (!isSafeUnixSeconds(nowSeconds) || !Number.isSafeInteger(ttlSeconds) || ttlSeconds <= 0) {
     throw new SessionConfigError("Invalid session lifetime.")
@@ -153,7 +163,6 @@ export function parseSessionConfig(env: NodeJS.ProcessEnv | Record<string, strin
   }
 }
 
-// fallow-ignore-next-line complexity -- exact-shape context parser; optional auth fields
 export function parseSessionContextJson(raw: string): SessionContext | undefined {
   let parsed: unknown
   try {
@@ -162,18 +171,18 @@ export function parseSessionContextJson(raw: string): SessionContext | undefined
     return undefined
   }
 
-  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+  const value = asPlainObject(parsed)
+  if (value === undefined) {
     return undefined
   }
 
-  const value = parsed as Record<string, unknown>
-  const keys = Object.keys(value)
-  const hasAuth = "userId" in value || "userName" in value
-  if (hasAuth) {
-    if (keys.length !== 5) {
-      return undefined
-    }
-  } else if (keys.length !== 3) {
+  const auth = parseOptionalAuthPair(value)
+  if (auth === undefined) {
+    return undefined
+  }
+
+  const expectedKeys = auth.kind === "present" ? 5 : 3
+  if (Object.keys(value).length !== expectedKeys) {
     return undefined
   }
 
@@ -181,7 +190,8 @@ export function parseSessionContextJson(raw: string): SessionContext | undefined
     return undefined
   }
 
-  if (typeof value.tenantId !== "string" || value.tenantId.trim() === "") {
+  const tenantId = nonEmptyString(value.tenantId)
+  if (tenantId === undefined) {
     return undefined
   }
 
@@ -189,49 +199,45 @@ export function parseSessionContextJson(raw: string): SessionContext | undefined
     return undefined
   }
 
-  if (!hasAuth) {
+  if (auth.kind === "absent") {
     return {
       expiresAt: value.expiresAt,
       sessionId: value.sessionId,
-      tenantId: value.tenantId
+      tenantId
     }
-  }
-
-  if (typeof value.userId !== "string" || value.userId.trim() === "") {
-    return undefined
-  }
-
-  if (typeof value.userName !== "string" || value.userName.trim() === "") {
-    return undefined
   }
 
   return {
     expiresAt: value.expiresAt,
     sessionId: value.sessionId,
-    tenantId: value.tenantId,
-    userId: value.userId,
-    userName: value.userName
+    tenantId,
+    userId: auth.userId,
+    userName: auth.userName
   }
 }
 
-// fallow-ignore-next-line complexity -- exact-shape record parser; optional auth fields
 export function parseSessionRecord(value: unknown): SessionRecord | undefined {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+  const record = asPlainObject(value)
+  if (record === undefined) {
     return undefined
   }
 
-  const record = value as Record<string, unknown>
-  const keys = Object.keys(record)
-  const hasAuth = "userId" in record || "userName" in record
-  if (hasAuth) {
-    if (keys.length !== 4 || !("tenantId" in record) || !("expiresAt" in record)) {
-      return undefined
-    }
-  } else if (keys.length !== 2 || !("tenantId" in record) || !("expiresAt" in record)) {
+  const auth = parseOptionalAuthPair(record)
+  if (auth === undefined) {
     return undefined
   }
 
-  if (typeof record.tenantId !== "string" || record.tenantId.trim() === "") {
+  const expectedKeys = auth.kind === "present" ? 4 : 2
+  if (
+    Object.keys(record).length !== expectedKeys
+    || !("tenantId" in record)
+    || !("expiresAt" in record)
+  ) {
+    return undefined
+  }
+
+  const tenantId = nonEmptyString(record.tenantId)
+  if (tenantId === undefined) {
     return undefined
   }
 
@@ -239,26 +245,18 @@ export function parseSessionRecord(value: unknown): SessionRecord | undefined {
     return undefined
   }
 
-  if (!hasAuth) {
+  if (auth.kind === "absent") {
     return {
       expiresAt: record.expiresAt,
-      tenantId: record.tenantId
+      tenantId
     }
-  }
-
-  if (typeof record.userId !== "string" || record.userId.trim() === "") {
-    return undefined
-  }
-
-  if (typeof record.userName !== "string" || record.userName.trim() === "") {
-    return undefined
   }
 
   return {
     expiresAt: record.expiresAt,
-    tenantId: record.tenantId,
-    userId: record.userId,
-    userName: record.userName
+    tenantId,
+    userId: auth.userId,
+    userName: auth.userName
   }
 }
 
@@ -339,6 +337,14 @@ export function sessionContextFromRecord(
   }
 }
 
+function asPlainObject(value: unknown): Record<string, unknown> | undefined {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return undefined
+  }
+
+  return value as Record<string, unknown>
+}
+
 function assertRedisUrl(raw: string): void {
   let url: URL
   try {
@@ -390,6 +396,35 @@ function isDateRepresentableUnixSeconds(value: number): boolean {
 
   const date = new Date(millis)
   return !Number.isNaN(date.getTime()) && Math.floor(date.getTime() / 1000) === value
+}
+
+function nonEmptyString(value: unknown): string | undefined {
+  if (typeof value !== "string" || value.trim() === "") {
+    return undefined
+  }
+
+  return value
+}
+
+/** Both userId/userName present and nonempty, or neither (reject half-auth). */
+function parseOptionalAuthPair(record: Record<string, unknown>): OptionalAuthPair | undefined {
+  const hasUserId = "userId" in record
+  const hasUserName = "userName" in record
+  if (!hasUserId && !hasUserName) {
+    return { kind: "absent" }
+  }
+
+  if (!hasUserId || !hasUserName) {
+    return undefined
+  }
+
+  const userId = nonEmptyString(record.userId)
+  const userName = nonEmptyString(record.userName)
+  if (userId === undefined || userName === undefined) {
+    return undefined
+  }
+
+  return { kind: "present", userId, userName }
 }
 
 function parsePositiveSafeInteger(

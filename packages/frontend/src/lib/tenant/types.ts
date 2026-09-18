@@ -156,31 +156,10 @@ function allowLoopbackHttpDefault(): boolean {
   return process.env.NODE_ENV === "development"
 }
 
-function isLoopbackHostname(hostname: string): boolean {
-  const host = hostname.toLowerCase()
-  return host === "127.0.0.1" || host === "localhost" || host === "::1" || host === "[::1]"
-}
-
-// fallow-ignore-next-line complexity -- issuer transport rules (https vs loopback http)
-function isValidIssuer(
-  raw: string,
+function isAllowedIssuerProtocol(
+  url: URL,
   options: { readonly allowLoopbackHttp?: boolean }
 ): boolean {
-  let url: URL
-  try {
-    url = new URL(raw)
-  } catch {
-    return false
-  }
-
-  if (url.href !== raw && url.toString() !== raw) {
-    // Accept only absolute URLs; relative or incomplete strings fail URL parsing above.
-  }
-
-  if (url.username !== "" || url.password !== "") {
-    return false
-  }
-
   const protocol = url.protocol.toLowerCase()
   const allowLoopbackHttp = options.allowLoopbackHttp ?? allowLoopbackHttpDefault()
 
@@ -195,7 +174,62 @@ function isValidIssuer(
   return false
 }
 
-// fallow-ignore-next-line complexity -- nested oidc object exact-shape validation
+function isLoopbackHostname(hostname: string): boolean {
+  const host = hostname.toLowerCase()
+  return host === "127.0.0.1" || host === "localhost" || host === "::1" || host === "[::1]"
+}
+
+function isValidIssuer(
+  raw: string,
+  options: { readonly allowLoopbackHttp?: boolean }
+): boolean {
+  const url = parseAbsoluteIssuerUrl(raw)
+  if (url === undefined) {
+    return false
+  }
+
+  return isAllowedIssuerProtocol(url, options)
+}
+
+function parseAbsoluteIssuerUrl(raw: string): undefined | URL {
+  let url: URL
+  try {
+    url = new URL(raw)
+  } catch {
+    return undefined
+  }
+
+  // Reject userinfo; relative/incomplete strings fail URL parsing above.
+  if (url.username !== "" || url.password !== "") {
+    return undefined
+  }
+
+  return url
+}
+
+function parseRequiredOidcFields(
+  oidc: Record<string, unknown>,
+  options: { readonly allowLoopbackHttp?: boolean }
+): Omit<TenantOidcConfig, "connection"> | undefined {
+  if (typeof oidc.issuer !== "string" || !isValidIssuer(oidc.issuer, options)) {
+    return undefined
+  }
+
+  if (typeof oidc.clientId !== "string" || oidc.clientId.trim() === "") {
+    return undefined
+  }
+
+  if (typeof oidc.clientAuth !== "string" || !CLIENT_AUTH_VALUES.has(oidc.clientAuth as OidcClientAuth)) {
+    return undefined
+  }
+
+  return {
+    clientAuth: oidc.clientAuth as OidcClientAuth,
+    clientId: oidc.clientId,
+    issuer: oidc.issuer
+  }
+}
+
 function parseTenantOidcConfig(
   value: unknown,
   options: { readonly allowLoopbackHttp?: boolean }
@@ -209,24 +243,13 @@ function parseTenantOidcConfig(
     return undefined
   }
 
-  if (typeof oidc.issuer !== "string" || !isValidIssuer(oidc.issuer, options)) {
-    return undefined
-  }
-
-  if (typeof oidc.clientId !== "string" || oidc.clientId.trim() === "") {
-    return undefined
-  }
-
-  if (typeof oidc.clientAuth !== "string" || !CLIENT_AUTH_VALUES.has(oidc.clientAuth as OidcClientAuth)) {
+  const required = parseRequiredOidcFields(oidc, options)
+  if (required === undefined) {
     return undefined
   }
 
   if (!("connection" in oidc)) {
-    return {
-      clientAuth: oidc.clientAuth as OidcClientAuth,
-      clientId: oidc.clientId,
-      issuer: oidc.issuer
-    }
+    return required
   }
 
   if (typeof oidc.connection !== "string" || oidc.connection.trim() === "") {
@@ -234,9 +257,7 @@ function parseTenantOidcConfig(
   }
 
   return {
-    clientAuth: oidc.clientAuth as OidcClientAuth,
-    clientId: oidc.clientId,
-    connection: oidc.connection,
-    issuer: oidc.issuer
+    ...required,
+    connection: oidc.connection
   }
 }
