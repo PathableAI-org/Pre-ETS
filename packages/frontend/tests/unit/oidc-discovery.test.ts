@@ -52,3 +52,71 @@ describe("discoverOidcIssuer cache", () => {
     expect(discovery).toHaveBeenCalledTimes(1)
   })
 })
+
+describe("discoverOidcIssuer loopback HTTP options", () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+    resetOidcDiscoveryCacheForTests()
+  })
+
+  type DiscoveryCall = [
+    issuer: URL,
+    clientId: string,
+    metadata: unknown,
+    clientAuth: unknown,
+    options: undefined | { readonly execute?: readonly unknown[] }
+  ]
+
+  function mockDiscovery() {
+    return vi.fn(async (..._args: DiscoveryCall) => {
+      return {
+        serverMetadata: () => ({
+          authorization_endpoint: "http://127.0.0.1/auth"
+        })
+      }
+    })
+  }
+
+  function discoveryOptionsFromCall(
+    discovery: ReturnType<typeof mockDiscovery>
+  ): undefined | { readonly execute?: readonly unknown[] } {
+    const call = discovery.mock.calls[0]
+    expect(call).toBeDefined()
+    return call?.[4]
+  }
+
+  it.each([
+    "http://127.0.0.1:8080/realms/pre-ets",
+    "http://localhost:8080/realms/pre-ets",
+    "http://[::1]:8080/realms/pre-ets"
+  ])("passes insecure execute options for loopback HTTP issuer %s", async (issuer) => {
+    const discovery = mockDiscovery()
+
+    await discoverOidcIssuer(issuer, "loopback-app", {
+      discovery: discovery as never
+    })
+
+    const options = discoveryOptionsFromCall(discovery)
+    expect(options?.execute).toHaveLength(1)
+  })
+
+  it("does not pass insecure execute options for HTTPS issuers", async () => {
+    const discovery = mockDiscovery()
+
+    await discoverOidcIssuer("https://idp.example/", "https-app", {
+      discovery: discovery as never
+    })
+
+    expect(discoveryOptionsFromCall(discovery)).toBeUndefined()
+  })
+
+  it("does not pass insecure execute options for non-loopback HTTP issuers", async () => {
+    const discovery = mockDiscovery()
+
+    await discoverOidcIssuer("http://example.com/realms/pre-ets", "remote-http-app", {
+      discovery: discovery as never
+    })
+
+    expect(discoveryOptionsFromCall(discovery)).toBeUndefined()
+  })
+})

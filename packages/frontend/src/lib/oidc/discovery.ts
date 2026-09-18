@@ -1,5 +1,7 @@
 import * as client from "openid-client"
 
+import { loopbackHttpDiscoveryOptions } from "./insecure-loopback-discovery.ts"
+
 /**
  * Discovers OIDC issuer metadata and caches Configuration by issuer + client
  * identity + authentication mode for the process lifetime. Restart the frontend
@@ -68,24 +70,4 @@ function discoveryCacheKey(
 ): string {
   const authMode = clientSecret === undefined ? "public" : "confidential"
   return `${issuer}\0${clientId}\0${authMode}`
-}
-
-/** openid-client defaults to HTTPS-only; local Keycloak/BDD mocks use loopback HTTP. */
-function loopbackHttpDiscoveryOptions(
-  issuerUrl: URL
-): client.DiscoveryRequestOptions | undefined {
-  if (issuerUrl.protocol !== "http:") {
-    return undefined
-  }
-
-  const host = issuerUrl.hostname.toLowerCase()
-  if (host !== "127.0.0.1" && host !== "localhost" && host !== "::1" && host !== "[::1]") {
-    return undefined
-  }
-
-  // Local Keycloak (and BDD issuer mocks) speak HTTP on loopback. openid-client marks
-  // allowInsecureRequests deprecated to discourage production use; it remains the
-  // supported escape hatch for non-TLS discovery in development.
-  // eslint-disable-next-line @typescript-eslint/no-deprecated -- loopback HTTP IdP only
-  return { execute: [client.allowInsecureRequests] }
 }
