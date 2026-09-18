@@ -87,11 +87,12 @@ request URL → slug → tenant configuration → session setup → OIDC initiat
    Non-document callback requests receive `401`.
 8. The next document visit to `/` with an authenticated session short-circuits
    to the landing page showing tenant Display Name and the signed-in user name.
-9. After idle expiry, Proxy may route to the SSR recovery shell at `/inactivity`
-   when setup returns `inactivity-recovery`. **Log in again** is a dedicated
-   CSRF-protected action: it mints a **new** `sessionId` + host-bound
-   `pathable-session` cookie, then starts OIDC initiation against that new sid
-   only. Callback authenticated/idle writes target the new Redis key; the prior
+9. After idle expiry, a **new document load** refuses the ended session’s tombstone,
+   mints a fresh anonymous `sessionId`, and starts generic OIDC (login). Open tabs
+   that discover inactivity while mounted show the PathAble Modal instead; **Log in
+   again** is a dedicated CSRF-protected action that mints a **new** `sessionId` +
+   host-bound `pathable-session` cookie, then starts OIDC initiation against that new
+   sid only. Callback authenticated/idle writes target the new Redis key; the prior
    key may retain a tombstone/latch until its absolute `expiresAt`.
 
 ACS URLs and other SAML endpoints live on the broker so tenant metadata stays

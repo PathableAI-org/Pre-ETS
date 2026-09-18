@@ -22,7 +22,6 @@ import {
   serializeSessionContext,
   SESSION_CONTEXT_HEADER,
   SESSION_COOKIE_NAME,
-  SESSION_END_GENERATION_HEADER,
   type SessionConfig,
   SessionConfigError,
   type SessionContext,
@@ -32,7 +31,6 @@ import {
 import { createEnvTenantOperations } from "./lib/tenant/operations.ts"
 
 const CACHE_CONTROL = "private, no-store"
-const INACTIVITY_RECOVERY_PATH = "/inactivity"
 const LOGIN_UNAVAILABLE_PATH = "/login-unavailable"
 
 let store: RedisSessionStore | undefined
@@ -84,44 +82,6 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
 
   if (result.kind === "terminal") {
     return terminalResponse(result.status, result.message)
-  }
-
-  if (result.kind === "inactivity-recovery") {
-    if (!isDocumentNavigation(request)) {
-      logOutcome("401-nondoc-recovery")
-      return new NextResponse(null, {
-        headers: { "Cache-Control": CACHE_CONTROL },
-        status: 401
-      })
-    }
-
-    // Branch to SSR recovery shell BEFORE generic OIDC initiation.
-    if (request.nextUrl.pathname !== INACTIVITY_RECOVERY_PATH) {
-      logOutcome("inactivity-recovery-redirect")
-      const url = request.nextUrl.clone()
-      url.pathname = INACTIVITY_RECOVERY_PATH
-      const response = NextResponse.redirect(url, 303)
-      response.headers.set("Cache-Control", CACHE_CONTROL)
-      return response
-    }
-
-    logOutcome("inactivity-recovery")
-    return recoveryReadyResponse(
-      requestHeaders,
-      result.context,
-      result.origin,
-      result.sessionEndGeneration
-    )
-  }
-
-  if (request.nextUrl.pathname === INACTIVITY_RECOVERY_PATH) {
-    // No consumable latch — restart normal entry instead of inventing inactivity UI.
-    logOutcome("recovery-without-latch")
-    const url = request.nextUrl.clone()
-    url.pathname = "/"
-    const response = NextResponse.redirect(url, 303)
-    response.headers.set("Cache-Control", CACHE_CONTROL)
-    return response
   }
 
   if (result.context.userId !== undefined) {
@@ -201,7 +161,7 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
 }
 
 export const config = {
-  matcher: ["/", "/inactivity", "/auth/callback"]
+  matcher: ["/", "/auth/callback"]
 }
 
 function attachOidcCookie(
@@ -407,16 +367,6 @@ function readyResponse(
   return response
 }
 
-function recoveryReadyResponse(
-  requestHeaders: Headers,
-  context: SessionContext,
-  origin: "host-associated" | "local-static",
-  sessionEndGeneration: number
-): NextResponse {
-  requestHeaders.set(SESSION_END_GENERATION_HEADER, String(sessionEndGeneration))
-  return passthroughWithTenantHeaders(requestHeaders, context, origin)
-}
-
 function sessionDependencies(config: SessionConfig, txConfig: OidcTxConfig) {
   store ??= new RedisSessionStore(config)
   oidcStore ??= new RedisOidcTransactionStore({
@@ -430,7 +380,6 @@ function sessionDependencies(config: SessionConfig, txConfig: OidcTxConfig) {
 
 function stripReservedHeaders(headers: Headers): void {
   headers.delete(SESSION_CONTEXT_HEADER)
-  headers.delete(SESSION_END_GENERATION_HEADER)
   for (const name of [...headers.keys()]) {
     if (name.toLowerCase().startsWith("x-preets-tenant-")) {
       headers.delete(name)

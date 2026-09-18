@@ -70,8 +70,8 @@ describe("OIDC initiate / proxy contracts", () => {
   })
 
   describe("matcher and callback exclusion", () => {
-    it("matches /, /inactivity, and /auth/callback", () => {
-      expect(proxyConfig.matcher).toEqual(["/", "/inactivity", "/auth/callback"])
+    it("matches / and /auth/callback", () => {
+      expect(proxyConfig.matcher).toEqual(["/", "/auth/callback"])
     })
 
     it("identifies /auth/callback for Proxy completion (not initiation)", () => {

@@ -373,9 +373,9 @@ describe("session recovery (confirm / latch / BroadcastChannel / login-again)", 
     })
   })
 
-  describe("SSR recovery signal vs generic OIDC", () => {
-    it("includes /inactivity in the Proxy matcher for the recovery shell", () => {
-      expect(proxyConfig.matcher).toEqual(["/", "/inactivity", "/auth/callback"])
+  describe("document entry after inactivity", () => {
+    it("matches / and /auth/callback for Proxy (no SSR inactivity shell)", () => {
+      expect(proxyConfig.matcher).toEqual(["/", "/auth/callback"])
     })
   })
 })

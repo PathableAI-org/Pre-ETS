@@ -44,13 +44,6 @@ export type SetupSessionResult =
     readonly outcome: Extract<SessionOutcomeClass, "create" | "reuse">
   }
   | {
-    readonly config: TenantConfig
-    readonly context: SessionContext
-    readonly kind: "inactivity-recovery"
-    readonly origin: "host-associated" | "local-static"
-    readonly sessionEndGeneration: number
-  }
-  | {
     readonly kind: "terminal"
     readonly message?: string
     readonly outcome: Extract<SessionOutcomeClass, "403" | "500" | "503">
@@ -83,7 +76,7 @@ interface ReuseSessionInput {
 }
 
 type ReuseSessionResult =
-  | Extract<SetupSessionResult, { kind: "inactivity-recovery" | "ready" }>
+  | Extract<SetupSessionResult, { kind: "ready" }>
   | Extract<SetupSessionResult, { kind: "terminal" }>
   | undefined
 
@@ -191,6 +184,11 @@ export function toTenantResolveResult(
   return { kind: "unknown" }
 }
 
+/**
+ * Clear idle-expired auth to an anonymous tombstone, then refuse reuse so Proxy
+ * mints a fresh sid and starts OIDC. Open tabs learn via confirm + Modal; a new
+ * document load (closed tab reopen) goes straight to login—not the SSR modal shell.
+ */
 async function clearIdleForReuseRecovery(
   input: ReuseSessionInput,
   freshNow: number
@@ -205,16 +203,8 @@ async function clearIdleForReuseRecovery(
       // Clearance denied / lost race — fail closed without authenticated reuse.
       return undefined
     }
-    if (cleared.record.sessionEndGeneration === undefined) {
-      return undefined
-    }
-    return {
-      config: input.tenantConfig,
-      context: sessionContextFromRecord(input.candidate.sid, cleared.record),
-      kind: "inactivity-recovery",
-      origin: input.origin,
-      sessionEndGeneration: cleared.record.sessionEndGeneration
-    }
+    // Tombstone retained for sibling confirm/login-again; force fresh create.
+    return undefined
   } catch (error) {
     if (error instanceof SessionStoreError) {
       return {
@@ -518,40 +508,20 @@ async function tryReuseAuthenticatedSession(
   return undefined
 }
 
-function tryReuseInactivityLatch(input: ReuseSessionInput): ReuseSessionResult {
-  const { stored } = input
-  if (
-    stored.userId !== undefined
-    || stored.accessEndedCause !== "inactivity"
-    || stored.sessionEndGeneration === undefined
-  ) {
-    return undefined
-  }
-
-  // Absolute cookie/record may still be live for latch retention.
-  if (input.clock() >= stored.expiresAt) {
-    return undefined
-  }
-
-  return {
-    config: input.tenantConfig,
-    context: sessionContextFromRecord(input.candidate.sid, stored),
-    kind: "inactivity-recovery",
-    origin: input.origin,
-    sessionEndGeneration: stored.sessionEndGeneration
-  }
-}
-
 /**
  * Reuse path after structural cookie match. Authenticated success samples a fresh
  * clock after Redis load. When idle binds (including equality pin), atomically clear
- * for inactivity and return the typed recovery signal. Consumable anonymous
- * inactivity evidence yields the same signal (not stuffed into SessionContext).
+ * for inactivity then refuse reuse so a fresh anonymous sid + OIDC starts.
+ * Anonymous inactivity latches are never reused for document entry (tombstone only).
  */
 async function tryReuseLoadedSession(input: ReuseSessionInput): Promise<ReuseSessionResult> {
-  const latch = tryReuseInactivityLatch(input)
-  if (latch !== undefined) {
-    return latch
+  // Ended-for-inactivity anonymous keys are tombstones for open-tab confirm /
+  // login-again siblings—not entry sessions for a new document load.
+  if (
+    input.stored.userId === undefined
+    && input.stored.accessEndedCause === "inactivity"
+  ) {
+    return undefined
   }
 
   if (input.stored.userId !== undefined) {

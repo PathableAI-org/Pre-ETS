@@ -99,7 +99,7 @@ describe("resolveRequestSession", () => {
     ).rejects.toBeInstanceOf(UnauthorizedError)
   })
 
-  it("redirects to inactivity when guard clears for idle", async () => {
+  it("redirects home so Proxy can start login when guard clears for idle", async () => {
     const lastActivityAt = 1_700_000_000
     const idleExpiresAt = lastActivityAt + 300
     const record: SessionRecord = {
@@ -142,6 +142,6 @@ describe("resolveRequestSession", () => {
         nowSeconds: () => idleExpiresAt,
         store
       })
-    ).rejects.toSatisfy((error: unknown) => error instanceof RedirectError && error.url === "/inactivity")
+    ).rejects.toSatisfy((error: unknown) => error instanceof RedirectError && error.url === "/")
   })
 })

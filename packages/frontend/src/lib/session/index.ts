@@ -63,7 +63,6 @@ export type { SetupSessionResult } from "./setup.ts"
 export {
   SESSION_CONTEXT_HEADER,
   SESSION_COOKIE_NAME,
-  SESSION_END_GENERATION_HEADER,
   type SessionContext,
   type SessionOutcomeClass,
   TENANT_ORIGIN_HEADER,

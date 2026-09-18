@@ -8,14 +8,11 @@ import { confirmSessionActionInputFrom, toConfirmSessionActionResult } from "../
 import { canRunConfirm, confirmActionInput, executeConfirmPass } from "../../src/lib/session/confirm-pass.ts"
 import { applyConfirmResult } from "../../src/lib/session/confirm-result.ts"
 import { computeIdleExpiresAt, DEFAULT_IDLE_DURATION_MINUTES } from "../../src/lib/session/idle.ts"
-import { parseInactivityRecoveryLatch } from "../../src/lib/session/inactivity-recovery.ts"
 import { applyLoginAgainCookies } from "../../src/lib/session/login-again-runtime.ts"
 import { mapInitiationToLoginAgain } from "../../src/lib/session/login-again.ts"
 import { parseRequestSessionContext } from "../../src/lib/session/request-session.ts"
 import { planIdleRenewal } from "../../src/lib/session/store.ts"
 import { entryForSet, passesSetCondition } from "./helpers/memory-redis.ts"
-
-const VALID_SID = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 
 describe("complexity-extraction helpers", () => {
   it("maps initiation outcomes for login-again", () => {
@@ -122,20 +119,6 @@ describe("complexity-extraction helpers", () => {
     expect(toRecordActivityActionResult({ kind: "denied", reason: "expired" })).toEqual({
       ok: false
     })
-  })
-
-  it("parses inactivity recovery latches", () => {
-    const context = JSON.stringify({
-      expiresAt: 100,
-      sessionId: VALID_SID,
-      tenantId: "springfield"
-    })
-    expect(parseInactivityRecoveryLatch(context, "2")).toEqual({
-      generation: 2,
-      sessionId: VALID_SID
-    })
-    expect(parseInactivityRecoveryLatch(null, "2")).toBeUndefined()
-    expect(parseInactivityRecoveryLatch(context, "0")).toBeUndefined()
   })
 
   it("plans idle renewals", () => {

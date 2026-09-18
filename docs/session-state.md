@@ -140,10 +140,11 @@ post-apply re-check (deadline wins). Coalesce ~1s when `idleExpiresAt` is unchan
 
 Confirmed inactivity clears authenticated fields, sets
 `accessEndedCause: "inactivity"` and `sessionEndGeneration` (latch retained until the
-ended session’s absolute `expiresAt`). Proxy branches on setup
-`kind: "inactivity-recovery"` to the SSR recovery shell at `/inactivity` before generic
-OIDC. Running-app tabs schedule a deadline-aligned timer at
-`min(idleExpiresAt, expiresAt)` and sync siblings via BroadcastChannel
-`inactivity-confirmed` payloads that include `sessionId` + `sessionEndGeneration`.
-Login-again rotates a **new** `sessionId` and cookie before OIDC initiation; callback
-writes idle fields only to that new Redis key.
+ended session’s absolute `expiresAt`). Open running-app tabs discover that end through
+deadline-aligned confirm and present the PathAble Modal; they sync siblings via
+BroadcastChannel `inactivity-confirmed` payloads that include `sessionId` +
+`sessionEndGeneration`. A **new document load** (closed tab reopen, typed URL) does
+**not** show that modal: setup refuses the tombstone, mints a fresh anonymous sid, and
+Proxy starts generic OIDC (login). Login-again from the modal also rotates a **new**
+`sessionId` and cookie before OIDC; callback writes idle fields only to that new Redis
+key.

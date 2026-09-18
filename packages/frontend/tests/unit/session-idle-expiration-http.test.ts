@@ -116,14 +116,16 @@ describe("idle expiration HTTP / setup clocks", () => {
 
     const result = await setupSession(request, {
       config,
+      createId: () => fixedSessionId(10),
       nowSeconds: () => idleExpiresAt,
       resolveTenant: okTenant(),
       store
     })
 
-    expect(result.kind).toBe("inactivity-recovery")
-    if (result.kind === "inactivity-recovery") {
-      expect(result.sessionEndGeneration).toBe(1)
+    expect(result.kind).toBe("ready")
+    if (result.kind === "ready") {
+      expect(result.outcome).toBe("create")
+      expect(result.context.sessionId).toBe(fixedSessionId(10))
       expect(result.context.userId).toBeUndefined()
     }
     expect(vi.mocked(store.clearForInactivity)).toHaveBeenCalledWith(
@@ -131,7 +133,10 @@ describe("idle expiration HTTP / setup clocks", () => {
       idleExpiresAt,
       "springfield"
     )
-    expect(vi.mocked(store.create)).not.toHaveBeenCalled()
+    expect(vi.mocked(store.create)).toHaveBeenCalledWith(
+      fixedSessionId(10),
+      expect.objectContaining({ tenantId: "springfield" })
+    )
   })
 
   it("equality pin: idleExpiresAt === expiresAt clears as inactivity", async () => {
@@ -170,12 +175,16 @@ describe("idle expiration HTTP / setup clocks", () => {
 
     const result = await setupSession(request, {
       config,
+      createId: () => fixedSessionId(20),
       nowSeconds,
       resolveTenant: okTenant(),
       store
     })
 
-    expect(result.kind).toBe("inactivity-recovery")
+    expect(result.kind).toBe("ready")
+    if (result.kind === "ready") {
+      expect(result.outcome).toBe("create")
+    }
     expect(vi.mocked(store.clearForInactivity)).toHaveBeenCalledWith(
       sessionId,
       deadline,
@@ -276,6 +285,7 @@ describe("idle expiration HTTP / setup clocks", () => {
 
     const result = await setupSession(request, {
       config,
+      createId: () => fixedSessionId(50),
       nowSeconds,
       resolveTenant: okTenant(),
       store
@@ -284,7 +294,10 @@ describe("idle expiration HTTP / setup clocks", () => {
     expect(events).toContain("read")
     const readIndex = events.indexOf("read")
     expect(events[readIndex + 1]).toBe(`clock:${String(idleExpiresAt)}`)
-    expect(result.kind).toBe("inactivity-recovery")
+    expect(result.kind).toBe("ready")
+    if (result.kind === "ready") {
+      expect(result.outcome).toBe("create")
+    }
     expect(events).toContain("clear")
   })
 

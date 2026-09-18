@@ -320,11 +320,12 @@ describe("setupSession", () => {
       expect(createId).toHaveBeenCalled()
     })
 
-    it("returns inactivity-recovery when anonymous latch is present", async () => {
+    it("forces a fresh anonymous session when an inactivity latch is present", async () => {
       const config = testConfig()
       const now = 1_700_000_000
       const expiresAt = now + 3600
       const sessionId = fixedSessionId(34)
+      const createId = vi.fn(() => fixedSessionId(340))
       const store = mockStore({
         read: vi.fn().mockResolvedValue({
           kind: "record",
@@ -341,27 +342,23 @@ describe("setupSession", () => {
 
       const result = await setupSession(request, {
         config,
+        createId,
         nowSeconds: () => now,
         resolveTenant: okTenant(),
         store
       })
 
-      expect(result).toEqual({
-        config: springfieldConfig,
-        context: {
-          expiresAt,
-          sessionId,
-          tenantId: "springfield"
-        },
-        kind: "inactivity-recovery",
-        origin: "host-associated",
-        sessionEndGeneration: 2
-      })
-      expect(vi.mocked(store.create)).not.toHaveBeenCalled()
-      if (result.kind === "inactivity-recovery") {
-        expect(result.context).not.toHaveProperty("accessEndedCause")
-        expect(result.context).not.toHaveProperty("sessionEndGeneration")
+      expect(result.kind).toBe("ready")
+      if (result.kind === "ready") {
+        expect(result.outcome).toBe("create")
+        expect(result.context.sessionId).toBe(fixedSessionId(340))
+        expect(result.context.userId).toBeUndefined()
       }
+      expect(createId).toHaveBeenCalled()
+      expect(vi.mocked(store.create)).toHaveBeenCalledWith(
+        fixedSessionId(340),
+        expect.objectContaining({ tenantId: "springfield" })
+      )
     })
 
     it("samples a fresh clock after Redis load before authenticated reuse", async () => {
@@ -400,6 +397,7 @@ describe("setupSession", () => {
         tick += 1
         // tick 1: cookie verify (still before idle)
         // tick 2: fresh post-load sample for authenticated check (at idle → clear)
+        // later ticks: createFreshSession absolute expiry
         const value = tick === 1 ? idleExpiresAt - 10 : idleExpiresAt
         events.push(`clock:${String(value)}`)
         return value
@@ -421,12 +419,16 @@ describe("setupSession", () => {
       expect(events).toContain("store.read")
       const readIndex = events.indexOf("store.read")
       expect(events[readIndex + 1]).toBe("clock:1700001800")
-      expect(result.kind).toBe("inactivity-recovery")
-      if (result.kind === "inactivity-recovery") {
-        expect(result.sessionEndGeneration).toBe(1)
+      expect(result.kind).toBe("ready")
+      if (result.kind === "ready") {
+        expect(result.outcome).toBe("create")
+        expect(result.context.sessionId).toBe(fixedSessionId(36))
       }
       expect(events).toContain("clear")
-      expect(vi.mocked(store.create)).not.toHaveBeenCalled()
+      expect(vi.mocked(store.create)).toHaveBeenCalledWith(
+        fixedSessionId(36),
+        expect.objectContaining({ tenantId: "springfield" })
+      )
     })
 
     it("creates once per request with clock-controlled TTL alignment", async () => {

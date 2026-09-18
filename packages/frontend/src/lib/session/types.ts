@@ -8,7 +8,6 @@ export const SESSION_ID_BYTE_LENGTH = 32
 export const SESSION_ID_LENGTH = 43
 export const NODE_TIMER_MAX_MS = 2_147_483_647
 export const SESSION_CONTEXT_HEADER = "x-pathable-session-context"
-export const SESSION_END_GENERATION_HEADER = "x-pathable-session-end-generation"
 export const TENANT_SLUG_HEADER = "x-preets-tenant-slug"
 export const TENANT_ORIGIN_HEADER = "x-preets-tenant-origin"
 

@@ -64,8 +64,10 @@ export async function resolveRequestSession(
 
   if (result.kind !== "allow") {
     // Stale/mismatched cookie: Proxy forwarded userId but Redis no longer grants access.
+    // Document re-entry goes through Proxy → fresh anonymous sid + OIDC (login), not a
+    // Modal shell. Open tabs use confirm + InactivityEndedModal instead.
     if (result.inactivity) {
-      redirect("/inactivity")
+      redirect("/")
     }
     unauthorized()
   }
