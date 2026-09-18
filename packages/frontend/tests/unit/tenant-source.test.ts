@@ -49,6 +49,24 @@ describe("static tenant source", () => {
     )
   })
 
+  it("accepts loopback HTTP issuers when allowLoopbackHttp is enabled", async () => {
+    const loopbackRecord = {
+      config: {
+        displayName: "Springfield Demo",
+        oidc: {
+          ...springfieldOidc,
+          issuer: "http://127.0.0.1:8080/realms/pre-ets"
+        }
+      },
+      slug: "springfield"
+    }
+
+    expect(() => createStaticTenantSource([loopbackRecord])).toThrow(CONFIG_UNAVAILABLE)
+
+    const source = createStaticTenantSource([loopbackRecord], { allowLoopbackHttp: true })
+    await expect(source.readTenantRecord("springfield")).resolves.toEqual(loopbackRecord)
+  })
+
   it("rejects missing, numeric, empty, whitespace, and unknown configuration fields", () => {
     expect(parseTenantRecord({ config: {}, slug: "springfield" })).toBeUndefined()
     expect(parseTenantRecord({ config: { displayName: 42 }, slug: "springfield" })).toBeUndefined()

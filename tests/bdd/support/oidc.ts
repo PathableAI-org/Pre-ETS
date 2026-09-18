@@ -219,6 +219,12 @@ export function assertFailureClass(world: TenantWorld, failure: string): void {
   }
 }
 
+export function assertForbiddenWithoutRedirect(world: TenantWorld): void {
+  assert.ok(world.httpResponse)
+  assert.equal(world.httpResponse.status, 403)
+  assert.equal(world.httpResponse.headers.location, undefined)
+}
+
 export function assertIdpAuthorizationRedirect(
   world: TenantWorld,
   expectedClientId = "springfield-web"
@@ -300,6 +306,21 @@ export function assertNoSessionSetCookie(world: TenantWorld, cookieName: string)
     false,
     `expected no Set-Cookie for ${cookieName}, got: ${raw}`
   )
+}
+
+export function assertNoShelbyvilleLeak(
+  world: TenantWorld,
+  mode: "config" | "credential"
+): void {
+  assert.ok(world.httpResponse)
+  if (mode === "config") {
+    assert.doesNotMatch(world.httpResponse.body, /shelbyville-web|Shelbyville/)
+    assert.doesNotMatch(world.httpResponse.headers.location ?? "", /shelbyville/)
+    return
+  }
+
+  assert.doesNotMatch(world.httpResponse.body, /shelbyville/i)
+  assert.doesNotMatch(world.httpResponse.headers.location ?? "", /shelbyville/i)
 }
 
 export function assertNotLoginUnavailableRoute(world: TenantWorld): void {

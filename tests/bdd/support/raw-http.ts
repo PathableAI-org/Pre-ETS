@@ -28,22 +28,15 @@ export function decodeChunked(body: string): string {
   return decoded
 }
 
-// fallow-ignore-next-line complexity -- mechanical raw HTTP framing parser
 export function parseRawHttp(raw: string): HttpExchange {
-  const separator = raw.indexOf("\r\n\r\n")
-  const head = separator === -1 ? raw : raw.slice(0, separator)
+  const { body: rawBody, head } = splitHeadAndBody(raw)
   const headers = collectHeaders(head.split("\r\n").slice(1))
-  const statusMatch = /^HTTP\/\d(?:\.\d)?\s+(\d+)/.exec(head.split("\r\n")[0] ?? "")
-
-  let body = separator === -1 ? "" : raw.slice(separator + 4)
-  if ((headers["transfer-encoding"] ?? "").includes("chunked")) {
-    body = decodeChunked(body)
-  }
+  const body = maybeDecodeChunkedBody(rawBody, headers["transfer-encoding"])
 
   return {
     body,
     headers,
-    status: statusMatch === null ? 0 : Number(statusMatch[1])
+    status: parseStatusCode(head)
   }
 }
 
@@ -94,6 +87,19 @@ function collectHeaders(lines: readonly string[]): Record<string, string> {
   return headers
 }
 
+function maybeDecodeChunkedBody(body: string, transferEncoding: string | undefined): string {
+  if ((transferEncoding ?? "").includes("chunked")) {
+    return decodeChunked(body)
+  }
+
+  return body
+}
+
+function parseStatusCode(head: string): number {
+  const statusMatch = /^HTTP\/\d(?:\.\d)?\s+(\d+)/.exec(head.split("\r\n")[0] ?? "")
+  return statusMatch === null ? 0 : Number(statusMatch[1])
+}
+
 async function readSocketResponse(port: number, payload: string): Promise<string> {
   return await new Promise<string>((resolve, reject) => {
     const socket = net.connect(port, "127.0.0.1")
@@ -112,4 +118,16 @@ async function readSocketResponse(port: number, payload: string): Promise<string
       socket.destroy(new Error("HTTP request timed out"))
     })
   })
+}
+
+function splitHeadAndBody(raw: string): { readonly body: string; readonly head: string } {
+  const separator = raw.indexOf("\r\n\r\n")
+  if (separator === -1) {
+    return { body: "", head: raw }
+  }
+
+  return {
+    body: raw.slice(separator + 4),
+    head: raw.slice(0, separator)
+  }
 }
