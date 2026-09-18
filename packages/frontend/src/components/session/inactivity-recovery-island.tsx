@@ -2,7 +2,6 @@
 
 import type { ReactNode } from "react"
 
-import { IdleConfirmHarnessProvider } from "./idle-confirm-harness-context.tsx"
 import { AuthUnavailableLockView, InactivityClearedView } from "./inactivity-recovery-views.tsx"
 import { useInactivityRecovery } from "./use-inactivity-recovery.ts"
 
@@ -28,25 +27,12 @@ export function InactivityRecoveryIsland({
   const recovery = useInactivityRecovery({ expiresAt, idleExpiresAt, sessionId })
 
   if (recovery.state.kind === "inactivity") {
-    return (
-      <InactivityClearedView
-        lastOutcomeLabel={recovery.lastOutcomeLabel}
-        modalOpen={recovery.modalOpen}
-        onModalClose={() => {
-          // Stub until PR6: close UI only — does not rotate sid or start OIDC.
-          recovery.setModalOpen(false)
-        }}
-      />
-    )
+    return <InactivityClearedView modalOpen={recovery.modalOpen} />
   }
 
   if (recovery.state.kind === "unavailable") {
-    return <AuthUnavailableLockView lastOutcomeLabel={recovery.lastOutcomeLabel} />
+    return <AuthUnavailableLockView />
   }
 
-  return (
-    <IdleConfirmHarnessProvider value={recovery.harnessValue}>
-      {children}
-    </IdleConfirmHarnessProvider>
-  )
+  return children
 }
