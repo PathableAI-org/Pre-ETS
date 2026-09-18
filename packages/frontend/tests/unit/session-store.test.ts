@@ -168,7 +168,7 @@ describe("RedisSessionStore", () => {
       })
 
       const store = new RedisSessionStore(testConfig({ storeTimeoutMs: 50 }), {
-        clientFactory,
+        clientFactory: clientFactory as never,
         timeoutMs: 50
       })
 
@@ -255,7 +255,7 @@ describe("RedisSessionStore", () => {
         set: setMock
       }))
 
-      const store = new RedisSessionStore(testConfig(), { clientFactory })
+      const store = new RedisSessionStore(testConfig(), { clientFactory: clientFactory as never })
       const id = fixedSessionId(13)
       const record: SessionRecord = {
         expiresAt: 1_700_300_000,
@@ -281,7 +281,7 @@ describe("RedisSessionStore", () => {
         set: setMock
       }))
 
-      const store = new RedisSessionStore(testConfig(), { clientFactory })
+      const store = new RedisSessionStore(testConfig(), { clientFactory: clientFactory as never })
       const id = fixedSessionId(16)
       const record: SessionRecord = {
         expiresAt: 1_700_300_000,

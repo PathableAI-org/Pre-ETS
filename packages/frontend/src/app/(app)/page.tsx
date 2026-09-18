@@ -1,11 +1,13 @@
 import { Alert, Button, Card, Container, Heading, Page, Stack, Text } from "@pathableai/react"
 
+import { UnsentPracticeNoteFixture } from "../../components/session/unsent-practice-note-fixture.tsx"
 import { getRequestSession } from "../../lib/session/index.ts"
 
 export const dynamic = "force-dynamic"
 
 export default async function HomePage() {
   const { context, tenantConfig } = await getRequestSession()
+  const authenticated = context.userId !== undefined
 
   return (
     <Page>
@@ -16,6 +18,7 @@ export default async function HomePage() {
           {context.userName !== undefined
             ? <Text>{`Signed in as: ${context.userName}`}</Text>
             : null}
+          {authenticated ? <UnsentPracticeNoteFixture /> : null}
           <Text>
             This Next.js App Router landing page is server-rendered with PathAble React components.
           </Text>

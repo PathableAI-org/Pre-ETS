@@ -26,8 +26,10 @@ function fixedSessionId(seed = 2): string {
 
 function mockStore(overrides: Partial<SessionStore> = {}): SessionStore {
   return {
+    clearForInactivity: vi.fn().mockResolvedValue({ kind: "denied" }),
     create: vi.fn().mockResolvedValue({ kind: "created" }),
     read: vi.fn().mockResolvedValue({ kind: "missing" }),
+    renewIdleActivity: vi.fn().mockResolvedValue({ kind: "denied" }),
     update: vi.fn().mockResolvedValue({ kind: "updated" }),
     ...overrides
   }

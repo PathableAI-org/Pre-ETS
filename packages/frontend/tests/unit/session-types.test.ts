@@ -15,12 +15,14 @@ import {
   parseSessionConfig,
   parseSessionContextJson,
   parseSessionRecord,
+  parseSessionRecordDetailed,
   resetSessionConfigCacheForTests,
   serializeSessionContext,
   serializeSessionRecord,
   SESSION_ID_BYTE_LENGTH,
   SESSION_ID_LENGTH,
-  SessionConfigError
+  SessionConfigError,
+  sessionContextFromRecord
 } from "../../src/lib/session/types.ts"
 
 function baseEnv(overrides: Record<string, string | undefined> = {}): Record<string, string | undefined> {
@@ -81,7 +83,7 @@ describe("session types", () => {
       expect(serializeSessionRecord(record)).toBe(JSON.stringify(record))
     })
 
-    it("accepts authenticated { tenantId, expiresAt, userId, userName } JSON", () => {
+    it("accepts legacy authenticated { tenantId, expiresAt, userId, userName } JSON", () => {
       const record = {
         expiresAt: now + 3600,
         tenantId: "springfield",
@@ -90,6 +92,135 @@ describe("session types", () => {
       }
       expect(parseSessionRecord(record)).toEqual(record)
       expect(serializeSessionRecord(record)).toBe(JSON.stringify(record))
+      expect(parseSessionRecordDetailed(record)).toEqual({
+        legacyAuthenticated: true,
+        record
+      })
+    })
+
+    it("accepts idle-shaped authenticated records with duration 5–30", () => {
+      const record = {
+        expiresAt: now + 3600,
+        idleDurationMinutes: 15,
+        idleExpiresAt: now + 900,
+        lastActivityAt: now,
+        tenantId: "springfield",
+        userId: "user-1",
+        userName: "Demo User"
+      }
+      expect(parseSessionRecord(record)).toEqual(record)
+      expect(parseSessionRecordDetailed(record)).toEqual({
+        legacyAuthenticated: false,
+        record
+      })
+
+      for (const idleDurationMinutes of [5, 30]) {
+        const boundary = { ...record, idleDurationMinutes }
+        expect(parseSessionRecord(boundary)).toEqual(boundary)
+      }
+    })
+
+    it("rejects invalid idleDurationMinutes on authenticated records", () => {
+      const base = {
+        expiresAt: now + 3600,
+        idleExpiresAt: now + 900,
+        lastActivityAt: now,
+        tenantId: "springfield",
+        userId: "user-1",
+        userName: "Demo User"
+      }
+      expect(parseSessionRecord({ ...base, idleDurationMinutes: 4 })).toBeUndefined()
+      expect(parseSessionRecord({ ...base, idleDurationMinutes: 31 })).toBeUndefined()
+      expect(parseSessionRecord({ ...base, idleDurationMinutes: 15.5 })).toBeUndefined()
+      expect(parseSessionRecord({ ...base, idleDurationMinutes: "15" })).toBeUndefined()
+      expect(parseSessionRecord({ ...base, idleDurationMinutes: null })).toBeUndefined()
+    })
+
+    it("accepts anonymous records with optional accessEndedCause and sessionEndGeneration", () => {
+      const withCause = {
+        accessEndedCause: "inactivity" as const,
+        expiresAt: now + 3600,
+        tenantId: "springfield"
+      }
+      expect(parseSessionRecord(withCause)).toEqual(withCause)
+
+      const withGeneration = {
+        expiresAt: now + 3600,
+        sessionEndGeneration: 3,
+        tenantId: "springfield"
+      }
+      expect(parseSessionRecord(withGeneration)).toEqual(withGeneration)
+
+      const withBoth = {
+        accessEndedCause: "inactivity" as const,
+        expiresAt: now + 3600,
+        sessionEndGeneration: 1,
+        tenantId: "springfield"
+      }
+      expect(parseSessionRecord(withBoth)).toEqual(withBoth)
+      expect(parseSessionRecordDetailed(withBoth)?.legacyAuthenticated).toBe(false)
+    })
+
+    it("rejects invalid anonymous cause/latch values", () => {
+      expect(parseSessionRecord({
+        accessEndedCause: "absolute",
+        expiresAt: now,
+        tenantId: "springfield"
+      })).toBeUndefined()
+      expect(parseSessionRecord({
+        expiresAt: now,
+        sessionEndGeneration: 0,
+        tenantId: "springfield"
+      })).toBeUndefined()
+      expect(parseSessionRecord({
+        expiresAt: now,
+        sessionEndGeneration: -1,
+        tenantId: "springfield"
+      })).toBeUndefined()
+      expect(parseSessionRecord({
+        expiresAt: now,
+        sessionEndGeneration: 1.5,
+        tenantId: "springfield"
+      })).toBeUndefined()
+    })
+
+    it("keeps anonymous records free of authenticated idle fields", () => {
+      expect(parseSessionRecord({
+        expiresAt: now,
+        idleDurationMinutes: 15,
+        tenantId: "springfield"
+      })).toBeUndefined()
+      expect(parseSessionRecord({
+        expiresAt: now,
+        idleExpiresAt: now + 900,
+        tenantId: "springfield"
+      })).toBeUndefined()
+      expect(parseSessionRecord({
+        expiresAt: now,
+        lastActivityAt: now,
+        tenantId: "springfield"
+      })).toBeUndefined()
+    })
+
+    it("round-trips idle authenticated and anonymous cause/latch via serializeSessionRecord", () => {
+      const idleAuth = {
+        expiresAt: now + 3600,
+        idleDurationMinutes: 20,
+        idleExpiresAt: now + 1200,
+        lastActivityAt: now,
+        tenantId: "springfield",
+        userId: "user-1",
+        userName: "Demo User"
+      }
+      expect(parseSessionRecord(JSON.parse(serializeSessionRecord(idleAuth)))).toEqual(idleAuth)
+
+      const ended = {
+        accessEndedCause: "inactivity" as const,
+        expiresAt: now + 3600,
+        sessionEndGeneration: 7,
+        tenantId: "springfield"
+      }
+      expect(parseSessionRecord(JSON.parse(serializeSessionRecord(ended)))).toEqual(ended)
     })
 
     it("rejects extra keys, missing keys, wrong types, and empty tenantId", () => {
@@ -113,6 +244,23 @@ describe("session types", () => {
         userId: "",
         userName: "Demo"
       })).toBeUndefined()
+      expect(parseSessionRecord({
+        expiresAt: now,
+        idleDurationMinutes: 15,
+        idleExpiresAt: now + 900,
+        lastActivityAt: now,
+        tenantId: "springfield",
+        unknown: true,
+        userId: "user-1",
+        userName: "Demo User"
+      })).toBeUndefined()
+      expect(parseSessionRecord({
+        accessEndedCause: "inactivity",
+        expiresAt: now,
+        extra: true,
+        sessionEndGeneration: 1,
+        tenantId: "springfield"
+      })).toBeUndefined()
     })
 
     it("rejects expiresAt values outside the Date representable range", () => {
@@ -135,15 +283,47 @@ describe("session types", () => {
       expect(parseSessionContextJson(serializeSessionContext(context))).toEqual(context)
     })
 
-    it("round-trips authenticated session context JSON", () => {
+    it("round-trips authenticated session context with expiresAt and idleExpiresAt", () => {
       const context = {
         expiresAt: now + 3600,
+        idleExpiresAt: now + 900,
         sessionId: fixedSessionId(),
         tenantId: "springfield",
         userId: "user-1",
         userName: "Demo User"
       }
       expect(parseSessionContextJson(serializeSessionContext(context))).toEqual(context)
+    })
+
+    it("rejects authenticated context missing idleExpiresAt", () => {
+      expect(parseSessionContextJson(JSON.stringify({
+        expiresAt: now + 3600,
+        sessionId: fixedSessionId(),
+        tenantId: "springfield",
+        userId: "user-1",
+        userName: "Demo User"
+      }))).toBeUndefined()
+    })
+
+    it("builds authenticated context idleExpiresAt from idle-shaped records", () => {
+      const sessionId = fixedSessionId()
+      const record = {
+        expiresAt: now + 3600,
+        idleDurationMinutes: 15,
+        idleExpiresAt: now + 900,
+        lastActivityAt: now,
+        tenantId: "springfield",
+        userId: "user-1",
+        userName: "Demo User"
+      }
+      expect(sessionContextFromRecord(sessionId, record)).toEqual({
+        expiresAt: record.expiresAt,
+        idleExpiresAt: record.idleExpiresAt,
+        sessionId,
+        tenantId: record.tenantId,
+        userId: record.userId,
+        userName: record.userName
+      })
     })
 
     it("rejects malformed or extended session context JSON", () => {
@@ -164,6 +344,15 @@ describe("session types", () => {
         sessionId: fixedSessionId(),
         tenantId: "springfield",
         userId: "user-1"
+      }))).toBeUndefined()
+      expect(parseSessionContextJson(JSON.stringify({
+        expiresAt: now,
+        idleExpiresAt: now + 900,
+        sessionId: fixedSessionId(),
+        tenantId: "springfield",
+        unknown: true,
+        userId: "user-1",
+        userName: "Demo User"
       }))).toBeUndefined()
     })
   })

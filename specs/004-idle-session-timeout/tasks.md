@@ -19,20 +19,20 @@ slice.
 `CUCUMBER_*` partition pattern, and update discovery-status docs. Prefer one focused setup commit
 for stub + `cucumber.mjs` + `package.json` + `features/README.md`.
 
-- [ ] T001 [P] Read installed `@pathableai/react` `agent-guidance/pathable-react/SKILL.md` and
+- [x] T001 [P] Read installed `@pathableai/react` `agent-guidance/pathable-react/SKILL.md` and
       `references/server-and-client.md` (Modal client-boundary rules) before any recovery UI work
       (quickstart PathAble note; FR-009).
-- [ ] T002 Create a **pending stub** `tests/bdd/steps/idle.steps.ts` (Pending-safe bindings for
+- [x] T002 Create a **pending stub** `tests/bdd/steps/idle.steps.ts` (Pending-safe bindings for
       `@idle-session-timeout` steps) **before** registering it in Cucumber—same pending-stub-safe
       pattern as OIDC `oidc.steps.ts` (Copilot ordering: stub → register → scripts).
-- [ ] T003 Register `@idle-session-timeout` feature discovery behind `CUCUMBER_IDLE=1` in
+- [x] T003 Register `@idle-session-timeout` feature discovery behind `CUCUMBER_IDLE=1` in
       `cucumber.mjs` for `features/idle-session-expiration.feature`,
       `features/idle-session-recovery.feature`, and `features/tenant-idle-timeout-policy.feature`,
       importing `tests/bdd/steps/idle.steps.ts` only when enabled (depends on T002).
-- [ ] T004 Add `pnpm test:bdd:idle` (`CUCUMBER_IDLE=1` + tags `@idle-session-timeout`) and extend
+- [x] T004 Add `pnpm test:bdd:idle` (`CUCUMBER_IDLE=1` + tags `@idle-session-timeout`) and extend
       `test:bdd:dry` to include `CUCUMBER_IDLE=1` in root `package.json` so default CI partitions do
       not fail on pending idle stubs (parallel to `test:bdd:oidc` / `CUCUMBER_OIDC`).
-- [ ] T005 Update idle execution-status notes in `features/README.md` (currently states no step
+- [x] T005 Update idle execution-status notes in `features/README.md` (currently states no step
       scaffolds/runner wiring) to document `CUCUMBER_IDLE=1`, `pnpm test:bdd:idle`, dry-run
       discovery, and pending-stub safety after T002–T004.
 
@@ -48,7 +48,7 @@ discovers idle features against the pending stub; default `pnpm test:bdd` still 
 re-read, and setup recovery-signal seams every story needs. **Do not enable Phase B idle-shaped
 authenticated writes or Proxy idle enforcement until this phase is complete.**
 
-- [ ] T006 Write failing unit cases in `packages/frontend/tests/unit/session-types.test.ts` for:
+- [x] T006 Write failing unit cases in `packages/frontend/tests/unit/session-types.test.ts` for:
       authenticated idle fields (`idleDurationMinutes` integer **5–30**, `lastActivityAt`,
       `idleExpiresAt`); anonymous optional `accessEndedCause: "inactivity"` +
       `sessionEndGeneration`; required authenticated `SessionContext.idleExpiresAt` while retaining
@@ -56,50 +56,50 @@ authenticated writes or Proxy idle enforcement until this phase is complete.**
       `serializeSessionRecord` / parse round-trip** for new idle + cause/latch fields; dual-read
       discriminant `legacyAuthenticated: true` for four-key authenticated JSON (data-model E3 /
       rollout).
-- [ ] T007 Extend `packages/frontend/src/lib/session/types.ts`: authenticated `SessionRecord` idle
+- [x] T007 Extend `packages/frontend/src/lib/session/types.ts`: authenticated `SessionRecord` idle
       fields; anonymous cause/latch; `SessionContext` required `idleExpiresAt` when authenticated
       (keep `expiresAt`); update `parseSessionContextJson` / key-count allowlists,
       `serializeSessionContext`, `sessionContextFromRecord`, and **`serializeSessionRecord`** so
       T006 passes—do not only update types without serialize/parse (FR-004, data-model).
-- [ ] T008 [P] Write failing unit cases in `packages/frontend/tests/unit/session-idle.test.ts` for
+- [x] T008 [P] Write failing unit cases in `packages/frontend/tests/unit/session-idle.test.ts` for
       deadline helpers: `idleExpiresAt = lastActivityAt + idleDurationMinutes * 60`; activity MUST
       NOT extend `expiresAt`; `now >= idleExpiresAt` deadline wins; missing store ≠ inactivity
       claim; equality pin when `idleExpiresAt === expiresAt` → inactivity clearance path
       (`contracts/idle-expiration.md`).
-- [ ] T009 Implement idle helpers in `packages/frontend/src/lib/session/idle.ts` (`computeIdleExpiresAt`,
+- [x] T009 Implement idle helpers in `packages/frontend/src/lib/session/idle.ts` (`computeIdleExpiresAt`,
       idle/absolute checks, end-for-inactivity shaping of anonymous cause + `sessionEndGeneration`
       latch retained until ended session absolute `expiresAt`); make T008 pass.
-- [ ] T010 [P] Write failing unit/contract cases in
+- [x] T010 [P] Write failing unit/contract cases in
       `packages/frontend/tests/unit/session-store-idle-cas.test.ts` for atomic renewal/clearance:
       per-session idle mutation lock; CAS (no blind `SET` after separate read); post-apply `now1`
       re-check under lock (deadline wins); concurrent renew vs clearance interleaving; store
       timeout / WATCH abort fail closed; ~**1s** coalesce when computed `idleExpiresAt` unchanged;
       **no** session draft-key cleanup ops (data-model Temporary session data).
-- [ ] T011 Implement atomic conditional update/clear helpers in
+- [x] T011 Implement atomic conditional update/clear helpers in
       `packages/frontend/src/lib/session/store.ts`: per-session idle lock + CAS + post-apply re-check
       for renewal **and** idle clearance; stamp activity from **application clock only** (no Redis
       `TIME` as product clock); set anonymous `accessEndedCause: "inactivity"` +
       `sessionEndGeneration` on clearance; **do not** clear temporary session draft fields (none in
       this slice); make T010 pass (`contracts/idle-expiration.md`).
-- [ ] T012 [P] Write failing unit cases in `packages/frontend/tests/unit/session-guard.test.ts` for
+- [x] T012 [P] Write failing unit cases in `packages/frontend/tests/unit/session-guard.test.ts` for
       centralized protected-op check: Redis re-read; `now < idleExpiresAt` and `now < expiresAt`;
       tenant bind; fresh clock sample after Redis load before success; missing/503 → deny without
       inactivity claim.
-- [ ] T013 Implement `packages/frontend/src/lib/session/guard.ts` and wire
+- [x] T013 Implement `packages/frontend/src/lib/session/guard.ts` and wire
       `getRequestSession` in `packages/frontend/src/lib/session/index.ts` so protected SSR / Server
       Actions / Route Handlers that treat `userId` as authenticated use guard Redis re-read—not
       Proxy alone / not forwarded context alone (plan Structure Decision; FR-004).
-- [ ] T014 Write failing unit cases in `packages/frontend/tests/unit/session-setup.test.ts` for
+- [x] T014 Write failing unit cases in `packages/frontend/tests/unit/session-setup.test.ts` for
       **Phase A dual-read**: parse legacy four-key + idle-shaped authenticated JSON; expose
       `legacyAuthenticated`; `setupSession.canReuse` **rejects** legacy (force reauth); typed
       setup result signal `kind: "inactivity-recovery"` when anonymous record has consumable
       cause/latch (not stuffed into authenticated `SessionContext` allowlist).
-- [ ] T015 Extend `packages/frontend/src/lib/session/setup.ts` for Phase A dual-read +
+- [x] T015 Extend `packages/frontend/src/lib/session/setup.ts` for Phase A dual-read +
       `canReuse` legacy reject + typed `inactivity-recovery` signal to Proxy; sample **fresh**
       application clock after Redis load before any authenticated success outcome; make T014 pass.
       **Do not** enable Phase B idle-shaped authenticated writes in this task (gate behind flag
       default-off or defer writes to US1 T021).
-- [ ] T016 Document Phase A→B→drain rollout (configured `SESSION_TTL_SECONDS` /
+- [x] T016 Document Phase A→B→drain rollout (configured `SESSION_TTL_SECONDS` /
       `SessionConfig.ttlSeconds` drain window; rollback only to Phase A dual-read; four-key-only
       rollback unsupported while idle-shaped keys remain) in `docs/session-state.md` (data-model
       Rollout / legacy).
@@ -123,40 +123,40 @@ Authentication prerequisite (OIDC callback writing `userId` / `userName`) must b
 
 ### Tests for User Story 1
 
-- [ ] T017 [P] [US1] Add failing unit coverage in
+- [x] T017 [P] [US1] Add failing unit coverage in
       `packages/frontend/tests/unit/session-activity.test.ts`: accept deliberate activity before
       deadline; reject late activity; leave `expiresAt` / `idleDurationMinutes` unchanged; no
       client-supplied `at`; cookie-derived identity only; coalesce ~**1s** redundant writes; store
       timeout fails closed.
-- [ ] T018 [P] [US1] Add failing contract/HTTP clock cases in
+- [x] T018 [P] [US1] Add failing contract/HTTP clock cases in
       `packages/frontend/tests/unit/session-setup.test.ts` and
       `packages/frontend/tests/unit/session-idle-expiration-http.test.ts`: denial at
       `idleExpiresAt`; late activity rejection; tenant isolation; missing store ≠ inactivity;
       slow-read crossing deadline (fresh clock after Redis load); equality pin
       `idleExpiresAt === expiresAt` → inactivity clearance; no public diagnostic endpoints
       (`contracts/idle-expiration.md`).
-- [ ] T019 [P] [US1] Add failing concurrent race cases in
+- [x] T019 [P] [US1] Add failing concurrent race cases in
       `packages/frontend/tests/unit/session-activity-cas.test.ts`: renew vs clearance under
       per-session lock; post-apply re-check prevents chaining renewals on not-yet-validated writes;
       lost CAS vs anonymous clearance does not overwrite (T010/T011 protocol).
-- [ ] T020 [P] [US1] Scaffold/replace pending expiration steps in `tests/bdd/steps/idle.steps.ts`
+- [x] T020 [P] [US1] Scaffold/replace pending expiration steps in `tests/bdd/steps/idle.steps.ts`
       for `features/idle-session-expiration.feature` (`@contract` / clock / shared-tab /
       independent-session / delayed-activity scenarios).
 
 ### Implementation for User Story 1
 
-- [ ] T021 [US1] **Phase B — idle writes**: enable idle-shaped authenticated writes; stamp idle
+- [x] T021 [US1] **Phase B — idle writes**: enable idle-shaped authenticated writes; stamp idle
       fields at authentication in `packages/frontend/src/lib/oidc/callback.ts` on the **new**
       `sessionId` only: `idleDurationMinutes` from effective tenant policy (omit → **30** until
       US3 lands full parse), `lastActivityAt` = auth time, `idleExpiresAt` = auth time + duration;
       do not extend absolute `expiresAt`; keep dual-read until drain (data-model / tenant-idle-policy).
-- [ ] T022 [US1] Enforce idle + absolute expiry on authenticated Proxy short-circuit and session
+- [x] T022 [US1] Enforce idle + absolute expiry on authenticated Proxy short-circuit and session
       reuse in `packages/frontend/src/proxy.ts` and `packages/frontend/src/lib/session/setup.ts`
       (and via `guard.ts` for protected SSR/actions): fresh clock after Redis load; when
       `idleExpiresAt === expiresAt` and `now >=` that instant on a still-present record, perform
       atomic idle clearance + latch and label **inactivity**; fail closed independently of browser
       timers (FR-004, FR-006, FR-008).
-- [ ] T023 [US1] Implement `recordQualifyingActivity` as a **POST-only** same-origin
+- [x] T023 [US1] Implement `recordQualifyingActivity` as a **POST-only** same-origin
       CSRF-protected Server Action (preferred) under `packages/frontend/src/app/` (e.g.
       `packages/frontend/src/app/(app)/session/activity.ts` or colocated action)—**not** GET:
       derive `sessionId` / `tenantId` **only** from verified `pathable-session` cookie; omit any
@@ -164,17 +164,17 @@ Authentication prerequisite (OIDC callback writing `userId` / `userName`) must b
       deny missing/mismatch/unauthenticated/`now >= idleExpiresAt`/`now >= expiresAt`; coalesce
       ~**1s**; store failure fails closed; no public diagnostic route
       (`contracts/idle-expiration.md`).
-- [ ] T024 [US1] Add client activity-capture island in
+- [x] T024 [US1] Add client activity-capture island in
       `packages/frontend/src/components/session/idle-activity-island.tsx` that reports only
       deliberate user-originated DOM events with `event.isTrusted === true`: `keydown`,
       `pointerdown`, `touchstart`, or scrolling driven by trusted `wheel` / touch / pointer /
       keyboard—**MUST NOT** renew on bare `scroll` alone, script-generated/untrusted events,
       passive reading, polling, prefetch, or automated keepalives; client debounce MUST NOT create
       grace past `idleExpiresAt` (FR-005).
-- [ ] T025 [US1] Mount activity island for authenticated `(app)` UI in
+- [x] T025 [US1] Mount activity island for authenticated `(app)` UI in
       `packages/frontend/src/app/(app)/layout.tsx` (or equivalent authenticated shell) without moving
       unrelated SSR data loading into the client.
-- [ ] T026 [US1] Wire expiration BDD steps in `tests/bdd/steps/idle.steps.ts` and verify
+- [x] T026 [US1] Wire expiration BDD steps in `tests/bdd/steps/idle.steps.ts` and verify
       `@contract` / clock scenarios from `features/idle-session-expiration.feature` (shared-tab
       renewal, independent sessions, delayed activity no-revival); keep drain-window dual-read
       until at least one configured absolute TTL after Phase B (document remaining drain in
@@ -200,20 +200,20 @@ not restore the client fixture. Client timing alone must never grant continued a
 
 ### Tests for User Story 2
 
-- [ ] T027 [P] [US2] Add failing unit/contract coverage in
+- [x] T027 [P] [US2] Add failing unit/contract coverage in
       `packages/frontend/tests/unit/session-recovery.test.ts`: confirm/read outcomes; latch
       retained until ended session `expiresAt`; string cause consume-once OK only if latch remains;
       BroadcastChannel payload shape (`sessionId` + `sessionEndGeneration`); session-mismatch +
       tombstone handoff after cookie rotation; confirm/5xx → fail closed for visible protected UI
       (generic auth-unavailable, **not** inactivity claim); SSR recovery signal vs generic OIDC.
-- [ ] T028 [P] [US2] Extend `tests/bdd/steps/idle.steps.ts` for
+- [x] T028 [P] [US2] Extend `tests/bdd/steps/idle.steps.ts` for
       `features/idle-session-recovery.feature` (`@browser` modal focus/keyboard, running-app expiry
       without full navigation, multi-tab both show inactivity explanation + missed-BroadcastChannel
       latch recovery, login-again cancel/fail, client-only “Unsent practice note” fixture).
 
 ### Implementation for User Story 2
 
-- [ ] T029 [US2] Implement authenticated same-tenant session confirm/read as a **POST-only**
+- [x] T029 [US2] Implement authenticated same-tenant session confirm/read as a **POST-only**
       same-origin CSRF-protected Server Action (preferred) under `packages/frontend/src/app/` (e.g.
       `packages/frontend/src/app/(app)/session/confirm.ts`)—GET probes if any MUST be non-mutating:
       return authenticated-still-valid (include cookie-bound `sessionId`, `idleExpiresAt`,
@@ -222,15 +222,15 @@ not restore the client fixture. Client timing alone must never grant continued a
       **tombstone handoff** lookup of mounted old `sessionId` when cookie rotated; consume string
       `accessEndedCause` only while generation latch remains; no full session diagnostic dump
       (`contracts/inactivity-recovery.md`).
-- [ ] T030 [US2] Add cause-bearing SSR recovery route under
+- [x] T030 [US2] Add cause-bearing SSR recovery route under
       `packages/frontend/src/app/(recovery)/…` **OUTSIDE** `(app)` (no `getRequestSession`
       authenticated layout that rejects anonymous): PathAble Modal shell + “Log in again”; Server
       Components own session/tenant/cause presentation (FR-009, plan Structure Decision).
-- [ ] T031 [US2] Wire `packages/frontend/src/proxy.ts` to **branch on typed setup
+- [x] T031 [US2] Wire `packages/frontend/src/proxy.ts` to **branch on typed setup
       `inactivity-recovery` signal** and forward to the SSR recovery shell **before** generic OIDC
       initiation; anonymous without recovery signal continues existing OIDC redirect; update Proxy
       matcher/routes as needed (FR-008, FR-009).
-- [ ] T032 [US2] Implement inactivity recovery client island in
+- [x] T032 [US2] Implement inactivity recovery client island in
       `packages/frontend/src/components/session/inactivity-recovery-island.tsx`: **MUST** schedule
       deadline-aligned timer at `min(idleExpiresAt, expiresAt)` while authenticated UI is mounted
       (visibility/focus confirm are **supplemental only**); on server-confirmed inactivity remove
@@ -238,24 +238,24 @@ not restore the client fixture. Client timing alone must never grant continued a
       `sessionEndGeneration`** (receivers ignore foreign session ids); on confirm/5xx **fail closed
       for visible protected UI** with generic authorization-unavailable (retry without inactivity
       claim); never grant access past deadlines (FR-009).
-- [ ] T033 [P] [US2] Implement PathAble `Modal` recovery UI in
+- [x] T033 [P] [US2] Implement PathAble `Modal` recovery UI in
       `packages/frontend/src/components/session/inactivity-ended-modal.tsx` with meaningful
       accessible name/explanation that inactivity ended the session (MAY note possible unsaved
       temporary work lost—copy only); primary button accessible name **“Log in again”**; focus
       moves into modal and stays usable; keyboard-operable; no advance-warning/countdown/extend
       control (FR-009, FR-010).
-- [ ] T034 [US2] Implement dedicated CSRF-protected login-again Server Action (preferred) or
+- [x] T034 [US2] Implement dedicated CSRF-protected login-again Server Action (preferred) or
       POST route (indicative `packages/frontend/src/app/auth/login-again/…` / action)—**not** bare
       `/`: rotate **new** `sessionId` + host-bound `pathable-session` cookie **before** calling
       `packages/frontend/src/lib/oidc/initiate.ts`; OIDC tx targets new sid only; callback writes
       authenticated fields only to new Redis key; leave old-key tombstone until old `expiresAt` (or
       handoff consume); mounted tabs MUST run server-driven **session-mismatch handshake** via
       confirm/read (FR-010, research §6).
-- [ ] T035 [US2] Add client-only protected UI fixture support in BDD/app test helpers (e.g.
+- [x] T035 [US2] Add client-only protected UI fixture support in BDD/app test helpers (e.g.
       `tests/bdd/support/` and/or authenticated demo UI) for Gherkin “Unsent practice note”: seed in
       DOM/client state—**not** Redis; on confirmed inactivity remove with protected content;
       login-again MUST NOT restore it (data-model Temporary session data).
-- [ ] T036 [US2] Complete recovery BDD wiring in `tests/bdd/steps/idle.steps.ts` for running-app
+- [x] T036 [US2] Complete recovery BDD wiring in `tests/bdd/steps/idle.steps.ts` for running-app
       revalidation, a11y keyboard path, multi-tab sync (both tabs show inactivity explanation),
       missed-BroadcastChannel latch, login-again / IdP SSO **new-session-only** rules from
       `features/idle-session-recovery.feature`.
@@ -276,31 +276,31 @@ and cross-tenant changes. No new administration application.
 
 ### Tests for User Story 3
 
-- [ ] T037 [P] [US3] Unit-test `idleTimeoutMinutes` parse bounds in
+- [x] T037 [P] [US3] Unit-test `idleTimeoutMinutes` parse bounds in
       `packages/frontend/tests/unit/tenant-idle-policy.test.ts`: omitted → effective **30**;
       integers **5–30** inclusive accepted; fractional, `<5`, `>30`, non-integer, boolean/string
       disable, `null` → whole-source fail-fast (`CONFIG_UNAVAILABLE`) without substituting **30**
       (`contracts/tenant-idle-policy.md`, FR-001–FR-003).
-- [ ] T038 [P] [US3] Scaffold/wire policy scenarios in `tests/bdd/steps/idle.steps.ts` for
+- [x] T038 [P] [US3] Scaffold/wire policy scenarios in `tests/bdd/steps/idle.steps.ts` for
       `features/tenant-idle-timeout-policy.feature` (Springfield vs Shelbyville isolation; policy
       fixed at auth; login-again uses new policy).
 
 ### Implementation for User Story 3
 
-- [ ] T039 [US3] Extend `TenantConfig` in `packages/frontend/src/lib/tenant/types.ts` with optional
+- [x] T039 [US3] Extend `TenantConfig` in `packages/frontend/src/lib/tenant/types.ts` with optional
       `idleTimeoutMinutes` (`number | omitted`): when present MUST be safe integer, whole minutes,
       **5–30 inclusive**; when omitted effective policy **30** for new authenticated sessions;
       explicit invalid values make the **entire** tenant source unusable at the trusted boundary—do
       not substitute **30**; disablement is not a representable stored value; unknown keys still
       rejected (FR-001, FR-002).
-- [ ] T040 [US3] Export effective idle duration resolver (omit → **30**) from
+- [x] T040 [US3] Export effective idle duration resolver (omit → **30**) from
       `packages/frontend/src/lib/tenant/` and use it in
       `packages/frontend/src/lib/oidc/callback.ts` so new sessions copy `idleDurationMinutes` at
       auth; existing Redis sessions retain prior `idleDurationMinutes` when config changes after
       process restart (FR-003).
-- [ ] T041 [US3] Document optional `idleTimeoutMinutes` and restart reload semantics in
+- [x] T041 [US3] Document optional `idleTimeoutMinutes` and restart reload semantics in
       `docs/multi-tenancy.md` (trusted env JSON process; no new admin UI; whole-source fail-fast).
-- [ ] T042 [US3] Complete policy BDD assertions in `tests/bdd/steps/idle.steps.ts` for
+- [x] T042 [US3] Complete policy BDD assertions in `tests/bdd/steps/idle.steps.ts` for
       whole-minute **5–30** choices, reject-above-ceiling/disable, and invalid explicit config
       fail-closed from `features/tenant-idle-timeout-policy.feature`.
 
@@ -312,23 +312,23 @@ and cross-tenant changes. No new administration application.
 
 **Purpose**: Documentation triad, regression partitions, and delivery validation across stories.
 
-- [ ] T043 [P] Update `docs/session-state.md` with idle fields, qualifying activity (`isTrusted`),
+- [x] T043 [P] Update `docs/session-state.md` with idle fields, qualifying activity (`isTrusted`),
       authoritative enforcement, cause/latch rules, BroadcastChannel payload, CAS/lock protocol,
       Phase A/B drain, absolute-vs-idle independence, and **no draft keys** in this slice.
-- [ ] T044 [P] Update `docs/authentication.md` for idle stamping on **new** sid after login-again
+- [x] T044 [P] Update `docs/authentication.md` for idle stamping on **new** sid after login-again
       rotation, callback target rules, and recovery/OIDC Proxy branching (plan Constraints; research
       docs alignment).
-- [ ] T045 [P] Confirm `docs/multi-tenancy.md` idle policy notes match shipped behavior
+- [x] T045 [P] Confirm `docs/multi-tenancy.md` idle policy notes match shipped behavior
       (cross-check T041).
-- [ ] T046 Run regression `pnpm test:bdd:session` and `pnpm test:bdd:oidc` after Proxy/session
+- [x] T046 Run regression `pnpm test:bdd:session` and `pnpm test:bdd:oidc` after Proxy/session
       touchpoints; keep partitions green on delivery PR (quickstart).
-- [ ] T047 [P] Run frontend unit suite `pnpm --filter @pathableai/pre-ets-frontend test:unit` and
+- [x] T047 [P] Run frontend unit suite `pnpm --filter @pathableai/pre-ets-frontend test:unit` and
       idle BDD dry-run / `pnpm test:bdd:idle` per
       `specs/004-idle-session-timeout/quickstart.md`.
-- [ ] T048 Run root quality gates from `package.json`: `pnpm typecheck`, **`pnpm build`**,
+- [x] T048 Run root quality gates from `package.json`: `pnpm typecheck`, **`pnpm build`**,
       `pnpm lint`, `pnpm format:check`, `pnpm check:unused` for touched workspaces under
       `packages/frontend/` (lint before format; no generated Cucumber reports committed).
-- [ ] T049 [P] Surface release checklist items (do not invent product claims): D-001/FR-011 policy
+- [x] T049 [P] Surface release checklist items (do not invent product claims): D-001/FR-011 policy
       approval memo for **5–30** and default **30**, D-005/SC-005 workflow thresholds, D-006
       delivery appetite—track outside Spec Kit per quickstart; observability metrics remain deferred
       out of scope.

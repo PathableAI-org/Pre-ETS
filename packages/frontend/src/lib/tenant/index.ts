@@ -13,3 +13,4 @@ export {
   type TenantOperations
 } from "./operations.ts"
 export type { TenantConfig } from "./types.ts"
+export { effectiveIdleTimeoutMinutes } from "./types.ts"

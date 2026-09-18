@@ -590,7 +590,9 @@ Given("its stored record is bound to {string}", async function(this: TenantWorld
 
 Then("a fresh session is created only for validated tenant {string}", function(this: TenantWorld, tenantId: string) {
   assert.equal(this.sessionTenantId, tenantId)
-  assert.equal(this.sessionContract?.result.outcome, "create")
+  const result = this.sessionContract?.result
+  assert.ok(result?.kind === "ready")
+  assert.equal(result.outcome, "create")
 })
 
 Then("the previous record is neither changed nor reassigned", async function(this: TenantWorld) {

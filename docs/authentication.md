@@ -77,13 +77,22 @@ request URL → slug → tenant configuration → session setup → OIDC initiat
    completion: verify `pathable-oidc` against query `state`, consume the Redis
    transaction once, exchange the authorization code (PKCE + confidential
    secret when required), validate ID token `nonce`, and write `userId` /
-   `userName` onto the existing Redis session (no tokens stored). Success
-   clears `pathable-oidc` and redirects `303` to `/`. Failures clear the
-   correlation cookie without authenticating and redirect to
-   `/login-unavailable` or return extended 403 as appropriate. Non-document
-   callback requests receive `401`.
+   `userName` onto the **current** Redis session id bound by the cookie (no
+   tokens stored). The same write stamps idle fields on that **new** session
+   id only: `idleDurationMinutes` from the tenant’s effective policy (omit →
+   30), `lastActivityAt` / `idleExpiresAt` from the application clock—without
+   extending absolute `expiresAt`. Success clears `pathable-oidc` and redirects
+   `303` to `/`. Failures clear the correlation cookie without authenticating
+   and redirect to `/login-unavailable` or return extended 403 as appropriate.
+   Non-document callback requests receive `401`.
 8. The next document visit to `/` with an authenticated session short-circuits
    to the landing page showing tenant Display Name and the signed-in user name.
+9. After idle expiry, Proxy may route to the SSR recovery shell at `/inactivity`
+   when setup returns `inactivity-recovery`. **Log in again** is a dedicated
+   CSRF-protected action: it mints a **new** `sessionId` + host-bound
+   `pathable-session` cookie, then starts OIDC initiation against that new sid
+   only. Callback authenticated/idle writes target the new Redis key; the prior
+   key may retain a tombstone/latch until its absolute `expiresAt`.
 
 ACS URLs and other SAML endpoints live on the broker so tenant metadata stays
 stable when the Next.js app moves. Downstream frontend modules receive the

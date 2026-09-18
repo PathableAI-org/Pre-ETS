@@ -82,3 +82,27 @@ emit a safe `invalid-mode` diagnostic.
 Downstream frontend modules that need tenancy call `getCurrentTenant` /
 `getCurrentTenantConfig`. They do not parse the request URL themselves to
 decide which tenant they are in.
+
+## Idle timeout policy (optional)
+
+Trusted tenant JSON MAY include `idleTimeoutMinutes` on each tenant `config`
+object (safe integer, whole minutes **5–30** inclusive). When omitted, new
+authenticated sessions use an effective duration of **30** minutes. Explicit
+invalid values (fractional, out of range, non-integer, disable-like) make the
+**entire** tenant source unusable (`CONFIG_UNAVAILABLE`) until fixed and the
+process restarts—there is no silent substitution of 30. Policy changes apply
+only to sessions authenticated after the restarted process loads the new
+config; existing Redis sessions keep the duration stamped at authentication.
+No administration UI is added for this field.
+
+## Idle timeout policy (optional)
+
+Trusted tenant JSON MAY include `idleTimeoutMinutes` on each tenant `config`
+object (safe integer, whole minutes **5–30** inclusive). When omitted, new
+authenticated sessions use an effective duration of **30** minutes. Explicit
+invalid values (fractional, out of range, non-integer, disable-like) make the
+**entire** tenant source unusable (`CONFIG_UNAVAILABLE`) until fixed and the
+process restarts—there is no silent substitution of 30. Policy changes apply
+only to sessions authenticated after the restarted process loads the new
+config; existing Redis sessions keep the duration stamped at authentication.
+No administration UI is added for this field.

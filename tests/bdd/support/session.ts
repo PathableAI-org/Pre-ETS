@@ -682,8 +682,10 @@ function cookieHeaderForHost(world: TenantWorld, host: string): string | undefin
 function createStoreForWorld(world: TenantWorld, config: SessionConfig): SessionStore {
   if (world.redisUrl === CLOSED_REDIS_URL) {
     return {
+      clearForInactivity: () => Promise.reject(new SessionStoreError("Session store unavailable.")),
       create: () => Promise.reject(new SessionStoreError("Session store unavailable.")),
       read: () => Promise.reject(new SessionStoreError("Session store unavailable.")),
+      renewIdleActivity: () => Promise.reject(new SessionStoreError("Session store unavailable.")),
       update: () => Promise.reject(new SessionStoreError("Session store unavailable."))
     }
   }
@@ -698,6 +700,10 @@ function createTracingStore(
 ): TracingStore {
   const inner = createStoreForWorld(world, config)
   return {
+    async clearForInactivity(sessionId, nowSeconds, expectedTenantId) {
+      events.push("store.clearForInactivity")
+      return await inner.clearForInactivity(sessionId, nowSeconds, expectedTenantId)
+    },
     async create(id, record) {
       events.push("store.create")
       return await inner.create(id, record)
@@ -706,6 +712,10 @@ function createTracingStore(
     async read(id) {
       events.push("store.read")
       return await inner.read(id)
+    },
+    async renewIdleActivity(sessionId, nowSeconds, expectedTenantId) {
+      events.push("store.renewIdleActivity")
+      return await inner.renewIdleActivity(sessionId, nowSeconds, expectedTenantId)
     },
     async update(id, record) {
       events.push("store.update")

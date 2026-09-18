@@ -1,8 +1,26 @@
 import type { ReactNode } from "react"
 
+import { IdleActivityIsland } from "../../components/session/idle-activity-island.tsx"
+import { InactivityRecoveryIsland } from "../../components/session/inactivity-recovery-island.tsx"
 import { getRequestSession } from "../../lib/session/index.ts"
 
 export default async function AppLayout({ children }: { children: ReactNode }) {
-  await getRequestSession()
-  return children
+  const session = await getRequestSession()
+  const authenticated = session.context.userId !== undefined
+  const idleExpiresAt = session.context.idleExpiresAt
+
+  if (authenticated && idleExpiresAt !== undefined) {
+    return (
+      <InactivityRecoveryIsland
+        expiresAt={session.context.expiresAt}
+        idleExpiresAt={idleExpiresAt}
+        sessionId={session.context.sessionId}
+      >
+        <IdleActivityIsland />
+        {children}
+      </InactivityRecoveryIsland>
+    )
+  }
+
+  return <>{children}</>
 }

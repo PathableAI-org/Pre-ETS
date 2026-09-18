@@ -4,7 +4,9 @@ import type { SessionStore } from "../session/store.ts"
 import type { TenantConfig, TenantRecord } from "../tenant/types.ts"
 import type { OidcTransactionStore } from "./transaction.ts"
 
+import { computeIdleExpiresAt } from "../session/idle.ts"
 import { SessionStoreError } from "../session/store.ts"
+import { effectiveIdleTimeoutMinutes } from "../tenant/types.ts"
 import { verifyOidcCorrelationCookie } from "./cookie.ts"
 import { discoverOidcIssuer } from "./discovery.ts"
 import { approvedApplicationOrigin } from "./initiation-http.ts"
@@ -193,6 +195,7 @@ export async function completeLogin(
   const authenticated = await writeAuthenticatedSession({
     nowSeconds: input.nowSeconds,
     sessionStore: deps.sessionStore,
+    tenantConfig: input.tenantRecord.config,
     tenantId: input.tenantId,
     tx,
     userId,
@@ -271,6 +274,7 @@ function extractSubject(claims: { readonly sub?: unknown }): string | undefined 
 async function writeAuthenticatedSession(input: {
   readonly nowSeconds: number
   readonly sessionStore: SessionStore
+  readonly tenantConfig: TenantConfig
   readonly tenantId: string
   readonly tx: OidcTransactionRecord
   readonly userId: string
@@ -290,8 +294,16 @@ async function writeAuthenticatedSession(input: {
       return false
     }
 
+    // Phase B: stamp idle fields on this new sessionId only; do not extend expiresAt.
+    const idleDurationMinutes = effectiveIdleTimeoutMinutes(input.tenantConfig)
+    const lastActivityAt = input.nowSeconds
+    const idleExpiresAt = computeIdleExpiresAt(lastActivityAt, idleDurationMinutes)
+
     const updated = await input.sessionStore.update(input.tx.sessionId, {
       expiresAt: existing.record.expiresAt,
+      idleDurationMinutes,
+      idleExpiresAt,
+      lastActivityAt,
       tenantId: existing.record.tenantId,
       userId: input.userId,
       userName: input.userName
