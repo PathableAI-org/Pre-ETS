@@ -35,6 +35,12 @@ export type {
   RecordQualifyingActivityInput,
   RecordQualifyingActivityResult
 } from "./activity.ts"
+export { confirmSessionAccess, hasConsumableInactivityLatch } from "./confirm.ts"
+export type {
+  ConfirmSessionAccessDependencies,
+  ConfirmSessionAccessInput,
+  ConfirmSessionAccessResult
+} from "./confirm.ts"
 export { assertGuardedSession, guardAuthenticatedAccess } from "./guard.ts"
 export type {
   GuardAuthenticatedAccessDependencies,
