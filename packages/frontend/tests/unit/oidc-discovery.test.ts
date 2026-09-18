@@ -67,13 +67,13 @@ describe("discoverOidcIssuer loopback HTTP options", () => {
   ]
 
   function mockDiscovery() {
-    return vi.fn(async (..._args: DiscoveryCall) => {
-      return {
+    return vi.fn((..._args: DiscoveryCall) =>
+      Promise.resolve({
         serverMetadata: () => ({
           authorization_endpoint: "http://127.0.0.1/auth"
         })
-      }
-    })
+      })
+    )
   }
 
   function discoveryOptionsFromCall(
