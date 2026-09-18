@@ -199,6 +199,11 @@ function parseAbsoluteIssuerUrl(raw: string): undefined | URL {
     return undefined
   }
 
+  // Reject normalized forms (whitespace, omitted trailing slash on origin-only URLs, etc.).
+  if (url.href !== raw && url.toString() !== raw) {
+    return undefined
+  }
+
   // Reject userinfo; relative/incomplete strings fail URL parsing above.
   if (url.username !== "" || url.password !== "") {
     return undefined

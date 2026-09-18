@@ -2,7 +2,6 @@ import * as client from "openid-client"
 
 import type { SessionStore } from "../session/store.ts"
 import type { TenantConfig, TenantRecord } from "../tenant/types.ts"
-import type { discoverOidcIssuer } from "./discovery.ts"
 import type { OidcSecretResolution } from "./secrets.ts"
 import type { OidcTransactionStore } from "./transaction.ts"
 
@@ -14,7 +13,7 @@ import { getOidcTxConfig, OIDC_COOKIE_NAME, type OidcTransactionRecord, type Oid
 
 export interface CompleteLoginDeps {
   readonly authorizationCodeGrant?: typeof client.authorizationCodeGrant
-  readonly discover?: typeof discoverOidcIssuer
+  readonly discover?: ResolveClientAndDiscoverDeps["discover"]
   readonly readOidcCookie?: (request: Request) => string | undefined
   readonly resolveSecret?: (
     slug: string,

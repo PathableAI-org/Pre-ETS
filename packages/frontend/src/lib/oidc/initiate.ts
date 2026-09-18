@@ -2,7 +2,6 @@ import * as client from "openid-client"
 
 import type { TenantConfig, TenantRecord } from "../tenant/types.ts"
 import type { DiscoveredOidcClient } from "./discovery.ts"
-import type { discoverOidcIssuer } from "./discovery.ts"
 import type { OidcSecretResolution } from "./secrets.ts"
 import type { OidcTransactionStore } from "./transaction.ts"
 
@@ -19,7 +18,7 @@ import {
 export interface InitiateLoginDeps {
   readonly buildAuthorizationUrl?: typeof client.buildAuthorizationUrl
   readonly calculatePKCECodeChallenge?: typeof client.calculatePKCECodeChallenge
-  readonly discover?: typeof discoverOidcIssuer
+  readonly discover?: ResolveClientAndDiscoverDeps["discover"]
   readonly randomNonce?: typeof client.randomNonce
   readonly randomPKCECodeVerifier?: typeof client.randomPKCECodeVerifier
   readonly resolveSecret?: (
