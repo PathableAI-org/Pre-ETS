@@ -12,7 +12,10 @@ export function createMismatchedTenantSource(record: TenantRecord): TenantSource
   }
 }
 
-export function createStaticTenantSource(records: unknown): TenantSource {
+export function createStaticTenantSource(
+  records: unknown,
+  options: { readonly allowLoopbackHttp?: boolean } = {}
+): TenantSource {
   if (!Array.isArray(records)) {
     throw new Error(CONFIG_UNAVAILABLE)
   }
@@ -21,7 +24,7 @@ export function createStaticTenantSource(records: unknown): TenantSource {
   const slugs = new Set<string>()
 
   for (const record of records) {
-    const value = parseTenantRecord(record)
+    const value = parseTenantRecord(record, options)
     if (value === undefined) {
       throw new Error(CONFIG_UNAVAILABLE)
     }

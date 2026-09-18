@@ -7,11 +7,11 @@ import type { ContractFailureReason, ContractResult, HttpExchange, TenantWorld }
 import { bindHost } from "../../../packages/frontend/src/lib/tenant/host.ts"
 import {
   createMismatchedTenantSource,
+  createStaticTenantSource,
   createThrowingTenantSource,
   type TenantSource
 } from "../../../packages/frontend/src/lib/tenant/source.ts"
 import {
-  CONFIG_UNAVAILABLE,
   LOCAL_CONFIG_ERROR,
   parseTenantRecord,
   selectTenantMode,
@@ -183,7 +183,7 @@ export function injectedSource(world: TenantWorld): TenantSource {
   }
 
   try {
-    return createBddTenantSource(records)
+    return createStaticTenantSource(records, { allowLoopbackHttp: true })
   } catch {
     return createThrowingTenantSource()
   }
@@ -456,51 +456,6 @@ function competingHeaders(world: TenantWorld): Record<string, string> {
     "X-Forwarded-Host": `${world.competingSlug}.pathable.com`,
     "x-preets-tenant-origin": "local-static",
     "x-preets-tenant-slug": world.competingSlug
-  }
-}
-
-/**
- * Like `createStaticTenantSource`, but allows loopback HTTP issuers used by
- * local Keycloak BDD fixtures regardless of the cucumber process NODE_ENV.
- */
-function createBddTenantSource(records: unknown[]): TenantSource {
-  if (!Array.isArray(records)) {
-    throw new Error(CONFIG_UNAVAILABLE)
-  }
-
-  const parsed: TenantRecord[] = []
-  const slugs = new Set<string>()
-
-  for (const record of records) {
-    // fallow-ignore-next-line code-duplication -- BDD-local copy of createStaticTenantSource with loopback HTTP
-    const value = parseTenantRecord(record, { allowLoopbackHttp: true })
-    if (value === undefined) {
-      throw new Error(CONFIG_UNAVAILABLE)
-    }
-
-    if (slugs.has(value.slug)) {
-      throw new Error(CONFIG_UNAVAILABLE)
-    }
-
-    slugs.add(value.slug)
-    parsed.push(value)
-  }
-
-  const bySlug = new Map(parsed.map((record) => [record.slug, record]))
-
-  return {
-    readTenantRecord(slug: string): Promise<TenantRecord | undefined> {
-      const record = bySlug.get(slug)
-      if (record === undefined) {
-        return Promise.resolve(undefined)
-      }
-
-      if (record.slug !== slug) {
-        return Promise.reject(new Error(CONFIG_UNAVAILABLE))
-      }
-
-      return Promise.resolve(record)
-    }
   }
 }
 

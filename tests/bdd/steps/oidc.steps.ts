@@ -12,12 +12,14 @@ import {
   assertConcurrentDistinctInitiations,
   assertExtendedForbidden,
   assertFailureClass,
+  assertForbiddenWithoutRedirect,
   assertIdpAuthorizationRedirect,
   assertNoHtmlLoginRedirect,
   assertNoLandingContent,
   assertNoProviderRedirect,
   assertNoRedirectLoop,
   assertNoSessionSetCookie,
+  assertNoShelbyvilleLeak,
   assertNotLoginUnavailableRoute,
   assertOidcCookiePresent,
   assertPkceProtected,
@@ -722,11 +724,8 @@ Then(
 
 Then(
   "no default provider or other tenant's configuration is substituted",
-  // fallow-ignore-next-line code-duplication -- parallel Shelbyville isolation assertion
   function(this: TenantWorld) {
-    assert.ok(this.httpResponse)
-    assert.doesNotMatch(this.httpResponse.body, /shelbyville-web|Shelbyville/)
-    assert.doesNotMatch(this.httpResponse.headers.location ?? "", /shelbyville/)
+    assertNoShelbyvilleLeak(this, "config")
   }
 )
 
@@ -764,11 +763,8 @@ Then(
 
 Then(
   "no other tenant's credential is used",
-  // fallow-ignore-next-line code-duplication -- parallel Shelbyville isolation assertion
   function(this: TenantWorld) {
-    assert.ok(this.httpResponse)
-    assert.doesNotMatch(this.httpResponse.body, /shelbyville/i)
-    assert.doesNotMatch(this.httpResponse.headers.location ?? "", /shelbyville/i)
+    assertNoShelbyvilleLeak(this, "credential")
   }
 )
 
@@ -958,11 +954,8 @@ Then(
 
 Then(
   "the application returns HTTP 403 without a login redirect",
-  // fallow-ignore-next-line code-duplication -- shared 403-without-Location assertion
   function(this: TenantWorld) {
-    assert.ok(this.httpResponse)
-    assert.equal(this.httpResponse.status, 403)
-    assert.equal(this.httpResponse.headers.location, undefined)
+    assertForbiddenWithoutRedirect(this)
   }
 )
 
@@ -1078,11 +1071,8 @@ Then(
 
 Then(
   "the existing forbidden handling returns HTTP 403 without a login redirect or a new forbidden destination",
-  // fallow-ignore-next-line code-duplication -- shared 403-without-Location assertion
   function(this: TenantWorld) {
-    assert.ok(this.httpResponse)
-    assert.equal(this.httpResponse.status, 403)
-    assert.equal(this.httpResponse.headers.location, undefined)
+    assertForbiddenWithoutRedirect(this)
   }
 )
 

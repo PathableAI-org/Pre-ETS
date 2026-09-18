@@ -85,6 +85,78 @@ export async function startOwnedProcess(world: TenantWorld): Promise<void> {
   await waitForReady(world.port, child, logs)
 }
 
+function applyLocalConfigEnv(env: NodeJS.ProcessEnv, world: TenantWorld): void {
+  if (world.localConfigProblem !== undefined) {
+    const payload = localConfigPayload(world.localConfigProblem)
+    if (payload !== undefined) {
+      env.TENANT_LOCAL_CONFIG_JSON = payload
+    }
+    return
+  }
+
+  if (world.localStaticRecord === undefined) {
+    return
+  }
+
+  const production = world.runtime === "production"
+  env.TENANT_LOCAL_CONFIG_JSON = JSON.stringify({
+    config: syntheticTenantConfig(
+      world.localStaticRecord.displayName,
+      world.localStaticRecord.slug,
+      { production }
+    ),
+    slug: world.localStaticRecord.slug
+  })
+}
+
+function applyOidcEnv(env: NodeJS.ProcessEnv, world: TenantWorld): void {
+  env.OIDC_TX_KEY_PREFIX = world.oidcTxKeyPrefix
+  if (world.oidcClientSecretsJson !== undefined) {
+    env.OIDC_CLIENT_SECRETS_JSON = world.oidcClientSecretsJson
+  }
+}
+
+function applySessionEnv(env: NodeJS.ProcessEnv, world: TenantWorld): void {
+  env.NEXT_TELEMETRY_DISABLED = "1"
+  env.NODE_ENV = world.runtime === "production" ? "production" : "development"
+  env.REDIS_URL = world.redisUrl ?? process.env.REDIS_URL ?? "redis://127.0.0.1:6379"
+  env.SESSION_SIGNING_SECRET = world.sessionSigningSecret
+  env.SESSION_TTL_SECONDS = String(world.sessionTtlSeconds)
+  env.SESSION_STORE_TIMEOUT_MS = String(world.sessionStoreTimeoutMs)
+  env.SESSION_KEY_PREFIX = world.sessionKeyPrefix
+}
+
+function applyTenantRecordsEnv(env: NodeJS.ProcessEnv, world: TenantWorld): void {
+  const production = world.runtime === "production"
+  if (world.oidcFixtures !== undefined || world.oidcUnreadableConfig) {
+    env.TENANT_CONFIG_RECORDS_JSON = recordsJsonForWorld(world, production)
+    return
+  }
+
+  const records = world.tenants.map((tenant) => {
+    if (tenant.slug === "springfield" && world.invalidDisplayName !== undefined) {
+      return invalidEnvShape(world.invalidDisplayName)
+    }
+
+    return {
+      config: syntheticTenantConfig(tenant.displayName, tenant.slug, { production }),
+      slug: tenant.slug
+    }
+  })
+  env.TENANT_CONFIG_RECORDS_JSON = JSON.stringify(records)
+}
+
+function applyTenantResolutionEnv(env: NodeJS.ProcessEnv, world: TenantWorld): void {
+  if (world.unsupportedMode !== undefined) {
+    env.TENANT_RESOLUTION = world.unsupportedMode
+    return
+  }
+
+  if (world.resolutionMode !== undefined) {
+    env.TENANT_RESOLUTION = world.resolutionMode
+  }
+}
+
 async function assertPortFree(port: number): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     const server = net.createServer()
@@ -100,74 +172,23 @@ async function assertPortFree(port: number): Promise<void> {
   })
 }
 
-// fallow-ignore-next-line complexity -- BDD spawn env assembly for tenant + session + OIDC
 function buildProcessEnv(world: TenantWorld): NodeJS.ProcessEnv {
   ensureSessionSettings(world)
-  const env: NodeJS.ProcessEnv = { ...process.env }
+  const env = clearHarnessEnv({ ...process.env })
+  applySessionEnv(env, world)
+  applyOidcEnv(env, world)
+  applyTenantResolutionEnv(env, world)
+  applyTenantRecordsEnv(env, world)
+  applyLocalConfigEnv(env, world)
+  return env
+}
+
+function clearHarnessEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   delete env.TENANT_RESOLUTION
   delete env.TENANT_CONFIG_RECORDS_JSON
   delete env.TENANT_LOCAL_CONFIG_JSON
   delete env.OIDC_CLIENT_SECRETS_JSON
   delete env.OIDC_TX_KEY_PREFIX
-  env.NEXT_TELEMETRY_DISABLED = "1"
-  env.NODE_ENV = world.runtime === "production" ? "production" : "development"
-  env.REDIS_URL = world.redisUrl ?? process.env.REDIS_URL ?? "redis://127.0.0.1:6379"
-  env.SESSION_SIGNING_SECRET = world.sessionSigningSecret
-  env.SESSION_TTL_SECONDS = String(world.sessionTtlSeconds)
-  env.SESSION_STORE_TIMEOUT_MS = String(world.sessionStoreTimeoutMs)
-  env.SESSION_KEY_PREFIX = world.sessionKeyPrefix
-  env.OIDC_TX_KEY_PREFIX = world.oidcTxKeyPrefix
-  if (world.oidcClientSecretsJson !== undefined) {
-    env.OIDC_CLIENT_SECRETS_JSON = world.oidcClientSecretsJson
-  }
-
-  if (world.unsupportedMode !== undefined) {
-    env.TENANT_RESOLUTION = world.unsupportedMode
-  } else if (world.resolutionMode !== undefined) {
-    env.TENANT_RESOLUTION = world.resolutionMode
-  }
-
-  const production = world.runtime === "production"
-  if (world.oidcFixtures !== undefined || world.oidcUnreadableConfig) {
-    env.TENANT_CONFIG_RECORDS_JSON = recordsJsonForWorld(world, production)
-  } else {
-    const records = world.tenants.map((tenant) => {
-      if (tenant.slug === "springfield" && world.invalidDisplayName !== undefined) {
-        return invalidEnvShape(world.invalidDisplayName)
-      }
-
-      return {
-        config: syntheticTenantConfig(tenant.displayName, tenant.slug, { production }),
-        slug: tenant.slug
-      }
-    })
-    env.TENANT_CONFIG_RECORDS_JSON = JSON.stringify(records)
-  }
-
-  if (world.localConfigProblem !== undefined) {
-    const payload = localConfigPayload(world.localConfigProblem)
-    if (payload !== undefined) {
-      env.TENANT_LOCAL_CONFIG_JSON = payload
-    }
-  } else if (world.localStaticRecord !== undefined) {
-    env.TENANT_LOCAL_CONFIG_JSON = JSON.stringify({
-      config: syntheticTenantConfig(
-        world.localStaticRecord.displayName,
-        world.localStaticRecord.slug,
-        { production }
-      ),
-      slug: world.localStaticRecord.slug
-    })
-  }
-
-  if (world.oidcClientSecretsJson !== undefined) {
-    env.OIDC_CLIENT_SECRETS_JSON = world.oidcClientSecretsJson
-  }
-
-  if (world.oidcTxKeyPrefix !== undefined) {
-    env.OIDC_TX_KEY_PREFIX = world.oidcTxKeyPrefix
-  }
-
   return env
 }
 
@@ -203,26 +224,36 @@ function localConfigPayload(problem: string): string | undefined {
   }
 }
 
-// fallow-ignore-next-line complexity -- restart signature over many optional world fields
+function oidcSignatureFields(world: TenantWorld): Record<string, unknown> {
+  return {
+    defect: world.oidcDefect ?? "",
+    fixtures: world.oidcFixtures ?? [],
+    forcedFailure: world.oidcForcedFailure ?? "",
+    mockIssuer: world.oidcMockIssuer ?? "",
+    oidcSecrets: world.oidcClientSecretsJson ?? "",
+    oidcTxPrefix: world.oidcTxKeyPrefix ?? "",
+    unreadable: world.oidcUnreadableConfig
+  }
+}
+
 function processSignature(world: TenantWorld): string {
   ensureSessionSettings(world)
-  const runtime = world.runtime ?? "development"
-  return [
-    runtime,
-    world.resolutionMode ?? "host",
-    world.redisUrl ?? "",
-    world.sessionSigningSecret ?? "",
-    world.sessionKeyPrefix ?? "",
-    world.oidcTxKeyPrefix ?? "",
-    world.oidcClientSecretsJson ?? "",
-    world.oidcMockIssuer ?? "",
-    world.oidcDefect ?? "",
-    world.oidcForcedFailure ?? "",
-    world.oidcUnreadableConfig ? "unreadable" : "",
-    JSON.stringify(world.oidcFixtures ?? []),
-    String(world.sessionTtlSeconds ?? ""),
-    String(world.port)
-  ].join(":")
+  return JSON.stringify({
+    ...oidcSignatureFields(world),
+    ...sessionSignatureFields(world),
+    port: world.port
+  })
+}
+
+function sessionSignatureFields(world: TenantWorld): Record<string, unknown> {
+  return {
+    redisUrl: world.redisUrl ?? "",
+    resolutionMode: world.resolutionMode ?? "host",
+    runtime: world.runtime ?? "development",
+    sessionKeyPrefix: world.sessionKeyPrefix ?? "",
+    sessionSigningSecret: world.sessionSigningSecret ?? "",
+    sessionTtlSeconds: world.sessionTtlSeconds ?? ""
+  }
 }
 
 async function terminateProcess(child: ChildProcess | undefined): Promise<void> {
