@@ -22,8 +22,10 @@ function fixedSessionId(seed = 3): string {
 
 function mockStore(overrides: Partial<SessionStore> = {}): SessionStore {
   return {
+    clearForInactivity: vi.fn().mockResolvedValue({ kind: "denied" }),
     create: vi.fn().mockResolvedValue({ kind: "created" }),
     read: vi.fn().mockResolvedValue({ kind: "missing" }),
+    renewIdleActivity: vi.fn().mockResolvedValue({ kind: "denied" }),
     update: vi.fn().mockResolvedValue({ kind: "updated" }),
     ...overrides
   }
@@ -179,6 +181,7 @@ describe("setupSession", () => {
         create,
         read: vi.fn().mockResolvedValue({
           kind: "record",
+          legacyAuthenticated: false,
           record: { expiresAt, tenantId: "springfield" }
         })
       })
@@ -201,16 +204,21 @@ describe("setupSession", () => {
       expect(create).not.toHaveBeenCalled()
     })
 
-    it("forwards authenticated user fields when reusing a session", async () => {
+    it("forwards authenticated idle fields when reusing an idle-shaped session", async () => {
       const config = testConfig()
       const now = 1_700_000_000
       const expiresAt = now + 3600
+      const idleExpiresAt = now + 1800
       const sessionId = fixedSessionId(31)
       const store = mockStore({
         read: vi.fn().mockResolvedValue({
           kind: "record",
+          legacyAuthenticated: false,
           record: {
             expiresAt,
+            idleDurationMinutes: 30,
+            idleExpiresAt,
+            lastActivityAt: now,
             tenantId: "springfield",
             userId: "user-sub",
             userName: "Demo User"
@@ -230,6 +238,7 @@ describe("setupSession", () => {
         config: springfieldConfig,
         context: {
           expiresAt,
+          idleExpiresAt,
           sessionId,
           tenantId: "springfield",
           userId: "user-sub",
@@ -239,6 +248,144 @@ describe("setupSession", () => {
         origin: "host-associated",
         outcome: "reuse"
       })
+    })
+
+    it("rejects legacy four-key authenticated records (Phase A dual-read)", async () => {
+      const config = testConfig()
+      const now = 1_700_000_000
+      const expiresAt = now + 3600
+      const sessionId = fixedSessionId(32)
+      const createId = vi.fn(() => fixedSessionId(33))
+      const store = mockStore({
+        read: vi.fn().mockResolvedValue({
+          kind: "record",
+          legacyAuthenticated: true,
+          record: {
+            expiresAt,
+            tenantId: "springfield",
+            userId: "user-sub",
+            userName: "Demo User"
+          }
+        })
+      })
+      const request = await signedRequest({ exp: expiresAt, sid: sessionId, tenant: "springfield" }, config)
+
+      const result = await setupSession(request, {
+        config,
+        createId,
+        nowSeconds: () => now,
+        resolveTenant: okTenant(),
+        store
+      })
+
+      expect(result.kind).toBe("ready")
+      if (result.kind === "ready") {
+        expect(result.outcome).toBe("create")
+        expect(result.context.userId).toBeUndefined()
+      }
+      expect(createId).toHaveBeenCalled()
+    })
+
+    it("rejects authenticated records missing idle fields even when not marked legacy", async () => {
+      const config = testConfig()
+      const now = 1_700_000_000
+      const expiresAt = now + 3600
+      const sessionId = fixedSessionId(36)
+      const createId = vi.fn(() => fixedSessionId(37))
+      const store = mockStore({
+        read: vi.fn().mockResolvedValue({
+          kind: "record",
+          // Parser would set legacyAuthenticated for true four-key JSON; defend the reuse path.
+          legacyAuthenticated: false,
+          record: {
+            expiresAt,
+            tenantId: "springfield",
+            userId: "user-sub",
+            userName: "Demo User"
+          }
+        })
+      })
+      const request = await signedRequest({ exp: expiresAt, sid: sessionId, tenant: "springfield" }, config)
+
+      const result = await setupSession(request, {
+        config,
+        createId,
+        nowSeconds: () => now,
+        resolveTenant: okTenant(),
+        store
+      })
+
+      expect(result.kind).toBe("ready")
+      if (result.kind === "ready") {
+        expect(result.outcome).toBe("create")
+        expect(result.context.userId).toBeUndefined()
+      }
+      expect(createId).toHaveBeenCalled()
+    })
+
+    it("samples a fresh clock after Redis load before authenticated reuse", async () => {
+      const config = testConfig()
+      const idleExpiresAt = 1_700_001_800
+      const expiresAt = 1_700_086_400
+      const sessionId = fixedSessionId(35)
+      const record = {
+        expiresAt,
+        idleDurationMinutes: 30,
+        idleExpiresAt,
+        lastActivityAt: 1_700_000_000,
+        tenantId: "springfield",
+        userId: "user-sub",
+        userName: "Demo User"
+      }
+      const events: string[] = []
+      const clearForInactivity = vi.fn().mockResolvedValue({ kind: "denied" })
+      const create = vi.fn().mockResolvedValue({ kind: "created" })
+      const store = mockStore({
+        clearForInactivity,
+        create,
+        read: vi.fn(() => {
+          events.push("store.read")
+          return Promise.resolve({ kind: "record" as const, legacyAuthenticated: false, record })
+        })
+      })
+      let tick = 0
+      const nowSeconds = () => {
+        tick += 1
+        // tick 1: cookie verify (still before idle)
+        // tick 2: fresh post-load sample for authenticated check (at idle → force create)
+        // later ticks: createFreshSession absolute expiry
+        const value = tick === 1 ? idleExpiresAt - 10 : idleExpiresAt
+        events.push(`clock:${String(value)}`)
+        return value
+      }
+      const request = await signedRequest(
+        { exp: expiresAt, sid: sessionId, tenant: "springfield" },
+        config
+      )
+
+      const result = await setupSession(request, {
+        config,
+        createId: () => fixedSessionId(38),
+        nowSeconds,
+        resolveTenant: okTenant(),
+        store
+      })
+
+      expect(events[0]).toBe("clock:1700001790")
+      expect(events).toContain("store.read")
+      const readIndex = events.indexOf("store.read")
+      expect(events[readIndex + 1]).toBe("clock:1700001800")
+      expect(result.kind).toBe("ready")
+      if (result.kind === "ready") {
+        expect(result.outcome).toBe("create")
+        expect(result.context.sessionId).toBe(fixedSessionId(38))
+      }
+      // Phase A: setup does not clear for inactivity — expired idle auth forces create only.
+      expect(clearForInactivity).not.toHaveBeenCalled()
+      expect(create).toHaveBeenCalledWith(
+        fixedSessionId(38),
+        expect.objectContaining({ tenantId: "springfield" })
+      )
     })
 
     it("creates once per request with clock-controlled TTL alignment", async () => {
@@ -321,7 +468,11 @@ describe("setupSession", () => {
           return Promise.resolve({ kind: "missing" })
         }
         if (id === foreignId) {
-          return Promise.resolve({ kind: "record", record: foreignRecord })
+          return Promise.resolve({
+            kind: "record",
+            legacyAuthenticated: false,
+            record: foreignRecord
+          })
         }
         return Promise.resolve({ kind: "missing" })
       })
@@ -354,6 +505,7 @@ describe("setupSession", () => {
         }, config)
         store.read = vi.fn().mockResolvedValue({
           kind: "record",
+          legacyAuthenticated: false,
           record: { expiresAt: now - 1, tenantId: "springfield" }
         })
       } else {

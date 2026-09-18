@@ -14,12 +14,13 @@ pnpm test:bdd:dry
 pnpm test:bdd
 pnpm test:bdd:session
 pnpm test:bdd:oidc
+pnpm test:bdd:idle
 ```
 
-`test:bdd:dry` sets `CUCUMBER_SESSION=1` and `CUCUMBER_OIDC=1` and discovers every scenario
-(tenant + session + OIDC) without executing steps. `test:bdd` runs only the tenant suite: the
+`test:bdd:dry` sets `CUCUMBER_SESSION=1`, `CUCUMBER_OIDC=1`, and `CUCUMBER_IDLE=1` and discovers every
+scenario (tenant + session + OIDC + idle) without executing steps. `test:bdd` runs only the tenant suite: the
 `@production` partition first, then `not @production`, writing distinct JSON reports under
-`reports/`. Session and OIDC stubs stay out of that default path.
+`reports/`. Session, OIDC, and idle stubs stay out of that default path.
 
 ## Bindings
 
@@ -63,6 +64,28 @@ pnpm test:bdd:oidc
 Use `pnpm test:bdd:dry` to check combined discovery and `pnpm test:bdd` for the tenant
 acceptance suite. Dry runs do not prove implementation; the OIDC suite must fail until its
 bindings and implementation are complete.
+
+## Idle-session timeout scaffold
+
+`idle.steps.ts` contains pending TypeScript stubs for the idle feature files:
+
+- `features/idle-session-expiration.feature`
+- `features/idle-session-recovery.feature`
+- `features/tenant-idle-timeout-policy.feature`
+
+Each stub throws a `Pending:` error; replace it with the required setup, interaction, or
+assertion one step at a time. Quoted values use `{string}` parameters. Unused typed parameters
+are prefixed with `_` until implemented.
+
+`cucumber.mjs` loads idle features and stubs only when `CUCUMBER_IDLE=1`. Run the idle scaffold
+from the repository root:
+
+```sh
+pnpm test:bdd:idle
+pnpm test:bdd:idle:contract
+```
+
+Default `pnpm test:bdd` omits idle so pending stubs do not fail unlabeled PR CI.
 
 ## What to implement
 

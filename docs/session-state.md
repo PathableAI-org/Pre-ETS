@@ -93,3 +93,28 @@ navigations to `/`: it forwards session context (including `userName`) to SSR
 and does not re-initiate login. Downstream modules read identity through the
 server-only session accessor; they do not invent a second place to store the
 current user.
+
+## Idle timeout rollout (Phase A → B → drain)
+
+Tenant-configurable idle timeout extends authenticated Redis records with
+`idleDurationMinutes`, `lastActivityAt`, and `idleExpiresAt`, and may set
+anonymous `accessEndedCause: "inactivity"` plus `sessionEndGeneration` after
+idle clearance. Rollout is two-phase:
+
+1. **Phase A — dual-read**: Parsers and `SessionStore.read` accept both legacy
+   four-key authenticated JSON and idle-shaped records, exposing
+   `legacyAuthenticated` for the four-key shape. `setupSession` reuse **rejects**
+   legacy authenticated records (force reauthentication). Do not enable
+   idle-shaped authenticated **writes** until Phase A parsers are proven.
+2. **Phase B — idle writes**: Stamp idle fields at authentication and enforce
+   idle deadlines on protected operations.
+3. **Drain**: Keep dual-read until at least one full configured absolute session
+   TTL (`SESSION_TTL_SECONDS` / `SessionConfig.ttlSeconds`) has elapsed after
+   Phase B starts.
+4. **Rollback**: During the drain window, roll back only to a **Phase A
+   dual-read** build. Rolling back to a four-key-only parser while idle-shaped
+   keys remain is unsupported (those records parse as missing / force reauth).
+
+Redis plus the **application clock** are authoritative for idle and absolute
+deadlines. Browser timers never grant access past `idleExpiresAt` / `expiresAt`.
+There is no public idle diagnostic API.

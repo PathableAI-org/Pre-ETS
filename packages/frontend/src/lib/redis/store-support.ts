@@ -7,9 +7,9 @@ export interface RedisConnectableClient {
   set(
     key: string,
     value: string,
-    options: {
+    options?: {
       readonly condition?: "NX" | "XX"
-      readonly expiration: { readonly type: "EXAT"; readonly value: number }
+      readonly expiration?: { readonly type: "EXAT" | "PX"; readonly value: number }
     }
   ): Promise<unknown>
 }
@@ -25,6 +25,7 @@ export type RedisOidcClient = RedisConnectableClient & {
 }
 
 export type RedisSessionClient = RedisConnectableClient & {
+  del?(key: readonly string[] | string): Promise<unknown>
   get(key: string): Promise<null | string>
 }
 export interface RedisStoreConfig<C extends RedisConnectableClient = RedisLikeClient> {
@@ -36,6 +37,8 @@ export interface RedisStoreConfig<C extends RedisConnectableClient = RedisLikeCl
 
 export interface RedisStoreOptions<C extends RedisConnectableClient = RedisLikeClient> {
   readonly clientFactory?: (url: string) => C
+  /** Application clock (Unix seconds). Used by idle CAS post-apply sampling when provided. */
+  readonly clock?: () => number
   readonly keyPrefix?: string
   readonly timeoutMs?: number
   readonly url?: string

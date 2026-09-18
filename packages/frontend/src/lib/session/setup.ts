@@ -2,6 +2,7 @@ import type { TenantConfig } from "../tenant/types.ts"
 
 import { readSingleNamedCookie } from "../http/cookie-header.ts"
 import { signSessionCookie, verifySessionCookie } from "./cookie.ts"
+import { classifyAccessEnd } from "./idle.ts"
 import { type SessionStore, SessionStoreError } from "./store.ts"
 import {
   absoluteExpirySeconds,
@@ -75,7 +76,8 @@ export async function setupSession(
     return config
   }
 
-  const nowSeconds = (deps.nowSeconds ?? defaultNowSeconds)()
+  const clock = deps.nowSeconds ?? defaultNowSeconds
+  const nowSeconds = clock()
   const readCookie = deps.readCookie ?? defaultReadCookie
   const verifyCookie = deps.verifyCookie ?? verifySessionCookie
   const signCookie = deps.signCookie ?? signSessionCookie
@@ -101,7 +103,13 @@ export async function setupSession(
   if (
     loaded.candidate !== undefined
     && loaded.stored !== undefined
-    && canReuse(loaded.candidate, loaded.stored, tenant.tenantId, nowSeconds)
+    && canReuse({
+      candidate: loaded.candidate,
+      clock,
+      legacyAuthenticated: loaded.legacyAuthenticated,
+      stored: loaded.stored,
+      tenantId: tenant.tenantId
+    })
   ) {
     return {
       config: tenant.config,
@@ -115,7 +123,7 @@ export async function setupSession(
   return await createFreshSession({
     config: config.value,
     createId,
-    nowSeconds,
+    nowSeconds: clock(),
     origin: tenant.origin,
     signCookie,
     store: deps.store,
@@ -159,16 +167,46 @@ export function toTenantResolveResult(
   return { kind: "unknown" }
 }
 
-function canReuse(
-  candidate: SessionCookieClaims,
-  stored: SessionRecord,
-  tenantId: string,
-  nowSeconds: number
-): boolean {
-  return candidate.tenant === tenantId
-    && stored.tenantId === tenantId
-    && candidate.exp === stored.expiresAt
-    && stored.expiresAt > nowSeconds
+/**
+ * Structural cookie↔record bind. Rejects legacy four-key authenticated records so
+ * callers force reauth / fresh anonymous. Absolute and idle deadlines for
+ * authenticated reuse are checked with a fresh clock after Redis load
+ * (including the equality pin when `idleExpiresAt === expiresAt`).
+ *
+ * Phase A: no idle clearance writes here — expired idle auth forces create only.
+ */
+function canReuse(input: {
+  readonly candidate: SessionCookieClaims
+  readonly clock: () => number
+  readonly legacyAuthenticated: boolean
+  readonly stored: SessionRecord
+  readonly tenantId: string
+}): boolean {
+  if (input.legacyAuthenticated) {
+    return false
+  }
+
+  if (
+    input.candidate.tenant !== input.tenantId
+    || input.stored.tenantId !== input.tenantId
+    || input.candidate.exp !== input.stored.expiresAt
+  ) {
+    return false
+  }
+
+  // Anonymous: absolute expiry only (fresh clock after Redis load).
+  if (input.stored.userId === undefined) {
+    return input.clock() < input.stored.expiresAt
+  }
+
+  // Idle-shaped auth only — legacy / missing idle fields force fresh.
+  if (input.stored.idleExpiresAt === undefined) {
+    return false
+  }
+
+  // Fresh clock after Redis load before authenticated success.
+  const freshNow = input.clock()
+  return classifyAccessEnd(freshNow, input.stored) === "still-valid"
 }
 
 async function createFreshSession(input: {
@@ -193,6 +231,7 @@ async function createFreshSession(input: {
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const sessionId = input.createId()
+    // Phase A: anonymous create only — do not write idle-shaped authenticated records.
     const record: SessionRecord = {
       expiresAt,
       tenantId: input.tenantId
@@ -274,6 +313,7 @@ async function loadPresentedSession(input: {
   | {
     readonly candidate: SessionCookieClaims | undefined
     readonly kind: "loaded"
+    readonly legacyAuthenticated: boolean
     readonly stored: SessionRecord | undefined
   }
 > {
@@ -283,15 +323,30 @@ async function loadPresentedSession(input: {
     : await input.verifyCookie(rawCookie, input.config, input.nowSeconds)
 
   if (candidate === undefined) {
-    return { candidate: undefined, kind: "loaded", stored: undefined }
+    return {
+      candidate: undefined,
+      kind: "loaded",
+      legacyAuthenticated: false,
+      stored: undefined
+    }
   }
 
   try {
     const readResult = await input.store.read(candidate.sid)
+    if (readResult.kind !== "record") {
+      return {
+        candidate,
+        kind: "loaded",
+        legacyAuthenticated: false,
+        stored: undefined
+      }
+    }
+
     return {
       candidate,
       kind: "loaded",
-      stored: readResult.kind === "record" ? readResult.record : undefined
+      legacyAuthenticated: readResult.legacyAuthenticated,
+      stored: readResult.record
     }
   } catch (error) {
     if (error instanceof SessionStoreError) {

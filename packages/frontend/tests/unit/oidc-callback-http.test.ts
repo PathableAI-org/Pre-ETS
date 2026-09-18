@@ -105,11 +105,14 @@ describe("completeLogin HTTP callback with mock IdP", () => {
 
 function mockSessionStore(overrides: Partial<SessionStore> = {}): SessionStore {
   return {
+    clearForInactivity: vi.fn().mockResolvedValue({ kind: "denied" }),
     create: vi.fn().mockResolvedValue({ kind: "created" }),
     read: vi.fn().mockResolvedValue({
       kind: "record",
+      legacyAuthenticated: false,
       record: { expiresAt: NOW + 86_400, tenantId: "springfield" }
     }),
+    renewIdleActivity: vi.fn().mockResolvedValue({ kind: "denied" }),
     update: vi.fn().mockResolvedValue({ kind: "updated" }),
     ...overrides
   }
