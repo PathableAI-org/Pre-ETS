@@ -19,6 +19,12 @@ export default defineConfig([
       globals: globals.browser
     }
   },
+  {
+    files: ["src/lib/oidc/insecure-loopback-discovery.ts"],
+    rules: {
+      "@typescript-eslint/no-deprecated": "off"
+    }
+  },
   reactHooks.configs.flat.recommended,
   nextPlugin.configs.recommended
 ])
