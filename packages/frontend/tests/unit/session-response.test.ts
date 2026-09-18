@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/require-await, @typescript-eslint/unbound-method */
 import { SignJWT } from "jose"
 import { randomBytes } from "node:crypto"
 import { afterEach, describe, expect, it, vi } from "vitest"
@@ -175,12 +174,13 @@ describe("session response helpers", () => {
         config: testConfig(),
         createId: () => fixedSessionId(10),
         nowSeconds: () => now,
-        resolveTenant: async () => ({
-          config: springfieldConfig,
-          kind: "ok",
-          origin: "host-associated",
-          tenantId: "springfield"
-        }),
+        resolveTenant: () =>
+          Promise.resolve({
+            config: springfieldConfig,
+            kind: "ok" as const,
+            origin: "host-associated" as const,
+            tenantId: "springfield"
+          }),
         store
       })
 
@@ -192,7 +192,8 @@ describe("session response helpers", () => {
     })
 
     it("treats duplicate cookie names as absent", async () => {
-      const store = mockStore()
+      const read = vi.fn().mockResolvedValue({ kind: "missing" })
+      const store = mockStore({ read })
       const secret = signingSecretBytes()
       const config = testConfig(secret)
       const validToken = await signSessionCookie({
@@ -211,16 +212,17 @@ describe("session response helpers", () => {
         config,
         createId: () => fixedSessionId(11),
         nowSeconds: () => now,
-        resolveTenant: async () => ({
-          config: springfieldConfig,
-          kind: "ok",
-          origin: "host-associated",
-          tenantId: "springfield"
-        }),
+        resolveTenant: () =>
+          Promise.resolve({
+            config: springfieldConfig,
+            kind: "ok" as const,
+            origin: "host-associated" as const,
+            tenantId: "springfield"
+          }),
         store
       })
 
-      expect(vi.mocked(store.read)).not.toHaveBeenCalled()
+      expect(read).not.toHaveBeenCalled()
       expect(result.kind).toBe("ready")
       if (result.kind === "ready") {
         expect(result.outcome).toBe("create")
@@ -231,14 +233,15 @@ describe("session response helpers", () => {
       for (
         const outcome of [
           {
-            resolveTenant: async () => ({ kind: "unknown" as const }),
+            resolveTenant: () => Promise.resolve({ kind: "unknown" as const }),
             status: 403 as const
           },
           {
-            resolveTenant: async () => ({
-              kind: "config-error" as const,
-              message: "Tenant config unavailable."
-            }),
+            resolveTenant: () =>
+              Promise.resolve({
+                kind: "config-error" as const,
+                message: "Tenant config unavailable."
+              }),
             status: 500 as const
           }
         ]

@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/require-await, @typescript-eslint/unbound-method */
 import { randomBytes } from "node:crypto"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
@@ -31,12 +30,13 @@ function mockStore(overrides: Partial<SessionStore> = {}): SessionStore {
 }
 
 function okTenant(tenantId = "springfield") {
-  return async () => ({
-    config: springfieldConfig,
-    kind: "ok" as const,
-    origin: "host-associated" as const,
-    tenantId
-  })
+  return () =>
+    Promise.resolve({
+      config: springfieldConfig,
+      kind: "ok" as const,
+      origin: "host-associated" as const,
+      tenantId
+    })
 }
 
 async function signedRequest(
@@ -75,12 +75,11 @@ describe("setupSession", () => {
       const config = testConfig()
       const now = 1_700_000_000
       const events: string[] = []
-      const store = mockStore({
-        read: vi.fn(async (): Promise<{ kind: "missing" }> => {
-          events.push("store.read")
-          return { kind: "missing" }
-        })
+      const read = vi.fn((): Promise<{ kind: "missing" }> => {
+        events.push("store.read")
+        return Promise.resolve({ kind: "missing" })
       })
+      const store = mockStore({ read })
 
       await setupSession(new Request("https://springfield.localhost/"), {
         config,
@@ -89,30 +88,31 @@ describe("setupSession", () => {
           events.push("readCookie")
           return undefined
         },
-        resolveTenant: async () => {
+        resolveTenant: () => {
           events.push("resolveTenant")
-          return {
+          return Promise.resolve({
             config: springfieldConfig,
-            kind: "ok",
-            origin: "host-associated",
+            kind: "ok" as const,
+            origin: "host-associated" as const,
             tenantId: "springfield"
-          }
+          })
         },
         store,
-        verifyCookie: async () => {
+        verifyCookie: () => {
           events.push("verifyCookie")
-          return undefined
+          return Promise.resolve(undefined)
         }
       })
 
       expect(events.indexOf("readCookie")).toBeLessThan(events.indexOf("resolveTenant"))
       expect(events.indexOf("verifyCookie")).toBeLessThan(events.indexOf("resolveTenant"))
-      expect(vi.mocked(store.read)).not.toHaveBeenCalled()
+      expect(read).not.toHaveBeenCalled()
     })
 
     it("skips Redis read for invalid or absent cookies", async () => {
       const config = testConfig()
-      const store = mockStore()
+      const read = vi.fn().mockResolvedValue({ kind: "missing" })
+      const store = mockStore({ read })
       const now = 1_700_000_000
 
       await setupSession(new Request("https://springfield.localhost/"), {
@@ -121,16 +121,17 @@ describe("setupSession", () => {
         readCookie: () => "bad-token",
         resolveTenant: okTenant(),
         store,
-        verifyCookie: async () => undefined
+        verifyCookie: () => Promise.resolve(undefined)
       })
 
-      expect(vi.mocked(store.read)).not.toHaveBeenCalled()
+      expect(read).not.toHaveBeenCalled()
     })
 
     it("returns a cookie only when persistence succeeds on create", async () => {
       const config = testConfig({ ttlSeconds: 3600 })
       const now = 1_700_000_000
-      const store = mockStore()
+      const create = vi.fn().mockResolvedValue({ kind: "created" })
+      const store = mockStore({ create })
 
       const result = await setupSession(new Request("https://springfield.localhost/"), {
         config,
@@ -140,7 +141,7 @@ describe("setupSession", () => {
         store
       })
 
-      expect(vi.mocked(store.create)).toHaveBeenCalledTimes(1)
+      expect(create).toHaveBeenCalledTimes(1)
       expect(result.kind).toBe("ready")
       if (result.kind === "ready") {
         expect(result.outcome).toBe("create")
@@ -173,7 +174,9 @@ describe("setupSession", () => {
       const now = 1_700_000_000
       const expiresAt = now + 3600
       const sessionId = fixedSessionId(30)
+      const create = vi.fn().mockResolvedValue({ kind: "created" })
       const store = mockStore({
+        create,
         read: vi.fn().mockResolvedValue({
           kind: "record",
           record: { expiresAt, tenantId: "springfield" }
@@ -195,7 +198,7 @@ describe("setupSession", () => {
         origin: "host-associated",
         outcome: "reuse"
       })
-      expect(vi.mocked(store.create)).not.toHaveBeenCalled()
+      expect(create).not.toHaveBeenCalled()
     })
 
     it("forwards authenticated user fields when reusing a session", async () => {
@@ -242,7 +245,8 @@ describe("setupSession", () => {
       const config = testConfig({ ttlSeconds: 7200 })
       const now = 1_700_000_000
       const createId = vi.fn(() => fixedSessionId(40))
-      const store = mockStore()
+      const create = vi.fn().mockResolvedValue({ kind: "created" })
+      const store = mockStore({ create })
 
       const result = await setupSession(new Request("https://springfield.localhost/"), {
         config,
@@ -253,8 +257,8 @@ describe("setupSession", () => {
       })
 
       expect(createId).toHaveBeenCalledTimes(1)
-      expect(vi.mocked(store.create)).toHaveBeenCalledTimes(1)
-      expect(vi.mocked(store.create)).toHaveBeenCalledWith(fixedSessionId(40), {
+      expect(create).toHaveBeenCalledTimes(1)
+      expect(create).toHaveBeenCalledWith(fixedSessionId(40), {
         expiresAt: now + 7200,
         tenantId: "springfield"
       })
@@ -272,11 +276,10 @@ describe("setupSession", () => {
       const createId = vi.fn()
         .mockReturnValueOnce(fixedSessionId(50))
         .mockReturnValueOnce(fixedSessionId(51))
-      const store = mockStore({
-        create: vi.fn()
-          .mockResolvedValueOnce({ kind: "collision" })
-          .mockResolvedValueOnce({ kind: "created" })
-      })
+      const create = vi.fn()
+        .mockResolvedValueOnce({ kind: "collision" })
+        .mockResolvedValueOnce({ kind: "created" })
+      const store = mockStore({ create })
 
       const result = await setupSession(new Request("https://springfield.localhost/"), {
         config,
@@ -287,7 +290,7 @@ describe("setupSession", () => {
       })
 
       expect(createId).toHaveBeenCalledTimes(2)
-      expect(vi.mocked(store.create)).toHaveBeenCalledTimes(2)
+      expect(create).toHaveBeenCalledTimes(2)
       expect(result.kind).toBe("ready")
       if (result.kind === "ready") {
         expect(result.context.sessionId).toBe(fixedSessionId(51))
@@ -312,18 +315,17 @@ describe("setupSession", () => {
         tenantId: "shelbyville"
       }
       const foreignId = fixedSessionId(60)
-      const store = mockStore({
-        create: vi.fn().mockResolvedValue({ kind: "created" }),
-        read: vi.fn().mockImplementation(async (id: string) => {
-          if (scenario === "missing-record") {
-            return { kind: "missing" }
-          }
-          if (id === foreignId) {
-            return { kind: "record", record: foreignRecord }
-          }
-          return { kind: "missing" }
-        })
+      const create = vi.fn().mockResolvedValue({ kind: "created" })
+      const read = vi.fn().mockImplementation((id: string) => {
+        if (scenario === "missing-record") {
+          return Promise.resolve({ kind: "missing" })
+        }
+        if (id === foreignId) {
+          return Promise.resolve({ kind: "record", record: foreignRecord })
+        }
+        return Promise.resolve({ kind: "missing" })
       })
+      const store = mockStore({ create, read })
 
       let request: Request
       if (scenario === undefined) {
@@ -375,19 +377,21 @@ describe("setupSession", () => {
         expect(result.outcome).toBe("create")
         expect(result.context.tenantId).toBe("springfield")
       }
-      expect(vi.mocked(store.create)).toHaveBeenCalledWith(fixedSessionId(62), {
+      expect(create).toHaveBeenCalledWith(fixedSessionId(62), {
         expiresAt: now + DEFAULT_SESSION_TTL_SECONDS,
         tenantId: "springfield"
       })
-      expect(vi.mocked(store.create)).not.toHaveBeenCalledWith(foreignId, expect.anything())
+      expect(create).not.toHaveBeenCalledWith(foreignId, expect.anything())
     })
 
     it("returns 403 for unknown tenants without writing or issuing cookies", async () => {
-      const store = mockStore()
+      const read = vi.fn().mockResolvedValue({ kind: "missing" })
+      const create = vi.fn().mockResolvedValue({ kind: "created" })
+      const store = mockStore({ create, read })
       const result = await setupSession(new Request("https://unknown.localhost/"), {
         config: testConfig(),
         nowSeconds: () => now,
-        resolveTenant: async () => ({ kind: "unknown" }),
+        resolveTenant: () => Promise.resolve({ kind: "unknown" as const }),
         store
       })
 
@@ -397,8 +401,8 @@ describe("setupSession", () => {
         outcome: "403",
         status: 403
       })
-      expect(vi.mocked(store.read)).not.toHaveBeenCalled()
-      expect(vi.mocked(store.create)).not.toHaveBeenCalled()
+      expect(read).not.toHaveBeenCalled()
+      expect(create).not.toHaveBeenCalled()
     })
   })
 
