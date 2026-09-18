@@ -1,6 +1,11 @@
 import { errors as joseErrors, jwtVerify, SignJWT } from "jose"
 
-import { isSafeUnixSeconds, type OidcCorrelationClaims, type OidcTxConfig } from "./types.ts"
+import {
+  isSafeUnixSeconds,
+  type OidcCorrelationClaims,
+  type OidcTxConfig,
+  parseOidcCorrelationClaims
+} from "./types.ts"
 
 const ALLOWED_CLAIMS = new Set(["exp", "state", "tenant"])
 
@@ -19,13 +24,11 @@ export async function signOidcCorrelationCookie(
     .sign(config.signingSecret)
 }
 
-// fallow-ignore-next-line complexity -- jose verify + claim allowlist (mirrors session cookie)
 export async function verifyOidcCorrelationCookie(
   token: string,
   config: Pick<OidcTxConfig, "signingSecret">,
   nowSeconds: number
 ): Promise<OidcCorrelationClaims | undefined> {
-  // fallow-ignore-next-line code-duplication -- intentional parallel to session cookie verifier
   try {
     const { payload, protectedHeader } = await jwtVerify(token, config.signingSecret, {
       algorithms: ["HS256"],
@@ -42,24 +45,12 @@ export async function verifyOidcCorrelationCookie(
       return undefined
     }
 
-    // fallow-ignore-next-line code-duplication -- claim field checks parallel session cookie
-    if (typeof payload.state !== "string" || payload.state.trim() === "") {
+    const claims = parseOidcCorrelationClaims(payload)
+    if (claims === undefined || claims.exp <= nowSeconds) {
       return undefined
     }
 
-    if (typeof payload.tenant !== "string" || payload.tenant.trim() === "") {
-      return undefined
-    }
-
-    if (!isSafeUnixSeconds(payload.exp) || payload.exp <= nowSeconds) {
-      return undefined
-    }
-
-    return {
-      exp: payload.exp,
-      state: payload.state,
-      tenant: payload.tenant
-    }
+    return claims
   } catch (error) {
     if (error instanceof joseErrors.JOSEError || error instanceof Error) {
       return undefined

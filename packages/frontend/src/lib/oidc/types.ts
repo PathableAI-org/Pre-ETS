@@ -161,7 +161,15 @@ export function parseOidcCorrelationClaims(value: unknown): OidcCorrelationClaim
   }
 }
 
-// fallow-ignore-next-line complexity,code-duplication -- exact-shape tx parser; mirrors tenant record guards
+const REQUIRED_TX_STRING_KEYS = [
+  "clientId",
+  "codeVerifier",
+  "issuer",
+  "nonce",
+  "redirectUri",
+  "tenantId"
+] as const
+
 export function parseOidcTransactionRecord(value: unknown): OidcTransactionRecord | undefined {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     return undefined
@@ -172,27 +180,8 @@ export function parseOidcTransactionRecord(value: unknown): OidcTransactionRecor
     return undefined
   }
 
-  if (typeof record.tenantId !== "string" || record.tenantId.trim() === "") {
-    return undefined
-  }
-
-  if (typeof record.issuer !== "string" || record.issuer.trim() === "") {
-    return undefined
-  }
-
-  if (typeof record.clientId !== "string" || record.clientId.trim() === "") {
-    return undefined
-  }
-
-  if (typeof record.redirectUri !== "string" || record.redirectUri.trim() === "") {
-    return undefined
-  }
-
-  if (typeof record.nonce !== "string" || record.nonce.trim() === "") {
-    return undefined
-  }
-
-  if (typeof record.codeVerifier !== "string" || record.codeVerifier.trim() === "") {
+  const strings = readRequiredNonemptyStrings(record, REQUIRED_TX_STRING_KEYS)
+  if (strings === undefined) {
     return undefined
   }
 
@@ -204,17 +193,19 @@ export function parseOidcTransactionRecord(value: unknown): OidcTransactionRecor
     return undefined
   }
 
+  const base: OidcTransactionRecord = {
+    clientId: strings.clientId,
+    codeVerifier: strings.codeVerifier,
+    expiresAt: record.expiresAt,
+    issuer: strings.issuer,
+    nonce: strings.nonce,
+    redirectUri: strings.redirectUri,
+    sessionId: record.sessionId,
+    tenantId: strings.tenantId
+  }
+
   if (!("connection" in record)) {
-    return {
-      clientId: record.clientId,
-      codeVerifier: record.codeVerifier,
-      expiresAt: record.expiresAt,
-      issuer: record.issuer,
-      nonce: record.nonce,
-      redirectUri: record.redirectUri,
-      sessionId: record.sessionId,
-      tenantId: record.tenantId
-    }
+    return base
   }
 
   if (typeof record.connection !== "string" || record.connection.trim() === "") {
@@ -222,15 +213,8 @@ export function parseOidcTransactionRecord(value: unknown): OidcTransactionRecor
   }
 
   return {
-    clientId: record.clientId,
-    codeVerifier: record.codeVerifier,
-    connection: record.connection,
-    expiresAt: record.expiresAt,
-    issuer: record.issuer,
-    nonce: record.nonce,
-    redirectUri: record.redirectUri,
-    sessionId: record.sessionId,
-    tenantId: record.tenantId
+    ...base,
+    connection: record.connection
   }
 }
 
@@ -337,6 +321,23 @@ function parseStoreTimeoutMs(raw: string | undefined): number {
   }
 
   return value
+}
+
+function readRequiredNonemptyStrings<const Keys extends readonly string[]>(
+  record: Record<string, unknown>,
+  keys: Keys
+): Readonly<Record<Keys[number], string>> | undefined {
+  const result: Record<string, string> = {}
+  for (const key of keys) {
+    const value = record[key]
+    if (typeof value !== "string" || value.trim() === "") {
+      return undefined
+    }
+
+    result[key] = value
+  }
+
+  return result as Readonly<Record<Keys[number], string>>
 }
 
 // Re-export helper used by cookie module tests via types surface when needed.

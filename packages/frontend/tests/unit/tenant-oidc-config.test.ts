@@ -88,6 +88,22 @@ describe("shared TenantConfig OIDC parser", () => {
     ).toBeUndefined()
   })
 
+  it("rejects issuer strings that URL normalizes away from the configured value", () => {
+    vi.stubEnv("NODE_ENV", "production")
+    expect(
+      parseTenantConfig({
+        displayName: "Springfield Demo",
+        oidc: { ...validOidc, issuer: " https://identity.example/realms/pre-ets" }
+      })
+    ).toBeUndefined()
+    expect(
+      parseTenantConfig({
+        displayName: "Springfield Demo",
+        oidc: { ...validOidc, issuer: "https://idp.example.com" }
+      })
+    ).toBeUndefined()
+  })
+
   it("allows loopback http issuers only in development", () => {
     vi.stubEnv("NODE_ENV", "development")
     expect(
