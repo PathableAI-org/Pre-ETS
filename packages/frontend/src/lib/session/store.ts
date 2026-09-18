@@ -1,5 +1,9 @@
-import { createClient } from "redis"
-
+import {
+  type RedisLikeClient,
+  type RedisStoreOptions,
+  resolveRedisStoreConfig,
+  withRedisTimeout
+} from "../redis/store-support.ts"
 import {
   isSessionId,
   parseSessionRecord,
@@ -26,28 +30,6 @@ export type SessionStoreUpdateResult =
   | { readonly kind: "missing" }
   | { readonly kind: "updated" }
 
-interface RedisLikeClient {
-  connect(): Promise<unknown>
-  get(key: string): Promise<null | string>
-  readonly isOpen: boolean
-  on?(event: "error", listener: (error: unknown) => void): unknown
-  set(
-    key: string,
-    value: string,
-    options: {
-      readonly condition?: "NX" | "XX"
-      readonly expiration: { readonly type: "EXAT"; readonly value: number }
-    }
-  ): Promise<unknown>
-}
-
-interface RedisSessionStoreOptions {
-  readonly clientFactory?: (url: string) => RedisLikeClient
-  readonly keyPrefix?: string
-  readonly timeoutMs?: number
-  readonly url?: string
-}
-
 export class RedisSessionStore implements SessionStore {
   private client: RedisLikeClient | undefined
   private readonly clientFactory: (url: string) => RedisLikeClient
@@ -56,11 +38,12 @@ export class RedisSessionStore implements SessionStore {
   private readonly timeoutMs: number
   private readonly url: string
 
-  constructor(config: SessionConfig, options: RedisSessionStoreOptions = {}) {
-    this.url = options.url ?? config.redisUrl
-    this.keyPrefix = options.keyPrefix ?? config.keyPrefix
-    this.timeoutMs = options.timeoutMs ?? config.storeTimeoutMs
-    this.clientFactory = options.clientFactory ?? defaultClientFactory
+  constructor(config: SessionConfig, options: RedisStoreOptions = {}) {
+    const resolved = resolveRedisStoreConfig(config, options)
+    this.url = resolved.url
+    this.keyPrefix = resolved.keyPrefix
+    this.timeoutMs = resolved.timeoutMs
+    this.clientFactory = resolved.clientFactory
   }
 
   async create(id: string, record: SessionRecord): Promise<SessionStoreCreateResult> {
@@ -167,38 +150,20 @@ export class RedisSessionStore implements SessionStore {
   }
 
   private async withTimeout<T>(operation: Promise<T>): Promise<T> {
-    let timer: ReturnType<typeof setTimeout> | undefined
     try {
-      return await Promise.race([
+      return await withRedisTimeout(
+        this.timeoutMs,
         operation,
-        new Promise<T>((_, reject) => {
-          timer = setTimeout(() => {
-            reject(new SessionStoreError("Session store operation timed out."))
-          }, this.timeoutMs)
-        })
-      ])
+        () => new SessionStoreError("Session store operation timed out.")
+      )
     } catch (error) {
       throw toStoreError(error)
-    } finally {
-      if (timer !== undefined) {
-        clearTimeout(timer)
-      }
     }
   }
 }
 
 export class SessionStoreError extends Error {
   override readonly name = "SessionStoreError"
-}
-
-function defaultClientFactory(url: string): RedisLikeClient {
-  const client = createClient({
-    disableOfflineQueue: true,
-    url
-  })
-  // Swallow transport errors; callers observe them via connect/get/set failures.
-  client.on("error", () => undefined)
-  return client
 }
 
 function toStoreError(error: unknown): SessionStoreError {

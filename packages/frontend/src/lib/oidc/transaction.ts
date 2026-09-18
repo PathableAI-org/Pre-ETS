@@ -1,5 +1,9 @@
-import { createClient } from "redis"
-
+import {
+  type RedisLikeClient,
+  type RedisStoreOptions,
+  resolveRedisStoreConfig,
+  withRedisTimeout
+} from "../redis/store-support.ts"
 import {
   generateOidcState,
   isOidcState,
@@ -24,30 +28,6 @@ export interface OidcTransactionStore {
   create(state: string, record: OidcTransactionRecord): Promise<OidcTransactionCreateResult>
 }
 
-// fallow-ignore-next-line code-duplication -- Redis client surface mirrors session store
-interface RedisLikeClient {
-  connect(): Promise<unknown>
-  getDel(key: string): Promise<null | string>
-  readonly isOpen: boolean
-  on?(event: "error", listener: (error: unknown) => void): unknown
-  set(
-    key: string,
-    value: string,
-    options: {
-      readonly condition: "NX"
-      readonly expiration: { readonly type: "EXAT"; readonly value: number }
-    }
-  ): Promise<unknown>
-}
-
-// fallow-ignore-next-line code-duplication -- options bag mirrors session store
-interface RedisOidcTransactionStoreOptions {
-  readonly clientFactory?: (url: string) => RedisLikeClient
-  readonly keyPrefix?: string
-  readonly timeoutMs?: number
-  readonly url?: string
-}
-
 export class RedisOidcTransactionStore implements OidcTransactionStore {
   private client: RedisLikeClient | undefined
   private readonly clientFactory: (url: string) => RedisLikeClient
@@ -58,13 +38,13 @@ export class RedisOidcTransactionStore implements OidcTransactionStore {
 
   constructor(
     config: Pick<OidcTxConfig, "keyPrefix" | "storeTimeoutMs"> & { readonly redisUrl: string },
-    options: RedisOidcTransactionStoreOptions = {}
+    options: RedisStoreOptions = {}
   ) {
-    // fallow-ignore-next-line code-duplication -- Redis store constructor mirrors session store
-    this.url = options.url ?? config.redisUrl
-    this.keyPrefix = options.keyPrefix ?? config.keyPrefix
-    this.timeoutMs = options.timeoutMs ?? config.storeTimeoutMs
-    this.clientFactory = options.clientFactory ?? defaultClientFactory
+    const resolved = resolveRedisStoreConfig(config, options)
+    this.url = resolved.url
+    this.keyPrefix = resolved.keyPrefix
+    this.timeoutMs = resolved.timeoutMs
+    this.clientFactory = resolved.clientFactory
   }
 
   async consume(state: string): Promise<OidcTransactionConsumeResult> {
@@ -173,30 +153,10 @@ export class RedisOidcTransactionStore implements OidcTransactionStore {
   }
 
   private async withTimeout<T>(operation: Promise<T>): Promise<T> {
-    let timer: ReturnType<typeof setTimeout> | undefined
-    try {
-      // fallow-ignore-next-line code-duplication -- same fail-closed timeout race as session store
-      return await Promise.race([
-        operation,
-        new Promise<T>((_, reject) => {
-          timer = setTimeout(() => {
-            reject(new Error("OIDC transaction store operation timed out."))
-          }, this.timeoutMs)
-        })
-      ])
-    } finally {
-      if (timer !== undefined) {
-        clearTimeout(timer)
-      }
-    }
+    return await withRedisTimeout(
+      this.timeoutMs,
+      operation,
+      () => new Error("OIDC transaction store operation timed out.")
+    )
   }
-}
-
-function defaultClientFactory(url: string): RedisLikeClient {
-  const client = createClient({
-    disableOfflineQueue: true,
-    url
-  })
-  client.on("error", () => undefined)
-  return client
 }

@@ -1,11 +1,13 @@
 import type { TenantConfig } from "../tenant/types.ts"
 
+import { readSingleNamedCookie } from "../http/cookie-header.ts"
 import { signSessionCookie, verifySessionCookie } from "./cookie.ts"
 import { type SessionStore, SessionStoreError } from "./store.ts"
 import {
   absoluteExpirySeconds,
   generateSessionId,
   getSessionConfig,
+  SESSION_COOKIE_NAME,
   type SessionConfig,
   SessionConfigError,
   type SessionContext,
@@ -253,33 +255,7 @@ function defaultNowSeconds(): number {
 }
 
 function defaultReadCookie(request: Request): string | undefined {
-  const header = request.headers.get("cookie")
-  if (header === null || header === "") {
-    return undefined
-  }
-
-  const parts = header.split(";")
-  let found: string | undefined
-  for (const part of parts) {
-    const trimmed = part.trim()
-    const separator = trimmed.indexOf("=")
-    if (separator <= 0) {
-      continue
-    }
-
-    const name = trimmed.slice(0, separator)
-    if (name !== "pathable-session") {
-      continue
-    }
-
-    if (found !== undefined) {
-      return undefined
-    }
-
-    found = trimmed.slice(separator + 1)
-  }
-
-  return found
+  return readSingleNamedCookie(request, SESSION_COOKIE_NAME)
 }
 
 async function loadPresentedSession(input: {

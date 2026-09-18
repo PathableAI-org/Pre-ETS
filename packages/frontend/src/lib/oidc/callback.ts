@@ -5,6 +5,7 @@ import type { TenantConfig, TenantRecord } from "../tenant/types.ts"
 import type { OidcSecretResolution } from "./secrets.ts"
 import type { OidcTransactionStore } from "./transaction.ts"
 
+import { readSingleNamedCookie } from "../http/cookie-header.ts"
 import { SessionStoreError } from "../session/store.ts"
 import { verifyOidcCorrelationCookie } from "./cookie.ts"
 import { approvedApplicationOrigin } from "./initiation-http.ts"
@@ -125,35 +126,8 @@ async function consumeAndMatchTransaction(
   return matchCallbackRedirectUri(input.request, callbackUrl, matched.tx)
 }
 
-// fallow-ignore-next-line code-duplication -- cookie scan mirrors session cookie reader
 function defaultReadOidcCookie(request: Request): string | undefined {
-  const header = request.headers.get("cookie")
-  if (header === null || header === "") {
-    return undefined
-  }
-
-  const parts = header.split(";")
-  let found: string | undefined
-  for (const part of parts) {
-    const trimmed = part.trim()
-    const separator = trimmed.indexOf("=")
-    if (separator <= 0) {
-      continue
-    }
-
-    const name = trimmed.slice(0, separator)
-    if (name !== OIDC_COOKIE_NAME) {
-      continue
-    }
-
-    if (found !== undefined) {
-      return undefined
-    }
-
-    found = trimmed.slice(separator + 1)
-  }
-
-  return found
+  return readSingleNamedCookie(request, OIDC_COOKIE_NAME)
 }
 
 async function exchangeCodeAndAuthenticate(input: {
