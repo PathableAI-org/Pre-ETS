@@ -4,6 +4,8 @@ export type OidcClientAuth = "confidential" | "public"
 
 export interface TenantConfig {
   readonly displayName: string
+  /** When omitted, effective idle policy for new sessions is 30 minutes. */
+  readonly idleTimeoutMinutes?: number
   readonly oidc: TenantOidcConfig
 }
 
@@ -48,9 +50,14 @@ export const LOCAL_CONFIG_ERROR =
   "Supply a valid TENANT_LOCAL_CONFIG_JSON record with slug, Display Name, and oidc, then restart."
 
 const SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/
-const ALLOWED_CONFIG_KEYS = new Set(["displayName", "oidc"])
+const ALLOWED_CONFIG_KEYS = new Set(["displayName", "idleTimeoutMinutes", "oidc"])
 const ALLOWED_OIDC_KEYS = new Set(["clientAuth", "clientId", "connection", "issuer"])
 const CLIENT_AUTH_VALUES = new Set<OidcClientAuth>(["confidential", "public"])
+
+/** Effective idle duration for new authenticated sessions (omit → 30). */
+export function effectiveIdleTimeoutMinutes(config: TenantConfig): number {
+  return config.idleTimeoutMinutes ?? 30
+}
 
 export function isCanonicalTenantSlug(value: string): boolean {
   return value.length >= 1 && value.length <= 63 && value !== "www" && SLUG_PATTERN.test(value)
@@ -98,8 +105,21 @@ export function parseTenantConfig(
     return undefined
   }
 
+  const idleTimeoutMinutes = parseOptionalIdleTimeoutMinutes(record)
+  if (idleTimeoutMinutes === "invalid") {
+    return undefined
+  }
+
+  if (idleTimeoutMinutes === undefined) {
+    return {
+      displayName: record.displayName,
+      oidc
+    }
+  }
+
   return {
     displayName: record.displayName,
+    idleTimeoutMinutes,
     oidc
   }
 }
@@ -210,6 +230,26 @@ function parseAbsoluteIssuerUrl(raw: string): undefined | URL {
   }
 
   return url
+}
+
+function parseOptionalIdleTimeoutMinutes(
+  record: Record<string, unknown>
+): "invalid" | number | undefined {
+  if (!("idleTimeoutMinutes" in record)) {
+    return undefined
+  }
+
+  const value = record.idleTimeoutMinutes
+  if (
+    typeof value !== "number"
+    || !Number.isSafeInteger(value)
+    || value < 5
+    || value > 30
+  ) {
+    return "invalid"
+  }
+
+  return value
 }
 
 function parseRequiredOidcFields(

@@ -96,6 +96,9 @@ describe("completeLogin HTTP callback with mock IdP", () => {
     expect(consume).toHaveBeenCalledWith(STATE)
     expect(update).toHaveBeenCalledWith(SESSION_ID, {
       expiresAt: NOW + 86_400,
+      idleDurationMinutes: 30,
+      idleExpiresAt: NOW + 30 * 60,
+      lastActivityAt: NOW,
       tenantId: "springfield",
       userId: "mock-user-sub",
       userName: "Mock Demo User"
@@ -105,11 +108,14 @@ describe("completeLogin HTTP callback with mock IdP", () => {
 
 function mockSessionStore(overrides: Partial<SessionStore> = {}): SessionStore {
   return {
+    clearForInactivity: vi.fn().mockResolvedValue({ kind: "denied" }),
     create: vi.fn().mockResolvedValue({ kind: "created" }),
     read: vi.fn().mockResolvedValue({
       kind: "record",
+      legacyAuthenticated: false,
       record: { expiresAt: NOW + 86_400, tenantId: "springfield" }
     }),
+    renewIdleActivity: vi.fn().mockResolvedValue({ kind: "denied" }),
     update: vi.fn().mockResolvedValue({ kind: "updated" }),
     ...overrides
   }
