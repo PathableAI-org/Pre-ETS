@@ -1,0 +1,45 @@
+/* Application layout for the inactivity-ended dialog. Does not restyle the
+   PathAble overlay/wrapper shell — only dialog content presentation. */
+
+.inactivity-ended-modal {
+  max-width: 40rem;
+  text-align: center;
+}
+
+.inactivity-ended-modal .pathable-modal__close {
+  display: none;
+}
+
+.inactivity-ended-modal .pathable-modal__content {
+  box-sizing: border-box;
+  gap: 1.5rem;
+  padding: 2.75rem 3rem 2.5rem;
+}
+
+.inactivity-ended-modal .pathable-modal__heading {
+  margin: 0;
+}
+
+.inactivity-ended-modal .pathable-modal__heading h2 {
+  font-size: 1.35rem;
+  line-height: 1.3;
+  margin: 0;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.inactivity-ended-modal .pathable-modal__content > p {
+  margin: 0 auto;
+  max-width: 30rem;
+  text-align: center;
+}
+
+.inactivity-ended-modal .pathable-modal__footer {
+  display: flex;
+  justify-content: center;
+  margin-top: 0.25rem;
+}
+
+.inactivity-ended-modal .pathable-modal__footer > span {
+  display: contents;
+}
