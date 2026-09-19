@@ -9,3 +9,4 @@ minimumReleaseAgeExclude:
   - "@types/node@24.13.5"
   - "@pathableai/react@0.3.0"
   - "@pathableai/styles@0.2.0"
+  - eslint@10.11.0
