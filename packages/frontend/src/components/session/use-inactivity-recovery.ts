@@ -1,21 +1,16 @@
 "use client"
 
-import { Alert, Container, Page, Stack, Text } from "@pathableai/react"
-import { type ReactNode, useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
+
+import type { IdleConfirmHarnessSnapshot } from "./idle-confirm-harness-context.tsx"
 
 import { confirmSessionAction } from "../../app/(app)/session/confirm.ts"
 import { canRunConfirm, executeConfirmPass, nextConfirmDelayMs } from "../../lib/session/confirm-pass.ts"
 import { confirmOutcomeHarnessLabel } from "../../lib/session/confirm-result.ts"
-import { IdleConfirmHarnessProvider, type IdleConfirmHarnessSnapshot } from "./idle-confirm-harness-context.tsx"
+import { broadcastInactivityConfirmed } from "../../lib/session/inactivity-channel.ts"
+import { useInactivityBroadcast } from "./use-inactivity-broadcast.ts"
 
-export interface IdleConfirmTimerIslandProps {
-  readonly children: ReactNode
-  readonly expiresAt: number
-  readonly idleExpiresAt: number
-  readonly sessionId: string
-}
-
-type TimerState =
+export type RecoveryState =
   | { readonly kind: "active" }
   | {
     readonly kind: "inactivity"
@@ -24,20 +19,22 @@ type TimerState =
   }
   | { readonly kind: "unavailable" }
 
-/**
- * Deadline-aligned revalidation at min(idleExpiresAt, expiresAt). On confirmed
- * inactivity or fail-closed outcomes: clear/lock protected UI. Modal + BroadcastChannel
- * are intentionally deferred to PR5.
- */
-export function IdleConfirmTimerIsland({
-  children,
-  expiresAt,
-  idleExpiresAt,
-  sessionId
-}: IdleConfirmTimerIslandProps) {
-  const [state, setState] = useState<TimerState>({ kind: "active" })
+export function useInactivityRecovery(input: {
+  readonly expiresAt: number
+  readonly idleExpiresAt: number
+  readonly sessionId: string
+}): {
+  readonly harnessValue: IdleConfirmHarnessSnapshot
+  readonly lastOutcomeLabel: string
+  readonly modalOpen: boolean
+  readonly setModalOpen: (open: boolean) => void
+  readonly state: RecoveryState
+} {
+  const { expiresAt, idleExpiresAt, sessionId } = input
+  const [state, setState] = useState<RecoveryState>({ kind: "active" })
   const [deadlines, setDeadlines] = useState({ expiresAt, idleExpiresAt })
   const [lastOutcomeLabel, setLastOutcomeLabel] = useState("pending")
+  const [modalOpen, setModalOpen] = useState(false)
   const heldGeneration = useRef<number | undefined>(undefined)
   const confirming = useRef(false)
   const stateKindRef = useRef(state.kind)
@@ -45,6 +42,23 @@ export function IdleConfirmTimerIsland({
   useEffect(() => {
     stateKindRef.current = state.kind
   }, [state.kind])
+
+  const applyInactivity = useCallback((
+    endedSessionId: string,
+    sessionEndGeneration: number,
+    broadcast: boolean
+  ) => {
+    heldGeneration.current = sessionEndGeneration
+    setState({
+      kind: "inactivity",
+      sessionEndGeneration,
+      sessionId: endedSessionId
+    })
+    setModalOpen(true)
+    if (broadcast) {
+      broadcastInactivityConfirmed(endedSessionId, sessionEndGeneration)
+    }
+  }, [])
 
   const runConfirm = useCallback(async () => {
     if (!canRunConfirm(confirming.current, stateKindRef.current)) {
@@ -54,12 +68,7 @@ export function IdleConfirmTimerIsland({
     try {
       await executeConfirmPass({
         applyInactivity: (endedSessionId, sessionEndGeneration) => {
-          heldGeneration.current = sessionEndGeneration
-          setState({
-            kind: "inactivity",
-            sessionEndGeneration,
-            sessionId: endedSessionId
-          })
+          applyInactivity(endedSessionId, sessionEndGeneration, true)
         },
         confirm: async (payload) => {
           const result = await confirmSessionAction(payload)
@@ -74,12 +83,13 @@ export function IdleConfirmTimerIsland({
         setDeadlines,
         setUnavailable: () => {
           setState({ kind: "unavailable" })
+          setModalOpen(false)
         }
       })
     } finally {
       confirming.current = false
     }
-  }, [sessionId])
+  }, [applyInactivity, sessionId])
 
   useEffect(() => {
     if (state.kind !== "active") {
@@ -117,61 +127,33 @@ export function IdleConfirmTimerIsland({
     }
   }, [runConfirm])
 
+  const onChannelInactivity = useCallback((
+    endedSessionId: string,
+    sessionEndGeneration: number
+  ) => {
+    applyInactivity(endedSessionId, sessionEndGeneration, false)
+    setLastOutcomeLabel(
+      `inactivity (channel generation=${String(sessionEndGeneration)})`
+    )
+  }, [applyInactivity])
+
+  useInactivityBroadcast(sessionId, onChannelInactivity)
+
   const nextTimerFireAtMs = state.kind === "active"
     ? Math.min(deadlines.idleExpiresAt, deadlines.expiresAt) * 1000
     : null
 
-  const harnessValue: IdleConfirmHarnessSnapshot = {
+  return {
+    harnessValue: {
+      lastOutcomeLabel,
+      nextTimerFireAtMs,
+      runConfirmNow: () => {
+        void runConfirm()
+      }
+    },
     lastOutcomeLabel,
-    nextTimerFireAtMs,
-    runConfirmNow: () => {
-      void runConfirm()
-    }
+    modalOpen,
+    setModalOpen,
+    state
   }
-
-  if (state.kind === "inactivity") {
-    return (
-      <Page>
-        <Container>
-          <Stack gap="md">
-            {/* TEMP lock shell — PR5 opens PathAble Modal instead of this alone. */}
-            <div data-testid="temp-confirm-lock-inactivity">
-              <Alert heading="Session ended due to inactivity" status="warning">
-                Protected content is locked. The inactivity modal opens in a later change.
-              </Alert>
-            </div>
-            <Text data-testid="temp-confirm-outcome">
-              {`Confirm: ${lastOutcomeLabel}`}
-            </Text>
-          </Stack>
-        </Container>
-      </Page>
-    )
-  }
-
-  if (state.kind === "unavailable") {
-    return (
-      <Page>
-        <Container>
-          <Stack gap="md">
-            <div data-testid="temp-confirm-lock-unavailable">
-              <Alert heading="Authorization unavailable" status="warning">
-                We could not verify your session. Protected content is locked until access is confirmed.
-              </Alert>
-            </div>
-            <Text data-testid="temp-confirm-outcome">
-              {`Confirm: ${lastOutcomeLabel}`}
-            </Text>
-            <Text>Try refreshing the page or signing in again.</Text>
-          </Stack>
-        </Container>
-      </Page>
-    )
-  }
-
-  return (
-    <IdleConfirmHarnessProvider value={harnessValue}>
-      {children}
-    </IdleConfirmHarnessProvider>
-  )
 }
