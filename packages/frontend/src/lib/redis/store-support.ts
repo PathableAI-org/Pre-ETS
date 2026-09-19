@@ -14,8 +14,15 @@ export interface RedisConnectableClient {
   ): Promise<unknown>
 }
 
+/** Options for Redis `EVAL` / `eval` (node-redis). */
+export interface RedisEvalOptions {
+  arguments?: string[]
+  keys?: string[]
+}
+
 /** Default redis.js client surface used by both stores. */
 export type RedisLikeClient = RedisConnectableClient & {
+  eval(script: string, options: RedisEvalOptions): Promise<unknown>
   get(key: string): Promise<null | string>
   getDel(key: string): Promise<null | string>
 }
@@ -26,6 +33,7 @@ export type RedisOidcClient = RedisConnectableClient & {
 
 export type RedisSessionClient = RedisConnectableClient & {
   del?(key: readonly string[] | string): Promise<unknown>
+  eval(script: string, options: RedisEvalOptions): Promise<unknown>
   get(key: string): Promise<null | string>
 }
 export interface RedisStoreConfig<C extends RedisConnectableClient = RedisLikeClient> {

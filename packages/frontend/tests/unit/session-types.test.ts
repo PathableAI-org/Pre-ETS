@@ -305,6 +305,18 @@ describe("session types", () => {
       }))).toBeUndefined()
     })
 
+    it("refuses to serialize authenticated context missing idleExpiresAt", () => {
+      expect(() =>
+        serializeSessionContext({
+          expiresAt: now + 3600,
+          sessionId: fixedSessionId(),
+          tenantId: "springfield",
+          userId: "user-1",
+          userName: "Demo User"
+        })
+      ).toThrow(SessionConfigError)
+    })
+
     it("builds authenticated context idleExpiresAt from idle-shaped records", () => {
       const sessionId = fixedSessionId()
       const record = {

@@ -248,19 +248,15 @@ export function resetSessionConfigCacheForTests(): void {
 
 export function serializeSessionContext(context: SessionContext): string {
   if (context.userId !== undefined && context.userName !== undefined) {
-    if (context.idleExpiresAt !== undefined) {
-      return JSON.stringify({
-        expiresAt: context.expiresAt,
-        idleExpiresAt: context.idleExpiresAt,
-        sessionId: context.sessionId,
-        tenantId: context.tenantId,
-        userId: context.userId,
-        userName: context.userName
-      })
+    if (context.idleExpiresAt === undefined) {
+      throw new SessionConfigError(
+        "Authenticated session context requires idleExpiresAt."
+      )
     }
 
     return JSON.stringify({
       expiresAt: context.expiresAt,
+      idleExpiresAt: context.idleExpiresAt,
       sessionId: context.sessionId,
       tenantId: context.tenantId,
       userId: context.userId,

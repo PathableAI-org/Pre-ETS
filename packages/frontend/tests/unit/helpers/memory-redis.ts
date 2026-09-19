@@ -1,5 +1,13 @@
 import { vi } from "vitest"
 
+import type { RedisEvalOptions } from "../../../src/lib/redis/store-support.ts"
+
+import {
+  RELEASE_IDLE_LOCK_SCRIPT,
+  SESSION_CAS_UNDER_LOCK_SCRIPT,
+  SESSION_SET_UNDER_LOCK_SCRIPT
+} from "../../../src/lib/session/redis-scripts.ts"
+
 export interface RedisSetOptions {
   readonly condition?: "NX" | "XX"
   readonly expiration?: { readonly type: "EXAT" | "PX"; readonly value: number }
@@ -14,12 +22,14 @@ interface MemoryEntry {
 /** In-memory Redis stand-in for deterministic lock/CAS interleaving. */
 export class MemoryRedis {
   /** Optional hooks for interleaving / CAS predicate tests. */
+  beforeEval: ((script: string, options: RedisEvalOptions) => Promise<void> | void) | undefined
   beforeGet: ((key: string) => Promise<void> | void) | undefined
   beforeSet:
     | ((key: string, value: string, options?: RedisSetOptions) => Promise<void> | void)
     | undefined
 
   readonly del = vi.fn(async (key: readonly string[] | string) => this.delImpl(key))
+  readonly eval = vi.fn(async (script: string, options: RedisEvalOptions) => this.evalImpl(script, options))
   readonly get = vi.fn(async (key: string) => this.getImpl(key))
 
   readonly isOpen = true
@@ -40,6 +50,22 @@ export class MemoryRedis {
     return this
   }
 
+  private compareAndWrite(
+    sessionKey: string,
+    expected: string,
+    next: string
+  ): "mismatch" | "missing" | "ok" {
+    const current = this.liveValue(sessionKey)
+    if (current === null) {
+      return "missing"
+    }
+    if (current !== expected) {
+      return "mismatch"
+    }
+    this.entries.set(sessionKey, { value: next })
+    return "ok"
+  }
+
   private delImpl(key: readonly string[] | string): Promise<number> {
     const keys = typeof key === "string" ? [key] : [...key]
     let removed = 0
@@ -49,6 +75,62 @@ export class MemoryRedis {
       }
     }
     return Promise.resolve(removed)
+  }
+
+  private evalCasUnderLock(options: RedisEvalOptions): "mismatch" | "missing" | "ok" | "stolen" {
+    const { args, keys } = requireEvalParts(options, 2, 4, "CAS")
+    const [sessionKey, lockKey] = keys
+    const [token, expected, next] = args
+    const lockOutcome = this.lockOwnership(lockKey, token)
+    if (lockOutcome !== "ok") {
+      return lockOutcome
+    }
+    return this.compareAndWrite(sessionKey, expected, next)
+  }
+
+  private async evalImpl(script: string, options: RedisEvalOptions): Promise<unknown> {
+    if (this.beforeEval !== undefined) {
+      await this.beforeEval(script, options)
+    }
+
+    const normalized = script.trim()
+    if (normalized === SESSION_CAS_UNDER_LOCK_SCRIPT) {
+      return this.evalCasUnderLock(options)
+    }
+    if (normalized === SESSION_SET_UNDER_LOCK_SCRIPT) {
+      return this.evalSetUnderLock(options)
+    }
+    if (normalized === RELEASE_IDLE_LOCK_SCRIPT) {
+      return this.evalReleaseLock(options)
+    }
+
+    throw new Error(`MemoryRedis: unsupported eval script`)
+  }
+
+  private evalReleaseLock(options: RedisEvalOptions): number {
+    const { args, keys } = requireEvalParts(options, 1, 1, "release")
+    const [lockKey] = keys
+    const [token] = args
+    if (this.liveValue(lockKey) !== token) {
+      return 0
+    }
+    this.entries.delete(lockKey)
+    return 1
+  }
+
+  private evalSetUnderLock(options: RedisEvalOptions): "missing" | "ok" | "stolen" {
+    const { args, keys } = requireEvalParts(options, 2, 2, "SET under lock")
+    const [sessionKey, lockKey] = keys
+    const [token, next] = args
+    const lockOutcome = this.lockOwnership(lockKey, token)
+    if (lockOutcome !== "ok") {
+      return lockOutcome
+    }
+    if (this.liveValue(sessionKey) === null) {
+      return "missing"
+    }
+    this.entries.set(sessionKey, { value: next })
+    return "ok"
   }
 
   private async getImpl(key: string): Promise<null | string> {
@@ -69,6 +151,10 @@ export class MemoryRedis {
       return null
     }
     return entry.value
+  }
+
+  private lockOwnership(lockKey: string, token: string): "ok" | "stolen" {
+    return this.liveValue(lockKey) === token ? "ok" : "stolen"
   }
 
   private peek(key: string): null | string {
@@ -113,4 +199,21 @@ export function passesSetCondition(
     return existing !== null
   }
   return true
+}
+
+function requireEvalParts(
+  options: RedisEvalOptions,
+  keyCount: number,
+  argCount: number,
+  label: string
+): { readonly args: string[]; readonly keys: string[] } {
+  const keys = options.keys ?? []
+  const args = options.arguments ?? []
+  if (keys.length < keyCount || args.length < argCount) {
+    throw new Error(`MemoryRedis ${label}: missing KEYS/ARGV`)
+  }
+  return {
+    args: args.slice(0, argCount),
+    keys: keys.slice(0, keyCount)
+  }
 }

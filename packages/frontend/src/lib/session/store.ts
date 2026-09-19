@@ -9,6 +9,11 @@ import {
 } from "../redis/store-support.ts"
 import { classifyAccessEnd, endAuthenticatedForInactivity, stampQualifyingActivity } from "./idle.ts"
 import {
+  RELEASE_IDLE_LOCK_SCRIPT,
+  SESSION_CAS_UNDER_LOCK_SCRIPT,
+  SESSION_SET_UNDER_LOCK_SCRIPT
+} from "./redis-scripts.ts"
+import {
   isSessionId,
   parseSessionRecord,
   parseSessionRecordDetailed,
@@ -19,6 +24,12 @@ import {
 
 /** Skip Redis writes when computed `idleExpiresAt` is unchanged (~1s activity coalesce). */
 export const IDLE_ACTIVITY_COALESCE_SECONDS = 1
+
+/**
+ * Idle lock lease multiplier over `storeTimeoutMs`.
+ * Covers load + CAS + optional post-apply revert CAS (each op ≤ timeout), with margin.
+ */
+export const IDLE_LOCK_TTL_TIMEOUT_MULTIPLIER = 4
 
 export type ClearForInactivityResult =
   | { readonly kind: "already_cleared"; readonly record: SessionRecord }
@@ -74,6 +85,10 @@ export type SessionStoreUpdateResult =
 
 type CompareAndSetResult = "mismatch" | "missing" | "ok"
 
+function lockToken(): string {
+  return randomBytes(16).toString("base64url")
+}
+
 export class RedisSessionStore implements SessionStore {
   private client: RedisSessionClient | undefined
   private readonly clientFactory: (url: string) => RedisSessionClient
@@ -105,7 +120,7 @@ export class RedisSessionStore implements SessionStore {
       sessionId,
       expectedTenantId,
       { kind: "denied" },
-      async ({ client, raw, record }) => {
+      async ({ client, lockToken, raw, record }) => {
         if (record.userId === undefined) {
           if (
             record.accessEndedCause === "inactivity"
@@ -121,7 +136,13 @@ export class RedisSessionStore implements SessionStore {
         }
 
         const cleared = endAuthenticatedForInactivity(record)
-        const cas = await this.compareAndSetSession(client, sessionId, raw, cleared)
+        const cas = await this.compareAndSetSession(
+          client,
+          sessionId,
+          raw,
+          cleared,
+          lockToken
+        )
         if (cas !== "ok") {
           return { kind: "denied" }
         }
@@ -207,24 +228,25 @@ export class RedisSessionStore implements SessionStore {
       throw new SessionStoreError("Invalid session record.")
     }
 
-    const client = await this.connectedClient()
-    const result = await this.withTimeout(
-      client.set(this.keyFor(id), serializeSessionRecord(record), {
-        condition: "XX",
-        expiration: {
-          type: "EXAT",
-          value: record.expiresAt
+    // Serialize with renew/clear on the same per-session idle lock.
+    return await this.withIdleLockedRecord(
+      id,
+      record.tenantId,
+      { kind: "missing" },
+      async ({ client, lockToken }) => {
+        const outcome = await this.setSessionUnderLock(client, id, record, lockToken)
+        if (outcome === "ok") {
+          return { kind: "updated" }
         }
-      })
+        return { kind: "missing" }
+      }
     )
-
-    return result === null ? { kind: "missing" } : { kind: "updated" }
   }
 
   private async acquireIdleLock(client: RedisSessionClient, sessionId: string): Promise<string> {
     const lockKey = this.idleLockKeyFor(sessionId)
     const token = lockToken()
-    const lockTtlMs = Math.max(this.timeoutMs * 2, 1_000)
+    const lockTtlMs = Math.max(this.timeoutMs * IDLE_LOCK_TTL_TIMEOUT_MULTIPLIER, 1_000)
     const deadline = Date.now() + this.timeoutMs
 
     while (Date.now() <= deadline) {
@@ -252,6 +274,7 @@ export class RedisSessionStore implements SessionStore {
     nowSeconds: number,
     ctx: {
       readonly client: RedisSessionClient
+      readonly lockToken: string
       readonly raw: string
       readonly record: SessionRecord
     }
@@ -265,7 +288,8 @@ export class RedisSessionStore implements SessionStore {
       ctx.client,
       sessionId,
       ctx.raw,
-      plan.renewed
+      plan.renewed,
+      ctx.lockToken
     )
     if (cas !== "ok") {
       return { kind: "denied" }
@@ -276,47 +300,43 @@ export class RedisSessionStore implements SessionStore {
       sessionId,
       plan.renewed,
       ctx.record,
-      plan.preRenewalIdleExpiresAt
+      plan.preRenewalIdleExpiresAt,
+      ctx.lockToken
     )
   }
 
+  /**
+   * Atomic compare-and-set under the idle lock (Lua). Single round-trip; refuses writes when
+   * the lock token no longer matches so a timed-out client cannot land a late mutation.
+   */
   private async compareAndSetSession(
     client: RedisSessionClient,
     sessionId: string,
     expectedSerialized: string,
-    next: SessionRecord
+    next: SessionRecord,
+    lockToken: string
   ): Promise<CompareAndSetResult> {
-    const key = this.keyFor(sessionId)
-    const current = await this.withTimeout(client.get(key))
-    if (current === null) {
-      return "missing"
-    }
-
-    // CAS predicate: refuse blind SET when the expected authenticated shape changed.
-    if (current !== expectedSerialized) {
-      return "mismatch"
-    }
-
     const serialized = serializeSessionRecord(next)
     const result = await this.withTimeout(
-      client.set(key, serialized, {
-        condition: "XX",
-        expiration: {
-          type: "EXAT",
-          value: next.expiresAt
-        }
+      client.eval(SESSION_CAS_UNDER_LOCK_SCRIPT, {
+        arguments: [
+          lockToken,
+          expectedSerialized,
+          serialized,
+          String(next.expiresAt)
+        ],
+        keys: [this.keyFor(sessionId), this.idleLockKeyFor(sessionId)]
       })
     )
-    if (result === null) {
+
+    if (result === "ok") {
+      return "ok"
+    }
+    if (result === "missing") {
       return "missing"
     }
-
-    const written = await this.withTimeout(client.get(key))
-    if (written !== serialized) {
-      return "mismatch"
-    }
-
-    return "ok"
+    // mismatch | stolen | unexpected → fail closed (no retry here).
+    return "mismatch"
   }
 
   private async connectedClient(): Promise<RedisSessionClient> {
@@ -347,7 +367,8 @@ export class RedisSessionStore implements SessionStore {
     sessionId: string,
     renewed: SessionRecord,
     prior: SessionRecord,
-    preRenewalIdleExpiresAt: number
+    preRenewalIdleExpiresAt: number,
+    lockToken: string
   ): Promise<RenewIdleActivityResult> {
     // Post-apply re-check (still under lock): deadline wins over the extended write.
     const now1 = this.clock()
@@ -358,7 +379,8 @@ export class RedisSessionStore implements SessionStore {
         renewed,
         prior,
         now1,
-        preRenewalIdleExpiresAt
+        preRenewalIdleExpiresAt,
+        lockToken
       )
     }
 
@@ -409,12 +431,13 @@ export class RedisSessionStore implements SessionStore {
     sessionId: string,
     token: string
   ): Promise<void> {
-    const lockKey = this.idleLockKeyFor(sessionId)
     try {
-      const current = await this.withTimeout(client.get(lockKey))
-      if (current === token && client.del !== undefined) {
-        await this.withTimeout(client.del(lockKey))
-      }
+      await this.withTimeout(
+        client.eval(RELEASE_IDLE_LOCK_SCRIPT, {
+          arguments: [token],
+          keys: [this.idleLockKeyFor(sessionId)]
+        })
+      )
     } catch {
       // Lock TTL covers abandonment; do not mask the primary operation outcome.
     }
@@ -426,7 +449,8 @@ export class RedisSessionStore implements SessionStore {
     renewed: SessionRecord,
     prior: SessionRecord,
     now1: number,
-    preRenewalIdleExpiresAt: number
+    preRenewalIdleExpiresAt: number,
+    lockToken: string
   ): Promise<RenewIdleActivityResult> {
     const renewedSerialized = serializeSessionRecord(renewed)
 
@@ -439,7 +463,8 @@ export class RedisSessionStore implements SessionStore {
         client,
         sessionId,
         renewedSerialized,
-        cleared
+        cleared,
+        lockToken
       )
       if (cas === "ok") {
         return { kind: "cleared", record: cleared }
@@ -448,11 +473,35 @@ export class RedisSessionStore implements SessionStore {
     }
 
     // Absolute deadline won: revert the not-yet-validated extension.
-    const cas = await this.compareAndSetSession(client, sessionId, renewedSerialized, prior)
+    const cas = await this.compareAndSetSession(
+      client,
+      sessionId,
+      renewedSerialized,
+      prior,
+      lockToken
+    )
     if (cas !== "ok") {
       return { kind: "denied" }
     }
     return { kind: "denied" }
+  }
+
+  private async setSessionUnderLock(
+    client: RedisSessionClient,
+    sessionId: string,
+    record: SessionRecord,
+    lockToken: string
+  ): Promise<"missing" | "ok" | "stolen"> {
+    const result = await this.withTimeout(
+      client.eval(SESSION_SET_UNDER_LOCK_SCRIPT, {
+        arguments: [lockToken, serializeSessionRecord(record), String(record.expiresAt)],
+        keys: [this.keyFor(sessionId), this.idleLockKeyFor(sessionId)]
+      })
+    )
+    if (result === "ok" || result === "missing" || result === "stolen") {
+      return result
+    }
+    return "stolen"
   }
 
   /**
@@ -465,6 +514,7 @@ export class RedisSessionStore implements SessionStore {
     denied: T,
     mutate: (ctx: {
       readonly client: RedisSessionClient
+      readonly lockToken: string
       readonly raw: string
       readonly record: SessionRecord
     }) => Promise<T>
@@ -486,7 +536,7 @@ export class RedisSessionStore implements SessionStore {
         return denied
       }
 
-      return await mutate({ client, raw, record })
+      return await mutate({ client, lockToken: acquired, raw, record })
     } finally {
       await this.releaseIdleLock(client, sessionId, acquired)
     }
@@ -565,10 +615,6 @@ function isIdleAuthenticatedRecord(record: SessionRecord): record is SessionReco
     && record.idleDurationMinutes !== undefined
     && record.lastActivityAt !== undefined
     && record.idleExpiresAt !== undefined
-}
-
-function lockToken(): string {
-  return randomBytes(16).toString("base64url")
 }
 
 function sleep(ms: number): Promise<void> {

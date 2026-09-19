@@ -160,6 +160,7 @@ describe("RedisSessionStore", () => {
       const clientFactory = vi.fn(() => {
         const client = {
           connect: vi.fn().mockResolvedValue(undefined),
+          eval: vi.fn(),
           get: getMock,
           isOpen: true,
           set: setMock
@@ -250,6 +251,7 @@ describe("RedisSessionStore", () => {
       const setMock = vi.fn().mockResolvedValue("OK")
       const clientFactory = vi.fn(() => ({
         connect: vi.fn().mockResolvedValue(undefined),
+        eval: vi.fn(),
         get: vi.fn().mockResolvedValue(null),
         isOpen: true,
         set: setMock
@@ -272,17 +274,21 @@ describe("RedisSessionStore", () => {
       })
     })
 
-    it("updates existing records with SET XX EXAT and reports missing when absent", async () => {
-      const setMock = vi.fn().mockResolvedValue("OK")
-      const clientFactory = vi.fn(() => ({
-        connect: vi.fn().mockResolvedValue(undefined),
-        get: vi.fn().mockResolvedValue(null),
-        isOpen: true,
-        set: setMock
-      }))
-
-      const store = new RedisSessionStore(testConfig(), { clientFactory })
+    it("updates existing records under the idle lock and reports missing when absent", async () => {
+      const { MemoryRedis } = await import("./helpers/memory-redis.ts")
+      const { SESSION_SET_UNDER_LOCK_SCRIPT } = await import(
+        "../../src/lib/session/redis-scripts.ts"
+      )
+      const memory = new MemoryRedis()
+      const store = new RedisSessionStore(testConfig(), {
+        clientFactory: () => memory,
+        keyPrefix: KEY_PREFIX
+      })
       const id = fixedSessionId(16)
+      const existing: SessionRecord = {
+        expiresAt: 1_700_300_000,
+        tenantId: "springfield"
+      }
       const record: SessionRecord = {
         expiresAt: 1_700_300_000,
         tenantId: "springfield",
@@ -290,16 +296,17 @@ describe("RedisSessionStore", () => {
         userName: "Demo User"
       }
 
-      await expect(store.update(id, record)).resolves.toEqual({ kind: "updated" })
-      expect(setMock).toHaveBeenCalledWith(`${KEY_PREFIX}${id}`, serializeSessionRecord(record), {
-        condition: "XX",
-        expiration: {
-          type: "EXAT",
-          value: record.expiresAt
-        }
+      await memory.set(`${KEY_PREFIX}${id}`, serializeSessionRecord(existing), {
+        expiration: { type: "EXAT", value: existing.expiresAt }
       })
 
-      setMock.mockResolvedValueOnce(null)
+      await expect(store.update(id, record)).resolves.toEqual({ kind: "updated" })
+      expect(
+        memory.eval.mock.calls.some((call) => call[0] === SESSION_SET_UNDER_LOCK_SCRIPT)
+      ).toBe(true)
+      expect(await memory.get(`${KEY_PREFIX}${id}`)).toBe(serializeSessionRecord(record))
+
+      await memory.del(`${KEY_PREFIX}${id}`)
       await expect(store.update(id, record)).resolves.toEqual({ kind: "missing" })
     })
 

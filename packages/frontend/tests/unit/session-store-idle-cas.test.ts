@@ -2,7 +2,17 @@ import { randomBytes } from "node:crypto"
 import { describe, expect, it } from "vitest"
 
 import { computeIdleExpiresAt, DEFAULT_IDLE_DURATION_MINUTES } from "../../src/lib/session/idle.ts"
-import { IDLE_ACTIVITY_COALESCE_SECONDS, RedisSessionStore, SessionStoreError } from "../../src/lib/session/store.ts"
+import {
+  RELEASE_IDLE_LOCK_SCRIPT,
+  SESSION_CAS_UNDER_LOCK_SCRIPT,
+  SESSION_SET_UNDER_LOCK_SCRIPT
+} from "../../src/lib/session/redis-scripts.ts"
+import {
+  IDLE_ACTIVITY_COALESCE_SECONDS,
+  IDLE_LOCK_TTL_TIMEOUT_MULTIPLIER,
+  RedisSessionStore,
+  SessionStoreError
+} from "../../src/lib/session/store.ts"
 import { serializeSessionRecord, type SessionConfig, type SessionRecord } from "../../src/lib/session/types.ts"
 import { MemoryRedis } from "./helpers/memory-redis.ts"
 
@@ -71,7 +81,13 @@ describe("session store idle CAS", () => {
     expect(lockSets.length).toBeGreaterThanOrEqual(1)
     expect(lockSets[0]?.[2]).toMatchObject({
       condition: "NX",
-      expiration: { type: "PX" }
+      expiration: {
+        type: "PX",
+        value: Math.max(
+          testConfig().storeTimeoutMs * IDLE_LOCK_TTL_TIMEOUT_MULTIPLIER,
+          1_000
+        )
+      }
     })
   })
 
@@ -102,6 +118,9 @@ describe("session store idle CAS", () => {
       (call) => call[0] === sessionKey && call[2]?.condition === "XX"
     )
     expect(sessionWrites).toHaveLength(0)
+    expect(
+      memory.eval.mock.calls.filter((call) => call[0] === SESSION_CAS_UNDER_LOCK_SCRIPT)
+    ).toHaveLength(0)
 
     const next = await store.renewIdleActivity(
       sessionId,
@@ -111,7 +130,7 @@ describe("session store idle CAS", () => {
     expect(next.kind).toBe("renewed")
   })
 
-  it("CAS refuses blind SET when expected serialized value no longer matches", async () => {
+  it("CAS refuses write when expected serialized value no longer matches", async () => {
     const memory = new MemoryRedis()
     const now = 1_700_000_000
     const sessionId = fixedSessionId(3)
@@ -127,18 +146,17 @@ describe("session store idle CAS", () => {
       expiration: { type: "EXAT", value: record.expiresAt }
     })
 
-    // loadRawRecord GET #1; compareAndSet GET #2 — flip before CAS predicate.
-    let sessionGets = 0
-    memory.beforeGet = async (key) => {
-      if (key !== sessionKey) {
+    // Flip under the load→CAS window so Lua sees a mismatch.
+    memory.beforeEval = async (script, options) => {
+      if (script !== SESSION_CAS_UNDER_LOCK_SCRIPT) {
         return
       }
-      sessionGets += 1
-      if (sessionGets === 2) {
-        await memory.set(sessionKey, serializeSessionRecord(cleared), {
-          expiration: { type: "EXAT", value: cleared.expiresAt }
-        })
+      if (options.keys?.[0] !== sessionKey) {
+        return
       }
+      await memory.set(sessionKey, serializeSessionRecord(cleared), {
+        expiration: { type: "EXAT", value: cleared.expiresAt }
+      })
     }
 
     const store = new RedisSessionStore(testConfig(), {
@@ -149,14 +167,10 @@ describe("session store idle CAS", () => {
     const result = await store.renewIdleActivity(sessionId, now + 30, "springfield")
     expect(result.kind).toBe("denied")
 
-    const sessionWrites = memory.set.mock.calls.filter(
-      (call) =>
-        call[0] === sessionKey
-        && call[2]?.condition === "XX"
-        && typeof call[1] === "string"
-        && call[1].includes("lastActivityAt")
+    const casCalls = memory.eval.mock.calls.filter(
+      (call) => call[0] === SESSION_CAS_UNDER_LOCK_SCRIPT
     )
-    expect(sessionWrites).toHaveLength(0)
+    expect(casCalls.length).toBeGreaterThanOrEqual(1)
 
     const raw = await memory.get(sessionKey)
     expect(raw).toBe(serializeSessionRecord(cleared))
@@ -394,13 +408,16 @@ describe("session store idle CAS", () => {
       expiration: { type: "EXAT", value: record.expiresAt }
     })
 
-    let sessionGets = 0
-    memory.beforeGet = async (key) => {
-      if (key !== sessionKey) {
+    let casEvals = 0
+    memory.beforeEval = async (script, options) => {
+      if (script !== SESSION_CAS_UNDER_LOCK_SCRIPT) {
         return
       }
-      sessionGets += 1
-      if (sessionGets === 2) {
+      if (options.keys?.[0] !== sessionKey) {
+        return
+      }
+      casEvals += 1
+      if (casEvals === 1) {
         await memory.set(sessionKey, serializeSessionRecord(newer), {
           expiration: { type: "EXAT", value: newer.expiresAt }
         })
@@ -415,14 +432,6 @@ describe("session store idle CAS", () => {
     const result = await store.clearForInactivity(sessionId, idleExpiresAt, "springfield")
     expect(result.kind).toBe("denied")
 
-    const clearanceWrites = memory.set.mock.calls.filter(
-      (call) =>
-        call[0] === sessionKey
-        && typeof call[1] === "string"
-        && call[1].includes("accessEndedCause")
-    )
-    expect(clearanceWrites).toHaveLength(0)
-
     const raw = await memory.get(sessionKey)
     expect(raw).not.toBeNull()
     if (raw === null) {
@@ -431,6 +440,7 @@ describe("session store idle CAS", () => {
     const parsed = JSON.parse(raw) as Record<string, unknown>
     expect(parsed.userId).toBe("user-1")
     expect(parsed.lastActivityAt).toBe(now + 60)
+    expect(parsed.accessEndedCause).toBeUndefined()
   })
 
   it("stamps activity from nowSeconds (application clock), not Redis TIME", async () => {
@@ -492,5 +502,107 @@ describe("session store idle CAS", () => {
     expect(maxInCritical).toBe(1)
     expect([a.kind, b.kind].every((k) => k === "renewed" || k === "coalesced" || k === "denied")).toBe(true)
     expect([a.kind, b.kind].some((k) => k === "renewed" || k === "coalesced")).toBe(true)
+  })
+
+  it("releaseIdleLock does not delete another owner's token", async () => {
+    const memory = new MemoryRedis()
+    const now = 1_700_000_000
+    const sessionId = fixedSessionId(14)
+    const lockKey = `test:idle-cas:idle-lock:${sessionId}`
+    const record = idleRecord(now)
+    await memory.set(`test:idle-cas:${sessionId}`, serializeSessionRecord(record), {
+      expiration: { type: "EXAT", value: record.expiresAt }
+    })
+
+    const store = new RedisSessionStore(testConfig(), {
+      clientFactory: () => memory,
+      clock: () => now + 30
+    })
+
+    await store.renewIdleActivity(sessionId, now + 30, "springfield")
+    expect(await memory.get(lockKey)).toBeNull()
+
+    await memory.set(lockKey, "foreign-owner", {
+      condition: "NX",
+      expiration: { type: "PX", value: 60_000 }
+    })
+
+    const deleted = await memory.eval(RELEASE_IDLE_LOCK_SCRIPT, {
+      arguments: ["stale-owner-token"],
+      keys: [lockKey]
+    })
+    expect(deleted).toBe(0)
+    expect(await memory.get(lockKey)).toBe("foreign-owner")
+  })
+
+  it("refuses CAS when the idle lock token was stolen before the write", async () => {
+    const memory = new MemoryRedis()
+    const now = 1_700_000_000
+    const sessionId = fixedSessionId(15)
+    const sessionKey = `test:idle-cas:${sessionId}`
+    const record = idleRecord(now)
+    await memory.set(sessionKey, serializeSessionRecord(record), {
+      expiration: { type: "EXAT", value: record.expiresAt }
+    })
+
+    memory.beforeEval = async (script, options) => {
+      if (script !== SESSION_CAS_UNDER_LOCK_SCRIPT) {
+        return
+      }
+      const lock = options.keys?.[1]
+      if (lock === undefined) {
+        return
+      }
+      // Overwrite lease mid-CAS: late write must not apply.
+      await memory.set(lock, "thief", {
+        expiration: { type: "PX", value: 60_000 }
+      })
+    }
+
+    const store = new RedisSessionStore(testConfig(), {
+      clientFactory: () => memory,
+      clock: () => now + 30
+    })
+
+    const result = await store.renewIdleActivity(sessionId, now + 30, "springfield")
+    expect(result.kind).toBe("denied")
+    expect(await memory.get(sessionKey)).toBe(serializeSessionRecord(record))
+  })
+
+  it("update serializes under the idle lock and refuses when the lock is stolen", async () => {
+    const memory = new MemoryRedis()
+    const now = 1_700_000_000
+    const sessionId = fixedSessionId(16)
+    const sessionKey = `test:idle-cas:${sessionId}`
+    const record = idleRecord(now)
+    await memory.set(sessionKey, serializeSessionRecord(record), {
+      expiration: { type: "EXAT", value: record.expiresAt }
+    })
+
+    memory.beforeEval = async (script, options) => {
+      if (script !== SESSION_SET_UNDER_LOCK_SCRIPT) {
+        return
+      }
+      const lock = options.keys?.[1]
+      if (lock === undefined) {
+        return
+      }
+      await memory.set(lock, "thief", {
+        expiration: { type: "PX", value: 60_000 }
+      })
+    }
+
+    const store = new RedisSessionStore(testConfig(), {
+      clientFactory: () => memory,
+      clock: () => now
+    })
+
+    const stamped = idleRecord(now + 10, {
+      expiresAt: record.expiresAt,
+      idleDurationMinutes: 10
+    })
+    const result = await store.update(sessionId, stamped)
+    expect(result.kind).toBe("missing")
+    expect(await memory.get(sessionKey)).toBe(serializeSessionRecord(record))
   })
 })
