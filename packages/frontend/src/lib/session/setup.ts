@@ -67,6 +67,18 @@ export type TenantResolveResult =
     readonly kind: "unknown"
   }
 
+interface ReuseSessionInput {
+  readonly candidate: SessionCookieClaims
+  readonly clock: () => number
+  readonly origin: "host-associated" | "local-static"
+  readonly store: SessionStore
+  readonly stored: SessionRecord
+  readonly tenantConfig: TenantConfig
+  readonly tenantId: string
+}
+
+type ReuseSessionResult = Extract<SetupSessionResult, { kind: "ready" }> | SetupSessionResult | undefined
+
 export async function setupSession(
   request: Request,
   deps: SetupSessionDependencies
@@ -103,20 +115,24 @@ export async function setupSession(
   if (
     loaded.candidate !== undefined
     && loaded.stored !== undefined
-    && canReuse({
+    && structuralCookieMatches(
+      loaded.candidate,
+      loaded.stored,
+      tenant.tenantId,
+      loaded.legacyAuthenticated
+    )
+  ) {
+    const reused = await tryReuseLoadedSession({
       candidate: loaded.candidate,
       clock,
-      legacyAuthenticated: loaded.legacyAuthenticated,
+      origin: tenant.origin,
+      store: deps.store,
       stored: loaded.stored,
+      tenantConfig: tenant.config,
       tenantId: tenant.tenantId
     })
-  ) {
-    return {
-      config: tenant.config,
-      context: sessionContextFromRecord(loaded.candidate.sid, loaded.stored),
-      kind: "ready",
-      origin: tenant.origin,
-      outcome: "reuse"
+    if (reused !== undefined) {
+      return reused
     }
   }
 
@@ -168,45 +184,37 @@ export function toTenantResolveResult(
 }
 
 /**
- * Structural cookie↔record bind. Rejects legacy four-key authenticated records so
- * callers force reauth / fresh anonymous. Absolute and idle deadlines for
- * authenticated reuse are checked with a fresh clock after Redis load
- * (including the equality pin when `idleExpiresAt === expiresAt`).
- *
- * Phase A: no idle clearance writes here — expired idle auth forces create only.
+ * Clear idle-expired auth to an anonymous tombstone, then refuse reuse so Proxy
+ * mints a fresh sid and starts OIDC. Open tabs learn via confirm + Modal later;
+ * a new document load (closed tab reopen) goes straight to login.
  */
-function canReuse(input: {
-  readonly candidate: SessionCookieClaims
-  readonly clock: () => number
-  readonly legacyAuthenticated: boolean
-  readonly stored: SessionRecord
-  readonly tenantId: string
-}): boolean {
-  if (input.legacyAuthenticated) {
-    return false
+async function clearIdleForReuseRecovery(
+  input: ReuseSessionInput,
+  freshNow: number
+): Promise<ReuseSessionResult> {
+  try {
+    const cleared = await input.store.clearForInactivity(
+      input.candidate.sid,
+      freshNow,
+      input.tenantId
+    )
+    if (cleared.kind !== "cleared" && cleared.kind !== "already_cleared") {
+      // Clearance denied / lost race — fail closed without authenticated reuse.
+      return undefined
+    }
+    // Tombstone retained for sibling confirm/login-again; force fresh create.
+    return undefined
+  } catch (error) {
+    if (error instanceof SessionStoreError) {
+      return {
+        kind: "terminal",
+        message: "Service unavailable.",
+        outcome: "503",
+        status: 503
+      }
+    }
+    throw error
   }
-
-  if (
-    input.candidate.tenant !== input.tenantId
-    || input.stored.tenantId !== input.tenantId
-    || input.candidate.exp !== input.stored.expiresAt
-  ) {
-    return false
-  }
-
-  // Anonymous: absolute expiry only (fresh clock after Redis load).
-  if (input.stored.userId === undefined) {
-    return input.clock() < input.stored.expiresAt
-  }
-
-  // Idle-shaped auth only — legacy / missing idle fields force fresh.
-  if (input.stored.idleExpiresAt === undefined) {
-    return false
-  }
-
-  // Fresh clock after Redis load before authenticated success.
-  const freshNow = input.clock()
-  return classifyAccessEnd(freshNow, input.stored) === "still-valid"
 }
 
 async function createFreshSession(input: {
@@ -231,7 +239,7 @@ async function createFreshSession(input: {
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const sessionId = input.createId()
-    // Phase A: anonymous create only — do not write idle-shaped authenticated records.
+    // Anonymous create only — idle fields are stamped at OIDC auth completion.
     const record: SessionRecord = {
       expiresAt,
       tenantId: input.tenantId
@@ -406,4 +414,92 @@ async function resolveTenantResult(
   }
 
   return tenant
+}
+
+/**
+ * Structural cookie↔record bind. Rejects legacy four-key authenticated records so
+ * callers force reauth / fresh anonymous. Absolute and idle deadlines for
+ * authenticated reuse are checked with a fresh clock after Redis load
+ * (including the equality pin when `idleExpiresAt === expiresAt`).
+ */
+function structuralCookieMatches(
+  candidate: SessionCookieClaims,
+  stored: SessionRecord,
+  tenantId: string,
+  legacyAuthenticated: boolean
+): boolean {
+  if (legacyAuthenticated) {
+    return false
+  }
+
+  return candidate.tenant === tenantId
+    && stored.tenantId === tenantId
+    && candidate.exp === stored.expiresAt
+}
+
+function tryReuseAnonymousSession(input: ReuseSessionInput): ReuseSessionResult {
+  if (input.clock() >= input.stored.expiresAt) {
+    return undefined
+  }
+
+  return {
+    config: input.tenantConfig,
+    context: sessionContextFromRecord(input.candidate.sid, input.stored),
+    kind: "ready",
+    origin: input.origin,
+    outcome: "reuse"
+  }
+}
+
+async function tryReuseAuthenticatedSession(
+  input: ReuseSessionInput
+): Promise<ReuseSessionResult> {
+  // Idle-shaped auth only — legacy / missing idle fields force fresh (matches guard).
+  if (input.stored.idleExpiresAt === undefined) {
+    return undefined
+  }
+
+  // Fresh clock after Redis load before authenticated success or clearance.
+  const freshNow = input.clock()
+  const classification = classifyAccessEnd(freshNow, input.stored)
+
+  if (classification === "still-valid") {
+    return {
+      config: input.tenantConfig,
+      context: sessionContextFromRecord(input.candidate.sid, input.stored),
+      kind: "ready",
+      origin: input.origin,
+      outcome: "reuse"
+    }
+  }
+
+  if (classification === "idle") {
+    return await clearIdleForReuseRecovery(input, freshNow)
+  }
+
+  // Absolute-only or missing idle shape — no inactivity claim; force fresh.
+  return undefined
+}
+
+/**
+ * Reuse path after structural cookie match. Authenticated success samples a fresh
+ * clock after Redis load. When idle binds (including equality pin), atomically clear
+ * for inactivity then refuse reuse so a fresh anonymous sid + OIDC starts.
+ * Anonymous inactivity latches are never reused for document entry (tombstone only).
+ */
+async function tryReuseLoadedSession(input: ReuseSessionInput): Promise<ReuseSessionResult> {
+  // Ended-for-inactivity anonymous keys are tombstones for open-tab confirm /
+  // login-again siblings—not entry sessions for a new document load.
+  if (
+    input.stored.userId === undefined
+    && input.stored.accessEndedCause === "inactivity"
+  ) {
+    return undefined
+  }
+
+  if (input.stored.userId !== undefined) {
+    return await tryReuseAuthenticatedSession(input)
+  }
+
+  return tryReuseAnonymousSession(input)
 }

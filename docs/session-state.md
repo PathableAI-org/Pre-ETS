@@ -106,8 +106,14 @@ idle clearance. Rollout is two-phase:
    `legacyAuthenticated` for the four-key shape. `setupSession` reuse **rejects**
    legacy authenticated records (force reauthentication). Do not enable
    idle-shaped authenticated **writes** until Phase A parsers are proven.
-2. **Phase B — idle writes**: Stamp idle fields at authentication and enforce
-   idle deadlines on protected operations.
+2. **Phase B — idle writes** (current for new authentications): OIDC callback
+   stamps `idleDurationMinutes` / `lastActivityAt` / `idleExpiresAt` from the
+   effective tenant policy at auth time. Protected operations re-check Redis with
+   a fresh application clock (`guardAuthenticatedAccess`, `setupSession` reuse,
+   activity renewal, `getRequestSession`). Idle clearance persists
+   `accessEndedCause: "inactivity"` and `sessionEndGeneration` on the anonymous
+   tombstone. Dual-read remains required while legacy four-key records may still
+   exist.
 3. **Drain**: Keep dual-read until at least one full configured absolute session
    TTL (`SESSION_TTL_SECONDS` / `SessionConfig.ttlSeconds`) has elapsed after
    Phase B starts.
@@ -117,4 +123,5 @@ idle clearance. Rollout is two-phase:
 
 Redis plus the **application clock** are authoritative for idle and absolute
 deadlines. Browser timers never grant access past `idleExpiresAt` / `expiresAt`.
-There is no public idle diagnostic API.
+There is no public idle diagnostic API. Qualifying activity renews idle only
+(cookie-bound Server Action); it does not extend absolute `expiresAt`.

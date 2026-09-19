@@ -17,7 +17,7 @@ import {
   resetOidcTxConfigCacheForTests
 } from "../../src/lib/oidc/types.ts"
 import { SessionStoreError } from "../../src/lib/session/store.ts"
-import { springfieldRecord } from "./tenant-fixtures.ts"
+import { shelbyvilleRecord, springfieldRecord } from "./tenant-fixtures.ts"
 
 const NOW = 1_700_000_000
 const SESSION_ID = Buffer.from(new Uint8Array(32).fill(9)).toString("base64url")
@@ -163,6 +163,147 @@ describe("completeLogin", () => {
       tenantId: "springfield",
       userId: "user-sub",
       userName: "Demo User"
+    })
+  })
+
+  it("stamps idle duration from tenant effective policy without extending absolute expiry", async () => {
+    const txConfig = testTxConfig()
+    const cookie = await signOidcCorrelationCookie(
+      { exp: NOW + 600, state: STATE, tenant: "springfield" },
+      txConfig
+    )
+    const update = vi.fn().mockResolvedValue({ kind: "updated" })
+    const absoluteExpiresAt = NOW + 12_000
+    const sessionStore = mockSessionStore({
+      read: vi.fn().mockResolvedValue({
+        kind: "record",
+        legacyAuthenticated: false,
+        record: { expiresAt: absoluteExpiresAt, tenantId: "springfield" }
+      }),
+      update
+    })
+
+    await completeLogin(
+      {
+        nowSeconds: NOW,
+        request: documentCallback(
+          `https://springfield.localhost/auth/callback?code=auth-code&state=${STATE}`,
+          `pathable-oidc=${cookie}`
+        ),
+        tenantId: "springfield",
+        tenantRecord: {
+          config: {
+            displayName: "Springfield Demo",
+            idleTimeoutMinutes: 7,
+            oidc: springfieldRecord.config.oidc
+          },
+          slug: "springfield"
+        }
+      },
+      {
+        authorizationCodeGrant: (() =>
+          Promise.resolve({
+            access_token: "access",
+            claims: () => ({ name: "Demo User", sub: "user-sub" }),
+            expiresIn: () => 3600,
+            token_type: "bearer"
+          })) as unknown as NonNullable<CompleteLoginDeps["authorizationCodeGrant"]>,
+        discover: () =>
+          Promise.resolve({
+            authorizationEndpoint: "https://identity.example/auth",
+            configuration: {} as Configuration
+          }),
+        resolveSecret: () => ({ kind: "none" }),
+        sessionStore,
+        store: mockTxStore({
+          consume: vi.fn().mockResolvedValue({ kind: "record", record: txRecord() })
+        }),
+        txConfig
+      }
+    )
+
+    expect(update).toHaveBeenCalledWith(SESSION_ID, {
+      expiresAt: absoluteExpiresAt,
+      idleDurationMinutes: 7,
+      idleExpiresAt: NOW + 7 * 60,
+      lastActivityAt: NOW,
+      tenantId: "springfield",
+      userId: "user-sub",
+      userName: "Demo User"
+    })
+  })
+
+  it("isolates Springfield vs Shelbyville idle policy at auth stamp", async () => {
+    const txConfig = testTxConfig()
+    const cookie = await signOidcCorrelationCookie(
+      { exp: NOW + 600, state: STATE, tenant: "shelbyville" },
+      txConfig
+    )
+    const update = vi.fn().mockResolvedValue({ kind: "updated" })
+    const sessionStore = mockSessionStore({
+      read: vi.fn().mockResolvedValue({
+        kind: "record",
+        legacyAuthenticated: false,
+        record: { expiresAt: NOW + 86_400, tenantId: "shelbyville" }
+      }),
+      update
+    })
+
+    await completeLogin(
+      {
+        nowSeconds: NOW,
+        request: documentCallback(
+          `https://shelbyville.localhost/auth/callback?code=auth-code&state=${STATE}`,
+          `pathable-oidc=${cookie}`
+        ),
+        tenantId: "shelbyville",
+        tenantRecord: {
+          config: {
+            displayName: "Shelbyville Demo",
+            idleTimeoutMinutes: 20,
+            oidc: shelbyvilleRecord.config.oidc
+          },
+          slug: "shelbyville"
+        }
+      },
+      {
+        authorizationCodeGrant: (() =>
+          Promise.resolve({
+            access_token: "access",
+            claims: () => ({ name: "Shelby User", sub: "shelby-sub" }),
+            expiresIn: () => 3600,
+            token_type: "bearer"
+          })) as unknown as NonNullable<CompleteLoginDeps["authorizationCodeGrant"]>,
+        discover: () =>
+          Promise.resolve({
+            authorizationEndpoint: "https://identity.example/auth",
+            configuration: {} as Configuration
+          }),
+        resolveSecret: () => ({ kind: "none" }),
+        sessionStore,
+        store: mockTxStore({
+          consume: vi.fn().mockResolvedValue({
+            kind: "record",
+            record: txRecord({
+              clientId: "shelbyville-web",
+              connection: "shelbyville-idp",
+              redirectUri: "https://shelbyville.localhost/auth/callback",
+              tenantId: "shelbyville"
+            })
+          })
+        }),
+        txConfig
+      }
+    )
+
+    expect(update).toHaveBeenCalledWith(SESSION_ID, {
+      expiresAt: NOW + 86_400,
+      idleDurationMinutes: 20,
+      idleExpiresAt: NOW + 20 * 60,
+      lastActivityAt: NOW,
+      tenantId: "shelbyville",
+      userId: "shelby-sub",
+      userName: "Shelby User"
     })
   })
 
