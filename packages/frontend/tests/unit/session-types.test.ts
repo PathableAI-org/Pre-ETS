@@ -115,9 +115,25 @@ describe("session types", () => {
       })
 
       for (const idleDurationMinutes of [5, 30]) {
-        const boundary = { ...record, idleDurationMinutes }
+        const boundary = {
+          ...record,
+          idleDurationMinutes,
+          idleExpiresAt: now + idleDurationMinutes * 60
+        }
         expect(parseSessionRecord(boundary)).toEqual(boundary)
       }
+    })
+
+    it("rejects idle-shaped records when idleExpiresAt does not match the duration equation", () => {
+      expect(parseSessionRecord({
+        expiresAt: now + 3600,
+        idleDurationMinutes: 15,
+        idleExpiresAt: now + 901,
+        lastActivityAt: now,
+        tenantId: "springfield",
+        userId: "user-1",
+        userName: "Demo User"
+      })).toBeUndefined()
     })
 
     it("rejects invalid idleDurationMinutes on authenticated records", () => {

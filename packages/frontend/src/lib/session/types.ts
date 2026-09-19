@@ -572,6 +572,14 @@ function parseIdleAuthenticatedSessionRecord(
     return undefined
   }
 
+  // Authoritative idle deadline must match lastActivityAt + duration (seconds).
+  if (
+    raw.idleExpiresAt
+      !== raw.lastActivityAt + raw.idleDurationMinutes * 60
+  ) {
+    return undefined
+  }
+
   return {
     legacyAuthenticated: false,
     record: {

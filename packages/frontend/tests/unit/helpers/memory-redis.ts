@@ -79,8 +79,11 @@ export class MemoryRedis {
 
   private evalCasUnderLock(options: RedisEvalOptions): "mismatch" | "missing" | "ok" | "stolen" {
     const { args, keys } = requireEvalParts(options, 2, 4, "CAS")
-    const [sessionKey, lockKey] = keys
-    const [token, expected, next] = args
+    const sessionKey = requirePart(keys, 0, "CAS KEYS")
+    const lockKey = requirePart(keys, 1, "CAS KEYS")
+    const token = requirePart(args, 0, "CAS ARGV")
+    const expected = requirePart(args, 1, "CAS ARGV")
+    const next = requirePart(args, 2, "CAS ARGV")
     const lockOutcome = this.lockOwnership(lockKey, token)
     if (lockOutcome !== "ok") {
       return lockOutcome
@@ -109,8 +112,8 @@ export class MemoryRedis {
 
   private evalReleaseLock(options: RedisEvalOptions): number {
     const { args, keys } = requireEvalParts(options, 1, 1, "release")
-    const [lockKey] = keys
-    const [token] = args
+    const lockKey = requirePart(keys, 0, "release KEYS")
+    const token = requirePart(args, 0, "release ARGV")
     if (this.liveValue(lockKey) !== token) {
       return 0
     }
@@ -120,8 +123,10 @@ export class MemoryRedis {
 
   private evalSetUnderLock(options: RedisEvalOptions): "missing" | "ok" | "stolen" {
     const { args, keys } = requireEvalParts(options, 2, 2, "SET under lock")
-    const [sessionKey, lockKey] = keys
-    const [token, next] = args
+    const sessionKey = requirePart(keys, 0, "SET KEYS")
+    const lockKey = requirePart(keys, 1, "SET KEYS")
+    const token = requirePart(args, 0, "SET ARGV")
+    const next = requirePart(args, 1, "SET ARGV")
     const lockOutcome = this.lockOwnership(lockKey, token)
     if (lockOutcome !== "ok") {
       return lockOutcome
@@ -216,4 +221,12 @@ function requireEvalParts(
     args: args.slice(0, argCount),
     keys: keys.slice(0, keyCount)
   }
+}
+
+function requirePart(values: readonly string[], index: number, label: string): string {
+  const value = values[index]
+  if (value === undefined) {
+    throw new Error(`MemoryRedis ${label}: missing index ${String(index)}`)
+  }
+  return value
 }

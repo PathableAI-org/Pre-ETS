@@ -305,9 +305,20 @@ export class RedisSessionStore implements SessionStore {
     )
   }
 
+  /** Map Redis failures without a client-side race timeout (mutating EVAL under lock). */
+  private async awaitRedis<T>(operation: Promise<T>): Promise<T> {
+    try {
+      return await operation
+    } catch (error) {
+      throw toStoreError(error)
+    }
+  }
+
   /**
    * Atomic compare-and-set under the idle lock (Lua). Single round-trip; refuses writes when
    * the lock token no longer matches so a timed-out client cannot land a late mutation.
+   * Intentionally not wrapped in `withTimeout`: a Promise.race abort would release the lease
+   * while EVAL may still complete under the held token. Lock TTL + token check fence hangs.
    */
   private async compareAndSetSession(
     client: RedisSessionClient,
@@ -317,7 +328,7 @@ export class RedisSessionStore implements SessionStore {
     lockToken: string
   ): Promise<CompareAndSetResult> {
     const serialized = serializeSessionRecord(next)
-    const result = await this.withTimeout(
+    const result = await this.awaitRedis(
       client.eval(SESSION_CAS_UNDER_LOCK_SCRIPT, {
         arguments: [
           lockToken,
@@ -492,7 +503,8 @@ export class RedisSessionStore implements SessionStore {
     record: SessionRecord,
     lockToken: string
   ): Promise<"missing" | "ok" | "stolen"> {
-    const result = await this.withTimeout(
+    // Same as compareAndSetSession: do not Promise.race-timeout mutating EVAL under the lease.
+    const result = await this.awaitRedis(
       client.eval(SESSION_SET_UNDER_LOCK_SCRIPT, {
         arguments: [lockToken, serializeSessionRecord(record), String(record.expiresAt)],
         keys: [this.keyFor(sessionId), this.idleLockKeyFor(sessionId)]

@@ -392,9 +392,10 @@ describe("session store idle CAS", () => {
   it("CAS mismatch (WATCH-abort equivalent) fails closed on clearance", async () => {
     const memory = new MemoryRedis()
     const now = 1_700_000_000
-    const idleExpiresAt = now + 100
+    const idleExpiresAt = now + 15 * 60
     const sessionId = fixedSessionId(11)
     const sessionKey = `test:idle-cas:${sessionId}`
+    // Must satisfy idleExpiresAt = lastActivityAt + duration*60 so parse accepts it.
     const record = idleRecord(now, {
       idleDurationMinutes: 15,
       idleExpiresAt,
@@ -604,5 +605,34 @@ describe("session store idle CAS", () => {
     const result = await store.update(sessionId, stamped)
     expect(result.kind).toBe("missing")
     expect(await memory.get(sessionKey)).toBe(serializeSessionRecord(record))
+  })
+
+  it("completes lock-held mutating EVAL even when slower than storeTimeoutMs", async () => {
+    const memory = new MemoryRedis()
+    const now = 1_700_000_000
+    const sessionId = fixedSessionId(17)
+    const record = idleRecord(now, { idleDurationMinutes: 10 })
+    await memory.set(`test:idle-cas:${sessionId}`, serializeSessionRecord(record), {
+      expiration: { type: "EXAT", value: record.expiresAt }
+    })
+
+    memory.beforeEval = async (script) => {
+      if (script !== SESSION_CAS_UNDER_LOCK_SCRIPT) {
+        return
+      }
+      await new Promise((resolve) => {
+        setTimeout(resolve, 80)
+      })
+    }
+
+    const store = new RedisSessionStore(testConfig({ storeTimeoutMs: 40 }), {
+      clientFactory: () => memory,
+      clock: () => now + 30,
+      timeoutMs: 40
+    })
+
+    // Mutating EVAL is not Promise.race-timed out; acquire/load still use timeoutMs.
+    const result = await store.renewIdleActivity(sessionId, now + 30, "springfield")
+    expect(result.kind).toBe("renewed")
   })
 })
