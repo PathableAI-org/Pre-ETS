@@ -96,6 +96,9 @@ describe("completeLogin HTTP callback with mock IdP", () => {
     expect(consume).toHaveBeenCalledWith(STATE)
     expect(update).toHaveBeenCalledWith(SESSION_ID, {
       expiresAt: NOW + 86_400,
+      idleDurationMinutes: 30,
+      idleExpiresAt: NOW + 30 * 60,
+      lastActivityAt: NOW,
       tenantId: "springfield",
       userId: "mock-user-sub",
       userName: "Mock Demo User"

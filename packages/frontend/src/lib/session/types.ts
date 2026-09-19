@@ -605,8 +605,6 @@ function parseJsonObject(raw: string): Record<string, unknown> | undefined {
   return parsed as Record<string, unknown>
 }
 
-
-
 function readSessionContextBase(
   value: Record<string, unknown>
 ): Pick<SessionContext, "expiresAt" | "sessionId" | "tenantId"> | undefined {
