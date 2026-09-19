@@ -31,7 +31,7 @@
     "@types/node": "24.13.5",
     "dprint": "0.57.4",
     "dprint-plugin-yaml": "0.6.0",
-    "eslint": "10.10.0",
+    "eslint": "10.11.0",
     "eslint-plugin-perfectionist": "5.11.1",
     "fallow": "3.27.0",
     "globals": "17.12.0",
