@@ -1,5 +1,6 @@
 import { Alert, Button, Card, Container, Heading, Page, Stack, Text } from "@pathableai/react"
 
+import { IdleConfirmHarness } from "../../components/session/idle-confirm-harness.tsx"
 import { InactivityModalHarness } from "../../components/session/inactivity-modal-harness.tsx"
 import { getRequestSession } from "../../lib/session/index.ts"
 
@@ -7,6 +8,7 @@ export const dynamic = "force-dynamic"
 
 export default async function HomePage() {
   const { context, tenantConfig } = await getRequestSession()
+  const authenticated = context.userId !== undefined
 
   return (
     <Page>
@@ -25,6 +27,8 @@ export default async function HomePage() {
           </Alert>
           {/* TEMP harness — remove in PR5 when modal opens from confirmed inactivity. */}
           <InactivityModalHarness />
+          {/* TEMP harness — remove in PR5/PR6 once confirm+modal path is visible. */}
+          {authenticated ? <IdleConfirmHarness /> : null}
           <Card title="Pre-ETS operations">
             <Stack gap="md">
               <Text>
