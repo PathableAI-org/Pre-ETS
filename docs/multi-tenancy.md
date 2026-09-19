@@ -82,3 +82,17 @@ emit a safe `invalid-mode` diagnostic.
 Downstream frontend modules that need tenancy call `getCurrentTenant` /
 `getCurrentTenantConfig`. They do not parse the request URL themselves to
 decide which tenant they are in.
+
+## Idle timeout policy
+
+Tenant configuration may include optional `idleTimeoutMinutes`:
+
+- Whole minutes **5–30** inclusive.
+- Omitted → effective **30** minutes for new authenticated sessions.
+- Invalid explicit values fail at the trusted configuration boundary for the
+  **whole** source (no silent substitution of the default or another tenant’s
+  policy).
+- Policy is fixed on the session at authentication (OIDC callback idle stamp).
+  Changing a tenant’s choice does not rewrite live sessions; login-again and other
+  new authentications pick up the **current** effective duration.
+- Tenants are isolated: one tenant’s choice never governs another’s sessions.
