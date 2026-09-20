@@ -238,24 +238,24 @@ not restore the client fixture. Client timing alone must never grant continued a
       `sessionEndGeneration`** (receivers ignore foreign session ids); on confirm/5xx **fail closed
       for visible protected UI** with generic authorization-unavailable (retry without inactivity
       claim); never grant access past deadlines (FR-009).
-- [ ] T033 [P] [US2] Implement PathAble `Modal` recovery UI in
+- [x] T033 [P] [US2] Implement PathAble `Modal` recovery UI in
       `packages/frontend/src/components/session/inactivity-ended-modal.tsx` with meaningful
       accessible name/explanation that inactivity ended the session (MAY note possible unsaved
       temporary work lost—copy only); primary button accessible name **“Log in again”**; focus
       moves into modal and stays usable; keyboard-operable; no advance-warning/countdown/extend
       control (FR-009, FR-010).
-- [ ] T034 [US2] Implement dedicated CSRF-protected login-again Server Action (preferred) or
+- [x] T034 [US2] Implement dedicated CSRF-protected login-again Server Action (preferred) or
       POST route (indicative `packages/frontend/src/app/auth/login-again/…` / action)—**not** bare
       `/`: rotate **new** `sessionId` + host-bound `pathable-session` cookie **before** calling
       `packages/frontend/src/lib/oidc/initiate.ts`; OIDC tx targets new sid only; callback writes
       authenticated fields only to new Redis key; leave old-key tombstone until old `expiresAt` (or
       handoff consume); mounted tabs MUST run server-driven **session-mismatch handshake** via
       confirm/read (FR-010, research §6).
-- [ ] T035 [US2] Add client-only protected UI fixture support in BDD/app test helpers (e.g.
+- [x] T035 [US2] Add client-only protected UI fixture support in BDD/app test helpers (e.g.
       `tests/bdd/support/` and/or authenticated demo UI) for Gherkin “Unsent practice note”: seed in
       DOM/client state—**not** Redis; on confirmed inactivity remove with protected content;
       login-again MUST NOT restore it (data-model Temporary session data).
-- [ ] T036 [US2] Complete recovery BDD wiring in `tests/bdd/steps/idle.steps.ts` for running-app
+- [x] T036 [US2] Complete recovery BDD wiring in `tests/bdd/steps/idle.steps.ts` for running-app
       revalidation, a11y keyboard path, multi-tab sync (both tabs show inactivity explanation),
       missed-BroadcastChannel latch, login-again / IdP SSO **new-session-only** rules from
       `features/idle-session-recovery.feature`.
@@ -312,23 +312,23 @@ and cross-tenant changes. No new administration application.
 
 **Purpose**: Documentation triad, regression partitions, and delivery validation across stories.
 
-- [ ] T043 [P] Update `docs/session-state.md` with idle fields, qualifying activity (`isTrusted`),
+- [x] T043 [P] Update `docs/session-state.md` with idle fields, qualifying activity (`isTrusted`),
       authoritative enforcement, cause/latch rules, BroadcastChannel payload, CAS/lock protocol,
       Phase A/B drain, absolute-vs-idle independence, and **no draft keys** in this slice.
-- [ ] T044 [P] Update `docs/authentication.md` for idle stamping on **new** sid after login-again
+- [x] T044 [P] Update `docs/authentication.md` for idle stamping on **new** sid after login-again
       rotation, callback target rules, and recovery/OIDC Proxy branching (plan Constraints; research
       docs alignment).
-- [ ] T045 [P] Confirm `docs/multi-tenancy.md` idle policy notes match shipped behavior
+- [x] T045 [P] Confirm `docs/multi-tenancy.md` idle policy notes match shipped behavior
       (cross-check T041).
-- [ ] T046 Run regression `pnpm test:bdd:session` and `pnpm test:bdd:oidc` after Proxy/session
+- [x] T046 Run regression `pnpm test:bdd:session` and `pnpm test:bdd:oidc` after Proxy/session
       touchpoints; keep partitions green on delivery PR (quickstart).
-- [ ] T047 [P] Run frontend unit suite `pnpm --filter @pathableai/pre-ets-frontend test:unit` and
+- [x] T047 [P] Run frontend unit suite `pnpm --filter @pathableai/pre-ets-frontend test:unit` and
       idle BDD dry-run / `pnpm test:bdd:idle` per
       `specs/004-idle-session-timeout/quickstart.md`.
-- [ ] T048 Run root quality gates from `package.json`: `pnpm typecheck`, **`pnpm build`**,
+- [x] T048 Run root quality gates from `package.json`: `pnpm typecheck`, **`pnpm build`**,
       `pnpm lint`, `pnpm format:check`, `pnpm check:unused` for touched workspaces under
       `packages/frontend/` (lint before format; no generated Cucumber reports committed).
-- [ ] T049 [P] Surface release checklist items (do not invent product claims): D-001/FR-011 policy
+- [x] T049 [P] Surface release checklist items (do not invent product claims): D-001/FR-011 policy
       approval memo for **5–30** and default **30**, D-005/SC-005 workflow thresholds, D-006
       delivery appetite—track outside Spec Kit per quickstart; observability metrics remain deferred
       out of scope.

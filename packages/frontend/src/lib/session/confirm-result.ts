@@ -38,7 +38,7 @@ export function applyConfirmResult(
   handlers.setUnavailable()
 }
 
-/** Harness Label A summary — never invents inactivity from client schedule alone. */
+/** Compact confirm outcome label for unit assertions (never invents inactivity). */
 export function confirmOutcomeHarnessLabel(
   result: ConfirmSessionActionResult
 ): string {

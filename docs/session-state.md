@@ -125,3 +125,22 @@ Redis plus the **application clock** are authoritative for idle and absolute
 deadlines. Browser timers never grant access past `idleExpiresAt` / `expiresAt`.
 There is no public idle diagnostic API. Qualifying activity renews idle only
 (cookie-bound Server Action); it does not extend absolute `expiresAt`.
+
+## Idle clearance and recovery paths
+
+When authenticated access ends for inactivity, the Redis key is cleared to an
+anonymous **tombstone** with `accessEndedCause: "inactivity"` and a monotonic
+`sessionEndGeneration` latch retained until that record’s absolute `expiresAt`.
+CAS renew/clear paths refuse to invent inactivity from missing store or absolute-only
+expiry.
+
+Two product recovery paths:
+
+| Path                                                             | Behavior                                                                                                                                                                       |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Running app** (open authenticated tab past idle)               | Client confirm/read (or matching same-origin `BroadcastChannel`) establishes cause → protected UI cleared → PathAble Modal → **Log in again**                                  |
+| **Closed tab / typed URL / fresh document** after idle clearance | **No SSR inactivity shell**. Setup refuses inactivity tombstones as entry sessions, mints a fresh anonymous sid, and Proxy starts **generic OIDC**. Modal is running-app only. |
+
+There are **no** Redis draft keys in this slice. Client-only temporary UI (for example
+an “Unsent practice note” fixture) is cleared with protected content and is not restored
+after login-again. Durable saved records are unaffected.

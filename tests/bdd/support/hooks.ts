@@ -118,6 +118,8 @@ function resetTenantWorld(world: TenantWorld): void {
   world.sessionTrackedIds = []
   world.sessionTtlSeconds = undefined
   world.sessionStoreTimeoutMs = undefined
+  world.idleContract = undefined
+  world.idlePolicy = undefined
 }
 
 Before(async function(this: TenantWorld, { pickle }) {

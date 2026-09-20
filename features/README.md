@@ -331,12 +331,17 @@ are represented, expanded into boundary, failure, and alternative-flow cases.
 ### Idle-timeout artifact validation and execution status
 
 The installed Cucumber Gherkin parser parsed and expanded **93 cases** across the three files. Scenario names,
-outline substitutions, structure, and requirement tags were checked. These are acceptance artifacts authored before
-implementation; parser success is not runtime evidence.
+outline substitutions, structure, and requirement tags were checked.
 
 `cucumber.mjs` loads idle features and `tests/bdd/steps/idle.steps.ts` when `CUCUMBER_IDLE=1`
-(or via `pnpm test:bdd:idle` / `pnpm test:bdd:dry`, which also sets that flag). Step definitions are
-pending stubs until later PRs implement them; dry-run checks discovery and bindings, not runtime
-behavior. Default `pnpm test:bdd` still omits idle so unimplemented stubs do not fail unlabeled PR CI.
+(or via `pnpm test:bdd:idle` / `pnpm test:bdd:dry`). **`@contract`** idle scenarios run via an
+in-process harness (`tests/bdd/support/idle.ts`) and are expected green under
+`pnpm test:bdd:idle:contract`. Pure **`@browser`** recovery scenarios (keyboard focus, AT
+announcements, live Keycloak login-again journeys without a `@contract` twin) remain
+**intentionally Pending** until a Playwright recovery world is added—they must not be treated as
+failures of the contract partition. Release gates **D-001 / D-005 / D-006** are outside Speckit
+automation and are not claimed here.
+
+Default `pnpm test:bdd` still omits idle so browser-Pending recovery does not fail unlabeled PR CI.
 
 The complete **12-file** inventory contains **255 expanded cases**: 52 tenant, 42 session, 68 OIDC, and 93 idle-timeout.
