@@ -4,7 +4,6 @@ import { Button, Modal } from "@pathableai/react"
 import { useRef } from "react"
 
 import "./inactivity-ended-modal.css"
-
 import { loginAgainAction } from "../../app/auth/login-again/action.ts"
 
 export interface InactivityEndedModalProps {
