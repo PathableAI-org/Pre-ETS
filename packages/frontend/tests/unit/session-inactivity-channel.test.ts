@@ -63,16 +63,40 @@ describe("inactivity BroadcastChannel contract", () => {
       }
     }
     vi.stubGlobal("BroadcastChannel", FakeBroadcastChannel)
+    try {
+      broadcastInactivityConfirmed("sid-a", 4)
 
-    broadcastInactivityConfirmed("sid-a", 4)
+      expect(postMessage).toHaveBeenCalledWith(
+        inactivityConfirmedMessage("sid-a", 4)
+      )
+      expect(close).toHaveBeenCalledOnce()
+      expect(INACTIVITY_BROADCAST_CHANNEL).toBe("pathable-inactivity")
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
 
-    expect(postMessage).toHaveBeenCalledWith(
-      inactivityConfirmedMessage("sid-a", 4)
-    )
-    expect(close).toHaveBeenCalledOnce()
-    expect(INACTIVITY_BROADCAST_CHANNEL).toBe("pathable-inactivity")
-
-    vi.unstubAllGlobals()
+  it("broadcastInactivityConfirmed still closes when postMessage throws", () => {
+    const close = vi.fn()
+    class FakeBroadcastChannel {
+      close = close
+      readonly name: string
+      constructor(name: string) {
+        this.name = name
+      }
+      postMessage(): void {
+        throw new Error("post failed")
+      }
+    }
+    vi.stubGlobal("BroadcastChannel", FakeBroadcastChannel)
+    try {
+      expect(() => {
+        broadcastInactivityConfirmed("sid-a", 4)
+      }).not.toThrow()
+      expect(close).toHaveBeenCalledOnce()
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 })
 

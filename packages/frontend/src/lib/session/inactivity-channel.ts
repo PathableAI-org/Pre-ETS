@@ -26,10 +26,13 @@ export function broadcastInactivityConfirmed(
   }
   try {
     const channel = new BroadcastChannel(INACTIVITY_BROADCAST_CHANNEL)
-    channel.postMessage(
-      inactivityConfirmedMessage(sessionId, sessionEndGeneration)
-    )
-    channel.close()
+    try {
+      channel.postMessage(
+        inactivityConfirmedMessage(sessionId, sessionEndGeneration)
+      )
+    } finally {
+      channel.close()
+    }
   } catch {
     // Best-effort only.
   }
