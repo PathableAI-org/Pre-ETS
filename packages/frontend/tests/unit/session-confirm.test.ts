@@ -345,7 +345,7 @@ describe("confirmSessionAccess", () => {
     })
   })
 
-  it("adopts a replacement authenticated cookie session on mismatch after login-again", async () => {
+  it("prefers mounted tombstone handoff over adopting a replacement authenticated cookie", async () => {
     const config = testConfig()
     const now = 1_700_000_000
     const oldSessionId = fixedSessionId(12)
@@ -371,6 +371,47 @@ describe("confirmSessionAccess", () => {
             kind: "record" as const,
             legacyAuthenticated: false,
             record: tombstone
+          })
+        }
+        return Promise.resolve({ kind: "missing" as const })
+      }),
+      update: vi.fn().mockResolvedValue({ kind: "updated" })
+    })
+    const cookieValue = await signSessionCookie(
+      { exp: replacement.expiresAt, sid: newSessionId, tenant: "springfield" },
+      config
+    )
+
+    const result = await confirmSessionAccess(
+      {
+        cookieValue,
+        mountedSessionId: oldSessionId,
+        sessionEndGeneration: 4
+      },
+      { config, nowSeconds: () => now + 60, store }
+    )
+
+    expect(result).toEqual({
+      kind: "ended-inactivity",
+      mismatch: true,
+      sessionEndGeneration: 4,
+      sessionId: oldSessionId
+    })
+  })
+
+  it("adopts a replacement authenticated cookie when the mounted tombstone latch is gone", async () => {
+    const config = testConfig()
+    const now = 1_700_000_000
+    const oldSessionId = fixedSessionId(14)
+    const newSessionId = fixedSessionId(15)
+    const replacement = idleRecord(now, { idleDurationMinutes: 7 })
+    const store = mockStore({
+      read: vi.fn((id: string) => {
+        if (id === newSessionId) {
+          return Promise.resolve({
+            kind: "record" as const,
+            legacyAuthenticated: false,
+            record: replacement
           })
         }
         return Promise.resolve({ kind: "missing" as const })

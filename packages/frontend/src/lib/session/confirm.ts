@@ -263,8 +263,16 @@ async function mismatchHandshake(input: {
   }
 
   try {
-    // Sibling after successful login-again: shared cookie already names a live
-    // authenticated session — adopt it instead of re-opening inactivity from the tombstone.
+    // Prefer tombstone handoff on the mounted (pre-rotation) sid so a sibling that
+    // missed BroadcastChannel still clears temporary UI and opens inactivity recovery
+    // even when the shared cookie already names a new authenticated session.
+    const handoff = await mismatchLatchHandoff(input)
+    if (handoff.kind === "ended-inactivity") {
+      return handoff
+    }
+
+    // No consumable latch: adopt a replacement authenticated cookie session
+    // (sibling completed login-again; this mount can reload into the new sid).
     const cookieBound = await confirmCookieBoundSession({
       nowSeconds: input.nowSeconds,
       sessionId: input.cookieSessionId,
@@ -274,7 +282,8 @@ async function mismatchHandshake(input: {
     if (cookieBound.kind === "authenticated") {
       return cookieBound
     }
-    return await mismatchLatchHandoff(input)
+
+    return handoff
   } catch (error) {
     if (error instanceof SessionStoreError) {
       return { kind: "unavailable" }
