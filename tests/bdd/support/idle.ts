@@ -12,9 +12,15 @@ import type {
 import type { SessionRecord } from "../../../packages/frontend/src/lib/session/types.ts"
 import type { TenantWorld } from "./world.ts"
 
+import {
+  confirmSessionAccess,
+  hasConsumableInactivityLatch
+} from "../../../packages/frontend/src/lib/session/confirm.ts"
+import { signSessionCookie } from "../../../packages/frontend/src/lib/session/cookie.ts"
 import { guardAuthenticatedAccess } from "../../../packages/frontend/src/lib/session/guard.ts"
 import { computeIdleExpiresAt, endAuthenticatedForInactivity } from "../../../packages/frontend/src/lib/session/idle.ts"
 import { inactivityConfirmedMessage } from "../../../packages/frontend/src/lib/session/inactivity-channel.ts"
+import { sessionConfig } from "./session.ts"
 
 /** Fixed UTC day so Gherkin clock times like `09:00:00` map to Unix seconds. */
 const IDLE_DAY_BASE_SECONDS = Math.floor(Date.parse("2024-06-15T00:00:00.000Z") / 1000)
@@ -372,9 +378,7 @@ export async function oneTabDiscoversSharedInactivity(world: TenantWorld): Promi
   assert.equal(state.record.sessionEndGeneration, generation)
   assert.equal(state.record.accessEndedCause, undefined)
 
-  applyInactivityRecoveryToTab(state.tabs.second)
-  // Latch recovery — not a broadcast delivery.
-  state.tabs.second.broadcastReceived = false
+  await recoverSecondTabViaRetainedLatch(world)
 }
 
 export function parseIdleClock(time: string): number {
@@ -580,8 +584,6 @@ function emptyTabClient(temporaryWorkExposed: boolean): IdleTabClientState {
   }
 }
 
-// --- US3 tenant idle timeout policy (in-process contract harness) ---
-
 function fixedSessionId(seed: number): string {
   const bytes = new Uint8Array(32)
   bytes.fill(seed)
@@ -590,6 +592,8 @@ function fixedSessionId(seed: number): string {
   bytes[4] = seed
   return Buffer.from(bytes).toString("base64url")
 }
+
+// --- US3 tenant idle timeout policy (in-process contract harness) ---
 
 function inactivityModal(): IdleRecoveryModalState {
   return {
@@ -611,6 +615,42 @@ function isBddIdleAuthenticated(
     && record.idleDurationMinutes !== undefined
     && record.idleExpiresAt !== undefined
     && record.lastActivityAt !== undefined
+}
+
+/**
+ * Missed-BroadcastChannel path: second tab confirm/read against the retained latch
+ * must yield ended-inactivity before the inactivity modal is applied.
+ */
+async function recoverSecondTabViaRetainedLatch(world: TenantWorld): Promise<void> {
+  const state = ensureIdleContract(world)
+  assert.ok(state.tabs !== undefined, "shared tabs are required")
+  const now = world.fixedNowSeconds ?? state.authAt
+  const record = state.store.records.get(state.sessionId)
+  assert.ok(record !== undefined)
+  assert.equal(hasConsumableInactivityLatch(record, now), true)
+
+  const config = sessionConfig(world)
+  const cookieValue = await signSessionCookie(
+    { exp: record.expiresAt, sid: state.sessionId, tenant: state.tenantId },
+    config
+  )
+  const result = await confirmSessionAccess(
+    { cookieValue },
+    {
+      config,
+      nowSeconds: () => now,
+      store: state.store
+    }
+  )
+  if (result.kind !== "ended-inactivity") {
+    assert.fail(`expected ended-inactivity latch confirm, got ${result.kind}`)
+  }
+  assert.equal(result.sessionId, state.sessionId)
+  assert.equal(result.sessionEndGeneration, state.sessionEndGeneration)
+  state.record = state.store.records.get(state.sessionId) ?? state.record
+
+  applyInactivityRecoveryToTab(state.tabs.second)
+  state.tabs.second.broadcastReceived = false
 }
 
 const DEFAULT_POLICY_ABSOLUTE = parseIdleClock("17:00:00")

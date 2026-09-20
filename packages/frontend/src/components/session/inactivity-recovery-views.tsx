@@ -1,11 +1,15 @@
 "use client"
 
-import { Alert, Container, Page, Stack, Text } from "@pathableai/react"
+import { Alert, Button, Container, Page, Stack, Text } from "@pathableai/react"
 
 import { InactivityEndedModal } from "./inactivity-ended-modal.tsx"
 
 /** Generic auth-unavailable lock — never uses inactivity copy. */
-export function AuthUnavailableLockView() {
+export function AuthUnavailableLockView({
+  onRetry
+}: {
+  readonly onRetry: () => void
+}) {
   return (
     <Page>
       <Container>
@@ -13,7 +17,15 @@ export function AuthUnavailableLockView() {
           <Alert heading="Authorization unavailable" status="warning">
             We could not verify your session. Protected content is locked until access is confirmed.
           </Alert>
-          <Text>Try refreshing the page or signing in again.</Text>
+          <Button
+            data-testid="auth-unavailable-retry"
+            onClick={onRetry}
+            type="button"
+            variant="secondary"
+          >
+            Try again
+          </Button>
+          <Text>Or refresh the page / sign in again.</Text>
         </Stack>
       </Container>
     </Page>

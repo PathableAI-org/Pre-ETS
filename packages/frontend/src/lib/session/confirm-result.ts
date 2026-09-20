@@ -11,8 +11,11 @@ export function applyConfirmResult(
       endedSessionId: string,
       sessionEndGeneration: number
     ) => void
-    /** Clear fail-closed lock when server re-confirms authenticated access. */
-    readonly setActive: () => void
+    /**
+     * Clear fail-closed / inactivity lock when server re-confirms authenticated
+     * access. `sessionId` is the cookie-bound sid (may differ after login-again).
+     */
+    readonly setActive: (sessionId: string) => void
     readonly setDeadlines: (deadlines: {
       readonly expiresAt: number
       readonly idleExpiresAt: number
@@ -21,7 +24,7 @@ export function applyConfirmResult(
   }
 ): void {
   if (result.status === "authenticated") {
-    handlers.setActive()
+    handlers.setActive(result.sessionId)
     handlers.setDeadlines({
       expiresAt: result.expiresAt,
       idleExpiresAt: result.idleExpiresAt

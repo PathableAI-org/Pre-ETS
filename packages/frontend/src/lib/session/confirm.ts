@@ -263,6 +263,17 @@ async function mismatchHandshake(input: {
   }
 
   try {
+    // Sibling after successful login-again: shared cookie already names a live
+    // authenticated session — adopt it instead of re-opening inactivity from the tombstone.
+    const cookieBound = await confirmCookieBoundSession({
+      nowSeconds: input.nowSeconds,
+      sessionId: input.cookieSessionId,
+      store: input.store,
+      tenantId: input.tenantId
+    })
+    if (cookieBound.kind === "authenticated") {
+      return cookieBound
+    }
     return await mismatchLatchHandoff(input)
   } catch (error) {
     if (error instanceof SessionStoreError) {

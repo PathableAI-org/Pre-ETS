@@ -255,10 +255,11 @@ not restore the client fixture. Client timing alone must never grant continued a
       `tests/bdd/support/` and/or authenticated demo UI) for Gherkin “Unsent practice note”: seed in
       DOM/client state—**not** Redis; on confirmed inactivity remove with protected content;
       login-again MUST NOT restore it (data-model Temporary session data).
-- [x] T036 [US2] Complete recovery BDD wiring in `tests/bdd/steps/idle.steps.ts` for running-app
-      revalidation, a11y keyboard path, multi-tab sync (both tabs show inactivity explanation),
-      missed-BroadcastChannel latch, login-again / IdP SSO **new-session-only** rules from
-      `features/idle-session-recovery.feature`.
+- [x] T036 [US2] Complete recovery BDD **contract** wiring in `tests/bdd/steps/idle.steps.ts` for
+      running-app revalidation, multi-tab sync (both tabs show inactivity explanation),
+      missed-BroadcastChannel latch, and login-again / IdP SSO **new-session-only** contract rules
+      from `features/idle-session-recovery.feature`. Pure `@browser` keyboard, assistive-technology,
+      and live login-again steps remain intentional Pending residuals (see `features/README.md`).
 
 **Checkpoint**: User Stories 1 and 2 both work independently (expiration denial + accessible
 recovery with SSR path and login-again rotation).

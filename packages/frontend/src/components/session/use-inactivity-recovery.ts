@@ -10,6 +10,7 @@ import {
   nextConfirmDelayMs
 } from "../../lib/session/confirm-pass.ts"
 import { broadcastInactivityConfirmed } from "../../lib/session/inactivity-channel.ts"
+import { markTemporaryWorkCleared } from "./unsent-practice-note-fixture.tsx"
 import { useInactivityBroadcast } from "./use-inactivity-broadcast.ts"
 
 export type RecoveryState =
@@ -27,6 +28,7 @@ export function useInactivityRecovery(input: {
   readonly sessionId: string
 }): {
   readonly modalOpen: boolean
+  readonly runConfirm: () => void
   readonly state: RecoveryState
 } {
   const { expiresAt, idleExpiresAt, sessionId } = input
@@ -46,6 +48,7 @@ export function useInactivityRecovery(input: {
     sessionEndGeneration: number,
     broadcast: boolean
   ) => {
+    markTemporaryWorkCleared()
     heldGeneration.current = sessionEndGeneration
     setState({
       kind: "inactivity",
@@ -74,7 +77,14 @@ export function useInactivityRecovery(input: {
           // Fail closed without inactivity claim; setUnavailable handles UI.
         },
         sessionId,
-        setActive: () => {
+        setActive: (cookieSessionId) => {
+          // Sibling after login-again: cookie sid differs from this mount — reload
+          // so layout/island pick up the new authenticated session id.
+          if (cookieSessionId !== sessionId) {
+            window.location.assign("/")
+            return
+          }
+          setModalOpen(false)
           setState({ kind: "active" })
         },
         setDeadlines,
@@ -135,6 +145,9 @@ export function useInactivityRecovery(input: {
 
   return {
     modalOpen,
+    runConfirm: () => {
+      void runConfirm()
+    },
     state
   }
 }

@@ -17,6 +17,8 @@ export interface InactivityRecoveryIslandProps {
  * inactivity (server confirm or matching BroadcastChannel): clear protected UI,
  * open PathAble Modal, and broadcast once from the confirming tab.
  * Timers alone never invent inactivity. 5xx / absolute / unknown → generic lock.
+ * After login-again cookie rotation, focus/visibility confirm runs the session-mismatch
+ * handshake so siblings can adopt a new authenticated cookie or finish latch handoff.
  */
 export function InactivityRecoveryIsland({
   children,
@@ -31,7 +33,7 @@ export function InactivityRecoveryIsland({
   }
 
   if (recovery.state.kind === "unavailable") {
-    return <AuthUnavailableLockView />
+    return <AuthUnavailableLockView onRetry={recovery.runConfirm} />
   }
 
   return children
