@@ -335,13 +335,12 @@ outline substitutions, structure, and requirement tags were checked.
 
 `cucumber.mjs` loads idle features and `tests/bdd/steps/idle.steps.ts` when `CUCUMBER_IDLE=1`
 (or via `pnpm test:bdd:idle` / `pnpm test:bdd:dry`). **`@contract`** idle scenarios run via an
-in-process harness (`tests/bdd/support/idle.ts`) and are expected green under
-`pnpm test:bdd:idle:contract`. Pure **`@browser`** recovery scenarios (keyboard focus, AT
-announcements, live Keycloak login-again journeys without a `@contract` twin) remain
-**intentionally Pending** until a Playwright recovery world is added—they must not be treated as
-failures of the contract partition. Release gates **D-001 / D-005 / D-006** are outside Speckit
-automation and are not claimed here.
+in-process harness (`tests/bdd/support/idle.ts`) and are green under `pnpm test:bdd:idle:contract`.
+Pure **`@browser`** recovery scenarios run under `pnpm test:bdd:idle:browser` (Playwright against
+Next + Redis + mock IdP via `tests/bdd/support/idle-browser.ts`). Dual-tagged scenarios stay on the
+contract harness. Release gates **D-001 / D-005 / D-006** are outside Speckit automation and are not
+claimed here.
 
-Default `pnpm test:bdd` still omits idle so browser-Pending recovery does not fail unlabeled PR CI.
+Default `pnpm test:bdd` still omits idle; labeled `ci:bdd` runs the idle contract and browser partitions.
 
 The complete **12-file** inventory contains **255 expanded cases**: 52 tenant, 42 session, 68 OIDC, and 93 idle-timeout.

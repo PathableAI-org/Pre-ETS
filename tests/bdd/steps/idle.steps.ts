@@ -4,6 +4,29 @@ import assert from "node:assert/strict"
 import type { TenantWorld } from "../support/world.ts"
 
 import {
+  activateLoginAgainWithKeyboard,
+  assertAuthenticatedLandingWithoutTemporaryWork,
+  assertDurableRecordRemembered,
+  assertExplanationDoesNotClaimInactivity,
+  assertFocusInInactivityModal,
+  assertInactivityModalAccessible,
+  assertKeyboardOperableRetryPath,
+  assertKeyboardStaysInModal,
+  assertNoProtectedAccessInBrowser,
+  assertSpringfieldAuthJourneyBegan,
+  assertTemporaryWorkClearedInBrowser,
+  clickLoginAgain,
+  completeLoginAgainAsAuthenticated,
+  endLoginAgainJourney,
+  navigateInactivityModalWithKeyboard,
+  presentNonInactivityInterruption,
+  rememberIdleBrowserDurableRecord,
+  rememberIdleBrowserTemporaryWork,
+  seedIdleBrowserAuthenticatedAccess,
+  waitForInactivityModal,
+  waitForUnsentPracticeNote
+} from "../support/idle-browser.ts"
+import {
   acceptQualifyingActivity,
   assertAbsoluteDeadline,
   assertIdleDeadline,
@@ -42,7 +65,7 @@ import {
 /**
  * Idle-session timeout ATDD steps for:
  * - `features/idle-session-expiration.feature` (@contract wired via in-process harness)
- * - `features/idle-session-recovery.feature` (@contract wired; pure @browser Pending)
+ * - `features/idle-session-recovery.feature` (@contract harness + pure @browser Playwright)
  * - `features/tenant-idle-timeout-policy.feature` (@contract wired via policy harness)
  *
  * Load with `CUCUMBER_IDLE=1`.
@@ -52,7 +75,15 @@ function pending(step: string): never {
   throw new Error(`Pending: ${step}`)
 }
 
-/** Pure @browser recovery a11y steps stay Pending until a Playwright world exists. */
+function preferBrowser(world: TenantWorld): boolean {
+  return world.useBrowser && !world.useContract
+}
+
+function preferContract(world: TenantWorld): boolean {
+  return world.useContract
+}
+
+/** Pure @browser recovery steps require a Playwright page (seeded by Background). */
 function requireBrowser(world: TenantWorld, step: string): void {
   if (!world.useBrowser || world.page === undefined) {
     pending(step)
@@ -841,29 +872,51 @@ Then(
   }
 )
 
-// --- US2 @contract idle session recovery ---
+// --- US2 idle session recovery (dual-path: @contract harness vs pure @browser) ---
 
 Given(
   "the user has authenticated access for idle-timeout tenant {string}",
-  function(this: TenantWorld, tenant: string) {
-    requireContract(this, "the user has authenticated access for idle-timeout tenant {string}")
-    seedRecoveryAuthenticatedAccess(this, tenant)
+  async function(this: TenantWorld, tenant: string) {
+    if (preferContract(this)) {
+      seedRecoveryAuthenticatedAccess(this, tenant)
+      return
+    }
+    if (preferBrowser(this)) {
+      await seedIdleBrowserAuthenticatedAccess(this, tenant)
+      return
+    }
+    pending("the user has authenticated access for idle-timeout tenant {string}")
   }
 )
 
 Given(
   "the user has temporary unsaved work {string}",
-  function(this: TenantWorld, work: string) {
-    requireContract(this, "the user has temporary unsaved work {string}")
-    seedTemporaryWork(this, work)
+  async function(this: TenantWorld, work: string) {
+    if (preferContract(this)) {
+      seedTemporaryWork(this, work)
+      return
+    }
+    if (preferBrowser(this)) {
+      rememberIdleBrowserTemporaryWork(this, work)
+      await waitForUnsentPracticeNote(this)
+      return
+    }
+    pending("the user has temporary unsaved work {string}")
   }
 )
 
 Given(
   "the user has a durable saved record {string}",
   function(this: TenantWorld, record: string) {
-    requireContract(this, "the user has a durable saved record {string}")
-    seedDurableRecord(this, record)
+    if (preferContract(this)) {
+      seedDurableRecord(this, record)
+      return
+    }
+    if (preferBrowser(this)) {
+      rememberIdleBrowserDurableRecord(this, record)
+      return
+    }
+    pending("the user has a durable saved record {string}")
   }
 )
 
@@ -1207,7 +1260,7 @@ Then(
   }
 )
 
-// --- Pure @browser recovery steps (intentional Pending without Playwright page) ---
+// --- Pure @browser recovery steps (Playwright against live Next + mock IdP) ---
 
 Given(
   "a new anonymous tenant session has been established for recovery",
@@ -1218,8 +1271,9 @@ Given(
 
 Given(
   "access ended because of {string}",
-  function(this: TenantWorld, _cause: string) {
+  function(this: TenantWorld, cause: string) {
     requireBrowser(this, "access ended because of {string}")
+    this.idleBrowserCause = cause
   }
 )
 
@@ -1232,15 +1286,19 @@ Given(
 
 Given(
   "the user is using assistive technology to read protected content",
-  function(this: TenantWorld) {
+  async function(this: TenantWorld) {
     requireBrowser(this, "the user is using assistive technology to read protected content")
+    await waitForUnsentPracticeNote(this)
   }
 )
 
 Given(
   "the user was editing {string} when inactivity expiration was confirmed",
-  function(this: TenantWorld, _work: string) {
+  async function(this: TenantWorld, work: string) {
     requireBrowser(this, "the user was editing {string} when inactivity expiration was confirmed")
+    rememberIdleBrowserTemporaryWork(this, work)
+    await waitForInactivityModal(this)
+    await assertTemporaryWorkClearedInBrowser(this)
   }
 )
 
@@ -1253,140 +1311,166 @@ Given(
 
 Given(
   "the inactivity modal has opened",
-  function(this: TenantWorld) {
+  async function(this: TenantWorld) {
     requireBrowser(this, "the inactivity modal has opened")
+    await waitForInactivityModal(this)
   }
 )
 
 Given(
   "the confirmed inactivity modal is open for {string}",
-  function(this: TenantWorld, _tenant: string) {
+  async function(this: TenantWorld, _tenant: string) {
     requireBrowser(this, "the confirmed inactivity modal is open for {string}")
+    await waitForInactivityModal(this)
   }
 )
 
 Given(
   "the confirmed inactivity modal is open",
-  function(this: TenantWorld) {
+  async function(this: TenantWorld) {
     requireBrowser(this, "the confirmed inactivity modal is open")
+    await waitForInactivityModal(this)
   }
 )
 
 Given(
   "the user has activated {string}",
-  function(this: TenantWorld, _label: string) {
+  async function(this: TenantWorld, label: string) {
     requireBrowser(this, "the user has activated {string}")
+    assert.equal(label, "Log in again")
+    await clickLoginAgain(this)
   }
 )
 
 When(
   "confirmed inactivity expiration opens the modal",
-  function(this: TenantWorld) {
+  async function(this: TenantWorld) {
     requireBrowser(this, "confirmed inactivity expiration opens the modal")
+    await waitForInactivityModal(this)
   }
 )
 
 When(
   "the application presents the interruption to the user",
-  function(this: TenantWorld) {
+  async function(this: TenantWorld) {
     requireBrowser(this, "the application presents the interruption to the user")
+    assert.ok(this.idleBrowserCause, "expected an interruption cause")
+    await presentNonInactivityInterruption(this, this.idleBrowserCause)
   }
 )
 
 When(
   "the authentication journey ends with {string}",
-  function(this: TenantWorld, _outcome: string) {
+  async function(this: TenantWorld, outcome: string) {
     requireBrowser(this, "the authentication journey ends with {string}")
+    await endLoginAgainJourney(this, outcome)
   }
 )
 
 When(
   "the user activates {string} and successfully completes Springfield authentication",
-  function(this: TenantWorld, _value: string) {
+  async function(this: TenantWorld, label: string) {
     requireBrowser(
       this,
       "the user activates {string} and successfully completes Springfield authentication"
     )
+    assert.equal(label, "Log in again")
+    await clickLoginAgain(this)
+    await completeLoginAgainAsAuthenticated(this, "springfield")
   }
 )
 
 When(
   "the user navigates the modal's actions with the keyboard",
-  function(this: TenantWorld) {
+  async function(this: TenantWorld) {
     requireBrowser(this, "the user navigates the modal's actions with the keyboard")
+    await navigateInactivityModalWithKeyboard(this)
   }
 )
 
 Then(
   "cleared temporary session data is not restored",
-  function(this: TenantWorld) {
+  async function(this: TenantWorld) {
     requireBrowser(this, "cleared temporary session data is not restored")
+    await assertTemporaryWorkClearedInBrowser(this)
   }
 )
 
 Then(
   "focus moves into the modal",
-  function(this: TenantWorld) {
+  async function(this: TenantWorld) {
     requireBrowser(this, "focus moves into the modal")
+    await assertFocusInInactivityModal(this)
   }
 )
 
 Then(
   "focus remains visibly usable within the modal's available actions",
-  function(this: TenantWorld) {
+  async function(this: TenantWorld) {
     requireBrowser(this, "focus remains visibly usable within the modal's available actions")
+    await assertKeyboardStaysInModal(this)
   }
 )
 
 Then(
   "its accessible name and description communicate the inactivity interruption",
-  function(this: TenantWorld) {
+  async function(this: TenantWorld) {
     requireBrowser(
       this,
       "its accessible name and description communicate the inactivity interruption"
     )
+    await assertInactivityModalAccessible(this)
   }
 )
 
 Then(
   "keyboard navigation does not reach the expired protected work",
-  function(this: TenantWorld) {
+  async function(this: TenantWorld) {
     requireBrowser(this, "keyboard navigation does not reach the expired protected work")
+    await assertTemporaryWorkClearedInBrowser(this)
   }
 )
 
 Then(
   "the user can activate {string} with the keyboard",
-  function(this: TenantWorld, _label: string) {
+  async function(this: TenantWorld, label: string) {
     requireBrowser(this, "the user can activate {string} with the keyboard")
+    assert.equal(label, "Log in again")
+    await activateLoginAgainWithKeyboard(this)
   }
 )
 
 Then(
   "the Springfield authentication journey begins",
-  function(this: TenantWorld) {
+  async function(this: TenantWorld) {
     requireBrowser(this, "the Springfield authentication journey begins")
+    await assertSpringfieldAuthJourneyBegan(this)
   }
 )
 
 Then(
   "{string} is announced as an actionable button",
-  function(this: TenantWorld, _label: string) {
+  async function(this: TenantWorld, label: string) {
     requireBrowser(this, "{string} is announced as an actionable button")
+    assert.ok(this.page)
+    const button = this.page.getByRole("button", { name: label })
+    assert.equal(await button.count(), 1)
   }
 )
 
 Then(
   "the expired protected content is unavailable to assistive technology",
-  function(this: TenantWorld) {
+  async function(this: TenantWorld) {
     requireBrowser(this, "the expired protected content is unavailable to assistive technology")
+    await assertTemporaryWorkClearedInBrowser(this)
   }
 )
 
 Then(
   "the user regains authorized access only to {string}",
-  function(this: TenantWorld, _tenant: string) {
+  async function(this: TenantWorld, tenant: string) {
     requireBrowser(this, "the user regains authorized access only to {string}")
+    await assertAuthenticatedLandingWithoutTemporaryWork(this, tenant)
   }
 )
 
@@ -1394,48 +1478,56 @@ Then(
   "the expired session is not revived",
   function(this: TenantWorld) {
     requireBrowser(this, "the expired session is not revived")
+    assert.notEqual(this.sessionId, this.originalSessionId)
   }
 )
 
 Then(
   "{string} is not restored",
-  function(this: TenantWorld, _work: string) {
+  async function(this: TenantWorld, work: string) {
     requireBrowser(this, "{string} is not restored")
+    assert.equal(work, this.idleBrowserTemporaryWork ?? work)
+    await assertTemporaryWorkClearedInBrowser(this)
   }
 )
 
 Then(
   "the user can access the durable record {string}",
-  function(this: TenantWorld, _record: string) {
+  function(this: TenantWorld, record: string) {
     requireBrowser(this, "the user can access the durable record {string}")
+    assertDurableRecordRemembered(this, record)
   }
 )
 
 Then(
   "the user still cannot perform protected work",
-  function(this: TenantWorld) {
+  async function(this: TenantWorld) {
     requireBrowser(this, "the user still cannot perform protected work")
+    await assertNoProtectedAccessInBrowser(this)
   }
 )
 
 Then(
   "the user receives an understandable keyboard-operable retry path",
-  function(this: TenantWorld) {
+  async function(this: TenantWorld) {
     requireBrowser(this, "the user receives an understandable keyboard-operable retry path")
+    await assertKeyboardOperableRetryPath(this)
   }
 )
 
 Then(
   "the explanation does not claim inactivity ended the session",
-  function(this: TenantWorld) {
+  async function(this: TenantWorld) {
     requireBrowser(this, "the explanation does not claim inactivity ended the session")
+    await assertExplanationDoesNotClaimInactivity(this)
   }
 )
 
 Then(
   "the user cannot resume protected work through the unusable access",
-  function(this: TenantWorld) {
+  async function(this: TenantWorld) {
     requireBrowser(this, "the user cannot resume protected work through the unusable access")
+    await assertNoProtectedAccessInBrowser(this)
   }
 )
 

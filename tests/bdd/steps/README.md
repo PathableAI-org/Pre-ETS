@@ -70,8 +70,8 @@ bindings and implementation are complete.
 `idle.steps.ts` binds the idle feature files:
 
 - `features/idle-session-expiration.feature` — `@contract` green via in-process harness
-- `features/idle-session-recovery.feature` — `@contract` (and dual-tagged) green; pure `@browser`
-  a11y / live-IdP steps intentionally Pending without a Playwright recovery world
+- `features/idle-session-recovery.feature` — `@contract` (and dual-tagged) green via harness;
+  pure `@browser` green via Playwright (`tests/bdd/support/idle-browser.ts`) against Next + Redis + mock IdP
 - `features/tenant-idle-timeout-policy.feature` — `@contract` green via policy harness
 
 `cucumber.mjs` loads idle features and steps only when `CUCUMBER_IDLE=1`. From the repository root:
@@ -79,10 +79,10 @@ bindings and implementation are complete.
 ```sh
 pnpm test:bdd:idle
 pnpm test:bdd:idle:contract
+pnpm test:bdd:idle:browser
 ```
 
-Default `pnpm test:bdd` omits idle so intentional `@browser` Pending does not fail unlabeled PR CI.
-Release gates D-001 / D-005 / D-006 remain outside this suite.
+Default `pnpm test:bdd` omits idle so the unlabeled PR suite stays focused. Labeled `ci:bdd` runs the idle contract and browser partitions. Release gates D-001 / D-005 / D-006 remain outside this suite.
 
 ## What to implement
 

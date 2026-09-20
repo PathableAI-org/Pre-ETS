@@ -293,6 +293,23 @@ export async function configureStorageFailure(world: TenantWorld, operation: str
   await restartOwnedProcess(world, { preserveCookies: true })
 }
 
+export async function deleteStoredSessionKey(
+  world: TenantWorld,
+  sessionId: string
+): Promise<void> {
+  ensureSessionSettings(world)
+  const client = await createRedisClient({
+    disableOfflineQueue: true,
+    url: world.redisUrl ?? process.env.REDIS_URL ?? "redis://127.0.0.1:6379"
+  })
+  try {
+    await client.connect()
+    await client.del(`${world.sessionKeyPrefix ?? ""}${sessionId}`)
+  } finally {
+    await client.quit().catch(() => undefined)
+  }
+}
+
 export async function ensureRedisAvailable(world: TenantWorld): Promise<void> {
   ensureSessionSettings(world)
   const client = await createRedisClient({
@@ -671,10 +688,6 @@ function collectSetCookies(headers: Record<string, string>): string[] {
   return raw.split(/,(?=[^;]+?=)/)
 }
 
-function cookieDomain(host: string): string {
-  return host.split(":")[0] ?? host
-}
-
 function cookieHeaderForHost(world: TenantWorld, host: string): string | undefined {
   return world.sessionCookieJar?.get(host)
 }
@@ -840,12 +853,11 @@ async function openSessionBrowserPage(world: TenantWorld, parsed: ParsedUrl): Pr
   world.page ??= await world.browserContext.newPage()
   const token = cookieHeaderForHost(world, parsed.host)?.slice(`${SESSION_COOKIE_NAME}=`.length)
   if (token !== undefined) {
+    // Playwright: with `url`, do not also set domain/path (mutually exclusive shapes).
     await world.browserContext.addCookies([{
-      domain: cookieDomain(parsed.host),
       expires: Math.floor(Date.now() / 1000) + 86_400,
       httpOnly: true,
       name: SESSION_COOKIE_NAME,
-      path: "/",
       url: pageUrl(parsed),
       value: token
     }])

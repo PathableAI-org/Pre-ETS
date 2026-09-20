@@ -1,4 +1,5 @@
 import { type ChildProcess, spawn } from "node:child_process"
+import fs from "node:fs"
 import http from "node:http"
 import net from "node:net"
 import path from "node:path"
@@ -64,6 +65,10 @@ export async function restartOwnedProcess(
 
 export async function startOwnedProcess(world: TenantWorld): Promise<void> {
   await assertPortFree(world.port)
+  // Next 16 keeps a per-project dev lock; clear stale locks after abrupt scenario teardown.
+  if (world.runtime !== "production") {
+    await fs.promises.rm(path.join(FRONTEND_ROOT, ".next", "dev", "lock"), { force: true })
+  }
   const child = spawn(
     path.join(FRONTEND_ROOT, "node_modules/.bin/next"),
     [world.runtime === "production" ? "start" : "dev", "-H", "127.0.0.1", "-p", String(world.port)],

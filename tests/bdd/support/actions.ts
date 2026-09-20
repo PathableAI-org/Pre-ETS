@@ -65,6 +65,17 @@ export function assertIdentifiedTenant(world: TenantWorld, slug: string, name: s
   assert.equal(context.config.displayName, name)
 }
 
+/** Assert the inactivity-ended dialog exposes name, description, and Log in again. */
+export async function assertInactivityModalSemantics(world: TenantWorld): Promise<void> {
+  assert.ok(world.page)
+  const dialog = world.page.getByRole("dialog", {
+    name: /session ended due to inactivity/i
+  })
+  assert.equal(await dialog.count(), 1)
+  assert.ok(await world.page.getByText(/ended because of inactivity/i).count() >= 1)
+  assert.equal(await world.page.getByRole("button", { name: "Log in again" }).count(), 1)
+}
+
 export async function assertKeyboardTarget(world: TenantWorld, buttonName: string): Promise<void> {
   assert.ok(world.page)
   const button = world.page.getByRole("button", { name: buttonName })
@@ -204,6 +215,22 @@ export function localRecord(world: TenantWorld): TenantRecord | undefined {
     },
     { allowLoopbackHttp: true }
   )
+}
+
+/** Tab until focus is on the named control inside the open inactivity modal. */
+export async function navigateInactivityModalKeyboard(
+  world: TenantWorld,
+  buttonName: string
+): Promise<void> {
+  assert.ok(world.page)
+  const button = world.page.getByRole("button", { name: buttonName })
+  for (let index = 0; index < 12; index += 1) {
+    if (await isFocused(button)) {
+      return
+    }
+    await world.page.keyboard.press("Tab")
+  }
+  assert.ok(await isFocused(button), `keyboard navigation never reached ${buttonName}`)
 }
 
 export async function navigateWithKeyboard(world: TenantWorld): Promise<void> {

@@ -76,6 +76,9 @@ export class TenantWorld extends World {
   foreignSessionRecord: SessionRecord | undefined = undefined
   hostCondition: string | undefined = undefined
   httpResponse: HttpExchange | undefined = undefined
+  idleBrowserCause: string | undefined = undefined
+  idleBrowserDurableRecords: Set<string> | undefined = undefined
+  idleBrowserTemporaryWork: string | undefined = undefined
   idleContract: IdleContractState | undefined = undefined
   idlePolicy: IdlePolicyState | undefined = undefined
   invalidDisplayName: string | undefined = undefined

@@ -16,6 +16,7 @@
     "test:bdd:session:contract": "CUCUMBER_SESSION=1 CUCUMBER_REPORT=cucumber-session-contract cucumber-js --config cucumber.mjs --tags '@session-setup and @contract and not @http'",
     "test:bdd:oidc": "CUCUMBER_OIDC=1 CUCUMBER_REPORT=cucumber-oidc cucumber-js --config cucumber.mjs --tags '@tenant-oidc-login'",
     "test:bdd:idle": "CUCUMBER_IDLE=1 CUCUMBER_REPORT=cucumber-idle cucumber-js --config cucumber.mjs --tags '@idle-session-timeout'",
+    "test:bdd:idle:browser": "CUCUMBER_IDLE=1 CUCUMBER_REPORT=cucumber-idle-browser cucumber-js --config cucumber.mjs --tags '@idle-session-timeout and @browser and not @contract'",
     "test:bdd:idle:contract": "CUCUMBER_IDLE=1 CUCUMBER_REPORT=cucumber-idle-contract cucumber-js --config cucumber.mjs --tags '@idle-session-timeout and @contract'",
     "fallow": "fallow",
     "check:unused": "fallow dead-code",
