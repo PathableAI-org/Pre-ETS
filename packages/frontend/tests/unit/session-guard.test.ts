@@ -156,6 +156,109 @@ describe("guardAuthenticatedAccess", () => {
     )
   })
 
+  it("claims inactivity when clear reports already_cleared", async () => {
+    const record = idleAuthenticatedRecord({
+      idleExpiresAt: 1_700_001_800
+    })
+    const clearForInactivity = vi.fn().mockResolvedValue({
+      kind: "already_cleared",
+      record: {
+        accessEndedCause: "inactivity",
+        expiresAt: record.expiresAt,
+        sessionEndGeneration: 1,
+        tenantId: "springfield"
+      }
+    })
+    const store = mockStore({
+      clearForInactivity,
+      read: vi.fn().mockResolvedValue({
+        kind: "record",
+        legacyAuthenticated: false,
+        record
+      })
+    })
+
+    const result = await guardAuthenticatedAccess(
+      { sessionId: fixedSessionId(31), tenantId: "springfield" },
+      { nowSeconds: () => 1_700_001_800, store }
+    )
+
+    expect(result).toEqual({
+      inactivity: true,
+      kind: "deny",
+      reason: "inactivity"
+    })
+  })
+
+  it("does not claim inactivity when clearance loses to a renew race", async () => {
+    const sessionId = fixedSessionId(32)
+    const idleExpiresAt = 1_700_001_800
+    const expired = idleAuthenticatedRecord({ idleExpiresAt })
+    const renewed = idleAuthenticatedRecord({
+      idleExpiresAt: idleExpiresAt + 300,
+      lastActivityAt: idleExpiresAt + 1
+    })
+    const clearForInactivity = vi.fn().mockResolvedValue({ kind: "denied" })
+    const read = vi
+      .fn()
+      .mockResolvedValueOnce({
+        kind: "record",
+        legacyAuthenticated: false,
+        record: expired
+      })
+      .mockResolvedValueOnce({
+        kind: "record",
+        legacyAuthenticated: false,
+        record: renewed
+      })
+    const store = mockStore({ clearForInactivity, read })
+
+    const result = await guardAuthenticatedAccess(
+      { sessionId, tenantId: "springfield" },
+      { nowSeconds: () => idleExpiresAt, store }
+    )
+
+    expect(clearForInactivity).toHaveBeenCalledTimes(1)
+    expect(read).toHaveBeenCalledTimes(2)
+    expect(result).toEqual({
+      context: {
+        expiresAt: renewed.expiresAt,
+        idleExpiresAt: renewed.idleExpiresAt,
+        sessionId,
+        tenantId: "springfield",
+        userId: "user-1",
+        userName: "Demo User"
+      },
+      kind: "allow",
+      record: renewed
+    })
+  })
+
+  it("denies without inactivity when clearance stays denied after re-read", async () => {
+    const record = idleAuthenticatedRecord({
+      idleExpiresAt: 1_700_001_800
+    })
+    const clearForInactivity = vi.fn().mockResolvedValue({ kind: "denied" })
+    const read = vi.fn().mockResolvedValue({
+      kind: "record",
+      legacyAuthenticated: false,
+      record
+    })
+    const store = mockStore({ clearForInactivity, read })
+
+    const result = await guardAuthenticatedAccess(
+      { sessionId: fixedSessionId(33), tenantId: "springfield" },
+      { nowSeconds: () => 1_700_001_800, store }
+    )
+
+    expect(clearForInactivity).toHaveBeenCalledTimes(2)
+    expect(result).toEqual({
+      inactivity: false,
+      kind: "deny",
+      reason: "not-authenticated"
+    })
+  })
+
   it("denies without inactivity when absolute deadline elapsed first", async () => {
     const record = idleAuthenticatedRecord({
       expiresAt: 1_700_000_500,

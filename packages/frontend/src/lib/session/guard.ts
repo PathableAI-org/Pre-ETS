@@ -78,18 +78,44 @@ export async function guardAuthenticatedAccess(
 
 async function clearIdleAndDeny(
   input: GuardAuthenticatedAccessInput,
-  store: SessionStore,
-  nowSeconds: number
+  deps: GuardAuthenticatedAccessDependencies,
+  nowSeconds: number,
+  remainingClearRetries: number
 ): Promise<GuardAuthenticatedAccessResult> {
   try {
-    await store.clearForInactivity(input.sessionId, nowSeconds, input.tenantId)
+    const cleared = await deps.store.clearForInactivity(
+      input.sessionId,
+      nowSeconds,
+      input.tenantId
+    )
+    if (cleared.kind === "cleared" || cleared.kind === "already_cleared") {
+      return deny("inactivity", true)
+    }
   } catch (error) {
     if (error instanceof SessionStoreError) {
       return deny("store-error", false)
     }
     throw error
   }
-  return deny("inactivity", true)
+
+  // Read/classify ran outside the mutation lock — a renew (or absolute/CAS loss)
+  // can win before clearForInactivity. Never claim inactivity on a denied clear.
+  if (remainingClearRetries <= 0) {
+    return deny("not-authenticated", false)
+  }
+
+  const loaded = await readGuardRecord(input.sessionId, deps.store)
+  if (loaded.kind === "deny") {
+    return loaded
+  }
+
+  return await evaluateGuardRecord(
+    input,
+    deps,
+    loaded.record,
+    loaded.legacyAuthenticated,
+    remainingClearRetries - 1
+  )
 }
 
 function defaultNowSeconds(): number {
@@ -107,7 +133,8 @@ async function evaluateGuardRecord(
   input: GuardAuthenticatedAccessInput,
   deps: GuardAuthenticatedAccessDependencies,
   record: SessionRecord,
-  legacyAuthenticated: boolean
+  legacyAuthenticated: boolean,
+  remainingClearRetries = 1
 ): Promise<GuardAuthenticatedAccessResult> {
   if (record.tenantId !== input.tenantId) {
     return deny("tenant", false)
@@ -134,7 +161,7 @@ async function evaluateGuardRecord(
   }
 
   if (isInactivityClaim(classification)) {
-    return await clearIdleAndDeny(input, deps.store, nowSeconds)
+    return await clearIdleAndDeny(input, deps, nowSeconds, remainingClearRetries)
   }
 
   return deny("absolute", false)

@@ -14,27 +14,9 @@ const DEBOUNCE_MS = 1_000
 export function IdleActivityIsland() {
   const lastSentAt = useRef(0)
   const inFlight = useRef(false)
+  const stopped = useRef(false)
 
   useEffect(() => {
-    const report = () => {
-      const now = Date.now()
-      if (inFlight.current || now - lastSentAt.current < DEBOUNCE_MS) {
-        return
-      }
-      inFlight.current = true
-      lastSentAt.current = now
-      void recordActivityAction().finally(() => {
-        inFlight.current = false
-      })
-    }
-
-    const onTrusted = (event: Event) => {
-      if (!event.isTrusted) {
-        return
-      }
-      report()
-    }
-
     // Qualifying: keydown, pointerdown, touchstart, trusted wheel (scroll driven by user).
     // MUST NOT listen to bare `scroll` alone.
     const windowTargets: (keyof WindowEventMap)[] = [
@@ -44,15 +26,57 @@ export function IdleActivityIsland() {
       "wheel"
     ]
 
-    for (const type of windowTargets) {
-      window.addEventListener(type, onTrusted, { capture: true, passive: true })
-    }
+    let attached = true
 
-    return () => {
+    const detach = () => {
+      if (!attached) {
+        return
+      }
+      attached = false
       for (const type of windowTargets) {
         window.removeEventListener(type, onTrusted, { capture: true })
       }
     }
+
+    const report = () => {
+      if (stopped.current || inFlight.current) {
+        return
+      }
+      const now = Date.now()
+      if (now - lastSentAt.current < DEBOUNCE_MS) {
+        return
+      }
+      inFlight.current = true
+      lastSentAt.current = now
+      void recordActivityAction()
+        .then((result) => {
+          if (!result.ok) {
+            // Expired / cleared / cookie / store denial — do not keep renewing.
+            stopped.current = true
+            detach()
+          }
+        })
+        .catch(() => {
+          // Swallow transport/config failures so the browser does not see an
+          // unhandled rejection; leave listeners attached for a later retry.
+        })
+        .finally(() => {
+          inFlight.current = false
+        })
+    }
+
+    function onTrusted(event: Event) {
+      if (!event.isTrusted) {
+        return
+      }
+      report()
+    }
+
+    for (const type of windowTargets) {
+      window.addEventListener(type, onTrusted, { capture: true, passive: true })
+    }
+
+    return detach
   }, [])
 
   return null
