@@ -2,11 +2,18 @@ import type { ConfirmSessionActionResult } from "./confirm-action.ts"
 
 import { applyConfirmResult } from "./confirm-result.ts"
 
+/** Timer-island lock machine kinds that gate confirm retries. */
+export type ConfirmTimerStateKind = "active" | "inactivity" | "unavailable"
+
+/**
+ * Confirm may run while active or while fail-closed unavailable (recovery retry).
+ * Inactivity stays locked until PR6 login-again rotation.
+ */
 export function canRunConfirm(
   confirming: boolean,
-  stateKind: string
+  stateKind: ConfirmTimerStateKind
 ): boolean {
-  return !confirming && stateKind === "active"
+  return !confirming && (stateKind === "active" || stateKind === "unavailable")
 }
 
 export function confirmActionInput(
@@ -40,6 +47,8 @@ export async function executeConfirmPass(input: {
   /** Called on thrown transport errors before fail-closed lock (never inactivity). */
   readonly onTransportFailure?: () => void
   readonly sessionId: string
+  /** Restore active UI after a successful authenticated confirm (e.g. from unavailable). */
+  readonly setActive: () => void
   readonly setDeadlines: (deadlines: {
     readonly expiresAt: number
     readonly idleExpiresAt: number
@@ -52,6 +61,7 @@ export async function executeConfirmPass(input: {
     )
     applyConfirmResult(result, {
       applyInactivity: input.applyInactivity,
+      setActive: input.setActive,
       setDeadlines: input.setDeadlines,
       setUnavailable: input.setUnavailable
     })

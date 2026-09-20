@@ -237,8 +237,12 @@ async function consumeCauseKeepLatch(
 
   try {
     await store.update(sessionId, latchOnly)
-  } catch {
-    // Latch consume is best-effort; generation remains on the prior write.
+  } catch (error) {
+    // Latch consume is best-effort for store failures; generation remains on the prior write.
+    if (error instanceof SessionStoreError) {
+      return
+    }
+    throw error
   }
 }
 

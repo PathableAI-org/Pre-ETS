@@ -2,6 +2,7 @@
 
 import { Button, Stack, Text } from "@pathableai/react"
 
+import { formatHarnessClockTime } from "../../lib/session/confirm-result.ts"
 import { useIdleConfirmHarness } from "./idle-confirm-harness-context.tsx"
 
 /**
@@ -16,7 +17,7 @@ export function IdleConfirmHarness() {
 
   const nextFireLabel = harness.nextTimerFireAtMs === null
     ? "none"
-    : new Date(harness.nextTimerFireAtMs).toISOString()
+    : formatHarnessClockTime(Math.floor(harness.nextTimerFireAtMs / 1000))
 
   return (
     <Stack gap="sm">

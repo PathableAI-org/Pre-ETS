@@ -5,7 +5,11 @@ import type { SessionConfig, SessionRecord } from "../../src/lib/session/types.t
 
 import { toConfirmSessionActionResult } from "../../src/lib/session/confirm-action.ts"
 import { canRunConfirm, executeConfirmPass, nextConfirmDelayMs } from "../../src/lib/session/confirm-pass.ts"
-import { applyConfirmResult, confirmOutcomeHarnessLabel } from "../../src/lib/session/confirm-result.ts"
+import {
+  applyConfirmResult,
+  confirmOutcomeHarnessLabel,
+  formatHarnessClockTime
+} from "../../src/lib/session/confirm-result.ts"
 import { confirmSessionAccess } from "../../src/lib/session/confirm.ts"
 import { signSessionCookie } from "../../src/lib/session/cookie.ts"
 import { computeIdleExpiresAt, DEFAULT_IDLE_DURATION_MINUTES } from "../../src/lib/session/idle.ts"
@@ -171,6 +175,72 @@ describe("confirmSessionAccess", () => {
     })
   })
 
+  it("treats latch-consume SessionStoreError as best-effort", async () => {
+    const config = testConfig()
+    const now = 1_700_000_000
+    const sessionId = fixedSessionId(12)
+    const latchOnly: SessionRecord = {
+      accessEndedCause: "inactivity",
+      expiresAt: now + 3_600,
+      sessionEndGeneration: 5,
+      tenantId: "springfield"
+    }
+    const store = mockStore({
+      read: vi.fn().mockResolvedValue({
+        kind: "record",
+        legacyAuthenticated: false,
+        record: latchOnly
+      }),
+      update: vi.fn().mockRejectedValue(new SessionStoreError("Session store unavailable."))
+    })
+    const cookieValue = await signSessionCookie(
+      { exp: latchOnly.expiresAt, sid: sessionId, tenant: "springfield" },
+      config
+    )
+
+    const result = await confirmSessionAccess(
+      { cookieValue },
+      { config, nowSeconds: () => now, store }
+    )
+
+    expect(result).toEqual({
+      kind: "ended-inactivity",
+      sessionEndGeneration: 5,
+      sessionId
+    })
+  })
+
+  it("rethrows unexpected errors from latch consume", async () => {
+    const config = testConfig()
+    const now = 1_700_000_000
+    const sessionId = fixedSessionId(13)
+    const latchOnly: SessionRecord = {
+      accessEndedCause: "inactivity",
+      expiresAt: now + 3_600,
+      sessionEndGeneration: 6,
+      tenantId: "springfield"
+    }
+    const store = mockStore({
+      read: vi.fn().mockResolvedValue({
+        kind: "record",
+        legacyAuthenticated: false,
+        record: latchOnly
+      }),
+      update: vi.fn().mockRejectedValue(new TypeError("unexpected"))
+    })
+    const cookieValue = await signSessionCookie(
+      { exp: latchOnly.expiresAt, sid: sessionId, tenant: "springfield" },
+      config
+    )
+
+    await expect(
+      confirmSessionAccess(
+        { cookieValue },
+        { config, nowSeconds: () => now, store }
+      )
+    ).rejects.toBeInstanceOf(TypeError)
+  })
+
   it("returns ended-other without inactivity claim for absolute-only expiry", async () => {
     const config = testConfig()
     const now = 1_700_000_000
@@ -306,6 +376,7 @@ describe("applyConfirmResult / executeConfirmPass", () => {
 
   it("reschedules deadlines on authenticated and locks inactivity without claiming on 5xx", () => {
     const setDeadlines = vi.fn()
+    const setActive = vi.fn()
     const applyInactivity = vi.fn()
     const setUnavailable = vi.fn()
 
@@ -316,8 +387,9 @@ describe("applyConfirmResult / executeConfirmPass", () => {
         sessionId: fixedSessionId(1),
         status: "authenticated"
       },
-      { applyInactivity, setDeadlines, setUnavailable }
+      { applyInactivity, setActive, setDeadlines, setUnavailable }
     )
+    expect(setActive).toHaveBeenCalled()
     expect(setDeadlines).toHaveBeenCalledWith({ expiresAt: 200, idleExpiresAt: 100 })
     expect(applyInactivity).not.toHaveBeenCalled()
 
@@ -327,13 +399,13 @@ describe("applyConfirmResult / executeConfirmPass", () => {
         sessionId: fixedSessionId(2),
         status: "ended-inactivity"
       },
-      { applyInactivity, setDeadlines, setUnavailable }
+      { applyInactivity, setActive, setDeadlines, setUnavailable }
     )
     expect(applyInactivity).toHaveBeenCalledWith(fixedSessionId(2), 2)
 
     applyConfirmResult(
       { status: "unavailable" },
-      { applyInactivity, setDeadlines, setUnavailable }
+      { applyInactivity, setActive, setDeadlines, setUnavailable }
     )
     expect(setUnavailable).toHaveBeenCalled()
   })
@@ -348,6 +420,7 @@ describe("applyConfirmResult / executeConfirmPass", () => {
       heldGeneration: undefined,
       onTransportFailure,
       sessionId: fixedSessionId(10),
+      setActive: vi.fn(),
       setDeadlines: vi.fn(),
       setUnavailable
     })
@@ -356,10 +429,37 @@ describe("applyConfirmResult / executeConfirmPass", () => {
     expect(setUnavailable).toHaveBeenCalled()
   })
 
-  it("coalesces confirm while confirming or not active", () => {
+  it("allows confirm retry while unavailable; blocks inactivity and in-flight", () => {
     expect(canRunConfirm(true, "active")).toBe(false)
-    expect(canRunConfirm(false, "unavailable")).toBe(false)
+    expect(canRunConfirm(false, "unavailable")).toBe(true)
+    expect(canRunConfirm(false, "inactivity")).toBe(false)
     expect(canRunConfirm(false, "active")).toBe(true)
+  })
+
+  it("restores active via setActive on authenticated after unavailable", async () => {
+    const setActive = vi.fn()
+    const setDeadlines = vi.fn()
+    const setUnavailable = vi.fn()
+
+    await executeConfirmPass({
+      applyInactivity: vi.fn(),
+      confirm: () =>
+        Promise.resolve({
+          expiresAt: 300,
+          idleExpiresAt: 200,
+          sessionId: fixedSessionId(11),
+          status: "authenticated" as const
+        }),
+      heldGeneration: undefined,
+      sessionId: fixedSessionId(11),
+      setActive,
+      setDeadlines,
+      setUnavailable
+    })
+
+    expect(setActive).toHaveBeenCalled()
+    expect(setDeadlines).toHaveBeenCalledWith({ expiresAt: 300, idleExpiresAt: 200 })
+    expect(setUnavailable).not.toHaveBeenCalled()
   })
 })
 
@@ -379,5 +479,25 @@ describe("nextConfirmDelayMs (deadline-aligned schedule)", () => {
     const delay = nextConfirmDelayMs(100, 200, 0)
     expect(delay).toBe(100_000)
     expect(confirmOutcomeHarnessLabel({ status: "unavailable" })).not.toMatch(/inactivity/i)
+  })
+})
+
+describe("formatHarnessClockTime", () => {
+  it("formats unix seconds as locale HH:MM:SS, not raw epoch", () => {
+    const label = formatHarnessClockTime(1_700_000_000)
+    expect(label).toMatch(/^\d{2}:\d{2}:\d{2}$/)
+    expect(label).not.toBe("1700000000")
+    expect(
+      confirmOutcomeHarnessLabel({
+        expiresAt: 1_700_000_100,
+        idleExpiresAt: 1_700_000_000,
+        sessionId: fixedSessionId(1),
+        status: "authenticated"
+      })
+    ).toBe(
+      `valid (idleExpiresAt=${formatHarnessClockTime(1_700_000_000)}, expiresAt=${
+        formatHarnessClockTime(1_700_000_100)
+      })`
+    )
   })
 })

@@ -1,10 +1,15 @@
 "use client"
 
-import { Alert, Container, Page, Stack, Text } from "@pathableai/react"
+import { Alert, Button, Container, Page, Stack, Text } from "@pathableai/react"
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react"
 
 import { confirmSessionAction } from "../../app/(app)/session/confirm.ts"
-import { canRunConfirm, executeConfirmPass, nextConfirmDelayMs } from "../../lib/session/confirm-pass.ts"
+import {
+  canRunConfirm,
+  type ConfirmTimerStateKind,
+  executeConfirmPass,
+  nextConfirmDelayMs
+} from "../../lib/session/confirm-pass.ts"
 import { confirmOutcomeHarnessLabel } from "../../lib/session/confirm-result.ts"
 import { IdleConfirmHarnessProvider, type IdleConfirmHarnessSnapshot } from "./idle-confirm-harness-context.tsx"
 
@@ -40,7 +45,7 @@ export function IdleConfirmTimerIsland({
   const [lastOutcomeLabel, setLastOutcomeLabel] = useState("pending")
   const heldGeneration = useRef<number | undefined>(undefined)
   const confirming = useRef(false)
-  const stateKindRef = useRef(state.kind)
+  const stateKindRef = useRef<ConfirmTimerStateKind>(state.kind)
 
   useEffect(() => {
     stateKindRef.current = state.kind
@@ -71,6 +76,9 @@ export function IdleConfirmTimerIsland({
           setLastOutcomeLabel("error (unavailable)")
         },
         sessionId,
+        setActive: () => {
+          setState({ kind: "active" })
+        },
         setDeadlines,
         setUnavailable: () => {
           setState({ kind: "unavailable" })
@@ -162,7 +170,17 @@ export function IdleConfirmTimerIsland({
             <Text data-testid="temp-confirm-outcome">
               {`Confirm: ${lastOutcomeLabel}`}
             </Text>
-            <Text>Try refreshing the page or signing in again.</Text>
+            <Button
+              data-testid="temp-confirm-retry"
+              onClick={() => {
+                void runConfirm()
+              }}
+              type="button"
+              variant="secondary"
+            >
+              Try again
+            </Button>
+            <Text>Or refresh the page / sign in again.</Text>
           </Stack>
         </Container>
       </Page>
