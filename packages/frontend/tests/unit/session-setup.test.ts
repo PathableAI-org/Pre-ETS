@@ -286,6 +286,75 @@ describe("setupSession", () => {
       expect(createId).toHaveBeenCalled()
     })
 
+    it("refuses cause-bearing inactivity tombstones on document entry", async () => {
+      const config = testConfig()
+      const now = 1_700_000_000
+      const expiresAt = now + 3600
+      const sessionId = fixedSessionId(34)
+      const createId = vi.fn(() => fixedSessionId(35))
+      const store = mockStore({
+        read: vi.fn().mockResolvedValue({
+          kind: "record",
+          legacyAuthenticated: false,
+          record: {
+            accessEndedCause: "inactivity" as const,
+            expiresAt,
+            sessionEndGeneration: 2,
+            tenantId: "springfield"
+          }
+        })
+      })
+      const request = await signedRequest({ exp: expiresAt, sid: sessionId, tenant: "springfield" }, config)
+
+      const result = await setupSession(request, {
+        config,
+        createId,
+        nowSeconds: () => now,
+        resolveTenant: okTenant(),
+        store
+      })
+
+      expect(result.kind).toBe("ready")
+      if (result.kind === "ready") {
+        expect(result.outcome).toBe("create")
+        expect(result.context.sessionId).toBe(fixedSessionId(35))
+      }
+    })
+
+    it("refuses generation-only inactivity latches after cause consume", async () => {
+      const config = testConfig()
+      const now = 1_700_000_000
+      const expiresAt = now + 3600
+      const sessionId = fixedSessionId(36)
+      const createId = vi.fn(() => fixedSessionId(37))
+      const store = mockStore({
+        read: vi.fn().mockResolvedValue({
+          kind: "record",
+          legacyAuthenticated: false,
+          record: {
+            expiresAt,
+            sessionEndGeneration: 3,
+            tenantId: "springfield"
+          }
+        })
+      })
+      const request = await signedRequest({ exp: expiresAt, sid: sessionId, tenant: "springfield" }, config)
+
+      const result = await setupSession(request, {
+        config,
+        createId,
+        nowSeconds: () => now,
+        resolveTenant: okTenant(),
+        store
+      })
+
+      expect(result.kind).toBe("ready")
+      if (result.kind === "ready") {
+        expect(result.outcome).toBe("create")
+        expect(result.context.sessionId).toBe(fixedSessionId(37))
+      }
+    })
+
     it("rejects authenticated records missing idle fields even when not marked legacy", async () => {
       const config = testConfig()
       const now = 1_700_000_000

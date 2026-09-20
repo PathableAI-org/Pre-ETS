@@ -27,21 +27,20 @@ export function InactivityEndedModal({ open }: InactivityEndedModalProps) {
       data-testid="inactivity-ended-modal"
       description="Your session ended because of inactivity. Any unsaved temporary work on this page may have been lost."
       footer={
-        <span
+        <form
+          action={loginAgainAction}
           ref={(node) => {
             loginAgainRef.current = node?.querySelector("button") ?? null
           }}
         >
-          <form action={loginAgainAction}>
-            <Button
-              data-testid="inactivity-ended-login-again"
-              type="submit"
-              variant="primary"
-            >
-              Log in again
-            </Button>
-          </form>
-        </span>
+          <Button
+            data-testid="inactivity-ended-login-again"
+            type="submit"
+            variant="primary"
+          >
+            Log in again
+          </Button>
+        </form>
       }
       initialFocusRef={loginAgainRef}
       onClose={() => {

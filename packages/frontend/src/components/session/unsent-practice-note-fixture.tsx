@@ -7,7 +7,7 @@ export function markTemporaryWorkCleared(): void {
   try {
     sessionStorage.setItem(TEMPORARY_WORK_CLEARED_STORAGE_KEY, "1")
   } catch {
-    // Private mode / blocked storage — fixture may remount; prefer fail-open for demo.
+    // Storage blocked — remount hides the fixture via fail-closed read below.
   }
 }
 
@@ -36,10 +36,14 @@ export function UnsentPracticeNoteFixture() {
  */
 const TEMPORARY_WORK_CLEARED_STORAGE_KEY = "preets:temporary-work-cleared"
 
+/**
+ * True when the fixture must stay hidden. Fail closed if storage is unavailable
+ * so a blocked sessionStorage cannot restore temporary UI after login-again.
+ */
 function isTemporaryWorkCleared(): boolean {
   try {
     return sessionStorage.getItem(TEMPORARY_WORK_CLEARED_STORAGE_KEY) === "1"
   } catch {
-    return false
+    return true
   }
 }

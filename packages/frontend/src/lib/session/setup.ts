@@ -490,9 +490,15 @@ async function tryReuseAuthenticatedSession(
 async function tryReuseLoadedSession(input: ReuseSessionInput): Promise<ReuseSessionResult> {
   // Ended-for-inactivity anonymous keys are tombstones for open-tab confirm /
   // login-again siblings—not entry sessions for a new document load.
+  // After confirm consumes the string cause, only `sessionEndGeneration` remains;
+  // still refuse reuse so Proxy mints a fresh anonymous sid + OIDC.
+  const generation = input.stored.sessionEndGeneration
   if (
     input.stored.userId === undefined
-    && input.stored.accessEndedCause === "inactivity"
+    && (
+      input.stored.accessEndedCause === "inactivity"
+      || (generation !== undefined && generation >= 1)
+    )
   ) {
     return undefined
   }

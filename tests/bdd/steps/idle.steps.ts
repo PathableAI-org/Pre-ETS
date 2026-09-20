@@ -283,8 +283,14 @@ Given(
       this,
       "an authorized representative changes Shelbyville's duration to 30 minutes"
     )
-    // Cross-tenant policy change must not mutate the active Springfield session.
+    // Cross-tenant policy write must not mutate the active Springfield session.
     ensureIdleContract(this)
+    seedIdlePolicyTenants(this, "springfield", "shelbyville")
+    authorizePolicyRepresentative(this, "shelbyville")
+    const outcome = proposeIdlePolicy(this, "shelbyville", 30)
+    assert.equal(outcome, "accepted")
+    assert.equal(ensureIdleContract(this).idleDurationMinutes, 5)
+    assert.equal(ensureIdleContract(this).record.idleDurationMinutes, 5)
   }
 )
 
