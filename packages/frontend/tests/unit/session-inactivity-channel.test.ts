@@ -79,6 +79,7 @@ describe("inactivity BroadcastChannel contract", () => {
 describe("applyConfirmResult inactivity gating", () => {
   it("opens inactivity only for ended-inactivity; never for unavailable/ended-other", () => {
     const applyInactivity = vi.fn()
+    const setActive = vi.fn()
     const setDeadlines = vi.fn()
     const setUnavailable = vi.fn()
 
@@ -88,7 +89,7 @@ describe("applyConfirmResult inactivity gating", () => {
         sessionId: "sid-a",
         status: "ended-inactivity"
       } satisfies ConfirmSessionActionResult,
-      { applyInactivity, setDeadlines, setUnavailable }
+      { applyInactivity, setActive, setDeadlines, setUnavailable }
     )
     expect(applyInactivity).toHaveBeenCalledWith("sid-a", 2)
     expect(setUnavailable).not.toHaveBeenCalled()
@@ -96,7 +97,7 @@ describe("applyConfirmResult inactivity gating", () => {
     applyInactivity.mockClear()
     applyConfirmResult(
       { status: "unavailable" } satisfies ConfirmSessionActionResult,
-      { applyInactivity, setDeadlines, setUnavailable }
+      { applyInactivity, setActive, setDeadlines, setUnavailable }
     )
     expect(applyInactivity).not.toHaveBeenCalled()
     expect(setUnavailable).toHaveBeenCalledOnce()
@@ -104,7 +105,7 @@ describe("applyConfirmResult inactivity gating", () => {
     setUnavailable.mockClear()
     applyConfirmResult(
       { sessionId: "sid-a", status: "ended-other" } satisfies ConfirmSessionActionResult,
-      { applyInactivity, setDeadlines, setUnavailable }
+      { applyInactivity, setActive, setDeadlines, setUnavailable }
     )
     expect(applyInactivity).not.toHaveBeenCalled()
     expect(setUnavailable).toHaveBeenCalledOnce()
