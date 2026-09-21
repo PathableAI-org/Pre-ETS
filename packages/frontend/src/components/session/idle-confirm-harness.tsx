@@ -6,8 +6,8 @@ import { formatHarnessClockTime } from "../../lib/session/confirm-result.ts"
 import { useIdleConfirmHarness } from "./idle-confirm-harness-context.tsx"
 
 /**
- * TEMP harness — remove in PR5/PR6 once modal path + production recovery are visible.
- * Shows last confirm outcome and client schedule; does not invent inactivity from timers.
+ * TEMP harness — shrink leftover from PR4. Kept for manual confirm/debug until
+ * PR6 removes it. Does not invent inactivity from timers alone.
  */
 export function IdleConfirmHarness() {
   const harness = useIdleConfirmHarness()
@@ -21,7 +21,7 @@ export function IdleConfirmHarness() {
 
   return (
     <Stack gap="sm">
-      {/* TEMP harness — remove in PR5/PR6 */}
+      {/* TEMP — remove in PR6 */}
       <Text data-testid="temp-confirm-outcome">
         {`Confirm: ${harness.lastOutcomeLabel}`}
       </Text>

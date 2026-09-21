@@ -1,0 +1,171 @@
+"use client"
+
+import { useCallback, useEffect, useRef, useState } from "react"
+
+import type { IdleConfirmHarnessSnapshot } from "./idle-confirm-harness-context.tsx"
+
+import { confirmSessionAction } from "../../app/(app)/session/confirm.ts"
+import {
+  canRunConfirm,
+  type ConfirmTimerStateKind,
+  executeConfirmPass,
+  nextConfirmDelayMs
+} from "../../lib/session/confirm-pass.ts"
+import { confirmOutcomeHarnessLabel } from "../../lib/session/confirm-result.ts"
+import { broadcastInactivityConfirmed } from "../../lib/session/inactivity-channel.ts"
+import { useInactivityBroadcast } from "./use-inactivity-broadcast.ts"
+
+export type RecoveryState =
+  | { readonly kind: "active" }
+  | {
+    readonly kind: "inactivity"
+    readonly sessionEndGeneration: number
+    readonly sessionId: string
+  }
+  | { readonly kind: "unavailable" }
+
+export function useInactivityRecovery(input: {
+  readonly expiresAt: number
+  readonly idleExpiresAt: number
+  readonly sessionId: string
+}): {
+  readonly harnessValue: IdleConfirmHarnessSnapshot
+  readonly lastOutcomeLabel: string
+  readonly modalOpen: boolean
+  readonly runConfirm: () => void
+  readonly setModalOpen: (open: boolean) => void
+  readonly state: RecoveryState
+} {
+  const { expiresAt, idleExpiresAt, sessionId } = input
+  const [state, setState] = useState<RecoveryState>({ kind: "active" })
+  const [deadlines, setDeadlines] = useState({ expiresAt, idleExpiresAt })
+  const [lastOutcomeLabel, setLastOutcomeLabel] = useState("pending")
+  const [modalOpen, setModalOpen] = useState(false)
+  const heldGeneration = useRef<number | undefined>(undefined)
+  const confirming = useRef(false)
+  const stateKindRef = useRef<ConfirmTimerStateKind>(state.kind)
+
+  useEffect(() => {
+    stateKindRef.current = state.kind
+  }, [state.kind])
+
+  const applyInactivity = useCallback((
+    endedSessionId: string,
+    sessionEndGeneration: number,
+    broadcast: boolean
+  ) => {
+    heldGeneration.current = sessionEndGeneration
+    setState({
+      kind: "inactivity",
+      sessionEndGeneration,
+      sessionId: endedSessionId
+    })
+    setModalOpen(true)
+    if (broadcast) {
+      broadcastInactivityConfirmed(endedSessionId, sessionEndGeneration)
+    }
+  }, [])
+
+  const runConfirm = useCallback(async () => {
+    if (!canRunConfirm(confirming.current, stateKindRef.current)) {
+      return
+    }
+    confirming.current = true
+    try {
+      await executeConfirmPass({
+        applyInactivity: (endedSessionId, sessionEndGeneration) => {
+          applyInactivity(endedSessionId, sessionEndGeneration, true)
+        },
+        confirm: async (payload) => {
+          const result = await confirmSessionAction(payload)
+          setLastOutcomeLabel(confirmOutcomeHarnessLabel(result))
+          return result
+        },
+        heldGeneration: heldGeneration.current,
+        onTransportFailure: () => {
+          setLastOutcomeLabel("error (unavailable)")
+        },
+        sessionId,
+        setActive: () => {
+          setState({ kind: "active" })
+        },
+        setDeadlines,
+        setUnavailable: () => {
+          setState({ kind: "unavailable" })
+          setModalOpen(false)
+        }
+      })
+    } finally {
+      confirming.current = false
+    }
+  }, [applyInactivity, sessionId])
+
+  useEffect(() => {
+    if (state.kind !== "active") {
+      return
+    }
+
+    const delay = nextConfirmDelayMs(
+      deadlines.idleExpiresAt,
+      deadlines.expiresAt,
+      Date.now()
+    )
+    const timer = window.setTimeout(() => {
+      void runConfirm()
+    }, delay)
+
+    return () => {
+      window.clearTimeout(timer)
+    }
+  }, [deadlines.expiresAt, deadlines.idleExpiresAt, runConfirm, state.kind])
+
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === "visible") {
+        void runConfirm()
+      }
+    }
+    const onFocus = () => {
+      void runConfirm()
+    }
+    document.addEventListener("visibilitychange", onVisible)
+    window.addEventListener("focus", onFocus)
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible)
+      window.removeEventListener("focus", onFocus)
+    }
+  }, [runConfirm])
+
+  const onChannelInactivity = useCallback((
+    endedSessionId: string,
+    sessionEndGeneration: number
+  ) => {
+    applyInactivity(endedSessionId, sessionEndGeneration, false)
+    setLastOutcomeLabel(
+      `inactivity (channel generation=${String(sessionEndGeneration)})`
+    )
+  }, [applyInactivity])
+
+  useInactivityBroadcast(sessionId, onChannelInactivity)
+
+  const nextTimerFireAtMs = state.kind === "active"
+    ? Math.min(deadlines.idleExpiresAt, deadlines.expiresAt) * 1000
+    : null
+
+  return {
+    harnessValue: {
+      lastOutcomeLabel,
+      nextTimerFireAtMs,
+      runConfirmNow: () => {
+        void runConfirm()
+      }
+    },
+    lastOutcomeLabel,
+    modalOpen,
+    runConfirm: () => {
+      void runConfirm()
+    },
+    setModalOpen,
+    state
+  }
+}

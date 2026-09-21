@@ -12,7 +12,8 @@ export interface InactivityEndedModalProps {
 
 /**
  * PathAble Modal for inactivity-ended messaging. Primary action accessible name
- * is "Log in again". In PR1 this only closes the modal (no OIDC / session rotation).
+ * is "Log in again". Until PR6, the CTA only closes the modal — it does not
+ * rotate the session id or start OIDC (stub; does not pretend to authenticate).
  * The PathAble close control is hidden; Escape and "Log in again" dismiss.
  */
 export function InactivityEndedModal({ onClose, open }: InactivityEndedModalProps) {

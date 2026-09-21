@@ -1,7 +1,6 @@
 import { Alert, Button, Card, Container, Heading, Page, Stack, Text } from "@pathableai/react"
 
 import { IdleConfirmHarness } from "../../components/session/idle-confirm-harness.tsx"
-import { InactivityModalHarness } from "../../components/session/inactivity-modal-harness.tsx"
 import { getRequestSession } from "../../lib/session/index.ts"
 
 export const dynamic = "force-dynamic"
@@ -25,9 +24,7 @@ export default async function HomePage() {
           <Alert heading="PathAble React is connected" status="info">
             Server-safe PathAble components are available for upcoming Pre-ETS screens.
           </Alert>
-          {/* TEMP harness — remove in PR5 when modal opens from confirmed inactivity. */}
-          <InactivityModalHarness />
-          {/* TEMP harness — remove in PR5/PR6 once confirm+modal path is visible. */}
+          {/* TEMP harness — remove in PR6 once login-again + recovery docs land. */}
           {authenticated ? <IdleConfirmHarness /> : null}
           <Card title="Pre-ETS operations">
             <Stack gap="md">

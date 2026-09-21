@@ -1,8 +1,8 @@
 import type { ConfirmSessionActionResult } from "./confirm-action.ts"
 
 /**
- * Apply confirm action outcome to the deadline timer island handlers.
- * PR4: inactivity clears/locks UI only — Modal + BroadcastChannel are PR5.
+ * Apply confirm action outcome to recovery-island handlers.
+ * Only `ended-inactivity` may open the inactivity Modal / broadcast path.
  */
 export function applyConfirmResult(
   result: ConfirmSessionActionResult,
