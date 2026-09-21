@@ -60,6 +60,8 @@ export interface SyntheticTenantRecord {
 export type TenantResolutionMode = "host" | "static"
 
 export class TenantWorld extends World {
+  /** Per-alias file problems for filesystem scenarios. */
+  aliasFileProblems: Record<string, string> | undefined = undefined
   authoritativeHost: string | undefined = undefined
   binderInvocationCount: number | undefined = undefined
   browser: Browser | undefined = undefined
@@ -68,11 +70,16 @@ export class TenantWorld extends World {
   configurationFailure: string | undefined = undefined
   consumerContexts: { readonly config: TenantConfig; readonly slug: string }[] = []
   contractResult: ContractResult | undefined = undefined
+  /** Crafted host-bound alias for path-escape contract scenarios. */
+  craftedHostAlias: string | undefined = undefined
   crossTenantSessionId: string | undefined = undefined
   establishedSlug: string | undefined = undefined
   fixedNowSeconds: number | undefined = undefined
   forceDevelopmentRuntime = false
   foreignSessionRecord: SessionRecord | undefined = undefined
+  /** Optional former JSON payloads left in the env to prove silent ignore. */
+  formerInlineRecordsJson: string | undefined = undefined
+  formerLocalConfigJson: string | undefined = undefined
   hostCondition: string | undefined = undefined
   httpResponse: HttpExchange | undefined = undefined
   idleBrowserCause: string | undefined = undefined
@@ -103,6 +110,10 @@ export class TenantWorld extends World {
   oidcSupportingCategory: string | undefined = undefined
   oidcTxKeyPrefix: string | undefined = undefined
   oidcUnreadableConfig = false
+  /** Aliases whose files should be omitted after materialization. */
+  omitAliasFiles: string[] | undefined = undefined
+  /** Files opened during contract filesystem reads (basename). */
+  openedTenantFiles: string[] = []
   originalSessionId: string | undefined = undefined
   originalSessionTenantId: string | undefined = undefined
   ownedProcess: ChildProcess | undefined = undefined
@@ -141,6 +152,11 @@ export class TenantWorld extends World {
   shelbyvillePage: Page | undefined = undefined
   springfieldIdentity: undefined | { readonly slug: string } = undefined
   springfieldPage: Page | undefined = undefined
+  staticTenantAlias: string | undefined = undefined
+  /** Absolute path to the scenario's tenant-config directory (BDD harness). */
+  tenantConfigDir: string | undefined = undefined
+  /** Problem applied to TENANT_CONFIG_DIR itself (missing/empty/not-a-directory). */
+  tenantConfigDirProblem: string | undefined = undefined
   tenants: SyntheticTenantRecord[] = []
   unknownHostResult: ContractResult | undefined = undefined
   unsupportedMode: string | undefined = undefined

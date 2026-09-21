@@ -62,11 +62,12 @@ name) and bind `@tenant-config-fs` steps.
 
 ### Filesystem-config artifact validation and execution status
 
-These three files are acceptance artifacts authored before filesystem-source implementation. Step definitions and
-Cucumber wiring for `@tenant-config-fs` remain future implementation work (analogous to gated OIDC/idle suites).
-Structural checks cover feature/background presence, unique scenario names, Given/When/Then ordering, outline
-columns, and the counts above. Default `pnpm test:bdd` still runs the existing tenant-resolution suite until the
-delivery slice wires these files.
+These three files are acceptance artifacts for filesystem-source delivery.
+`tests/bdd/steps/tenant-fs.steps.ts` binds `@tenant-config-fs` steps; the three
+`features/filesystem-*.feature` files are included in the default tenant suite
+(`cucumber.mjs`). Structural checks cover feature/background presence, unique scenario names, Given/When/Then ordering, outline
+columns, and the counts above. Default `pnpm test:bdd` discovers and runs them with the
+tenant-resolution partition.
 
 The complete inventory with these files is **15 feature files** and **273 expanded cases**: 32 tenant-resolution,
 42 session, 68 OIDC, 93 idle-timeout, and 38 filesystem-config.

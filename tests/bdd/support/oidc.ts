@@ -1,14 +1,13 @@
 import type { DataTable } from "@cucumber/cucumber"
-import type { AddressInfo } from "node:net"
 
 import assert from "node:assert/strict"
-import http from "node:http"
 
 import type { TenantOidcConfig } from "../../../packages/frontend/src/lib/tenant/types.ts"
 import type { HttpExchange, TenantWorld } from "./world.ts"
 
 import { extendedForbiddenBody } from "../../../packages/frontend/src/lib/oidc/forbidden-body.ts"
 import { OIDC_COOKIE_NAME } from "../../../packages/frontend/src/lib/oidc/types.ts"
+import { ensureMockOidcIssuer as ensureMockOidcIssuerImpl } from "./oidc-mock.ts"
 import { sendRawGet } from "./raw-http.ts"
 import { ensureOwnedProcess, restartOwnedProcess } from "./server.ts"
 import { ensureSessionSettings } from "./session-env.ts"
@@ -21,13 +20,6 @@ export interface OidcTenantFixture {
   readonly displayName: string
   readonly issuer: string
   readonly slug: string
-}
-
-interface MockOidcServer {
-  readonly baseUrl: string
-  brokenAuthorize: boolean
-  readonly close: () => Promise<void>
-  readonly issuer: string
 }
 
 const DOCUMENT_HEADERS = {
@@ -469,14 +461,7 @@ export async function configureIsolatedOidcFixtures(
 
 /** Start an in-process discovery + authorize stub so @http initiation works without Keycloak. */
 export async function ensureMockOidcIssuer(world: TenantWorld): Promise<string> {
-  if (world.oidcMockIssuer !== undefined && world.oidcMockServer !== undefined) {
-    return world.oidcMockIssuer
-  }
-
-  const server = await startMockOidcServer()
-  world.oidcMockServer = server
-  world.oidcMockIssuer = server.issuer
-  return server.issuer
+  return await ensureMockOidcIssuerImpl(world)
 }
 
 export function forceInitiationFailure(world: TenantWorld, failure: string): void {
@@ -686,94 +671,6 @@ function rewriteOidcVisitUrl(world: TenantWorld, rawUrl: string): string {
 
   url.protocol = "http:"
   return url.toString()
-}
-
-async function startMockOidcServer(): Promise<MockOidcServer> {
-  const state: { brokenAuthorize: boolean } = { brokenAuthorize: false }
-  const server = http.createServer((req, res) => {
-    const url = new URL(req.url ?? "/", "http://127.0.0.1")
-    if (url.pathname.endsWith("/.well-known/openid-configuration")) {
-      const issuer = `http://127.0.0.1:${String((server.address() as AddressInfo).port)}/realms/pre-ets`
-      const authorize = state.brokenAuthorize
-        ? "urn:invalid:authorize"
-        : `${issuer}/protocol/openid-connect/auth`
-      const body = JSON.stringify({
-        authorization_endpoint: authorize,
-        code_challenge_methods_supported: ["S256"],
-        id_token_signing_alg_values_supported: ["RS256"],
-        issuer,
-        jwks_uri: `${issuer}/protocol/openid-connect/certs`,
-        response_types_supported: ["code"],
-        subject_types_supported: ["public"],
-        token_endpoint: `${issuer}/protocol/openid-connect/token`
-      })
-      res.writeHead(200, { "Content-Type": "application/json" })
-      res.end(body)
-      return
-    }
-
-    if (url.pathname.endsWith("/protocol/openid-connect/auth")) {
-      const redirectUri = url.searchParams.get("redirect_uri") ?? "/"
-      const oauthState = url.searchParams.get("state") ?? ""
-      const cancelTarget = `${redirectUri}${redirectUri.includes("?") ? "&" : "?"}error=access_denied&state=${
-        encodeURIComponent(oauthState)
-      }`
-      const failTarget = `${redirectUri}${redirectUri.includes("?") ? "&" : "?"}error=login_required&state=${
-        encodeURIComponent(oauthState)
-      }`
-      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" })
-      res.end(
-        [
-          "<html><body>",
-          "<h1>Mock IdP Login</h1>",
-          "<form><button type=\"submit\">Sign in</button></form>",
-          `<p><a href="${cancelTarget}">Cancel</a></p>`,
-          `<p><a href="${failTarget}">Fail authentication</a></p>`,
-          "</body></html>"
-        ].join("")
-      )
-      return
-    }
-
-    res.writeHead(404)
-    res.end("not found")
-  })
-
-  await new Promise<void>((resolve, reject) => {
-    server.once("error", reject)
-    server.listen(0, "127.0.0.1", () => {
-      resolve()
-    })
-  })
-
-  const address = server.address()
-  assert.ok(address !== null && typeof address !== "string")
-  const baseUrl = `http://127.0.0.1:${String(address.port)}`
-  const issuer = `${baseUrl}/realms/pre-ets`
-
-  return {
-    baseUrl,
-    get brokenAuthorize() {
-      return state.brokenAuthorize
-    },
-    set brokenAuthorize(value: boolean) {
-      state.brokenAuthorize = value
-    },
-    async close() {
-      state.brokenAuthorize = false
-      await new Promise<void>((resolve, reject) => {
-        server.close((error) => {
-          if (error) {
-            reject(error)
-            return
-          }
-
-          resolve()
-        })
-      })
-    },
-    issuer
-  }
 }
 
 async function visitNonDocument(world: TenantWorld, rewritten: string): Promise<void> {

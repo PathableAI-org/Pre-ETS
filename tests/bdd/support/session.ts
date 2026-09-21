@@ -24,6 +24,7 @@ import {
   type SessionRecord
 } from "../../../packages/frontend/src/lib/session/types.ts"
 import { createTenantOperations } from "../../../packages/frontend/src/lib/tenant/operations.ts"
+import { createStaticTenantSource } from "../../../packages/frontend/src/lib/tenant/source.ts"
 import { assertDisplayedName, assertForbiddenPage, upsertTenant } from "./actions.ts"
 import { syntheticTenantConfig } from "./fixtures.ts"
 import { sendRawGet } from "./raw-http.ts"
@@ -401,25 +402,28 @@ export async function runSessionContract(
   ensureRuntimeForUrl(world, rawUrl)
   const request = buildRequest(world, parsed)
   const hostSuffix = hostSuffixForHost(parsed.host)
+  const tenantRecords = world.tenants.map((tenant) => ({
+    // In-process ops use HTTPS fixtures (no loopback allow).
+    config: syntheticTenantConfig(tenant.displayName, tenant.slug, { production: true }),
+    slug: tenant.slug
+  }))
+  if (world.localStaticRecord !== undefined && world.resolutionMode === "static") {
+    tenantRecords.length = 0
+    tenantRecords.push({
+      config: syntheticTenantConfig(
+        world.localStaticRecord.displayName,
+        world.localStaticRecord.slug,
+        { production: true }
+      ),
+      slug: world.localStaticRecord.slug
+    })
+  }
   const tenantOps = createTenantOperations({
-    hostRecordsJson: JSON.stringify(world.tenants.map((tenant) => ({
-      // In-process ops go through parseRecordsJson (no loopback allow); use HTTPS.
-      config: syntheticTenantConfig(tenant.displayName, tenant.slug, { production: true }),
-      slug: tenant.slug
-    }))),
     hostSuffix,
-    localConfigJson: world.localStaticRecord === undefined
-      ? undefined
-      : JSON.stringify({
-        config: syntheticTenantConfig(
-          world.localStaticRecord.displayName,
-          world.localStaticRecord.slug,
-          { production: true }
-        ),
-        slug: world.localStaticRecord.slug
-      }),
     mode: world.resolutionMode ?? "host",
-    production: hostSuffix === "pathable.com"
+    production: hostSuffix === "pathable.com",
+    staticAlias: world.localStaticRecord?.slug,
+    tenantSource: createStaticTenantSource(tenantRecords)
   })
   const priorSessionId = world.sessionId
   const priorTenantId = world.sessionTenantId

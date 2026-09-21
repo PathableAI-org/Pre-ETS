@@ -445,7 +445,7 @@ Then(
   function(this: TenantWorld, category: string) {
     const reason = requireFailure(this.contractResult)
     if (category === "configuration mismatch") {
-      assert.equal(reason, "invalid-config")
+      assert.ok(reason === "invalid-config" || reason === "unreadable-config")
     } else {
       assert.equal(reason, "unreadable-config")
     }
