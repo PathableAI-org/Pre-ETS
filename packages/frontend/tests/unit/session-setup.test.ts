@@ -380,8 +380,12 @@ describe("setupSession", () => {
         expect(result.outcome).toBe("create")
         expect(result.context.sessionId).toBe(fixedSessionId(38))
       }
-      // Phase A: setup does not clear for inactivity — expired idle auth forces create only.
-      expect(clearForInactivity).not.toHaveBeenCalled()
+      // Phase B: idle clearance writes inactivity tombstone, then forces fresh create.
+      expect(clearForInactivity).toHaveBeenCalledWith(
+        sessionId,
+        idleExpiresAt,
+        "springfield"
+      )
       expect(create).toHaveBeenCalledWith(
         fixedSessionId(38),
         expect.objectContaining({ tenantId: "springfield" })

@@ -1,8 +1,57 @@
 import { errors as joseErrors, jwtVerify, SignJWT } from "jose"
 
-import { isSafeUnixSeconds, isSessionId, type SessionConfig, type SessionCookieClaims } from "./types.ts"
+import {
+  getSessionConfig,
+  isSafeUnixSeconds,
+  isSessionId,
+  type SessionConfig,
+  type SessionCookieClaims
+} from "./types.ts"
 
 const ALLOWED_CLAIMS = new Set(["exp", "sid", "tenant"])
+
+export interface ResolveSessionCookieDeps {
+  readonly config?: SessionConfig
+  readonly nowSeconds?: () => number
+  readonly verifyCookie?: typeof verifySessionCookie
+}
+
+export type ResolveSessionCookieResult =
+  | {
+    readonly claims: SessionCookieClaims
+    readonly clock: () => number
+    readonly config: SessionConfig
+    readonly kind: "ok"
+    readonly nowSeconds: number
+  }
+  | { readonly kind: "config-error" }
+  | { readonly kind: "invalid-cookie" }
+
+/**
+ * Shared cookie-bound prelude for activity (and later confirm): load config, sample clock,
+ * verify JWT. Callers must not accept client-supplied session/tenant targets.
+ */
+export async function resolveSessionCookie(
+  cookieValue: string,
+  deps: ResolveSessionCookieDeps
+): Promise<ResolveSessionCookieResult> {
+  let config: SessionConfig
+  try {
+    config = deps.config ?? getSessionConfig()
+  } catch {
+    return { kind: "config-error" }
+  }
+
+  const clock = deps.nowSeconds ?? defaultNowSeconds
+  const nowSeconds = clock()
+  const verifyCookie = deps.verifyCookie ?? verifySessionCookie
+  const claims = await verifyCookie(cookieValue, config, nowSeconds)
+  if (claims === undefined) {
+    return { kind: "invalid-cookie" }
+  }
+
+  return { claims, clock, config, kind: "ok", nowSeconds }
+}
 
 export async function signSessionCookie(
   claims: SessionCookieClaims,
@@ -81,4 +130,8 @@ function assertClaims(claims: SessionCookieClaims): void {
   if (!isSafeUnixSeconds(claims.exp)) {
     throw new Error("Invalid exp claim.")
   }
+}
+
+function defaultNowSeconds(): number {
+  return Math.floor(Date.now() / 1000)
 }
