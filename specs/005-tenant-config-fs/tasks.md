@@ -27,10 +27,12 @@ steps **before** discovering filesystem features in the default tenant suite (BD
       filename stem; distinct `displayName`; valid public OIDC with loopback issuer allowed only
       for local samples; optional `idleTimeoutMinutes` omitted or valid 5–30; no real secrets)
 - [ ] T002 [P] Update `packages/frontend/.env.example`: document `TENANT_CONFIG_DIR` (prefer
-      absolute path example pointing at fixtures), `TENANT_STATIC_ALIAS`, keep
-      `TENANT_RESOLUTION`; remove or clearly mark `TENANT_CONFIG_RECORDS_JSON` /
-      `TENANT_LOCAL_CONFIG_JSON` as ignored/superseded with **silent ignore** + restart-after-file-edit
-      callout (contracts/filesystem-tenant-source.md)
+      absolute path example pointing at fixtures; recommend directory permissions limited to the
+      Node process user), `TENANT_STATIC_ALIAS`, keep `TENANT_RESOLUTION`; remove or clearly mark
+      `TENANT_CONFIG_RECORDS_JSON` / `TENANT_LOCAL_CONFIG_JSON` as ignored/superseded with
+      **silent ignore** + restart-after-file-edit callout (contracts/filesystem-tenant-source.md);
+      document FR-013 **rollback** (restore prior release and/or correct `TENANT_CONFIG_DIR`
+      mount/path—do **not** re-enable JSON env as a dual source)
 - [ ] T003 Confirm `docs/multi-tenancy.md` already states filesystem as current source and Postgres
       as future; if gaps remain vs contract (CWD resolution, silent JSON ignore, restart), align
       wording in `docs/multi-tenancy.md` only—no dual-source instructions
@@ -203,7 +205,10 @@ docs/examples no longer require them.
 ### Docs, cleanup, validation
 
 - [ ] T026 [P] Walk `specs/005-tenant-config-fs/quickstart.md` scenarios against a local
-      `pnpm --filter @pathableai/pre-ets-frontend dev` process; fix doc/code gaps found
+      `pnpm --filter @pathableai/pre-ets-frontend dev` process; confirm the **Rollback** section
+      still instructs operators to restore the prior release and/or correct the
+      `TENANT_CONFIG_DIR` mount/path and **not** re-enable JSON env as a dual source (FR-013);
+      fix doc/code gaps found
 - [ ] T027 [P] Run repository quality gates touched by this feature (`pnpm --filter
       @pathableai/pre-ets-frontend typecheck`, `test:unit`, root `pnpm lint` / `pnpm format:check`
       / `pnpm check:unused` as applicable) and fix findings without check-disable comments
