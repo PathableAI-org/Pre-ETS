@@ -19,7 +19,7 @@ Research: [research.md](./research.md). Shapes: [data-model.md](./data-model.md)
 
 ## Technical Context
 
-**Language/Version**: Strict TypeScript 6.0.x, ESM, Node ≥24; pnpm 12.4.1 (repository root).
+**Language/Version**: Strict TypeScript 6.0.x, ESM, Node ≥24; pnpm 12.5.1 (repository root `packageManager`).
 
 **Primary Dependencies**: Existing Next.js 16.3.5 / React 19.3.0 / `server-only` tenant module.
 No new persistence library, ORM, file-watcher, or tenancy framework. Use Node `fs`/`path`

@@ -17,6 +17,7 @@
 - **Q3**: Process-lifetime parse cache after successful read; restart required to refresh file contents. Cached records must be immutable (frozen / not mutated across requests) for FR-012.
 - **Q4**: Relative `TENANT_CONFIG_DIR` allowed; resolve against process CWD at boot. Document for next dev, production start, and BDD. Prefer absolute paths in examples for clarity but allow relative.
 - **Analysis remediation** (`$speckit-analyze`): **I1** — User Story 2 Independent Test uses restart-only language (aligned with Q3, FR-013, SC-005; no hot-reload / no “reload” alternative). **I2** — Static tenant name environment setting is named `TENANT_STATIC_ALIAS` (planning-chosen name; role language unchanged).
+- **PR review remediation**: Directory-path setting is named `TENANT_CONFIG_DIR` in Assumptions/Key Entities (same naming discipline as I2). Strategy doc (`docs/multi-tenancy.md`) keeps **current** = env JSON until implement (T003); pnpm pin aligned to repository `packageManager`.
 
 ## User Scenarios & Testing _(mandatory)_
 
@@ -100,7 +101,7 @@ Operators and developers no longer supply the previous inline multi-record and f
 ### Key Entities
 
 - **Tenant alias**: The unique tenant identity already used as the slug (for example `springfield`). Derived from the host in host mode, or supplied by the static-name setting in static mode.
-- **Tenant configuration directory**: The configured filesystem location that holds one JSON file per tenant.
+- **Tenant configuration directory**: The configured filesystem location (`TENANT_CONFIG_DIR`) that holds one JSON file per tenant.
 - **Tenant configuration file**: The JSON document at `{directory}/{tenantAlias}.json` holding that tenant’s configuration and confirming the same alias.
 - **Static tenant name**: The development-only environment value (`TENANT_STATIC_ALIAS`) naming which single tenant file to use when host association is disabled locally.
 
@@ -124,7 +125,7 @@ Operators and developers no longer supply the previous inline multi-record and f
 - The filesystem source is read-only from the application’s perspective: no in-product editor, upload, or write API is required.
 - Live file watching / hot reload is out of scope; process restart after file edits is required (process-lifetime immutable parse cache).
 - Existing host-binding rules, HTTP 403 vs configuration-failure distinctions, development-only static mode gating, Display Name presentation, OIDC fields, and idle timeout validation remain as already specified; this feature replaces the configuration **source**, not those policies.
-- Environment setting **names**: the static tenant name setting is `TENANT_STATIC_ALIAS` (planning-chosen); the directory-path setting name remains a planning concern. This specification requires both settings’ **roles** (directory path; static tenant name only). Relative directory paths resolve against process CWD at boot.
+- Environment setting **names** (planning-chosen): directory path is `TENANT_CONFIG_DIR`; static tenant name is `TENANT_STATIC_ALIAS`; mode continues to use existing `TENANT_RESOLUTION`. Relative directory paths resolve against process CWD at boot.
 - Former `TENANT_CONFIG_RECORDS_JSON` and `TENANT_LOCAL_CONFIG_JSON` roles are superseded as configuration sources and are silently ignored if left set; removing dead code and updating `.env.example` / docs are in scope for implementation planning.
 - Synthetic fixtures under a sample directory satisfy verification; real client records and secrets stay out of the repository.
 - Backend domain persistence and shared packages are out of scope; tenant configuration remains frontend-owned. Filesystem is the approved durable store for this increment; Postgres remains a future architecture target (constitution exception recorded in the plan).

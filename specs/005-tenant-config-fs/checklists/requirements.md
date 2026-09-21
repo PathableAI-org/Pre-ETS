@@ -32,5 +32,5 @@
 ## Notes
 
 - Validation passed on 2026-09-21 (iteration 1). Observable outcomes such as HTTP 403 and `.json` file naming are retained because they are part of the stated product/deployment contract inherited from tenant resolution and the user input; no frameworks, libraries, or code structure appear in requirements or success criteria.
-- Environment **roles** (directory path; static tenant name) are specified; concrete variable names are deferred to planning per Assumptions.
-- Ready for `$speckit-clarify` (optional) or `$speckit-plan`.
+- Environment **roles** and planning-chosen names are recorded: directory path `TENANT_CONFIG_DIR`, static tenant name `TENANT_STATIC_ALIAS` (with existing `TENANT_RESOLUTION` for mode).
+- Spec/plan/tasks ready; strategy-doc present-tense cutover (`docs/multi-tenancy.md`) is an implementation task (T003), not pre-implement documentation.

@@ -33,9 +33,10 @@ steps **before** discovering filesystem features in the default tenant suite (BD
       **silent ignore** + restart-after-file-edit callout (contracts/filesystem-tenant-source.md);
       document FR-013 **rollback** (restore prior release and/or correct `TENANT_CONFIG_DIR`
       mount/path—do **not** re-enable JSON env as a dual source)
-- [ ] T003 Confirm `docs/multi-tenancy.md` already states filesystem as current source and Postgres
-      as future; if gaps remain vs contract (CWD resolution, silent JSON ignore, restart), align
-      wording in `docs/multi-tenancy.md` only—no dual-source instructions
+- [ ] T003 Update `docs/multi-tenancy.md` so filesystem under `TENANT_CONFIG_DIR` is described as
+      the **current** source and Postgres as **future** (replace the pre-implement “planned 005”
+      note); align CWD resolution, silent JSON ignore, and restart vs contract—no dual-source
+      instructions
 
 **Checkpoint**: Fixtures and `.env.example` describe the filesystem cutover without requiring app
 code changes yet.

@@ -31,9 +31,10 @@ coverage, not proof of runtime behavior.
 - `@contract`: Verify single-file reads, path confinement, source authority over inline documents, and static-versus-host context labeling without public diagnostic endpoints.
 - `@production`: Production must ignore static-name / static-mode bypass settings.
 
-Concrete environment variable **names** remain a planning choice; scenarios describe the directory setting and
-static tenant name by role. Exact configuration-error copy remains a planning decision where the specification
-only requires an understandable local error.
+Concrete environment variable names for this feature are `TENANT_CONFIG_DIR`, `TENANT_STATIC_ALIAS`, and
+`TENANT_RESOLUTION` (see `specs/005-tenant-config-fs/`). Scenarios may still describe roles; step wiring should
+use those names. Exact configuration-error copy remains a planning decision where the specification only
+requires an understandable local error.
 
 ### Filesystem-config fixture meanings and assumptions
 
