@@ -94,13 +94,13 @@ Pinned fail-closed protocol:
 
 When the race is lost:
 
-| Lost-race outcome                         | Result                                                                 |
-| ----------------------------------------- | ---------------------------------------------------------------------- |
-| Clearance already wrote anonymous + cause | Deny renewal; **no** overwrite of post-clearance anonymous record      |
-| Newer accepted heartbeat already applied  | Deny or no-op; do not regress `lastActivityAt` / `idleExpiresAt`       |
-| Expected shape / generation mismatch      | Deny; fail closed; no revival                                          |
-| Store timeout / aborted EXEC / lock miss  | Deny; fail closed; no revival                                          |
-| Post-apply `now1` past prior deadline     | Revert/clear under lock; deny; no extended access                      |
+| Lost-race outcome                         | Result                                                            |
+| ----------------------------------------- | ----------------------------------------------------------------- |
+| Clearance already wrote anonymous + cause | Deny renewal; **no** overwrite of post-clearance anonymous record |
+| Newer accepted heartbeat already applied  | Deny or no-op; do not regress `lastActivityAt` / `idleExpiresAt`  |
+| Expected shape / generation mismatch      | Deny; fail closed; no revival                                     |
+| Store timeout / aborted EXEC / lock miss  | Deny; fail closed; no revival                                     |
+| Post-apply `now1` past prior deadline     | Revert/clear under lock; deny; no extended access                 |
 
 **Coalescing / rate bound**: server MUST coalesce or rate-limit accepted renewals.
 Indicative default (E4): ignore redundant Redis writes within **~1s** when the computed
@@ -136,13 +136,13 @@ When idle deadline is reached or detected:
 
 ## Ordering
 
-| Event                              | Result                                                                |
-| ---------------------------------- | --------------------------------------------------------------------- |
+| Event                                | Result                                                                |
+| ------------------------------------ | --------------------------------------------------------------------- |
 | Activity with `now < idleExpiresAt`  | Restart idle period                                                   |
 | Activity with `now >= idleExpiresAt` | No revival; access remains ended                                      |
-| Absolute expiry                    | Access ended; claim inactivity only if idle evidence also established |
-| Store miss / 503                   | Deny access; **no** inactivity assertion                              |
-| Lost CAS vs clearance              | Deny; anonymous clearance retained                                    |
+| Absolute expiry                      | Access ended; claim inactivity only if idle evidence also established |
+| Store miss / 503                     | Deny access; **no** inactivity assertion                              |
+| Lost CAS vs clearance                | Deny; anonymous clearance retained                                    |
 
 ## Multi-tab / multi-session
 
@@ -177,16 +177,16 @@ removes the key, missing session → **not** inactivity unless a separate retain
 still exists (this slice keeps cause/latch on the anonymous record until that record’s
 `expiresAt`—once gone, no inactivity claim).
 
-| Condition                                                              | Authenticated access | Cause label                                      |
-| ---------------------------------------------------------------------- | -------------------- | ------------------------------------------------ |
-| Authenticated; fresh `now` `< idleExpiresAt` and `< expiresAt`         | Allowed              | n/a                                              |
-| First observation: fresh `now >= idleExpiresAt` and `now < expiresAt`  | Denied               | Persist cause/latch atomically → `inactivity`    |
-| First observation: fresh `now >= expiresAt` and `now < idleExpiresAt`  | Denied               | Absolute; **not** inactivity; no idle cause write |
-| Both past on still-present record (`idleExpiresAt <= expiresAt`)       | Denied               | Atomic idle clearance + latch → `inactivity`     |
-| Both past on still-present record (`idleExpiresAt > expiresAt`)        | Denied               | Absolute path; **not** inactivity                |
-| Missing session / EXAT eviction without retained latch                 | Denied               | **not** inactivity                               |
-| Anonymous with retained cause/latch                                    | Denied for protected | `inactivity`                                     |
-| Store timeout / 503                                                    | Denied               | not inactivity                                   |
+| Condition                                                             | Authenticated access | Cause label                                       |
+| --------------------------------------------------------------------- | -------------------- | ------------------------------------------------- |
+| Authenticated; fresh `now` `< idleExpiresAt` and `< expiresAt`        | Allowed              | n/a                                               |
+| First observation: fresh `now >= idleExpiresAt` and `now < expiresAt` | Denied               | Persist cause/latch atomically → `inactivity`     |
+| First observation: fresh `now >= expiresAt` and `now < idleExpiresAt` | Denied               | Absolute; **not** inactivity; no idle cause write |
+| Both past on still-present record (`idleExpiresAt <= expiresAt`)      | Denied               | Atomic idle clearance + latch → `inactivity`      |
+| Both past on still-present record (`idleExpiresAt > expiresAt`)       | Denied               | Absolute path; **not** inactivity                 |
+| Missing session / EXAT eviction without retained latch                | Denied               | **not** inactivity                                |
+| Anonymous with retained cause/latch                                   | Denied for protected | `inactivity`                                      |
+| Store timeout / 503                                                   | Denied               | not inactivity                                    |
 
 **Equality pin**: when `idleExpiresAt === expiresAt` and fresh `now >=` that instant on a
 still-present record, perform atomic idle clearance + latch and label **inactivity**.
