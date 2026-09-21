@@ -6,7 +6,9 @@ import type { OidcSecretResolution } from "./secrets.ts"
 import type { OidcTransactionStore } from "./transaction.ts"
 
 import { readSingleNamedCookie } from "../http/cookie-header.ts"
+import { computeIdleExpiresAt } from "../session/idle.ts"
 import { SessionStoreError } from "../session/store.ts"
+import { effectiveIdleTimeoutMinutes } from "../tenant/types.ts"
 import { verifyOidcCorrelationCookie } from "./cookie.ts"
 import { approvedApplicationOrigin } from "./initiation-http.ts"
 import { resolveClientAndDiscover, type ResolveClientAndDiscoverDeps } from "./resolve-client.ts"
@@ -184,6 +186,7 @@ async function exchangeCodeAndAuthenticate(input: {
   const authenticated = await writeAuthenticatedSession({
     nowSeconds: input.input.nowSeconds,
     sessionStore: input.deps.sessionStore,
+    tenantConfig: input.input.tenantRecord.config,
     tenantId: input.input.tenantId,
     tx: input.tx,
     userId,
@@ -336,6 +339,7 @@ async function verifyCallbackCorrelation(
 async function writeAuthenticatedSession(input: {
   readonly nowSeconds: number
   readonly sessionStore: SessionStore
+  readonly tenantConfig: TenantConfig
   readonly tenantId: string
   readonly tx: OidcTransactionRecord
   readonly userId: string
@@ -355,8 +359,14 @@ async function writeAuthenticatedSession(input: {
       return false
     }
 
+    // Phase B: stamp idle fields at authentication on this sid only.
+    // Do not extend absolute expiresAt; policy is fixed for the session lifetime.
+    const idleDurationMinutes = effectiveIdleTimeoutMinutes(input.tenantConfig)
     const updated = await input.sessionStore.update(input.tx.sessionId, {
       expiresAt: existing.record.expiresAt,
+      idleDurationMinutes,
+      idleExpiresAt: computeIdleExpiresAt(input.nowSeconds, idleDurationMinutes),
+      lastActivityAt: input.nowSeconds,
       tenantId: existing.record.tenantId,
       userId: input.userId,
       userName: input.userName
