@@ -30,14 +30,9 @@ import {
   requireContext,
   requireFailure,
   resolveHost,
-  restartWithUpdatedName,
   upsertTenant,
   visitEqualNameTenants
 } from "../support/actions.ts"
-
-Given("the application runs locally without a durable tenant store", function(this: TenantWorld) {
-  this.runtime = "development"
-})
 
 Given("the known synthetic tenants are:", function(this: TenantWorld, table: DataTable) {
   this.tenants = table.hashes().map((row) => ({
@@ -45,14 +40,6 @@ Given("the known synthetic tenants are:", function(this: TenantWorld, table: Dat
     slug: row.slug ?? ""
   }))
 })
-
-Given(
-  "the developer follows the documented instructions to enable production-like host association",
-  function(this: TenantWorld) {
-    this.resolutionMode = "host"
-    this.runtime ??= "development"
-  }
-)
 
 Given("the developer has enabled production-like host association", function(this: TenantWorld) {
   this.resolutionMode = "host"
@@ -97,23 +84,7 @@ Given("the developer has explicitly disabled production-like host association", 
 })
 
 Given(
-  "the developer follows the documented instructions to supply tenant {string} with only Display Name {string}",
-  function(this: TenantWorld, slug: string, name: string) {
-    this.localStaticRecord = { displayName: name, slug }
-    this.resolutionMode = "static"
-  }
-)
-
-Given(
   "the developer supplies tenant {string} with Display Name {string}",
-  function(this: TenantWorld, slug: string, name: string) {
-    this.localStaticRecord = { displayName: name, slug }
-    this.resolutionMode = "static"
-  }
-)
-
-Given(
-  "the developer supplied tenant {string} with Display Name {string}",
   function(this: TenantWorld, slug: string, name: string) {
     this.localStaticRecord = { displayName: name, slug }
     this.resolutionMode = "static"
@@ -123,18 +94,6 @@ Given(
 Given("the user has seen {string} on the local landing page", async function(this: TenantWorld, name: string) {
   await openLandingPage(this, `localhost:${String(this.port)}`)
   assertDisplayedName(this, name)
-})
-
-Given(
-  "the developer changed only Display Name to {string} and completed the documented restart",
-  async function(this: TenantWorld, name: string) {
-    await restartWithUpdatedName(this, name)
-  }
-)
-
-Given("the supplied local tenant data has {string}", function(this: TenantWorld, problem: string) {
-  this.localConfigProblem = problem
-  this.resolutionMode = "static"
 })
 
 Given("the user has opened the local landing page", async function(this: TenantWorld) {
@@ -179,14 +138,6 @@ Given(
 )
 
 Given(
-  "an alternative test configuration source supplies tenant {string} with only Display Name {string}",
-  function(this: TenantWorld, slug: string, name: string) {
-    this.alternativeDisplayName = name
-    upsertTenant(this, slug, name)
-  }
-)
-
-Given(
   "the configuration read for {string} has failure {string}",
   function(this: TenantWorld, _slug: string, failure: string) {
     this.configurationFailure = failure
@@ -215,10 +166,6 @@ When(
     this.unknownHostResult = await resolveHost(this, unknownHost)
   }
 )
-
-When("the resolver consumes the supplied local configuration", async function(this: TenantWorld) {
-  this.contractResult = await resolveHost(this, `localhost:${String(this.port)}`)
-})
 
 When("the user reloads the landing page at {string}", async function(this: TenantWorld, host: string) {
   await reloadLandingPage(this, host)
@@ -262,13 +209,6 @@ Then(
   "the landing page displays the tenant Display Name {string}",
   function(this: TenantWorld, name: string) {
     assertDisplayedName(this, name)
-  }
-)
-
-Then(
-  "the contract result for the same host and fixture identifies tenant {string}",
-  function(this: TenantWorld, slug: string) {
-    assert.equal(requireContext(this.contractResult).slug, slug)
   }
 )
 
@@ -393,17 +333,6 @@ Then("the response has HTTP status 500 without a redirect", function(this: Tenan
 
 Then("an understandable local configuration error is displayed", function(this: TenantWorld) {
   assertLocalConfigError(this)
-})
-
-Then("the error explains how to supply valid data and restart", function(this: TenantWorld) {
-  assertLocalConfigError(this)
-})
-
-Then("neither a default tenant nor the slug is displayed as a replacement name", function(this: TenantWorld) {
-  assert.ok(this.httpResponse)
-  assert.doesNotMatch(this.httpResponse.body, /springfield/i)
-  assert.doesNotMatch(this.httpResponse.body, /shelbyville/i)
-  assert.doesNotMatch(this.httpResponse.body, /Local Demo/)
 })
 
 Then(

@@ -36,7 +36,6 @@ async function allocateFreePort(): Promise<number> {
 }
 
 function resetTenantWorld(world: TenantWorld): void {
-  world.alternativeDisplayName = undefined
   world.authoritativeHost = undefined
   world.binderInvocationCount = undefined
   world.browser = undefined
@@ -52,7 +51,6 @@ function resetTenantWorld(world: TenantWorld): void {
   world.invalidDisplayName = undefined
   world.lastVisitedUrl = undefined
   world.knownHostResult = undefined
-  world.localConfigProblem = undefined
   world.localStaticRecord = undefined
   world.modeDiagnostic = undefined
   world.forceDevelopmentRuntime = false
@@ -76,7 +74,6 @@ function resetTenantWorld(world: TenantWorld): void {
   world.playwrightChromium = chromium
   world.port = 3000
   world.processSignature = undefined
-  world.previousDisplayName = undefined
   world.prefetchResponse = undefined
   world.requestedHost = undefined
   world.resolutionFailure = undefined

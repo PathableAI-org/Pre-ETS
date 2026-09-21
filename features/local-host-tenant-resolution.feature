@@ -1,28 +1,14 @@
 @tenant-resolution @US3
 Feature: Developers exercise production-like tenant association using local tenant addresses
   As a user developing the application locally
-  I want to enable host association and check both successful and refused visits
+  I want to enable host association and check refused visits and mode safety
   So that local convenience does not hide tenant-resolution failures
 
   Background:
-    Given the application runs locally without a durable tenant store
-    And the known synthetic tenants are:
+    Given the known synthetic tenants are:
       | slug        | Display Name     |
       | springfield | Springfield Demo |
       | shelbyville | Shelbyville Demo |
-
-  @FR-007 @FR-008 @FR-011 @FR-016 @SC-003 @browser @contract
-  Scenario Outline: Tenant-shaped local addresses display the associated name
-    Given the developer follows the documented instructions to enable production-like host association
-    When the user opens the landing page at "<host>"
-    Then the landing page displays the tenant Display Name "<name>"
-    And the contract result for the same host and fixture identifies tenant "<slug>"
-
-    Examples:
-      | host                       | slug        | name             |
-      | springfield.localhost:3000 | springfield | Springfield Demo |
-      | shelbyville.localhost:3000 | shelbyville | Shelbyville Demo |
-      | springfield.localhost:3100 | springfield | Springfield Demo |
 
   @FR-003 @FR-007 @FR-008 @SC-002 @http
   Scenario Outline: Enabling association prevents static fallback
@@ -59,21 +45,6 @@ Feature: Developers exercise production-like tenant association using local tena
     And the unknown host is denied without a successful tenant context
     And neither result uses the local static record
     And diagnostics report "invalid-mode" with accepted-mode guidance without echoing the supplied value
-
-  @FR-007 @SC-006 @http @production
-  Scenario Outline: Local settings cannot bypass production association
-    Given the application instead runs in production
-    And the developer supplied a setting to disable host association
-    And a local static record exists for tenant "local-demo" with Display Name "Must Not Be Used"
-    When the user opens the landing page at "<host>"
-    Then the visit has outcome "<outcome>"
-    And the Display Name "Must Not Be Used" is not displayed
-
-    Examples:
-      | host                     | outcome                                      |
-      | springfield.pathable.com | displays tenant Display Name Springfield Demo |
-      | unknown.pathable.com     | HTTP 403 refusal without a redirect           |
-      | localhost:3000           | HTTP 403 refusal without a redirect           |
 
   @FR-015 @FR-016 @SC-007 @browser
   Scenario: Host-associated names are accessible text without changing keyboard navigation

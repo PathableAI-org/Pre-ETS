@@ -11,17 +11,6 @@ Feature: Visitors see the Display Name of the tenant associated with their addre
       | springfield | Springfield Demo |
       | shelbyville | Shelbyville Demo |
 
-  @FR-001 @FR-005 @FR-006 @FR-016 @SC-001 @browser
-  Scenario Outline: A known tenant address shows its configured name
-    When the user opens the landing page at "<host>"
-    Then the landing page displays the tenant Display Name "<name>"
-    And the landing page does not display the tenant Display Name "<other_name>"
-
-    Examples:
-      | host                     | name             | other_name       |
-      | springfield.pathable.com | Springfield Demo | Shelbyville Demo |
-      | shelbyville.pathable.com | Shelbyville Demo | Springfield Demo |
-
   @FR-002 @FR-003 @SC-002 @http
   Scenario Outline: A disallowed or unknown host is refused
     When the user opens the landing page at "<host>"
@@ -65,26 +54,11 @@ Feature: Visitors see the Display Name of the tenant associated with their addre
       | springfield.pathable.com | displays tenant Display Name Springfield Demo |
       | unknown.pathable.com     | HTTP 403 refusal without a redirect           |
 
-  @FR-012 @SC-001 @browser
-  Scenario: Overlapping visits and reloads preserve each visitor's tenant
-    Given two users independently visit the Springfield and Shelbyville landing pages on the same running application
-    When both users reload their landing pages with overlapping requests
-    Then the Springfield visitor sees the tenant Display Name "Springfield Demo"
-    And the Shelbyville visitor sees the tenant Display Name "Shelbyville Demo"
-    And neither visitor sees the other tenant's Display Name
-
   @FR-004 @FR-005 @FR-012 @SC-005 @contract
   Scenario: Multiple consumers use one established tenant determination
     Given the visitor's request has been associated with tenant "springfield"
     When consumers repeatedly read the established tenant context and configuration
     Then every consumer receives tenant "springfield" and Display Name "Springfield Demo"
-
-  @FR-006 @SC-005 @contract
-  Scenario: Replacing the configuration source preserves tenant selection
-    Given an alternative test configuration source supplies tenant "springfield" with only Display Name "Springfield Training"
-    When the unchanged consumer resolves "springfield.pathable.com" and reads its established tenant configuration
-    Then the returned context identifies tenant "springfield" with Display Name "Springfield Training"
-    And the consumer does not need knowledge of the replacement configuration source
 
   @FR-013 @SC-006 @contract
   Scenario Outline: Configuration failures never become a different tenant

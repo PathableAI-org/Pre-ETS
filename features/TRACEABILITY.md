@@ -7,13 +7,13 @@ Generated: 2026-09-20
 
 ## Coverage Summary
 
-| Metric                                    | Count | Percentage |
-| ----------------------------------------- | ----- | ---------- |
-| Total requirements                        | 17    | —          |
-| ✅ Covered (behavioral Gherkin)           | 13    | 76%        |
-| 🛂 Release-gate / docs (not Cucumber)     | 4     | 24%        |
-| ⚠️ Orphaned scenarios (idle features)     | 0     | —          |
-| Out-of-scope scenarios (features 001–003) | 89    | —          |
+| Metric                                         | Count | Percentage |
+| ---------------------------------------------- | ----- | ---------- |
+| Total requirements                             | 17    | —          |
+| ✅ Covered (behavioral Gherkin)                | 13    | 76%        |
+| 🛂 Release-gate / docs (not Cucumber)          | 4     | 24%        |
+| ⚠️ Orphaned scenarios (idle features)          | 0     | —          |
+| Out-of-scope scenarios (features 001–003, 005) | 108   | —          |
 
 Requirements counted: **FR-001–FR-012** and **SC-001–SC-005**. User-story acceptance scenarios are traced through the FR/SC rows (they share `@FR-*` / `@SC-*` tags on Gherkin).
 
@@ -61,17 +61,20 @@ Scenarios in idle feature files not traced to any 004 requirement:
 
 These scenarios belong to prior specifications (tenant resolution, session continuity, OIDC). They are **not** coverage gaps for 004:
 
-| Feature file                                | Scenario count (approx.) |
-| ------------------------------------------- | ------------------------ |
-| `tenant-landing-page.feature`               | 10                       |
-| `local-static-tenant-configuration.feature` | 6                        |
-| `local-host-tenant-resolution.feature`      | 6                        |
-| `session-continuity.feature`                | 9                        |
-| `session-recovery.feature`                  | 6                        |
-| `local-session-development.feature`         | 5                        |
-| `tenant-oidc-login.feature`                 | 14                       |
-| `tenant-oidc-configuration.feature`         | 9                        |
-| `local-oidc-development.feature`            | 9                        |
+| Feature file                                   | Scenario count (approx.) |
+| ---------------------------------------------- | ------------------------ |
+| `tenant-landing-page.feature`                  | 7                        |
+| `local-static-tenant-configuration.feature`    | 2                        |
+| `local-host-tenant-resolution.feature`         | 4                        |
+| `filesystem-host-tenant-configuration.feature` | 8                        |
+| `filesystem-static-tenant-name.feature`        | 6                        |
+| `filesystem-tenant-source-cutover.feature`     | 5                        |
+| `session-continuity.feature`                   | 9                        |
+| `session-recovery.feature`                     | 6                        |
+| `local-session-development.feature`            | 5                        |
+| `tenant-oidc-login.feature`                    | 14                       |
+| `tenant-oidc-configuration.feature`            | 9                        |
+| `local-oidc-development.feature`               | 9                        |
 
 ## Suggested evidence for release-gate requirements
 
