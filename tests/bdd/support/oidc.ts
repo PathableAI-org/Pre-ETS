@@ -713,8 +713,25 @@ async function startMockOidcServer(): Promise<MockOidcServer> {
     }
 
     if (url.pathname.endsWith("/protocol/openid-connect/auth")) {
+      const redirectUri = url.searchParams.get("redirect_uri") ?? "/"
+      const oauthState = url.searchParams.get("state") ?? ""
+      const cancelTarget = `${redirectUri}${redirectUri.includes("?") ? "&" : "?"}error=access_denied&state=${
+        encodeURIComponent(oauthState)
+      }`
+      const failTarget = `${redirectUri}${redirectUri.includes("?") ? "&" : "?"}error=login_required&state=${
+        encodeURIComponent(oauthState)
+      }`
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" })
-      res.end("<html><body><h1>Mock IdP Login</h1><form><button>Sign in</button></form></body></html>")
+      res.end(
+        [
+          "<html><body>",
+          "<h1>Mock IdP Login</h1>",
+          "<form><button type=\"submit\">Sign in</button></form>",
+          `<p><a href="${cancelTarget}">Cancel</a></p>`,
+          `<p><a href="${failTarget}">Fail authentication</a></p>`,
+          "</body></html>"
+        ].join("")
+      )
       return
     }
 

@@ -345,6 +345,100 @@ describe("confirmSessionAccess", () => {
     })
   })
 
+  it("prefers mounted tombstone handoff over adopting a replacement authenticated cookie", async () => {
+    const config = testConfig()
+    const now = 1_700_000_000
+    const oldSessionId = fixedSessionId(12)
+    const newSessionId = fixedSessionId(13)
+    const replacement = idleRecord(now, { idleDurationMinutes: 7 })
+    const tombstone: SessionRecord = {
+      accessEndedCause: "inactivity",
+      expiresAt: now + 3_600,
+      sessionEndGeneration: 4,
+      tenantId: "springfield"
+    }
+    const store = mockStore({
+      read: vi.fn((id: string) => {
+        if (id === newSessionId) {
+          return Promise.resolve({
+            kind: "record" as const,
+            legacyAuthenticated: false,
+            record: replacement
+          })
+        }
+        if (id === oldSessionId) {
+          return Promise.resolve({
+            kind: "record" as const,
+            legacyAuthenticated: false,
+            record: tombstone
+          })
+        }
+        return Promise.resolve({ kind: "missing" as const })
+      }),
+      update: vi.fn().mockResolvedValue({ kind: "updated" })
+    })
+    const cookieValue = await signSessionCookie(
+      { exp: replacement.expiresAt, sid: newSessionId, tenant: "springfield" },
+      config
+    )
+
+    const result = await confirmSessionAccess(
+      {
+        cookieValue,
+        mountedSessionId: oldSessionId,
+        sessionEndGeneration: 4
+      },
+      { config, nowSeconds: () => now + 60, store }
+    )
+
+    expect(result).toEqual({
+      kind: "ended-inactivity",
+      mismatch: true,
+      sessionEndGeneration: 4,
+      sessionId: oldSessionId
+    })
+  })
+
+  it("adopts a replacement authenticated cookie when the mounted tombstone latch is gone", async () => {
+    const config = testConfig()
+    const now = 1_700_000_000
+    const oldSessionId = fixedSessionId(14)
+    const newSessionId = fixedSessionId(15)
+    const replacement = idleRecord(now, { idleDurationMinutes: 7 })
+    const store = mockStore({
+      read: vi.fn((id: string) => {
+        if (id === newSessionId) {
+          return Promise.resolve({
+            kind: "record" as const,
+            legacyAuthenticated: false,
+            record: replacement
+          })
+        }
+        return Promise.resolve({ kind: "missing" as const })
+      })
+    })
+    const cookieValue = await signSessionCookie(
+      { exp: replacement.expiresAt, sid: newSessionId, tenant: "springfield" },
+      config
+    )
+
+    const result = await confirmSessionAccess(
+      {
+        cookieValue,
+        mountedSessionId: oldSessionId,
+        sessionEndGeneration: 4
+      },
+      { config, nowSeconds: () => now + 60, store }
+    )
+
+    expect(result).toEqual({
+      expiresAt: replacement.expiresAt,
+      idleExpiresAt: replacement.idleExpiresAt,
+      kind: "authenticated",
+      sessionId: newSessionId
+    })
+  })
+
   it("returns unavailable on store failure (not an inactivity claim)", async () => {
     const config = testConfig()
     const now = 1_700_000_000
@@ -389,7 +483,7 @@ describe("applyConfirmResult / executeConfirmPass", () => {
       },
       { applyInactivity, setActive, setDeadlines, setUnavailable }
     )
-    expect(setActive).toHaveBeenCalled()
+    expect(setActive).toHaveBeenCalledWith(fixedSessionId(1))
     expect(setDeadlines).toHaveBeenCalledWith({ expiresAt: 200, idleExpiresAt: 100 })
     expect(applyInactivity).not.toHaveBeenCalled()
 
@@ -429,10 +523,10 @@ describe("applyConfirmResult / executeConfirmPass", () => {
     expect(setUnavailable).toHaveBeenCalled()
   })
 
-  it("allows confirm retry while unavailable; blocks inactivity and in-flight", () => {
+  it("allows confirm while active, unavailable, or inactivity; blocks in-flight", () => {
     expect(canRunConfirm(true, "active")).toBe(false)
     expect(canRunConfirm(false, "unavailable")).toBe(true)
-    expect(canRunConfirm(false, "inactivity")).toBe(false)
+    expect(canRunConfirm(false, "inactivity")).toBe(true)
     expect(canRunConfirm(false, "active")).toBe(true)
   })
 
@@ -457,7 +551,7 @@ describe("applyConfirmResult / executeConfirmPass", () => {
       setUnavailable
     })
 
-    expect(setActive).toHaveBeenCalled()
+    expect(setActive).toHaveBeenCalledWith(fixedSessionId(11))
     expect(setDeadlines).toHaveBeenCalledWith({ expiresAt: 300, idleExpiresAt: 200 })
     expect(setUnavailable).not.toHaveBeenCalled()
   })

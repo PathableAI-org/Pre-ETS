@@ -119,3 +119,8 @@ jobs:
         run: pnpm test:bdd
       - name: Run session contract partition
         run: pnpm test:bdd:session:contract
+      - name: Run idle-session contract partition
+        run: pnpm test:bdd:idle:contract
+      - name: Run idle-session browser partition
+        # Mock IdP only (same pattern as OIDC HTTP). Chromium installed above.
+        run: pnpm test:bdd:idle:browser

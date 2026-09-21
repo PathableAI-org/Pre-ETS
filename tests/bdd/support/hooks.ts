@@ -118,6 +118,11 @@ function resetTenantWorld(world: TenantWorld): void {
   world.sessionTrackedIds = []
   world.sessionTtlSeconds = undefined
   world.sessionStoreTimeoutMs = undefined
+  world.idleBrowserCause = undefined
+  world.idleBrowserDurableRecords = undefined
+  world.idleBrowserTemporaryWork = undefined
+  world.idleContract = undefined
+  world.idlePolicy = undefined
 }
 
 Before(async function(this: TenantWorld, { pickle }) {
@@ -128,7 +133,7 @@ Before(async function(this: TenantWorld, { pickle }) {
   this.useHttp = this.useBrowser || pickle.tags.some((tag) => tag.name === "@http")
 })
 
-After({ timeout: 15_000 }, async function(this: TenantWorld) {
+After({ timeout: 30_000 }, async function(this: TenantWorld) {
   await cleanupScenarioSessionKeys(this)
   await closeOwnedResources(this)
   await closeMockOidcServer(this)

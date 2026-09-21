@@ -27,6 +27,7 @@ import {
   type SessionConfig,
   SessionConfigError,
   type SessionContext,
+  sessionContextFromRecord,
   TENANT_ORIGIN_HEADER,
   TENANT_SLUG_HEADER
 } from "./lib/session/types.ts"
@@ -110,6 +111,14 @@ function extendedForbiddenResponse(): NextResponse {
   })
 }
 
+function forwardWithoutSessionRewrite(requestHeaders: Headers): NextResponse {
+  const response = NextResponse.next({
+    request: { headers: requestHeaders }
+  })
+  response.headers.set("Cache-Control", CACHE_CONTROL)
+  return response
+}
+
 async function handleAuthCallback(
   request: NextRequest,
   deps: ReturnType<typeof sessionDependencies>,
@@ -169,6 +178,13 @@ async function handleSessionRequest(
   deps: ReturnType<typeof sessionDependencies>,
   txConfig: OidcTxConfig
 ): Promise<NextResponse> {
+  // Idle confirm / activity / login-again Server Actions POST to `/` (matcher).
+  // Pass the presented cookie through without minting a fresh anonymous sid or
+  // starting OIDC — otherwise idle-elapsed setup clears auth and 401s the action.
+  if (request.headers.has("next-action")) {
+    return await passThroughServerActionSession(request, requestHeaders, deps)
+  }
+
   const result = await setupSession(request, {
     config: deps.sessionConfig,
     resolveTenant: async () => await mapTenantResolve(deps.operations, request),
@@ -398,6 +414,45 @@ async function mapTenantResolve(
   )
 }
 
+/**
+ * Resolve tenant + optional cookie session for App Router Server Actions.
+ * Does not create sessions, clear idle, or initiate OIDC.
+ */
+async function passThroughServerActionSession(
+  request: NextRequest,
+  requestHeaders: Headers,
+  deps: ReturnType<typeof sessionDependencies>
+): Promise<NextResponse> {
+  const tenant = await mapTenantResolve(deps.operations, request)
+  if (tenant.kind !== "ok") {
+    logOutcome("action-tenant-unavailable")
+    return terminalResponse(tenant.kind === "config-error" ? 500 : 403)
+  }
+
+  const cookieValue = request.cookies.get(SESSION_COOKIE_NAME)?.value
+  if (cookieValue === undefined || cookieValue === "") {
+    logOutcome("action-anonymous-no-cookie")
+    return forwardWithoutSessionRewrite(requestHeaders)
+  }
+
+  const claims = await verifySessionCookie(
+    cookieValue,
+    deps.sessionConfig,
+    Math.floor(Date.now() / 1000)
+  )
+  if (claims?.tenant !== tenant.tenantId) {
+    logOutcome("action-invalid-cookie")
+    return forwardWithoutSessionRewrite(requestHeaders)
+  }
+
+  const context = await sessionContextForActionCookie(deps.store, claims)
+  logOutcome(
+    context.userId === undefined ? "action-pass-anonymous" : "action-pass-authenticated"
+  )
+  // Never attach a replacement Set-Cookie — keep the request cookie for the action.
+  return readyResponse(requestHeaders, context, tenant.origin, undefined)
+}
+
 function readyResponse(
   requestHeaders: Headers,
   context: SessionContext,
@@ -435,6 +490,21 @@ async function routeAuthCallback(
   }
 
   return await handleAuthCallback(request, deps, txConfig)
+}
+
+async function sessionContextForActionCookie(
+  store: RedisSessionStore,
+  claims: { readonly exp: number; readonly sid: string; readonly tenant: string }
+): Promise<SessionContext> {
+  const read = await store.read(claims.sid)
+  if (read.kind === "record") {
+    return sessionContextFromRecord(claims.sid, read.record)
+  }
+  return {
+    expiresAt: claims.exp,
+    sessionId: claims.sid,
+    tenantId: claims.tenant
+  }
 }
 
 function sessionDependencies(config: SessionConfig, txConfig: OidcTxConfig) {

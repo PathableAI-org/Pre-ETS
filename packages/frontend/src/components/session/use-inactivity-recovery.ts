@@ -2,8 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 
-import type { IdleConfirmHarnessSnapshot } from "./idle-confirm-harness-context.tsx"
-
 import { confirmSessionAction } from "../../app/(app)/session/confirm.ts"
 import {
   canRunConfirm,
@@ -11,8 +9,8 @@ import {
   executeConfirmPass,
   nextConfirmDelayMs
 } from "../../lib/session/confirm-pass.ts"
-import { confirmOutcomeHarnessLabel } from "../../lib/session/confirm-result.ts"
 import { broadcastInactivityConfirmed } from "../../lib/session/inactivity-channel.ts"
+import { markTemporaryWorkCleared } from "./unsent-practice-note-fixture.tsx"
 import { useInactivityBroadcast } from "./use-inactivity-broadcast.ts"
 
 export type RecoveryState =
@@ -29,17 +27,13 @@ export function useInactivityRecovery(input: {
   readonly idleExpiresAt: number
   readonly sessionId: string
 }): {
-  readonly harnessValue: IdleConfirmHarnessSnapshot
-  readonly lastOutcomeLabel: string
   readonly modalOpen: boolean
   readonly runConfirm: () => void
-  readonly setModalOpen: (open: boolean) => void
   readonly state: RecoveryState
 } {
   const { expiresAt, idleExpiresAt, sessionId } = input
   const [state, setState] = useState<RecoveryState>({ kind: "active" })
   const [deadlines, setDeadlines] = useState({ expiresAt, idleExpiresAt })
-  const [lastOutcomeLabel, setLastOutcomeLabel] = useState("pending")
   const [modalOpen, setModalOpen] = useState(false)
   const heldGeneration = useRef<number | undefined>(undefined)
   const confirming = useRef(false)
@@ -54,6 +48,7 @@ export function useInactivityRecovery(input: {
     sessionEndGeneration: number,
     broadcast: boolean
   ) => {
+    markTemporaryWorkCleared()
     heldGeneration.current = sessionEndGeneration
     setState({
       kind: "inactivity",
@@ -76,17 +71,20 @@ export function useInactivityRecovery(input: {
         applyInactivity: (endedSessionId, sessionEndGeneration) => {
           applyInactivity(endedSessionId, sessionEndGeneration, true)
         },
-        confirm: async (payload) => {
-          const result = await confirmSessionAction(payload)
-          setLastOutcomeLabel(confirmOutcomeHarnessLabel(result))
-          return result
-        },
+        confirm: async (payload) => await confirmSessionAction(payload),
         heldGeneration: heldGeneration.current,
         onTransportFailure: () => {
-          setLastOutcomeLabel("error (unavailable)")
+          // Fail closed without inactivity claim; setUnavailable handles UI.
         },
         sessionId,
-        setActive: () => {
+        setActive: (cookieSessionId) => {
+          // Sibling after login-again: cookie sid differs from this mount — reload
+          // so layout/island pick up the new authenticated session id.
+          if (cookieSessionId !== sessionId) {
+            window.location.assign("/")
+            return
+          }
+          setModalOpen(false)
           setState({ kind: "active" })
         },
         setDeadlines,
@@ -141,31 +139,15 @@ export function useInactivityRecovery(input: {
     sessionEndGeneration: number
   ) => {
     applyInactivity(endedSessionId, sessionEndGeneration, false)
-    setLastOutcomeLabel(
-      `inactivity (channel generation=${String(sessionEndGeneration)})`
-    )
   }, [applyInactivity])
 
   useInactivityBroadcast(sessionId, onChannelInactivity)
 
-  const nextTimerFireAtMs = state.kind === "active"
-    ? Math.min(deadlines.idleExpiresAt, deadlines.expiresAt) * 1000
-    : null
-
   return {
-    harnessValue: {
-      lastOutcomeLabel,
-      nextTimerFireAtMs,
-      runConfirmNow: () => {
-        void runConfirm()
-      }
-    },
-    lastOutcomeLabel,
     modalOpen,
     runConfirm: () => {
       void runConfirm()
     },
-    setModalOpen,
     state
   }
 }

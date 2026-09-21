@@ -25,6 +25,7 @@ import {
   assertSpringfieldTenantPage,
   clearCookies,
   configureStorageFailure,
+  deleteStoredSessionKey,
   ensureSessionContractEvidence,
   fetchTenantResource,
   parseIsoSeconds,
@@ -106,16 +107,7 @@ async function assertRedisUnreachable(url: string): Promise<void> {
 }
 
 async function deleteStoredRecord(world: TenantWorld, sessionId: string): Promise<void> {
-  const client = await createRedisClient({
-    disableOfflineQueue: true,
-    url: world.redisUrl ?? process.env.REDIS_URL ?? "redis://127.0.0.1:6379"
-  })
-  try {
-    await client.connect()
-    await client.del(`${world.sessionKeyPrefix ?? ""}${sessionId}`)
-  } finally {
-    await client.quit().catch(() => undefined)
-  }
+  await deleteStoredSessionKey(world, sessionId)
 }
 
 Given("a clean local session-development environment with documented prerequisites", async function(this: TenantWorld) {

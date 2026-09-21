@@ -40,6 +40,6 @@
   margin-top: 0.25rem;
 }
 
-.inactivity-ended-modal .pathable-modal__footer > span {
+.inactivity-ended-modal .pathable-modal__footer > form {
   display: contents;
 }

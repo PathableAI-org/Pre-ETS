@@ -85,6 +85,29 @@ request URL → slug → tenant configuration → session setup → OIDC initiat
 8. The next document visit to `/` with an authenticated session short-circuits
    to the landing page showing tenant Display Name and the signed-in user name.
 
+## Login again after inactivity
+
+When a **running** authenticated tab confirms inactivity, the PathAble Modal offers
+**Log in again**. That control submits a dedicated CSRF-protected Server Action
+(`loginAgainAction`)—**not** a bare GET to `/`:
+
+1. Verify the host-bound `pathable-session` cookie for the current tenant.
+2. Mint a **new** `sessionId`, persist a fresh anonymous Redis record, and set a new
+   host-bound session cookie. Leave the old Redis key as an inactivity tombstone
+   (cause/latch) for sibling confirm handoff until its `expiresAt`.
+3. Start OIDC initiation with the **new** sid as the transaction target only.
+   Never pass the post-clearance anonymous tombstone sid into the OIDC transaction.
+4. On callback success, stamp `userId` / `userName` and idle fields
+   (`idleDurationMinutes` from **current** tenant policy, `lastActivityAt`,
+   `idleExpiresAt`) **only** on the new Redis key. Do not carry
+   `accessEndedCause` / `sessionEndGeneration` from the tombstone.
+5. Cancel, fail, or `/login-unavailable` leaves expired access unusable; the Modal /
+   retry path remains. IdP SSO without a fresh credentials challenge is allowed and
+   still creates a **new** application session under current policy.
+
+Closed-tab / typed-URL document entry after idle clearance uses generic OIDC (fresh
+anonymous sid)—see [session-state.md](./session-state.md)—not an SSR inactivity shell.
+
 ACS URLs and other SAML endpoints live on the broker so tenant metadata stays
 stable when the Next.js app moves. Downstream frontend modules receive the
 slug and, after login, the authenticated session. They do not choose an
