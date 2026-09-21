@@ -351,7 +351,9 @@ export class RedisSessionStore implements SessionStore {
   }
 
   private async connectedClient(): Promise<RedisSessionClient> {
-    if (this.client?.isOpen) {
+    // An open socket is not necessarily ready to accept commands. Concurrent
+    // callers must await the connection handshake before using the client.
+    if (this.client?.isOpen && this.connectPromise === undefined) {
       return this.client
     }
 
@@ -370,6 +372,8 @@ export class RedisSessionStore implements SessionStore {
       this.connectPromise = undefined
       this.client = undefined
       throw toStoreError(error)
+    } finally {
+      this.connectPromise = undefined
     }
   }
 
