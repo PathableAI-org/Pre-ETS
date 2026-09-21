@@ -180,7 +180,8 @@ export async function completeLoginAgainAsAuthenticated(
   await syncSessionCookieFromBrowser(world, host)
 
   const cookieHeader = world.sessionCookieJar?.get(host)
-  assert.ok(cookieHeader?.startsWith(`${SESSION_COOKIE_NAME}=`), "login-again cookie missing")
+  assert.ok(cookieHeader !== undefined, "login-again cookie missing")
+  assert.ok(cookieHeader.startsWith(`${SESSION_COOKIE_NAME}=`), "login-again cookie missing")
   const token = cookieHeader.slice(`${SESSION_COOKIE_NAME}=`.length)
   const claims = await verifySessionCookie(token, config, Math.floor(Date.now() / 1000))
   assert.ok(claims, "login-again cookie must verify")
@@ -309,11 +310,7 @@ export async function presentNonInactivityInterruption(
         }
         await route.continue()
       })
-      await world.page.evaluate(() => {
-        ;(globalThis as { dispatchEvent: (event: Event) => boolean }).dispatchEvent(
-          new Event("focus")
-        )
-      })
+      await dispatchWindowFocus(world)
       await world.page.getByTestId("auth-unavailable-retry").waitFor({
         state: "visible",
         timeout: 10_000
@@ -471,11 +468,8 @@ export async function waitForUnsentPracticeNote(world: TenantWorld): Promise<voi
 
 async function dispatchWindowFocus(world: TenantWorld): Promise<void> {
   assert.ok(world.page)
-  await world.page.evaluate(() => {
-    ;(globalThis as { dispatchEvent: (event: Event) => boolean }).dispatchEvent(
-      new Event("focus")
-    )
-  })
+  // String form: callback runs in the page; avoid Node globalThis typing.
+  await world.page.evaluate("window.dispatchEvent(new Event('focus'))")
 }
 
 async function forceAuthoritativeIdleElapsed(world: TenantWorld): Promise<void> {
