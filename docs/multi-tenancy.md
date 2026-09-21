@@ -10,10 +10,13 @@ session state differs from backend domain persistence is described in
 The frontend owns tenant configuration. The Next.js app is the only reader of
 this data when rendering UI. Binding the host to a slug and loading
 configuration are first-party modules under `packages/frontend/src/lib/tenant`;
-there is no tenancy library. Durable tenant storage, authentication, and session
-architecture remain future work. This increment supplies a Display Name from
-either host-associated known records or one development-only static record.
-Local configuration needs no external services and does not use Compose.
+there is no tenancy library. **Current** durable tenant configuration is
+read-only JSON files under `TENANT_CONFIG_DIR` (one `{alias}.json` per tenant).
+**Postgres** (or another shared mutable multi-node store) remains a **future**
+architecture target when product needs it—not the active source today.
+Authentication and session architecture are described in the linked notes.
+Local configuration needs no external services and does not use Compose for
+tenant config. Committed examples and fixtures are synthetic only.
 
 ## Tenant slug
 
@@ -58,26 +61,36 @@ authoritative.
 The slug from the binding step is the argument to `getCurrentTenantConfig`:
 
 ```text
-request URL → slug → tenant configuration
+request URL → slug → {TENANT_CONFIG_DIR}/{slug}.json → tenant configuration
 ```
 
+Operators set `TENANT_CONFIG_DIR` to a directory of per-tenant JSON files
+(`{alias}.json`). Prefer an absolute path; relative paths resolve against
+process CWD at boot. The process validates the directory when the filesystem
+source is constructed at startup. Successful parses may be kept in a
+process-lifetime immutable cache; restart after file edits.
+
 A missing, unreadable, or unknown host is refused with `forbidden()`. An
-unknown or non-canonical slug argument is also `forbidden()`. Invalid or
-unreadable selected configuration throws (HTTP 500). The UI does not substitute
-another tenant’s configuration, a default tenant, or the slug as a Display Name.
+unknown or non-canonical slug argument is also `forbidden()` (including a
+missing `{slug}.json`). Invalid or unreadable selected configuration throws
+(HTTP 500). The UI does not substitute another tenant’s configuration, a
+default tenant, or the slug as a Display Name.
 
-These functions do not cache or store the current tenant on the request. The
+These functions do not store the current tenant on the request object. The
 nested layout only gates the request. Any Server Component that needs a slug or
-Display Name calls the same functions itself. A later session slice can look
-the tenant up from the session first.
+Display Name calls the same functions itself. Session slices may look the
+tenant up from the session first.
 
-In development, an explicit `TENANT_RESOLUTION=static` setting may supply
-exactly one local record and show only that Display Name on `localhost`. That
-exception is honored only when `NODE_ENV=development`. Production
-always binds `{slug}.pathable.com` and never reads `TENANT_RESOLUTION` or
-`TENANT_LOCAL_CONFIG_JSON`. Unset, `test`, `staging`, and any other runtime
-use production host association. Unsupported mode values keep host association and
-emit a safe `invalid-mode` diagnostic.
+In development, `TENANT_RESOLUTION=static` plus `TENANT_STATIC_ALIAS` (canonical
+slug only) loads that alias’s file from the same directory and shows only that
+Display Name on `localhost`. That exception is honored only when
+`NODE_ENV=development`. Production always binds `{slug}.pathable.com` and never
+honors static mode or `TENANT_STATIC_ALIAS`. Unset, `test`, `staging`, and any
+other runtime use production host association. Unsupported mode values keep
+host association and emit a safe `invalid-mode` diagnostic.
+
+Former `TENANT_CONFIG_RECORDS_JSON` and `TENANT_LOCAL_CONFIG_JSON` are **not**
+configuration sources; if still set, they are silently ignored.
 
 Downstream frontend modules that need tenancy call `getCurrentTenant` /
 `getCurrentTenantConfig`. They do not parse the request URL themselves to

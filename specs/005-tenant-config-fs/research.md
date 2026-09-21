@@ -2,7 +2,7 @@
 
 **Date**: 2026-09-21\
 **Scope**: Phase 0 decisions for [spec.md](./spec.md)\
-**Status**: Research complete; implementation has not started.
+**Status**: Research complete; stakeholder answers Q1–Q4 recorded; implementation has not started.
 
 ## Repository evidence
 
@@ -14,40 +14,55 @@
 - Gherkin for this feature already exists (`features/filesystem-*.feature`); superseded 001
   scenarios were removed. Cucumber is **not** yet partitioned for `@tenant-config-fs`.
 - Constitution lists Postgres for frontend tenant configuration as architecture intent;
-  `docs/multi-tenancy.md` still describes env JSON and defers durable stores.
+  `docs/multi-tenancy.md` still describes env JSON and defers durable stores (sync required).
+
+## Stakeholder answers (authoritative)
+
+| ID | Decision                                                                                                                                                                     |
+| -- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Q1 | Always **silently ignore** unrecognized / superseded `TENANT_CONFIG_RECORDS_JSON` / `TENANT_LOCAL_CONFIG_JSON`. No startup diagnostic. Document silent ignore only.          |
+| Q2 | **Maintainer-approved**: filesystem persists tenant configuration, **not** Postgres. Formal constitution exception with removal when/if Postgres tenant-config ships.        |
+| Q3 | **A** — Process-lifetime parse cache after successful read; restart required to refresh. Cached records MUST be immutable (frozen / not mutated across requests) for FR-012. |
+| Q4 | **B** — Relative `TENANT_CONFIG_DIR` allowed; resolve against **process CWD at boot**. Document for next dev, production start, and BDD. Prefer absolute paths in examples.  |
 
 ## 1. Durable source for this increment: filesystem, not Postgres
 
 **Decision**: Implement read-only JSON files under `TENANT_CONFIG_DIR` as the authoritative
 tenant configuration source. Do **not** introduce Postgres (or any SQL client) in this slice.
-Update `docs/multi-tenancy.md` to state filesystem is current; Postgres remains a future
-architecture target when/if product requires multi-node shared mutable config.
+**Maintainer approval recorded (Q2)**: filesystem is the approved persistence for this feature;
+record a constitution exception in [plan.md](./plan.md) (rule, justification, scope, removal
+condition). Update `docs/multi-tenancy.md` to state filesystem is **current**; Postgres remains
+a **future** architecture target when/if product requires multi-node shared mutable config.
 
-**Rationale**: Matches the approved specification and user input. Keeps ownership on the
-frontend process, avoids Compose/Postgres coupling for config, and satisfies “real persistence”
-without expanding into domain DB work.
+**Rationale**: Matches the approved specification, user input, and maintainer decision. Keeps
+ownership on the frontend process, avoids Compose/Postgres coupling for config, and satisfies
+“real persistence” without expanding into domain DB work.
 
-**Alternatives considered**: Postgres now (rejected—out of scope, heavier ops); keep env JSON
-(rejected—spec FR-009); object storage (rejected—unnecessary indirection).
+**Alternatives considered**: Postgres now (rejected—out of scope, heavier ops; exception
+removal condition covers future); keep env JSON (rejected—spec FR-009); object storage
+(rejected—unnecessary indirection).
 
 ## 2. Environment variable names
 
 **Decision**:
 
-| Role                    | Name                  | Notes                                                                     |
-| ----------------------- | --------------------- | ------------------------------------------------------------------------- |
-| Configuration directory | `TENANT_CONFIG_DIR`   | Absolute or process-resolvable path; required for successful config reads |
-| Static tenant name      | `TENANT_STATIC_ALIAS` | Canonical slug only; development static mode                              |
-| Mode switch             | `TENANT_RESOLUTION`   | Unchanged: `host` \| `static`; production ignores                         |
+| Role                    | Name                  | Notes                                                                                      |
+| ----------------------- | --------------------- | ------------------------------------------------------------------------------------------ |
+| Configuration directory | `TENANT_CONFIG_DIR`   | Absolute preferred in examples; relative allowed → resolve vs **process CWD at boot** (Q4) |
+| Static tenant name      | `TENANT_STATIC_ALIAS` | Canonical slug only; development static mode                                               |
+| Mode switch             | `TENANT_RESOLUTION`   | Unchanged: `host` \| `static`; production ignores                                          |
 
 Stop reading `TENANT_CONFIG_RECORDS_JSON` and `TENANT_LOCAL_CONFIG_JSON` in application code.
-If still present in an environment, they have **no effect** (filesystem is sole source).
+If still present in an environment, they have **no effect** and emit **no** startup diagnostic
+(Q1 — silent ignore only).
 
 **Rationale**: Clear roles, parallel naming to existing `TENANT_*` prefix, “alias” matches
-host-bound identity language in the spec.
+host-bound identity language in the spec. Silent ignore avoids dual-source bugs and matches
+approved cutover UX.
 
 **Alternatives considered**: `TENANT_CONFIG_PATH` (ambiguous file vs dir);
-`TENANT_STATIC_NAME` (fine synonym; alias preferred for consistency with hostname label).
+`TENANT_STATIC_NAME` (fine synonym; alias preferred for consistency with hostname label);
+non-blocking startup warning when obsolete JSON vars present (rejected—Q1).
 
 ## 3. File layout and JSON shape
 
@@ -66,8 +81,9 @@ directory scan / index file (rejected—FR requires per-request single-file open
 
 **Decision**: Add `createFilesystemTenantSource(directoryPath: string): TenantSource`:
 
-1. Resolve and validate the directory at construction (or first use): missing / not a directory
-   → throw `CONFIG_UNAVAILABLE` (not an empty map).
+1. **Fail-fast at construction** (process startup / source wiring): resolve `directoryPath`
+   (absolute as given; relative against **CWD at boot**). Missing / not a directory → throw
+   `CONFIG_UNAVAILABLE` (not an empty map). Do not wait for first tenant request.
 2. On `readTenantRecord(slug)`:
    - If `!isCanonicalTenantSlug(slug)` → treat as unknown (`undefined`) or let callers
      `forbidden()` first (callers already gate canonical slugs).
@@ -77,14 +93,17 @@ directory scan / index file (rejected—FR requires per-request single-file open
    - Other I/O, JSON parse failure, `parseTenantRecord` failure, or `record.slug !== slug`
      → reject with `CONFIG_UNAVAILABLE` (configuration failure → 500).
 3. Do not readdir the directory for host lookups.
-4. Optional process-lifetime cache of successfully parsed records keyed by slug; document
-   restart after file edits (same as prior env JSON).
+4. **Process-lifetime parse cache** (Q3) of successfully parsed records keyed by slug;
+   restart required after file edits. Cached snapshots MUST be **immutable** (frozen /
+   not mutated across requests) so FR-012 holds. On cache miss: read, parse, freeze, store.
 
 **Rationale**: Maps cleanly onto existing 403 vs 500 adapter behavior; satisfies path-escape
-and single-file constraints in Gherkin.
+and single-file constraints in Gherkin; fail-fast reduces production blast radius from bad
+mounts; immutable cache matches prior env-JSON immutability without shared mutable state.
 
-**Alternatives considered**: Re-read every request without cache (acceptable but noisier I/O);
-treat missing dir as empty set (rejected—spec edge case requires visible unavailable).
+**Alternatives considered**: Lazy directory validation on first use (rejected—delays diagnosis);
+re-read every request without cache (rejected—Q3 chooses cache); mutable cached objects
+(rejected—FR-012 risk).
 
 ## 5. Static mode by alias only
 
@@ -104,23 +123,28 @@ treat missing dir as empty set (rejected—spec edge case requires visible unava
 **Decision**:
 
 - Update `packages/frontend/.env.example` and quickstart to `TENANT_CONFIG_DIR` + sample
-  files under `packages/frontend/fixtures/tenant-config/`.
+  files under `packages/frontend/fixtures/tenant-config/` (absolute-path examples; note
+  relative → CWD at boot; restart after file edits; silent ignore of old JSON vars).
 - Retarget `tests/bdd/support/server.ts` (and related fixtures) to write per-scenario temp
   directories and set `TENANT_CONFIG_DIR` / `TENANT_STATIC_ALIAS` instead of JSON blobs.
-- Add Cucumber partition flag (e.g. `CUCUMBER_TENANT_FS=1` or include in default tenant
-  suite once steps exist)—prefer **include in default tenant BDD** after steps land because
-  this replaces the prior tenant source, not an additive gated suite. Until steps exist,
-  keep features discovered only when wired to avoid dry-run failures.
+- **Ordered BDD gate**: (1) harness + steps, (2) include `@tenant-config-fs` in the default
+  tenant suite / dry-run discovery, (3) remove JSON env injection. Do not discover filesystem
+  features before steps exist.
 - Remove runtime use of `parseRecordsJson` / `parseLocalConfigJson` from `dev`/`prod`/
   `createEnvTenantOperations`; keep pure helpers only if unit tests still need them, or
   delete if unused (`pnpm check:unused` / fallow).
+- Rollback: restore previous release / correct `TENANT_CONFIG_DIR` mount; do not re-enable
+  JSON env as dual-source.
 
-**Rationale**: FR-009; prevents dual-source drift; aligns harness with production shape.
+**Rationale**: FR-009 / FR-013; prevents dual-source drift; aligns harness with production
+shape; avoids mid-implementation dry-run breakage.
 
 ## 7. Docs synchronization
 
 **Decision**: Edit `docs/multi-tenancy.md` “Loading tenant configuration” to describe
 filesystem files and the two env vars; remove instructions that treat inline JSON as the
-source. Note Postgres as future, not current.
+source. Note Postgres as **future**, filesystem as **current**. Keep synthetic-only fixture
+language. Prefer absolute paths in examples; document CWD-at-boot for relative paths.
 
-**Rationale**: Constitution requires resolving strategy conflicts before implementation.
+**Rationale**: Constitution requires resolving strategy conflicts before implementation;
+critique X1 / P3.
