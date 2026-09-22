@@ -8,8 +8,8 @@
     "dev:frontend": "pnpm --filter @pathableai/pre-ets-frontend dev",
     "build": "pnpm --filter \"./packages/*\" run build",
     "typecheck": "tsc --noEmit -p tsconfig.json && pnpm --filter \"./packages/*\" run typecheck",
-    "lint": "eslint \"*.js\" \"*.mjs\" tests --max-warnings=0 && pnpm --filter \"./packages/*\" run lint",
-    "lint:fix": "eslint \"*.js\" \"*.mjs\" tests --max-warnings=0 --fix && pnpm --filter \"./packages/*\" run lint:fix",
+    "lint": "eslint \"*.js\" \"*.mjs\" tests e2e --max-warnings=0 && pnpm --filter \"./packages/*\" run lint",
+    "lint:fix": "eslint \"*.js\" \"*.mjs\" tests e2e --max-warnings=0 --fix && pnpm --filter \"./packages/*\" run lint:fix",
     "test:bdd:dry": "CUCUMBER_SESSION=1 CUCUMBER_OIDC=1 CUCUMBER_IDLE=1 cucumber-js --config cucumber.mjs --dry-run",
     "test:bdd": "CUCUMBER_REPORT=cucumber-production cucumber-js --config cucumber.mjs --tags '@production' && CUCUMBER_REPORT=cucumber-remaining cucumber-js --config cucumber.mjs --tags 'not @production'",
     "test:bdd:session": "CUCUMBER_SESSION=1 CUCUMBER_REPORT=cucumber-session cucumber-js --config cucumber.mjs --tags '@session-setup'",
@@ -21,10 +21,15 @@
     "test:bdd:tenant-fs": "CUCUMBER_REPORT=cucumber-tenant-fs cucumber-js --config cucumber.mjs --tags '@tenant-config-fs'",
     "fallow": "fallow",
     "check:unused": "fallow dead-code",
-    "format:check": "dprint check \"*\" .github docs tests && pnpm --filter \"./packages/*\" run format:check",
-    "format:write": "dprint fmt \"*\" .github docs tests && pnpm --filter \"./packages/*\" run format:write",
+    "format:check": "dprint check \"*\" .github docs tests e2e && pnpm --filter \"./packages/*\" run format:check",
+    "format:write": "dprint fmt \"*\" .github docs tests e2e && pnpm --filter \"./packages/*\" run format:write",
     "prepare": "husky",
-    "check:changes": "fallow audit --gate new-only --gate-marker pre-commit"
+    "check:changes": "fallow audit --gate new-only --gate-marker pre-commit",
+    "test:e2e": "playwright test --config e2e/playwright.config.ts",
+    "test:e2e:ui": "playwright test --config e2e/playwright.config.ts --ui"
+  },
+  "dependencies": {
+    "redis": "6.2.1"
   },
   "devDependencies": {
     "@cucumber/cucumber": "13.2.1",
@@ -32,6 +37,7 @@
     "@dprint/markdown": "0.24.0",
     "@dprint/typescript": "0.96.1",
     "@eslint/js": "10.0.1",
+    "@playwright/test": "1.63.0",
     "@types/node": "24.13.6",
     "dprint": "0.57.4",
     "dprint-plugin-yaml": "0.6.0",

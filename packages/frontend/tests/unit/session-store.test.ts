@@ -348,6 +348,39 @@ describe("RedisSessionStore", () => {
       createClientSpy.mockRestore()
     })
 
+    it("waits for Redis readiness when the socket opens before connect finishes", async () => {
+      let finishConnecting: () => void = () => undefined
+      const ready = new Promise<void>((resolve) => {
+        finishConnecting = resolve
+      })
+      const mockClient = {
+        connect: vi.fn(() => {
+          mockClient.isOpen = true
+          return ready
+        }),
+        eval: vi.fn().mockResolvedValue(null),
+        get: vi.fn().mockResolvedValue(null),
+        isOpen: false,
+        set: vi.fn().mockResolvedValue("OK")
+      }
+      const clientFactory = vi.fn(() => mockClient)
+      const store = new RedisSessionStore(testConfig(), { clientFactory })
+      const first = store.read(fixedSessionId(5))
+      const second = store.read(fixedSessionId(6))
+
+      try {
+        await Promise.resolve()
+        await Promise.resolve()
+        expect(mockClient.get).not.toHaveBeenCalled()
+        expect(clientFactory).toHaveBeenCalledTimes(1)
+      } finally {
+        finishConnecting()
+        await Promise.all([first, second])
+      }
+
+      expect(mockClient.get).toHaveBeenCalledTimes(2)
+    })
+
     it("shares one in-flight connect promise across concurrent reads", async () => {
       let connectCount = 0
       const mockClient = {

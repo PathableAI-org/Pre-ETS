@@ -42,12 +42,12 @@ this slice.
 
 ### Anonymous `SessionRecord` (base + optional cause / latch)
 
-| Field                   | Type                      | Rule                                                                                                                                                                      |
-| ----------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `tenantId`              | string                    | Canonical slug                                                                                                                                                            |
-| `expiresAt`             | number                    | Absolute Unix seconds; Redis `EXAT` align                                                                                                                                 |
-| `accessEndedCause`      | `"inactivity"` \| omitted | Set only after confirmed idle clearance; may be cleared after first recovery UI read                                                                                      |
-| `sessionEndGeneration`  | number \| omitted         | Monotonic latch for this session end; retained until the ended session’s absolute `expiresAt` (same Redis key lifetime) so missed BroadcastChannel tabs can confirm inactivity while the key exists |
+| Field                  | Type                      | Rule                                                                                                                                                                                                |
+| ---------------------- | ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tenantId`             | string                    | Canonical slug                                                                                                                                                                                      |
+| `expiresAt`            | number                    | Absolute Unix seconds; Redis `EXAT` align                                                                                                                                                           |
+| `accessEndedCause`     | `"inactivity"` \| omitted | Set only after confirmed idle clearance; may be cleared after first recovery UI read                                                                                                                |
+| `sessionEndGeneration` | number \| omitted         | Monotonic latch for this session end; retained until the ended session’s absolute `expiresAt` (same Redis key lifetime) so missed BroadcastChannel tabs can confirm inactivity while the key exists |
 
 ### Authenticated `SessionRecord` (extended)
 
@@ -67,14 +67,14 @@ Proxy / SSR forward a separate strict-shape context today (`parseSessionContextJ
 `serializeSessionContext`, `sessionContextFromRecord`). Idle-aware authenticated SSR
 MUST extend that shape—not only Redis `SessionRecord`—or authenticated pages fail closed.
 
-| Field           | Type           | Rule                                                                                                      |
-| --------------- | -------------- | --------------------------------------------------------------------------------------------------------- |
-| `sessionId`     | string         | Existing                                                                                                  |
-| `tenantId`      | string         | Existing                                                                                                  |
-| `expiresAt`     | number         | **Existing—keep**. Absolute Unix seconds; required for `min(idleExpiresAt, expiresAt)` client timers      |
-| `userId`        | string \| omit | Existing authenticated presence                                                                           |
-| `userName`      | string \| omit | Existing                                                                                                  |
-| `idleExpiresAt` | number         | **Required when authenticated** — idle half of deadline-aligned revalidation                              |
+| Field           | Type           | Rule                                                                                                 |
+| --------------- | -------------- | ---------------------------------------------------------------------------------------------------- |
+| `sessionId`     | string         | Existing                                                                                             |
+| `tenantId`      | string         | Existing                                                                                             |
+| `expiresAt`     | number         | **Existing—keep**. Absolute Unix seconds; required for `min(idleExpiresAt, expiresAt)` client timers |
+| `userId`        | string \| omit | Existing authenticated presence                                                                      |
+| `userName`      | string \| omit | Existing                                                                                             |
+| `idleExpiresAt` | number         | **Required when authenticated** — idle half of deadline-aligned revalidation                         |
 
 Optionally forward `idleDurationMinutes` if useful for UI; do **not** forward
 `accessEndedCause`, `sessionEndGeneration`, or `lastActivityAt` on authenticated context.

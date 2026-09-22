@@ -8,10 +8,10 @@ Status: proposed implementation contract for feature `004-idle-session-timeout`.
 
 Trusted tenant configuration (env JSON today) MAY include `idleTimeoutMinutes`.
 
-| Input                                         | Outcome                                                                                                     |
-| --------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| Key omitted                                   | Effective duration **30** for new authenticated sessions                                                    |
-| Integer `n` where `5 <= n <= 30`              | Effective duration `n` for new authenticated sessions                                                       |
+| Input                                         | Outcome                                                                                                                                                                                           |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Key omitted                                   | Effective duration **30** for new authenticated sessions                                                                                                                                          |
+| Integer `n` where `5 <= n <= 30`              | Effective duration `n` for new authenticated sessions                                                                                                                                             |
 | Fractional, `<5`, `>30`, non-integer, disable | Reject; **whole-source fail-fast**—any invalid record makes the tenant source unusable (`CONFIG_UNAVAILABLE`) for all tenants until fixed + process restart (matches current static source parse) |
 | Unauthorized / cross-tenant change attempt    | Denied by existing host-bound config ownership (no cross-tenant write API in this slice)                                                                                                          |
 

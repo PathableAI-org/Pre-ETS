@@ -54,13 +54,13 @@ assessment research S2/S5; FR-004, FR-006; constitution II.
 **Decision**: Extend authenticated `SessionRecord` **and** forwarded
 `SessionContext` with idle-specific fields fixed at authentication time:
 
-| Field                  | Where                         | Meaning                                                                                 |
-| ---------------------- | ----------------------------- | --------------------------------------------------------------------------------------- |
-| `idleDurationMinutes`  | Redis authenticated record    | Whole minutes 5–30 copied from tenant policy at auth                                    |
-| `lastActivityAt`       | Redis authenticated record    | Unix seconds of last **accepted** qualifying activity (or auth time); **server clock**  |
-| `idleExpiresAt`        | Redis **and** SessionContext  | Deadline = `lastActivityAt + idleDurationMinutes * 60`; required on authenticated context |
-| `accessEndedCause`     | Anonymous Redis only          | `"inactivity"` after clearance; may clear after first recovery read (see §6)            |
-| `sessionEndGeneration` | Anonymous Redis only          | Replayable latch so siblings / missed BroadcastChannel are not stranded                 |
+| Field                  | Where                        | Meaning                                                                                   |
+| ---------------------- | ---------------------------- | ----------------------------------------------------------------------------------------- |
+| `idleDurationMinutes`  | Redis authenticated record   | Whole minutes 5–30 copied from tenant policy at auth                                      |
+| `lastActivityAt`       | Redis authenticated record   | Unix seconds of last **accepted** qualifying activity (or auth time); **server clock**    |
+| `idleExpiresAt`        | Redis **and** SessionContext | Deadline = `lastActivityAt + idleDurationMinutes * 60`; required on authenticated context |
+| `accessEndedCause`     | Anonymous Redis only         | `"inactivity"` after clearance; may clear after first recovery read (see §6)              |
+| `sessionEndGeneration` | Anonymous Redis only         | Replayable latch so siblings / missed BroadcastChannel are not stranded                   |
 
 Anonymous records are `{ tenantId, expiresAt }` plus optional cause/latch after
 inactivity clearance. Missing session / store miss / absolute expiry WITHOUT a
@@ -150,10 +150,10 @@ on activity (rejected—FR-006).
 **Decision**: Extend frontend `TenantConfig` with optional
 `idleTimeoutMinutes` (integer 5–30 inclusive).
 
-| Stored value                                                               | Behavior                                                                                   |
-| -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| Key omitted                                                                | Default **30** minutes for new authenticated sessions                                      |
-| Integer 5–30                                                               | That duration for new authenticated sessions                                               |
+| Stored value                                                               | Behavior                                                                                                                               |
+| -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Key omitted                                                                | Default **30** minutes for new authenticated sessions                                                                                  |
+| Integer 5–30                                                               | That duration for new authenticated sessions                                                                                           |
 | Present but invalid (fraction, `<5`, `>30`, non-integer, disable sentinel) | **Whole-source fail-fast** (`CONFIG_UNAVAILABLE`)—do not substitute default; no per-record last-known-good across a failed array parse |
 | Attempt to disable                                                         | Rejected; source remains unusable until config fixed + restart                                                                         |
 

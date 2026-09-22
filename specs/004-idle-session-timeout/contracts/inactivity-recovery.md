@@ -51,13 +51,13 @@ mutating confirm path. Any GET status probe MUST be **read-only** (no clearance,
 consume). Mirror [idle-expiration.md](./idle-expiration.md) activity-renewal transport
 rules.
 
-| Response (minimal)                          | Meaning                                                                                          |
-| ------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| Authenticated access still valid            | Continue; includes cookie-bound `sessionId`, `idleExpiresAt`, and `expiresAt` for timers         |
-| Access ended; cause `inactivity`            | Confirmed inactivity; includes opaque `sessionEndGeneration` + cookie-bound `sessionId`          |
-| Access ended; cause absent / not inactivity | Different recovery path; no inactivity claim; includes cookie-bound `sessionId` when resolvable  |
-| Session mismatch vs mounted id              | See handshake below—clear protected UI before accepting new context                              |
-| Transport / 5xx / store unavailable         | See failure stance below—not proof of idle                                                       |
+| Response (minimal)                          | Meaning                                                                                         |
+| ------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| Authenticated access still valid            | Continue; includes cookie-bound `sessionId`, `idleExpiresAt`, and `expiresAt` for timers        |
+| Access ended; cause `inactivity`            | Confirmed inactivity; includes opaque `sessionEndGeneration` + cookie-bound `sessionId`         |
+| Access ended; cause absent / not inactivity | Different recovery path; no inactivity claim; includes cookie-bound `sessionId` when resolvable |
+| Session mismatch vs mounted id              | See handshake below—clear protected UI before accepting new context                             |
+| Transport / 5xx / store unavailable         | See failure stance below—not proof of idle                                                      |
 
 Confirm/read is cookie-bound (`pathable-session` is HttpOnly). Every successful response
 MUST include the **current cookie-bound `sessionId`** (or an explicit
@@ -148,14 +148,14 @@ Aligns with recovery Gherkin “second tab” and FR-008 / FR-010.
 Use `@pathableai/react` **`Modal`** beneath a justified client boundary. Server Components
 continue to own session/tenant reads and cause detection on the recovery document path.
 
-| Requirement               | Observable                                                                                                       |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Requirement               | Observable                                                                                                                                              |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Explanation               | User-visible text that inactivity ended the session; MAY note possible unsaved work was lost (copy only—no draft keys in this slice; no extend control) |
-| Primary action            | Button accessible name **“Log in again”**                                                                        |
-| Accessible name / purpose | Announced to assistive technology; meaningful modal name                                                         |
-| Focus                     | Moves into modal on open; remains visibly usable; focus not returned to protected content through expired access |
-| Keyboard                  | All offered actions operable by keyboard                                                                         |
-| Protected content         | Removed from the active experience before further interaction is enabled                                         |
+| Primary action            | Button accessible name **“Log in again”**                                                                                                               |
+| Accessible name / purpose | Announced to assistive technology; meaningful modal name                                                                                                |
+| Focus                     | Moves into modal on open; remains visibly usable; focus not returned to protected content through expired access                                        |
+| Keyboard                  | All offered actions operable by keyboard                                                                                                                |
+| Protected content         | Removed from the active experience before further interaction is enabled                                                                                |
 
 No advance-warning, countdown, or “extend session” control in this slice.
 
@@ -205,11 +205,11 @@ No advance-warning, countdown, or “extend session” control in this slice.
 
 ## Temporary vs durable data
 
-| Kind                               | On inactivity expiry                                      |
-| ---------------------------------- | --------------------------------------------------------- |
-| Session draft / unsaved-work keys  | **None in this slice**—no cleanup op to implement/test   |
-| Protected UI content in the app    | Removed from active experience; not restored on login-again |
-| Durable saved business records     | Intact (backend / durable store)                          |
+| Kind                              | On inactivity expiry                                        |
+| --------------------------------- | ----------------------------------------------------------- |
+| Session draft / unsaved-work keys | **None in this slice**—no cleanup op to implement/test      |
+| Protected UI content in the app   | Removed from active experience; not restored on login-again |
+| Durable saved business records    | Intact (backend / durable store)                            |
 
 ## Resume after sleep / offline
 

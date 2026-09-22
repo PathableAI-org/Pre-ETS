@@ -300,3 +300,8 @@ mandatory for every change.
 Commit shared scripts, templates, skills, extension configuration, and the
 constitution. Keep the current-feature pointer, local extension overrides, and
 regenerable composition cache out of version control.
+
+## Browser E2E tests
+
+Run `pnpm test:e2e` after starting the Compose stack. See the
+[E2E guide](e2e/README.md) for setup, debugging, and coverage boundaries.

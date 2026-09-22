@@ -5,9 +5,14 @@
     "erasableSyntaxOnly": true,
     "types": [
       "node"
+    ],
+    "lib": [
+      "ES2022",
+      "DOM"
     ]
   },
   "include": [
-    "tests/**/*.ts"
+    "tests/**/*.ts",
+    "e2e/**/*.ts"
   ]
 }
