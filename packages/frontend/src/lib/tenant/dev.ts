@@ -2,15 +2,15 @@ import "server-only"
 import { headers } from "next/headers"
 import { forbidden } from "next/navigation"
 
-import { bindHost } from "./host.ts"
-import { parseRecordsJson, type TenantSource } from "./source.ts"
+import { loadHostBoundTenantConfig, requireHostTenantSlug, requireProcessTenantSource } from "./runtime-shared.ts"
+import { createFilesystemTenantSource, type TenantSource } from "./source.ts"
 import {
   CONFIG_UNAVAILABLE,
-  isCanonicalTenantSlug,
-  parseLocalConfigJson,
+  LOCAL_CONFIG_ERROR,
+  resolveTenantConfigDir,
+  resolveTenantStaticAlias,
   selectTenantMode,
-  type TenantConfig,
-  type TenantRecord
+  type TenantConfig
 } from "./types.ts"
 
 const selection = selectTenantMode(process.env.TENANT_RESOLUTION)
@@ -24,55 +24,71 @@ if ("diagnostic" in selection) {
 
 const staticMode = selection.mode === "static"
 
-let cachedHostSource: TenantSource | undefined
-let cachedStaticRecord: TenantRecord | undefined
+let processSource: TenantSource | undefined
+let processSourceError: Error | undefined
+try {
+  processSource = createFilesystemTenantSource(
+    resolveTenantConfigDir(process.env.TENANT_CONFIG_DIR),
+    { allowLoopbackHttp: true }
+  )
+} catch (error) {
+  processSourceError = error instanceof Error ? error : new Error(CONFIG_UNAVAILABLE)
+}
+
+let cachedStaticAlias: string | undefined
 
 export async function getCurrentTenant(): Promise<string> {
   if (staticMode) {
-    return staticRecord().slug
+    return staticAlias()
   }
 
   const host = (await headers()).get("host") ?? undefined
-  const slug = bindHost(host, "localhost")
-  if (slug === undefined) {
-    forbidden()
-  }
-
-  return slug
+  return requireHostTenantSlug(host, "localhost")
 }
 
 export async function getCurrentTenantConfig(tenant: string): Promise<TenantConfig> {
-  if (!isCanonicalTenantSlug(tenant)) {
+  const source = requireSource()
+  if (!staticMode) {
+    return await loadHostBoundTenantConfig(source, tenant)
+  }
+
+  return await loadStaticTenantConfig(source, tenant)
+}
+
+async function loadStaticTenantConfig(
+  source: TenantSource,
+  tenant: string
+): Promise<TenantConfig> {
+  const alias = staticAlias()
+  if (alias !== tenant) {
     forbidden()
   }
 
-  if (staticMode) {
-    const record = staticRecord()
-    if (record.slug !== tenant) {
-      forbidden()
+  try {
+    const record = await source.readTenantRecord(alias)
+    if (record?.slug !== alias) {
+      throw new Error(LOCAL_CONFIG_ERROR)
     }
 
     return record.config
-  }
+  } catch (error) {
+    if (error instanceof Error && error.message === LOCAL_CONFIG_ERROR) {
+      throw error
+    }
 
-  const record = await hostSource().readTenantRecord(tenant)
-  if (record === undefined) {
-    forbidden()
+    throw new Error(LOCAL_CONFIG_ERROR, { cause: error })
   }
-
-  if (record.slug !== tenant) {
-    throw new Error(CONFIG_UNAVAILABLE)
-  }
-
-  return record.config
 }
 
-function hostSource(): TenantSource {
-  cachedHostSource ??= parseRecordsJson(process.env.TENANT_CONFIG_RECORDS_JSON ?? "[]")
-  return cachedHostSource
+function requireSource(): TenantSource {
+  return requireProcessTenantSource(
+    processSource,
+    processSourceError,
+    () => new Error(LOCAL_CONFIG_ERROR)
+  )
 }
 
-function staticRecord(): TenantRecord {
-  cachedStaticRecord ??= parseLocalConfigJson(process.env.TENANT_LOCAL_CONFIG_JSON)
-  return cachedStaticRecord
+function staticAlias(): string {
+  cachedStaticAlias ??= resolveTenantStaticAlias(process.env.TENANT_STATIC_ALIAS)
+  return cachedStaticAlias
 }

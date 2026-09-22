@@ -1,3 +1,7 @@
+import fs from "node:fs"
+import os from "node:os"
+import path from "node:path"
+
 import type { TenantConfig, TenantOidcConfig, TenantRecord } from "../../src/lib/tenant/types.ts"
 
 export const springfieldOidc: TenantOidcConfig = {
@@ -46,3 +50,22 @@ export const localRecord: TenantRecord = {
 
 export const springfieldRecordsJson = JSON.stringify([springfieldRecord])
 export const localRecordJson = JSON.stringify(localRecord)
+
+/** Write `{alias}.json` files under a fresh temp directory; caller should remove when done. */
+export function writeTempTenantConfigDir(
+  records: readonly TenantRecord[],
+  options: { readonly rawFiles?: Readonly<Record<string, string>> } = {}
+): string {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tenant-config-"))
+  for (const record of records) {
+    fs.writeFileSync(path.join(dir, `${record.slug}.json`), JSON.stringify(record))
+  }
+
+  if (options.rawFiles !== undefined) {
+    for (const [name, contents] of Object.entries(options.rawFiles)) {
+      fs.writeFileSync(path.join(dir, name), contents)
+    }
+  }
+
+  return dir
+}

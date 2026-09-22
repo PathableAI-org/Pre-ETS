@@ -10,10 +10,23 @@ session state differs from backend domain persistence is described in
 The frontend owns tenant configuration. The Next.js app is the only reader of
 this data when rendering UI. Binding the host to a slug and loading
 configuration are first-party modules under `packages/frontend/src/lib/tenant`;
-there is no tenancy library. Durable tenant storage, authentication, and session
-architecture remain future work. This increment supplies a Display Name from
-either host-associated known records or one development-only static record.
-Local configuration needs no external services and does not use Compose.
+there is no tenancy library. **Current** tenant configuration is a read-only
+filesystem source: one `{alias}.json` file per tenant under `TENANT_CONFIG_DIR`.
+Host association opens only the bound alias’s file. Development static mode
+names a single alias via `TENANT_STATIC_ALIAS` with `TENANT_RESOLUTION=static`
+and reads that same directory. Prefer an absolute `TENANT_CONFIG_DIR`; relative
+paths resolve against the process CWD at boot (source construction). After
+editing a tenant file, restart the frontend so the process-lifetime parse cache
+refreshes. Superseded `TENANT_CONFIG_RECORDS_JSON` / `TENANT_LOCAL_CONFIG_JSON`
+are **silently ignored** if still set (no dual source). Authentication and
+session architecture are described in the linked notes. Local configuration
+needs no external services and does not use Compose for tenant config.
+Committed examples and fixtures are synthetic only.
+
+**Postgres** (or another shared mutable multi-node store) remains a longer-term
+architecture target when product needs it—not the active source today. See
+`specs/005-tenant-config-fs/` for the filesystem contract and constitution
+exception recorded while Postgres stays deferred.
 
 ## Tenant slug
 
@@ -58,26 +71,30 @@ authoritative.
 The slug from the binding step is the argument to `getCurrentTenantConfig`:
 
 ```text
-request URL → slug → tenant configuration
+request URL → slug → tenant configuration (from TENANT_CONFIG_DIR/{alias}.json)
 ```
 
-A missing, unreadable, or unknown host is refused with `forbidden()`. An
-unknown or non-canonical slug argument is also `forbidden()`. Invalid or
-unreadable selected configuration throws (HTTP 500). The UI does not substitute
-another tenant’s configuration, a default tenant, or the slug as a Display Name.
+Host association reads `{TENANT_CONFIG_DIR}/{slug}.json` only (no directory
+scan). A missing file for an otherwise valid host is refused with
+`forbidden()`. An unknown or non-canonical slug argument is also
+`forbidden()`. Invalid, mismatched, or unreadable selected configuration throws
+(HTTP 500). A missing, empty, or non-directory `TENANT_CONFIG_DIR` fails at
+source construction (visible configuration unavailable). The UI does not
+substitute another tenant’s configuration, a default tenant, or the slug as a
+Display Name.
 
-These functions do not cache or store the current tenant on the request. The
+These functions do not store the current tenant on the request object. The
 nested layout only gates the request. Any Server Component that needs a slug or
-Display Name calls the same functions itself. A later session slice can look
-the tenant up from the session first.
+Display Name calls the same functions itself. Session slices may look the
+tenant up from the session first.
 
-In development, an explicit `TENANT_RESOLUTION=static` setting may supply
-exactly one local record and show only that Display Name on `localhost`. That
-exception is honored only when `NODE_ENV=development`. Production
-always binds `{slug}.pathable.com` and never reads `TENANT_RESOLUTION` or
-`TENANT_LOCAL_CONFIG_JSON`. Unset, `test`, `staging`, and any other runtime
-use production host association. Unsupported mode values keep host association and
-emit a safe `invalid-mode` diagnostic.
+In development, an explicit `TENANT_RESOLUTION=static` setting may name exactly
+one alias via `TENANT_STATIC_ALIAS` and show only that file’s Display Name on
+`localhost`. That exception is honored only when `NODE_ENV=development`.
+Production always binds `{slug}.pathable.com` and never reads
+`TENANT_RESOLUTION` or `TENANT_STATIC_ALIAS`. Unset, `test`, `staging`, and any
+other runtime use production host association. Unsupported mode values keep
+host association and emit a safe `invalid-mode` diagnostic.
 
 Downstream frontend modules that need tenancy call `getCurrentTenant` /
 `getCurrentTenantConfig`. They do not parse the request URL themselves to

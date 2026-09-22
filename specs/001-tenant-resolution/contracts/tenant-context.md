@@ -32,7 +32,7 @@ Host directly. No browser-side tenant selection, public configuration endpoint, 
 operation is exposed.
 
 Production (`NODE_ENV === "production"`) always binds `{slug}.pathable.com`. It never reads `TENANT_RESOLUTION` or
-`TENANT_LOCAL_CONFIG_JSON`. Only `NODE_ENV === "development"` loads the development implementation, which chooses host vs static
+`TENANT_STATIC_ALIAS`. Only `NODE_ENV === "development"` loads the development implementation, which chooses host vs static
 at process start. Unset, `test`, `staging`, and any other runtime use the production host implementation.
 
 ## Server settings
@@ -40,17 +40,21 @@ at process start. Unset, `test`, `staging`, and any other runtime use the produc
 Place local settings in `packages/frontend/.env.local` or pass them to the frontend process. Do not use `NEXT_PUBLIC_`
 variables or `next.config`'s public environment export. `.env.example` contains synthetic examples only.
 
-| Variable                     | Format/default                                  | Effect                                                                                                                                                                                           |
-| ---------------------------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `TENANT_RESOLUTION`          | `host` or `static`; absent means `host`         | Read only by the development implementation. Static ignores Host and returns the one `TENANT_LOCAL_CONFIG_JSON` slug. Other values retain host mode and emit the safe `invalid-mode` diagnostic. |
-| `TENANT_CONFIG_RECORDS_JSON` | JSON array of tenant records; absent means `[]` | Known records for host mode. No automatic sample tenant.                                                                                                                                         |
-| `TENANT_LOCAL_CONFIG_JSON`   | JSON tenant record; no default                  | Required only in effective static mode; never a fallback for a host-mode miss.                                                                                                                   |
+**Superseded by filesystem source (005):** authoritative server settings for tenant configuration are
+`TENANT_CONFIG_DIR`, `TENANT_STATIC_ALIAS`, and `TENANT_RESOLUTION` as defined in
+[`specs/005-tenant-config-fs/contracts/filesystem-tenant-source.md`](../../005-tenant-config-fs/contracts/filesystem-tenant-source.md).
+`TENANT_CONFIG_RECORDS_JSON` and `TENANT_LOCAL_CONFIG_JSON` are **silently ignored** if still set.
 
-An unsupported mode is not a failure response: emit `invalid-mode` with guidance to use `host` or development-only `static`, without logging the raw value. Continue host association using `{slug}.localhost`: a known host can succeed, an invalid/unknown host is `forbidden()`. Never consult the local static record for an unsupported mode.
+| Variable              | Format/default                          | Effect                                                                                                                                                                                |
+| --------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `TENANT_RESOLUTION`   | `host` or `static`; absent means `host` | Read only by the development implementation. Static ignores Host and loads `TENANT_STATIC_ALIAS` from `TENANT_CONFIG_DIR`. Other values retain host mode + `invalid-mode` diagnostic. |
+| `TENANT_CONFIG_DIR`   | Filesystem directory path               | Required. Host and static modes read `{dir}/{alias}.json`. Relative paths resolve against process CWD at boot.                                                                        |
+| `TENANT_STATIC_ALIAS` | Canonical tenant slug                   | Development static mode only: which file to load. Ignored in production.                                                                                                              |
 
-Only the selected source is parsed. For example, malformed unused local data must not affect a production host-mode
-request. Do not mutate parsed records or environment settings during a running process; restarting is the documented
-update procedure.
+An unsupported mode is not a failure response: emit `invalid-mode` with guidance to use `host` or development-only `static`, without logging the raw value. Continue host association using `{slug}.localhost`: a known host can succeed, an invalid/unknown host is `forbidden()`. Never consult the static alias for an unsupported mode.
+
+Do not mutate parsed records or environment settings during a running process; restarting is the documented update
+procedure after editing tenant files.
 
 ### Mode diagnostic channel
 
@@ -87,10 +91,10 @@ unknown-tenant / configuration failures MAY terminate in Proxy with the same vis
 (`Access denied.` / static-mode guidance / generic 500). Layout-only `forbidden()` remains valid for
 non-participating routes until they join the matcher. Dual-layer regression coverage is required.
 
-| Condition                                         | Result        | Visible response                                                                       |
-| ------------------------------------------------- | ------------- | -------------------------------------------------------------------------------------- |
-| Invalid/unusable Host, unknown/non-canonical slug | `forbidden()` | `Access denied.`                                                                       |
-| Unreadable or invalid selected configuration      | throw         | HTTP 500; development static mode includes `TENANT_LOCAL_CONFIG_JSON` restart guidance |
+| Condition                                         | Result        | Visible response                                                                                        |
+| ------------------------------------------------- | ------------- | ------------------------------------------------------------------------------------------------------- |
+| Invalid/unusable Host, unknown/non-canonical slug | `forbidden()` | `Access denied.`                                                                                        |
+| Unreadable or invalid selected configuration      | throw         | HTTP 500; development static mode includes `TENANT_STATIC_ALIAS` / `TENANT_CONFIG_DIR` restart guidance |
 
 Never return another tenant's name, a default tenant, or the slug as a Display Name.
 

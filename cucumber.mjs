@@ -5,7 +5,10 @@ const includeIdle = process.env.CUCUMBER_IDLE === "1"
 const tenantFeatures = [
   "features/tenant-landing-page.feature",
   "features/local-static-tenant-configuration.feature",
-  "features/local-host-tenant-resolution.feature"
+  "features/local-host-tenant-resolution.feature",
+  "features/filesystem-host-tenant-configuration.feature",
+  "features/filesystem-static-tenant-name.feature",
+  "features/filesystem-tenant-source-cutover.feature"
 ]
 
 const sessionFeatures = [
@@ -30,7 +33,8 @@ const imports = [
   "tests/bdd/support/world.ts",
   "tests/bdd/support/server.ts",
   "tests/bdd/support/hooks.ts",
-  "tests/bdd/steps/tenant.steps.ts"
+  "tests/bdd/steps/tenant.steps.ts",
+  "tests/bdd/steps/tenant-fs.steps.ts"
 ]
 
 if (includeSession) {

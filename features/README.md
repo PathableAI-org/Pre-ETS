@@ -1,6 +1,76 @@
 # Acceptance scenarios
 
-Active feature: [004-idle-session-timeout](../specs/004-idle-session-timeout/spec.md).
+Active feature: [005-tenant-config-fs](../specs/005-tenant-config-fs/spec.md).
+
+## Filesystem tenant configuration persistence scenarios
+
+Source: [filesystem tenant configuration specification](../specs/005-tenant-config-fs/spec.md).
+Consumer type: **Human end user of UI**, detected from `next`, `react`, and `react-dom` in
+`packages/frontend/package.json`. Operators and local developers are human users of the landing
+page and documented setup; they are not reframed as API or CLI consumers.
+
+| File                                                                                         | Purpose                                                                                                   | Scenarios | Outlines | Example rows | Expanded cases |
+| -------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- | --------- | -------- | ------------ | -------------- |
+| [filesystem-host-tenant-configuration.feature](filesystem-host-tenant-configuration.feature) | Host-bound reads from `{alias}.json`, unknown vs configuration failure, isolation, and path safety.       | 3         | 5        | 18           | 21             |
+| [filesystem-static-tenant-name.feature](filesystem-static-tenant-name.feature)               | Static mode by tenant name only, invalid names/files, and production bypass rejection.                    | 3         | 3        | 9            | 12             |
+| [filesystem-tenant-source-cutover.feature](filesystem-tenant-source-cutover.feature)         | Cutover from inline JSON documents, filesystem authority when both exist, and consumer-contract preserve. | 5         | 0        | 0            | 5              |
+| **Total**                                                                                    |                                                                                                           | **11**    | **8**    | **27**       | **38**         |
+
+Expanded cases count each ordinary Scenario once and each Examples data row once; outline declarations are not
+counted again. Each scenario/row starts from independent setup, including restart and overlapping-request cases.
+
+### Filesystem-config traceability and verification boundaries
+
+Within files tagged `@tenant-config-fs`, `@FR-nnn`, `@SC-nnn`, and `@USn` refer exclusively to specification
+`005-tenant-config-fs`, not earlier tenant-resolution, session, OIDC, or idle-timeout specifications.
+All 13 functional requirements and seven success criteria have scenario references. Tags express intended
+coverage, not proof of runtime behavior.
+
+- `@browser`: Navigate the running landing page and assert meaningful visible Display Name outcomes.
+- `@http`: Verify refusal (HTTP 403) versus configuration failure (HTTP 500) without redirects that hide the outcome.
+- `@contract`: Verify single-file reads, path confinement, source authority over inline documents, and static-versus-host context labeling without public diagnostic endpoints.
+- `@production`: Production must ignore static-name / static-mode bypass settings.
+
+Concrete environment variable names for this feature are `TENANT_CONFIG_DIR`, `TENANT_STATIC_ALIAS`, and
+`TENANT_RESOLUTION` (see `specs/005-tenant-config-fs/`). Scenarios may still describe roles; step wiring should
+use those names. Exact configuration-error copy remains a planning decision where the specification only
+requires an understandable local error.
+
+### Filesystem-config fixture meanings and assumptions
+
+- Known-tenant tables create isolated synthetic `{alias}.json` files whose configuration includes at least a
+  Display Name suitable for landing-page verification. Fixtures remain synthetic and free of credentials.
+- A visit to a host means the landing page `/` at that authority against the local test server, not production DNS.
+- Missing file for a host-bound alias is unknown-tenant HTTP 403. Malformed, mismatched, unreadable, or
+  invalid-content files are configuration failures (HTTP 500) and must not expose another tenant’s Display Name.
+- “Former inline multi-tenant / full static JSON documents” are the superseded environment documents from feature
+  001; when both are present with the filesystem source configured, filesystem content is authoritative.
+- Changing a file and restarting is setup within that scenario; live hot-reload is not required.
+- Path-escape aliases are rejected; only `{alias}.json` directly under the configured directory is eligible.
+- No new business-rule assumptions beyond the specification: alias equals existing slug identity; static mode
+  remains development-only; consumers keep the existing tenant/configuration accessors.
+
+### Cross-feature impact (filesystem source / 001 inline JSON)
+
+Feature 005 replaces the configuration **source**. Superseded 001 scenarios for known-host
+Display Name, overlapping visits, source substitution, static supply/restart/invalid-record
+flows, local host happy-path display, and production static bypass were removed from the three
+tenant-resolution feature files above. Remaining 001 scenarios cover host refusal, mode safety,
+accessibility, and abstract configuration-failure contracts. Delivery still must retarget
+harness wiring from inline JSON env documents to the filesystem directory (and static tenant
+name) and bind `@tenant-config-fs` steps.
+
+### Filesystem-config artifact validation and execution status
+
+These three files are acceptance artifacts for filesystem-source delivery.
+`tests/bdd/steps/tenant-fs.steps.ts` binds `@tenant-config-fs` steps; the three
+`features/filesystem-*.feature` files are included in the default tenant suite
+(`cucumber.mjs`). Structural checks cover feature/background presence, unique scenario names, Given/When/Then ordering, outline
+columns, and the counts above. Default `pnpm test:bdd` discovers and runs them with the
+tenant-resolution partition.
+
+The complete inventory with these files is **15 feature files** and **273 expanded cases**: 32 tenant-resolution,
+42 session, 68 OIDC, 93 idle-timeout, and 38 filesystem-config.
 
 ## Tenant-resolution acceptance scenarios
 
@@ -15,16 +85,17 @@ These Gherkin files are the executable acceptance suite for tenant resolution.
 Cucumber bindings live in `tests/bdd/`. Pull request CI requires
 `pnpm test:bdd:dry` (discovery and step binding). Full `pnpm test:bdd` is
 acceptance evidence on `main`, or on a PR labeled `ci:bdd`. Dry discovery still
-reports 52 expanded cases (27 `@production`, 25 remaining).
+reports 32 expanded cases (20 `@production` from landing-page plus host/static
+remainders after filesystem-config supersession).
 
 ## Feature index
 
-| File                                                                                   | Purpose                                                                                              | Scenarios | Outlines | Example rows | Expanded cases |
-| -------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | --------- | -------- | ------------ | -------------- |
-| [tenant-landing-page.feature](tenant-landing-page.feature)                             | Known-tenant display, host refusal, isolation, and configuration contracts.                          | 4         | 6        | 20           | 24             |
-| [local-static-tenant-configuration.feature](local-static-tenant-configuration.feature) | Supplied local configuration, changed names, invalid data, and accessible text.                      | 4         | 2        | 10           | 14             |
-| [local-host-tenant-resolution.feature](local-host-tenant-resolution.feature)           | Explicit local host resolution, safe defaults, production bypass rejection, and local accessibility. | 3         | 3        | 11           | 14             |
-| **Total**                                                                              |                                                                                                      | **11**    | **11**   | **41**       | **52**         |
+| File                                                                                   | Purpose                                                                                             | Scenarios | Outlines | Example rows | Expanded cases |
+| -------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- | --------- | -------- | ------------ | -------------- |
+| [tenant-landing-page.feature](tenant-landing-page.feature)                             | Host refusal, isolation contracts, Display Name validation (known-host display superseded by 005).  | 2         | 5        | 18           | 20             |
+| [local-static-tenant-configuration.feature](local-static-tenant-configuration.feature) | Local static Display Name accessibility and keyboard journey (supply/load flows superseded by 005). | 1         | 1        | 3            | 4              |
+| [local-host-tenant-resolution.feature](local-host-tenant-resolution.feature)           | Host-mode safety, static-fallback refusal, invalid mode (happy-path display superseded by 005).     | 3         | 1        | 5            | 8              |
+| **Total**                                                                              |                                                                                                     | **6**     | **7**    | **26**       | **32**         |
 
 Expanded cases count each ordinary Scenario once and each Examples data row once; outline declarations are not
 counted again. Each scenario/row starts from independent setup, including restart and overlapping-request cases.
@@ -115,7 +186,7 @@ unimplemented session stubs do not fail the default runner or unlabeled PR CI. S
 (or run `pnpm test:bdd:session` / `pnpm test:bdd:dry`) to include session features and stubs. Existing
 tenant bindings remain intact. Dry discovery with `CUCUMBER_SESSION=1` matches all 94 expanded cases to
 exactly one definition per step. An isolated session run produced 42 failing scenarios, as expected
-before implementation; this is not runtime application verification. The tenant suite's 52-case count
+before implementation; this is not runtime application verification. The tenant suite's 32-case count
 above applies only to the three tenant-resolution files.
 
 ### Session traceability and verification
@@ -251,7 +322,8 @@ OIDC features and `tests/bdd/steps/oidc.steps.ts` are wired when `CUCUMBER_OIDC=
 `pnpm test:bdd:oidc` / `pnpm test:bdd:dry`, which also sets that flag). Step definitions remain pending
 stubs until implementation; dry-run checks discovery and bindings, not runtime behavior. Default
 `pnpm test:bdd` still omits OIDC so unimplemented stubs do not fail unlabeled PR CI.
-The nine-file inventory preceding feature 004 contains **162 expanded cases**: 52 tenant, 42 session, and 68 OIDC.
+The nine-file inventory preceding feature 004 historically contained **162 expanded cases**: 52 tenant
+(since reduced to 32 by 005 supersession), 42 session, and 68 OIDC.
 Earlier tenant/session execution notes above describe their own suites and are not OIDC implementation evidence.
 
 ## Idle-session timeout scenarios
@@ -343,4 +415,4 @@ claimed here.
 
 Default `pnpm test:bdd` still omits idle; labeled `ci:bdd` runs the idle contract and browser partitions.
 
-The complete **12-file** inventory contains **255 expanded cases**: 52 tenant, 42 session, 68 OIDC, and 93 idle-timeout.
+The complete inventory after feature 004 was **12 files / 255 expanded cases** (52 tenant, 42 session, 68 OIDC, 93 idle). Feature 005 adds three filesystem-config files (38 cases) and supersedes 20 tenant-resolution cases (tenant suite is now 32); see the active-feature section above for the current combined total.

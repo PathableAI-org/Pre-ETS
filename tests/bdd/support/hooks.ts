@@ -1,9 +1,11 @@
 import { After, Before, setDefaultTimeout } from "@cucumber/cucumber"
+import fs from "node:fs"
 import net from "node:net"
 import { chromium } from "playwright"
 
 import type { TenantWorld } from "./world.ts"
 
+import { ensureMockOidcIssuer } from "./oidc-mock.ts"
 import { closeMockOidcServer } from "./oidc.ts"
 import { closeOwnedResources } from "./server.ts"
 import { cleanupScenarioSessionKeys } from "./session.ts"
@@ -36,7 +38,6 @@ async function allocateFreePort(): Promise<number> {
 }
 
 function resetTenantWorld(world: TenantWorld): void {
-  world.alternativeDisplayName = undefined
   world.authoritativeHost = undefined
   world.binderInvocationCount = undefined
   world.browser = undefined
@@ -52,7 +53,6 @@ function resetTenantWorld(world: TenantWorld): void {
   world.invalidDisplayName = undefined
   world.lastVisitedUrl = undefined
   world.knownHostResult = undefined
-  world.localConfigProblem = undefined
   world.localStaticRecord = undefined
   world.modeDiagnostic = undefined
   world.forceDevelopmentRuntime = false
@@ -76,7 +76,6 @@ function resetTenantWorld(world: TenantWorld): void {
   world.playwrightChromium = chromium
   world.port = 3000
   world.processSignature = undefined
-  world.previousDisplayName = undefined
   world.prefetchResponse = undefined
   world.requestedHost = undefined
   world.resolutionFailure = undefined
@@ -86,6 +85,15 @@ function resetTenantWorld(world: TenantWorld): void {
   world.shelbyvillePage = undefined
   world.springfieldIdentity = undefined
   world.springfieldPage = undefined
+  world.tenantConfigDir = undefined
+  world.tenantConfigDirProblem = undefined
+  world.aliasFileProblems = undefined
+  world.omitAliasFiles = undefined
+  world.formerInlineRecordsJson = undefined
+  world.formerLocalConfigJson = undefined
+  world.craftedHostAlias = undefined
+  world.openedTenantFiles = []
+  world.staticTenantAlias = undefined
   world.tenants = []
   world.unknownHostResult = undefined
   world.unsupportedMode = undefined
@@ -131,10 +139,17 @@ Before(async function(this: TenantWorld, { pickle }) {
   this.useBrowser = pickle.tags.some((tag) => tag.name === "@browser")
   this.useContract = pickle.tags.some((tag) => tag.name === "@contract")
   this.useHttp = this.useBrowser || pickle.tags.some((tag) => tag.name === "@http")
+  if (pickle.tags.some((tag) => tag.name === "@production")) {
+    this.runtime = "production"
+    await ensureMockOidcIssuer(this)
+  }
 })
 
 After({ timeout: 30_000 }, async function(this: TenantWorld) {
   await cleanupScenarioSessionKeys(this)
   await closeOwnedResources(this)
   await closeMockOidcServer(this)
+  if (this.tenantConfigDir !== undefined && this.tenantConfigDir !== "") {
+    await fs.promises.rm(this.tenantConfigDir, { force: true, recursive: true }).catch(() => undefined)
+  }
 })

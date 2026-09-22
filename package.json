@@ -18,6 +18,7 @@
     "test:bdd:idle": "CUCUMBER_IDLE=1 CUCUMBER_REPORT=cucumber-idle cucumber-js --config cucumber.mjs --tags '@idle-session-timeout'",
     "test:bdd:idle:browser": "CUCUMBER_IDLE=1 CUCUMBER_REPORT=cucumber-idle-browser cucumber-js --config cucumber.mjs --tags '@idle-session-timeout and @browser and not @contract'",
     "test:bdd:idle:contract": "CUCUMBER_IDLE=1 CUCUMBER_REPORT=cucumber-idle-contract cucumber-js --config cucumber.mjs --tags '@idle-session-timeout and @contract'",
+    "test:bdd:tenant-fs": "CUCUMBER_REPORT=cucumber-tenant-fs cucumber-js --config cucumber.mjs --tags '@tenant-config-fs'",
     "fallow": "fallow",
     "check:unused": "fallow dead-code",
     "format:check": "dprint check \"*\" .github docs tests && pnpm --filter \"./packages/*\" run format:check",
