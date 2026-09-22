@@ -1,111 +1,13 @@
-# Step Definitions
+# Capability step definitions
 
-**Detected framework:** `@cucumber/cucumber` (TypeScript ESM at the repository root)
+Steps are split by capability and execution boundary (`*.application.ts`, `*.http.ts`, `*.browser.ts`).
+Every scenario selects exactly one execution level. Shared support owns fixtures and resources, never
+business policy. Application steps call production modules. HTTP steps inspect real responses. Browser
+steps use accessible roles and actual keyboard input.
 
-These bindings cover the platform as a whole. Root feature files are the Gherkin inputs, and
-Cucumber loads support code through `cucumber.mjs`.
+See [capability commands and evidence](../../../features/README.md) and the
+[scenario migration ledger](../../../features/TRACEABILITY.md).
 
-## Running scenarios
-
-From the repository root:
-
-```sh
-pnpm test:bdd:dry
-pnpm test:bdd
-pnpm test:bdd:session
-pnpm test:bdd:oidc
-pnpm test:bdd:idle
-pnpm test:bdd:tenant-fs
-```
-
-`test:bdd:dry` sets `CUCUMBER_SESSION=1`, `CUCUMBER_OIDC=1`, and `CUCUMBER_IDLE=1` and discovers every
-scenario (tenant including filesystem-config + session + OIDC + idle) without executing steps.
-`test:bdd` runs the tenant suite (tenant-resolution + `@tenant-config-fs`): the
-`@production` partition first, then `not @production`, writing distinct JSON reports under
-`reports/`. Session, OIDC, and idle stubs stay out of that default path.
-
-## Bindings
-
-Step definitions in `tenant.steps.ts` drive the owned Next.js test process, Playwright
-page/HTTP requests, and injected contract helpers against `src/lib/tenant`. Assertions read typed
-evidence on `TenantWorld`. Pending, undefined, and ambiguous steps must not be treated as
-passing.
-
-## Session setup scaffold
-
-`session.steps.ts` contains parameterized TypeScript bindings for `002-setup-session`. They use
-the existing root Cucumber layout rather than introducing a second step-definition directory.
-Quoted values use `{string}` parameters.
-
-`cucumber.mjs` loads session features and stubs only when `CUCUMBER_SESSION=1`. Run the session
-suite from the repository root:
-
-```sh
-pnpm test:bdd:session
-```
-
-## OIDC login scaffold
-
-`oidc.steps.ts` contains 139 parameterized TypeScript stubs for the OIDC feature files:
-
-- `features/tenant-oidc-login.feature`
-- `features/tenant-oidc-configuration.feature`
-- `features/local-oidc-development.feature`
-
-Each stub throws a `Pending:` error; replace it with the required setup, interaction, or
-assertion one step at a time. Quoted values use `{string}` parameters. Unused typed parameters
-are prefixed with `_` until implemented.
-
-`cucumber.mjs` loads OIDC features and stubs only when `CUCUMBER_OIDC=1`. Run the OIDC scaffold
-from the repository root:
-
-```sh
-pnpm test:bdd:oidc
-```
-
-Use `pnpm test:bdd:dry` to check combined discovery and `pnpm test:bdd` for the tenant
-acceptance suite. Dry runs do not prove implementation; the OIDC suite must fail until its
-bindings and implementation are complete.
-
-## Filesystem tenant-config
-
-`tenant-fs.steps.ts` binds `@tenant-config-fs` scenarios:
-
-- `features/filesystem-host-tenant-configuration.feature`
-- `features/filesystem-static-tenant-name.feature`
-- `features/filesystem-tenant-source-cutover.feature`
-
-These features are part of the default tenant suite in `cucumber.mjs`. From the repository root:
-
-```sh
-pnpm test:bdd:tenant-fs
-pnpm test:bdd
-```
-
-## Idle-session timeout
-
-`idle.steps.ts` binds the idle feature files:
-
-- `features/idle-session-expiration.feature` — `@contract` green via in-process harness
-- `features/idle-session-recovery.feature` — `@contract` (and dual-tagged) green via harness;
-  pure `@browser` green via Playwright (`tests/bdd/support/idle-browser.ts`) against Next + Redis + mock IdP
-- `features/tenant-idle-timeout-policy.feature` — `@contract` green via policy harness
-
-`cucumber.mjs` loads idle features and steps only when `CUCUMBER_IDLE=1`. From the repository root:
-
-```sh
-pnpm test:bdd:idle
-pnpm test:bdd:idle:contract
-pnpm test:bdd:idle:browser
-```
-
-Default `pnpm test:bdd` omits idle so the unlabeled PR suite stays focused. Labeled `ci:bdd` runs the idle contract and browser partitions. Release gates D-001 / D-005 / D-006 remain outside this suite.
-
-## What to implement
-
-All OIDC stubs raise `Pending:` errors. Replace each one with:
-
-1. Application interaction (HTTP call, UI action, database query, provider fixture)
-2. An assertion verifying the expected outcome
-
-Implement one step at a time, re-running the suite after each.
+The World is constructed fresh for each scenario; hooks acquire only tagged dependencies and clean up
+independent resources even after a failure. Tests never start/stop Compose, flush Redis, synthesize a
+successful authentication outcome, or claim test-owned collections establish durable persistence.

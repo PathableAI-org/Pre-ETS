@@ -7,11 +7,15 @@
     "packages/frontend/vitest.config.ts",
     "packages/frontend/tests/unit/**/*.ts",
     "cucumber.mjs",
-    "tests/bdd/**/*.ts",
     "e2e/playwright.config.ts",
     "e2e/*.spec.ts",
     "e2e/setup.ts",
-    "e2e/cleanup.ts"
+    "e2e/cleanup.ts",
+    "tests/bdd/run.mjs",
+    "tests/bdd/steps/*.ts",
+    "tests/bdd/support/hooks.ts",
+    "tests/bdd/support/world.ts",
+    "tests/bdd/checks/*.test.*"
   ],
   "workspaces": {
     "patterns": [

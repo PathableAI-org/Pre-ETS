@@ -314,15 +314,16 @@ Examples:
 
 - Specs-only Speckit PR (`specs/**`, `.specify/**`) → required checks succeed
   without install/build/Cucumber.
-- Scaffold PR touching `features/` and `tests/bdd/` → **CI / BDD Dry** (and
-  Quality when format/code paths match); **CI / Build** skips.
+- Acceptance changes touching `features/` or `tests/bdd/` → **CI / BDD Dry** and
+  **CI / BDD** (plus Quality when format/code paths match).
 - Implementation PR changing `packages/` → Quality, Build, and Fallow run.
 
-**CI / BDD** installs Chromium and runs production-first Cucumber partitions
-(`pnpm test:bdd`). It runs on pushes to `main`, manual dispatch, and pull
-requests labeled `ci:bdd`. Speckit scaffold PRs leave the label off so
-intentionally failing stubs do not block merge. Do not require **CI / BDD** in
-branch protection: a skipped required check blocks merge.
+**CI / BDD** builds the frontend, installs Chromium, and runs the capability suite
+(`pnpm test:bdd`) on relevant pull requests, pushes to `main`, and manual dispatch.
+Application, production-server and development-server partitions run serially; a failed partition
+still allows later partitions to report. **CI / BDD Dry** reports discovery separately.
+See [BDD commands and evidence](features/README.md). Real-Keycloak E2E remains manual.
+Branch-protection settings are managed separately from this refactor.
 
 CI uses the pinned Node and pnpm versions, a frozen lockfile, and pnpm store caching.
 `HUSKY=0` skips local hook installation; CI invokes the full checks directly and
