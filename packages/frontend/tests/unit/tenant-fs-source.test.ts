@@ -129,4 +129,29 @@ describe("filesystem tenant source", () => {
     expect(onFailure).toHaveBeenCalledWith("parse")
     expect(JSON.stringify(onFailure.mock.calls)).not.toContain("must-not-log")
   })
+  it("opens only the selected tenant file without reading another tenant", async () => {
+    const dir = writeTempTenantConfigDir([springfieldRecord, shelbyvilleRecord])
+    tempDirs.push(dir)
+    const read = vi.spyOn(fsp, "readFile")
+    const source = createFilesystemTenantSource(dir)
+    await source.readTenantRecord("springfield")
+    expect(read).toHaveBeenCalledTimes(1)
+    expect(read.mock.calls[0]?.[0]).toBe(fs.realpathSync(path.join(dir, "springfield.json")))
+  })
+
+  it("source substitution preserves the selected identity and observes replacement configuration", async () => {
+    const first = writeTempTenantConfigDir([springfieldRecord])
+    const second = writeTempTenantConfigDir([{
+      ...springfieldRecord,
+      config: { ...springfieldRecord.config, displayName: "Springfield Training" }
+    }])
+    tempDirs.push(first, second)
+    await expect(createFilesystemTenantSource(first).readTenantRecord("springfield")).resolves.toEqual(
+      springfieldRecord
+    )
+    await expect(createFilesystemTenantSource(second).readTenantRecord("springfield")).resolves.toMatchObject({
+      config: { displayName: "Springfield Training" },
+      slug: "springfield"
+    })
+  })
 })

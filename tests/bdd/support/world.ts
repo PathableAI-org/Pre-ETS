@@ -1,168 +1,68 @@
 import type { ChildProcess } from "node:child_process"
-import type { Browser, BrowserContext, BrowserType, Page } from "playwright"
+import type { Server } from "node:http"
+import type { Browser, BrowserContext, Page } from "playwright"
 
 import { setWorldConstructor, World } from "@cucumber/cucumber"
+import { randomBytes, randomUUID } from "node:crypto"
+import { createClient } from "redis"
 
+import type { RecordQualifyingActivityResult } from "../../../packages/frontend/src/lib/session/activity.ts"
+import type { GuardAuthenticatedAccessResult } from "../../../packages/frontend/src/lib/session/guard.ts"
 import type { SetupSessionResult } from "../../../packages/frontend/src/lib/session/setup.ts"
-import type { SessionRecord } from "../../../packages/frontend/src/lib/session/types.ts"
-import type { ModeDiagnostic, TenantConfig } from "../../../packages/frontend/src/lib/tenant/types.ts"
-import type { IdleContractState, IdlePolicyState } from "./idle.ts"
+import type { TenantOperationResult } from "../../../packages/frontend/src/lib/tenant/operations.ts"
+import type { SessionConfig, SessionRecord, TenantConfig } from "./types.ts"
 
-export type ApplicationRuntime = "development" | "production"
+import { RedisSessionStore } from "../../../packages/frontend/src/lib/session/store.ts"
 
-export type ContractFailureReason = "invalid-config" | "invalid-host" | "unknown-tenant" | "unreadable-config"
-
-export type ContractResult =
-  | {
-    readonly ok: false
-    readonly reason: ContractFailureReason
+export class CapabilityWorld extends World {
+  activityResult: RecordQualifyingActivityResult | undefined
+  readonly baseTime = Math.floor(Date.now() / 1000)
+  browser: Browser | undefined
+  readonly config: SessionConfig = {
+    keyPrefix: `bdd:${randomUUID()}:`,
+    redisUrl: process.env.REDIS_URL ?? "redis://127.0.0.1:6379",
+    signingSecret: randomBytes(32),
+    storeTimeoutMs: 2000,
+    ttlSeconds: 86400
   }
-  | {
-    readonly ok: true
-    readonly value: {
-      readonly config: TenantConfig
-      readonly slug: string
-    }
-  }
-
-export interface HttpExchange {
-  readonly body: string
-  readonly headers: Record<string, string>
-  readonly status: number
+  readonly client = createClient({
+    disableOfflineQueue: true,
+    socket: { connectTimeout: 2000, reconnectStrategy: false },
+    url: this.config.redisUrl
+  })
+  context: BrowserContext | undefined
+  cookie: string | undefined
+  directory = ""
+  extraHeaders: Record<string, string> = {}
+  failWrites = false
+  guardResult: GuardAuthenticatedAccessResult | undefined
+  issuer = "https://identity.example/realms/pre-ets"
+  logs = ""
+  now = this.baseTime
+  originalRecord: SessionRecord | undefined
+  page: Page | undefined
+  parsedConfig: TenantConfig | undefined
+  port = 0
+  process: ChildProcess | undefined
+  provider: Server | undefined
+  response: undefined | { body: string; headers: Record<string, string>; status: number }
+  runtime: "development" | "production" = "production"
+  sessionId = ""
+  setupResult: SetupSessionResult | undefined
+  staticAlias: string | undefined
+  readonly store = new RedisSessionStore(this.config, {
+    clientFactory: () => ({
+      connect: async () => {
+        if (!this.client.isOpen) await this.client.connect()
+      },
+      eval: (script, options) => this.client.eval(script, options),
+      get: (key) => this.client.get(key),
+      isOpen: this.client.isOpen,
+      set: (key, value, options) => this.client.set(key, value, options)
+    }),
+    clock: () => this.now
+  })
+  tenantResult: TenantOperationResult | undefined
+  tenantResults: TenantOperationResult[] = []
 }
-
-export interface MockOidcServerHandle {
-  readonly baseUrl: string
-  brokenAuthorize: boolean
-  readonly close: () => Promise<void>
-  readonly issuer: string
-}
-
-export interface OidcTenantFixtureState {
-  readonly clientAuth: "confidential" | "public"
-  readonly clientId: string
-  readonly connection?: string
-  readonly displayName: string
-  readonly issuer: string
-  readonly slug: string
-}
-
-export interface SessionContractEvidence {
-  readonly events: readonly string[]
-  readonly result: SetupSessionResult
-}
-
-export interface SyntheticTenantRecord {
-  readonly displayName: string
-  readonly slug: string
-}
-
-export type TenantResolutionMode = "host" | "static"
-
-export class TenantWorld extends World {
-  /** Per-alias file problems for filesystem scenarios. */
-  aliasFileProblems: Record<string, string> | undefined = undefined
-  authoritativeHost: string | undefined = undefined
-  binderInvocationCount: number | undefined = undefined
-  browser: Browser | undefined = undefined
-  browserContext: BrowserContext | undefined = undefined
-  competingSlug: string | undefined = undefined
-  configurationFailure: string | undefined = undefined
-  consumerContexts: { readonly config: TenantConfig; readonly slug: string }[] = []
-  contractResult: ContractResult | undefined = undefined
-  /** Crafted host-bound alias for path-escape contract scenarios. */
-  craftedHostAlias: string | undefined = undefined
-  crossTenantSessionId: string | undefined = undefined
-  establishedSlug: string | undefined = undefined
-  fixedNowSeconds: number | undefined = undefined
-  forceDevelopmentRuntime = false
-  foreignSessionRecord: SessionRecord | undefined = undefined
-  /** Optional former JSON payloads left in the env to prove silent ignore. */
-  formerInlineRecordsJson: string | undefined = undefined
-  formerLocalConfigJson: string | undefined = undefined
-  hostCondition: string | undefined = undefined
-  httpResponse: HttpExchange | undefined = undefined
-  idleBrowserCause: string | undefined = undefined
-  idleBrowserDurableRecords: Set<string> | undefined = undefined
-  idleBrowserTemporaryWork: string | undefined = undefined
-  idleContract: IdleContractState | undefined = undefined
-  idlePolicy: IdlePolicyState | undefined = undefined
-  invalidDisplayName: string | undefined = undefined
-  knownHostResult: ContractResult | undefined = undefined
-  lastVisitedUrl: string | undefined = undefined
-  localStaticRecord: SyntheticTenantRecord | undefined = undefined
-  modeDiagnostic: ModeDiagnostic | undefined = undefined
-  oidcCallerOverride: undefined | { readonly source: string; readonly value: string } = undefined
-  oidcClientSecretsJson: string | undefined = undefined
-  oidcConcurrentResponses: undefined | {
-    readonly shelbyville: HttpExchange
-    readonly springfield: HttpExchange
-  } = undefined
-  oidcDefect: string | undefined = undefined
-  oidcFixtures: OidcTenantFixtureState[] | undefined = undefined
-  oidcForcedFailure: string | undefined = undefined
-  oidcLastRequestedUrl: string | undefined = undefined
-  oidcMockBrokenAuthorize = false
-  oidcMockIssuer: string | undefined = undefined
-  oidcMockServer: MockOidcServerHandle | undefined = undefined
-  oidcNonDocumentRequest = false
-  oidcRawSpringfieldOverride: unknown = undefined
-  oidcSupportingCategory: string | undefined = undefined
-  oidcTxKeyPrefix: string | undefined = undefined
-  oidcUnreadableConfig = false
-  /** Aliases whose files should be omitted after materialization. */
-  omitAliasFiles: string[] | undefined = undefined
-  /** Files opened during contract filesystem reads (basename). */
-  openedTenantFiles: string[] = []
-  originalSessionId: string | undefined = undefined
-  originalSessionTenantId: string | undefined = undefined
-  ownedProcess: ChildProcess | undefined = undefined
-  page: Page | undefined = undefined
-  playwrightChromium: BrowserType | undefined = undefined
-  port = 3000
-  prefetchResponse: HttpExchange | undefined = undefined
-  previousSessionRecord: SessionRecord | undefined = undefined
-  processSignature: string | undefined = undefined
-  redisStoppedViaDocker = false
-  redisUrl: string | undefined = undefined
-  requestedHost: string | undefined = undefined
-  resolutionFailure: ContractFailureReason | undefined = undefined
-  resolutionMode: TenantResolutionMode | undefined = undefined
-  runtime: ApplicationRuntime | undefined = undefined
-  sessionContract: SessionContractEvidence | undefined = undefined
-  sessionCookieHostStyle: "localhost" | "pathable" = "pathable"
-  sessionCookieJar: Map<string, string> | undefined = undefined
-  sessionCookieTenant: string | undefined = undefined
-  sessionCreatedAtSeconds: number | undefined = undefined
-  sessionDoubleAccess = false
-  sessionExpiresAtSeconds: number | undefined = undefined
-  sessionHadCookieBeforeLastVisit = false
-  sessionId: string | undefined = undefined
-  sessionIssuedSetCookie: string | undefined = undefined
-  sessionKeyPrefix: string | undefined = undefined
-  sessionRefusedCookie = false
-  sessionSigningSecret: string | undefined = undefined
-  sessionStorageFailed = false
-  sessionStorageFailureOperation: string | undefined = undefined
-  sessionStoreTimeoutMs: number | undefined = undefined
-  sessionTenantId: string | undefined = undefined
-  sessionTrackedIds: string[] = []
-  sessionTtlSeconds: number | undefined = undefined
-  shelbyvilleIdentity: undefined | { readonly slug: string } = undefined
-  shelbyvillePage: Page | undefined = undefined
-  springfieldIdentity: undefined | { readonly slug: string } = undefined
-  springfieldPage: Page | undefined = undefined
-  staticTenantAlias: string | undefined = undefined
-  /** Absolute path to the scenario's tenant-config directory (BDD harness). */
-  tenantConfigDir: string | undefined = undefined
-  /** Problem applied to TENANT_CONFIG_DIR itself (missing/empty/not-a-directory). */
-  tenantConfigDirProblem: string | undefined = undefined
-  tenants: SyntheticTenantRecord[] = []
-  unknownHostResult: ContractResult | undefined = undefined
-  unsupportedMode: string | undefined = undefined
-  useBrowser = false
-  useContract = false
-  useHttp = false
-}
-
-setWorldConstructor(TenantWorld)
+setWorldConstructor(CapabilityWorld)

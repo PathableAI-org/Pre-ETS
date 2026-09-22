@@ -215,4 +215,25 @@ describe("tenant operations", () => {
       expect(result.config.displayName).toBe("Springfield Demo")
     }
   })
+  it("static alias selection ignores a conflicting legacy inline document", async () => {
+    const dir = writeTempTenantConfigDir([springfieldRecord])
+    tempDirs.push(dir)
+    const { createEnvTenantOperations } = await import("../../src/lib/tenant/operations.ts")
+    const operations = createEnvTenantOperations({
+      NODE_ENV: "development",
+      TENANT_CONFIG_DIR: dir,
+      TENANT_LOCAL_CONFIG_JSON: JSON.stringify({
+        config: { ...springfieldConfig, displayName: "Inline Must Not Win" },
+        slug: "shelbyville"
+      }),
+      TENANT_RESOLUTION: "static",
+      TENANT_STATIC_ALIAS: "springfield"
+    })
+    await expect(operations.resolve({ host: "localhost:3000" })).resolves.toMatchObject({
+      config: { displayName: "Springfield Demo" },
+      kind: "ok",
+      origin: "local-static",
+      tenantId: "springfield"
+    })
+  })
 })

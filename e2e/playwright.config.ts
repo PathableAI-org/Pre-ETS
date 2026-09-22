@@ -1,6 +1,8 @@
 import { defineConfig } from "@playwright/test"
 import { randomBytes, randomUUID } from "node:crypto"
 
+import { prepareTenantDirectory } from "./tenant-directory.ts"
+
 process.env.E2E_RUN_ID ??= randomUUID()
 process.env.E2E_SESSION_SECRET ??= randomBytes(32).toString("base64url")
 process.env.E2E_OIDC_SECRET ??= randomBytes(32).toString("base64url")
@@ -35,19 +37,9 @@ export default defineConfig({
       OIDC_TX_TTL_SECONDS: "600",
       SESSION_STORE_TIMEOUT_MS: "2000",
       SESSION_TTL_SECONDS: "86400",
-      TENANT_LOCAL_CONFIG_JSON: JSON.stringify({
-        config: {
-          displayName: "Local Demo",
-          idleTimeoutMinutes: 5,
-          oidc: {
-            clientAuth: "public",
-            clientId: "springfield-web",
-            issuer: "http://127.0.0.1:8080/realms/pre-ets"
-          }
-        },
-        slug: "springfield"
-      }),
-      TENANT_RESOLUTION: "static"
+      TENANT_CONFIG_DIR: prepareTenantDirectory(),
+      TENANT_RESOLUTION: "static",
+      TENANT_STATIC_ALIAS: "springfield"
     },
     reuseExistingServer: false,
     timeout: 120_000,

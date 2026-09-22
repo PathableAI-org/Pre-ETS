@@ -13,7 +13,7 @@ Compose requires the bootstrap administrator settings documented in
 synthetic `demo` / `demo` user and `springfield-web` public client.
 
 Leave port 3000 free. Playwright starts and stops its own development frontend
-with static Springfield resolution, a five-minute idle policy, fresh signing
+with static Springfield resolution from an isolated temporary tenant directory, a five-minute idle policy, fresh signing
 secrets, and isolated Redis prefixes. It never manages Compose services or
 changes local environment files. Existing servers are not reused.
 
