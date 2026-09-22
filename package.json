@@ -24,19 +24,10 @@
     "format:check": "dprint check \"*\" .github docs tests e2e && pnpm --filter \"./packages/*\" run format:check",
     "format:write": "dprint fmt \"*\" .github docs tests e2e && pnpm --filter \"./packages/*\" run format:write",
     "prepare": "husky",
-<<<<<<< HEAD
     "check:changes": "fallow audit --gate new-only --gate-marker pre-commit",
+    "effect-solutions": "node node_modules/effect-solutions/bin.js",
     "test:e2e": "playwright test --config e2e/playwright.config.ts",
     "test:e2e:ui": "playwright test --config e2e/playwright.config.ts --ui"
-  },
-  "dependencies": {
-    "redis": "6.2.1"
-||||||| parent of a347fdf (chore: update package.json files to include new dependencies and adjust TypeScript configurations)
-    "check:changes": "fallow audit --gate new-only --gate-marker pre-commit"
-=======
-    "check:changes": "fallow audit --gate new-only --gate-marker pre-commit",
-    "effect-solutions": "node node_modules/effect-solutions/bin.js"
->>>>>>> a347fdf (chore: update package.json files to include new dependencies and adjust TypeScript configurations)
   },
   "devDependencies": {
     "@cucumber/cucumber": "13.2.1",
