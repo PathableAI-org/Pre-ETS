@@ -25,10 +25,13 @@
     "format:write": "dprint fmt \"*\" .github docs tests e2e && pnpm --filter \"./packages/*\" run format:write",
     "prepare": "husky",
     "check:changes": "fallow audit --gate new-only --gate-marker pre-commit",
+    "effect-solutions": "node node_modules/effect-solutions/bin.js",
     "test:e2e": "playwright test --config e2e/playwright.config.ts",
     "test:e2e:ui": "playwright test --config e2e/playwright.config.ts --ui"
   },
   "dependencies": {
+    "@effect/platform-node": "4.0.0-rc.113",
+    "effect": "4.0.0-rc.113",
     "redis": "6.2.1"
   },
   "devDependencies": {
@@ -36,11 +39,13 @@
     "@dprint/json": "0.24.0",
     "@dprint/markdown": "0.24.0",
     "@dprint/typescript": "0.96.1",
+    "@effect/language-service": "0.87.2",
     "@eslint/js": "10.0.1",
     "@playwright/test": "1.63.0",
     "@types/node": "24.13.6",
     "dprint": "0.57.4",
     "dprint-plugin-yaml": "0.6.0",
+    "effect-solutions": "0.5.3",
     "eslint": "10.11.0",
     "eslint-plugin-perfectionist": "5.11.1",
     "fallow": "3.27.0",

@@ -96,6 +96,68 @@ workflow.
 An Effect v4 backend is planned. Client workflows beyond this landing page are
 not implemented yet.
 
+## Effect developer setup
+
+Frontend and backend use Effect **4.0.0-rc.113** (coordinated with matching
+`@effect/platform-node` on the backend). Both workspaces enable the Effect
+language-service plugin and follow the Effect-first AI workflow; product
+ownership is unchanged (frontend owns Next/OIDC/session; backend owns the
+Effect REST domain layer).
+
+After installing dependencies, read the bundled Effect Solutions topics from the
+repository root:
+
+```sh
+pnpm install --frozen-lockfile
+pnpm effect-solutions list
+pnpm effect-solutions show project-setup tsconfig
+pnpm effect-solutions show services-and-layers error-handling testing
+```
+
+The package script runs the pinned CLI through Node, bypassing its Bun shebang.
+Its bundled executable supports macOS and Linux on x64/arm64 and provides offline
+documentation. No global Bun installation is required. CLI examples must be
+checked against installed **4.0.0-rc.113** types; its dependencies do not change
+the product pin set. See [Effect agent guidance](docs/engineering/effect-guidance.md)
+for coding boundaries.
+
+Optionally clone Effect source for local examples and API reference (main / RC
+tags matching the product pin):
+
+```sh
+mkdir -p ~/.local/share/effect-solutions
+git clone --depth 1 --branch main \
+  https://github.com/Effect-TS/effect.git \
+  ~/.local/share/effect-solutions/effect-v4
+```
+
+If that directory already exists, inspect it or choose a different location rather
+than overwriting it. Prefer the installed package declarations when docs disagree.
+
+For VS Code/Cursor, select **TypeScript: Select TypeScript Version → Use Workspace
+Version**. The repository's editor settings already point at the local SDK.
+To also get Effect diagnostics from the compiler, manually patch the local
+TypeScript installation and inspect the result:
+
+```sh
+pnpm exec effect-language-service patch
+pnpm exec effect-language-service check
+pnpm exec effect-language-service diagnostics --project packages/backend/tsconfig.json
+pnpm exec effect-language-service diagnostics --project packages/frontend/tsconfig.json
+```
+
+The current workspaces share the root TypeScript installation. If that changes,
+patch each Effect workspace's resolved installation with `patch --dir <path>`.
+Repeat after TypeScript or language-service updates; restart the editor's TypeScript
+server and clear affected `.tsbuildinfo` caches if diagnostics remain stale.
+The upstream `check` command can exit successfully when unpatched, so confirm its
+output reports both compiler modules patched. Errors block patched checks;
+warnings and suggestions remain visible without blocking. Environment
+verification is manual; installation continues to prepare Husky only.
+
+For Effect workspace tooling, agent instructions, offline reference commands,
+and editor setup, see [Effect development](docs/engineering/effect-guidance.md).
+
 ## TypeScript
 
 Run `pnpm typecheck` to check both packages without emitting files, and `pnpm build`
@@ -105,13 +167,13 @@ Each workspace also exposes `build`, `typecheck`, and `start`;
 for example, `pnpm --filter @pathableai/pre-ets-backend typecheck`. Rebuild the
 frontend after source changes before `pnpm start:frontend`.
 
-Both packages inherit `tsconfig.base.json`, modeled on the reference project's
-Effect-style configuration. Strict checks apply equally to non-Effect code. The
-backend uses NodeNext compilation and explicit `.js` extensions in relative
-imports. The frontend overrides those settings for the Next.js App Router
-(`jsx: "preserve"`, DOM libs, and bundler module resolution). Backend build
-configs enable emission and source maps without weakening type checks. Effect
-and its language-service plugin are not installed.
+Both packages inherit `tsconfig.base.json`, which extends `tsconfig.effect.json`.
+Strict checks apply equally to non-Effect code. The backend uses NodeNext
+compilation and explicit `.js` extensions in relative imports. The frontend
+overrides those settings for the Next.js App Router (`jsx: "preserve"`, DOM libs,
+and bundler module resolution) and keeps both the Next.js and Effect
+language-service plugins. Backend build configs enable emission and source maps
+without weakening type checks.
 
 ## ESLint
 

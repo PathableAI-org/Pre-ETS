@@ -10,5 +10,9 @@
     "lint:fix": "eslint . --max-warnings=0 --fix",
     "format:check": "dprint check",
     "format:write": "dprint fmt"
+  },
+  "dependencies": {
+    "@effect/platform-node": "4.0.0-rc.113",
+    "effect": "4.0.0-rc.113"
   }
 }

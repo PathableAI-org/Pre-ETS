@@ -1,15 +1,10 @@
 <!--
 Sync Impact Report
-Version change: uninitialized scaffold -> 1.0.0 (initial adoption)
-Modified principles: template placeholders replaced with project principles:
-- I. Evidence-Grounded Specification
-- II. Explicit Ownership and Authoritative Data
-- III. Tenant Isolation
-- IV. Accessible, Server-Rendered UI
-- V. Meaningful Behavioral Tests
-- VI. Simplicity and Verifiable Quality
-Added sections: Architecture Constraints; Development Workflow and Review; Governance
-Removed sections: none (generic template examples removed)
+Version change: 1.0.0 -> 1.1.0
+Modified principles: none (obligations preserved)
+Added sections: Effect agent guidance routing under Architecture Constraints /
+  Development Workflow
+Removed sections: none
 Template synchronization: no template or command changes; consumers read this file at runtime.
 Follow-up TODOs: none.
 -->
@@ -136,6 +131,10 @@ failure signals MUST NOT be used to obtain a passing result.
   `@pathableai` scope. Runtime and dependency versions belong in their existing configuration files.
 - The frontend is an SSR-first Next.js App Router application. The planned backend is a stateless
   RESTful Effect v4 service; this decision does not imply that backend workflows already exist.
+- Before designing or changing Effect code in `packages/frontend` or `packages/backend`, agents
+  MUST read [Effect agent guidance](../../docs/engineering/effect-guidance.md) and the affected
+  workspace `AGENTS.md`. Consult Effect Solutions topics and verify APIs against installed Effect
+  declarations. Do not run interactive Effect Solutions setup that rewrites the monorepo.
 - The frontend owns OIDC login through the broker and first-party server-side sessions. The broker
   handles tenant identity-provider protocols. The backend verifies broker tokens independently.
 - Redis holds frontend session state. Postgres holds separately owned frontend tenant configuration
@@ -170,7 +169,10 @@ implementation and verification status MUST be established from repository evide
    Passing static checks MUST NOT be described as proof of runtime workflows.
 
 Root policy and workspace-local configuration MUST retain the ownership described in
-[AGENTS.md](../../AGENTS.md). [README.md](../../README.md) is the operational command reference.
+[AGENTS.md](../../AGENTS.md). Runtime Effect guidance lives in
+[docs/engineering/effect-guidance.md](../../docs/engineering/effect-guidance.md)
+alongside root and workspace `AGENTS.md` files. [README.md](../../README.md) is the
+operational command reference.
 
 ## Governance
 
@@ -192,4 +194,4 @@ amended date while preserving the original ratification date.
 Plans and pull requests MUST be reviewed against the applicable principles. Any required follow-up
 synchronization MUST be recorded; this constitution workflow modifies only this file.
 
-**Version**: 1.0.0 | **Ratified**: 2026-09-13 | **Last Amended**: 2026-09-13
+**Version**: 1.1.0 | **Ratified**: 2026-09-13 | **Last Amended**: 2026-09-22
