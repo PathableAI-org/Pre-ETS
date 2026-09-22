@@ -22,18 +22,18 @@ steps **before** discovering filesystem features in the default tenant suite (BD
 **Purpose**: Synthetic fixture files and operator-facing env documentation for the new settings
 (no runtime cutover yet).
 
-- [ ] T001 [P] Add synthetic `springfield.json` and `shelbyville.json` under
+- [x] T001 [P] Add synthetic `springfield.json` and `shelbyville.json` under
       `packages/frontend/fixtures/tenant-config/` as full `TenantRecord` bodies (`slug` equals
       filename stem; distinct `displayName`; valid public OIDC with loopback issuer allowed only
       for local samples; optional `idleTimeoutMinutes` omitted or valid 5–30; no real secrets)
-- [ ] T002 [P] Update `packages/frontend/.env.example`: document `TENANT_CONFIG_DIR` (prefer
+- [x] T002 [P] Update `packages/frontend/.env.example`: document `TENANT_CONFIG_DIR` (prefer
       absolute path example pointing at fixtures; recommend directory permissions limited to the
       Node process user), `TENANT_STATIC_ALIAS`, keep `TENANT_RESOLUTION`; remove or clearly mark
       `TENANT_CONFIG_RECORDS_JSON` / `TENANT_LOCAL_CONFIG_JSON` as ignored/superseded with
       **silent ignore** + restart-after-file-edit callout (contracts/filesystem-tenant-source.md);
       document FR-013 **rollback** (restore prior release and/or correct `TENANT_CONFIG_DIR`
       mount/path—do **not** re-enable JSON env as a dual source)
-- [ ] T003 Update `docs/multi-tenancy.md` so filesystem under `TENANT_CONFIG_DIR` is described as
+- [x] T003 Update `docs/multi-tenancy.md` so filesystem under `TENANT_CONFIG_DIR` is described as
       the **current** source and Postgres as **future** (replace the pre-implement “planned 005”
       note); align CWD resolution, silent JSON ignore, and restart vs contract—no dual-source
       instructions
@@ -49,7 +49,7 @@ code changes yet.
 resolution, path confinement, immutable process-lifetime cache, and category-only failure
 logging. **No user story wiring into `dev.ts`/`prod.ts` until this phase completes.**
 
-- [ ] T004 Write failing unit cases in `packages/frontend/tests/unit/tenant-fs-source.test.ts`
+- [x] T004 Write failing unit cases in `packages/frontend/tests/unit/tenant-fs-source.test.ts`
       for: construction throws `CONFIG_UNAVAILABLE` when `TENANT_CONFIG_DIR` missing/empty/not a
       directory; relative dir resolves against process CWD at construction; absolute dir works;
       `ENOENT` → `undefined`; malformed JSON / invalid config / `slug`≠filename / path escape /
@@ -57,16 +57,16 @@ logging. **No user story wiring into `dev.ts`/`prod.ts` until this phase complet
       second read of same alias does not re-open after cache (or assert cache hit behavior);
       host read does not `readdir` the directory (spy); never logs file body (category-only if
       logger injectable)
-- [ ] T005 Implement `createFilesystemTenantSource` in `packages/frontend/src/lib/tenant/source.ts`
+- [x] T005 Implement `createFilesystemTenantSource` in `packages/frontend/src/lib/tenant/source.ts`
       per `contracts/filesystem-tenant-source.md` and plan policies (fail-fast dir validate;
       resolve relative vs CWD at boot; single-file open; immutable cache; make T004 pass). Retain
       existing in-memory helpers (`createStaticTenantSource`, etc.) for unit injection.
-- [ ] T006 [P] Add helpers in `packages/frontend/src/lib/tenant/types.ts` for resolving
+- [x] T006 [P] Add helpers in `packages/frontend/src/lib/tenant/types.ts` for resolving
       `TENANT_CONFIG_DIR` (trim; empty → unavailable), validating/canonicalizing
       `TENANT_STATIC_ALIAS` (must pass `isCanonicalTenantSlug`), and any shared
       `LOCAL_CONFIG_ERROR` / message updates that name directory + static alias + restart—without
       reading superseded JSON env vars
-- [ ] T007 [P] Add structured category-only failure logging helper used by the FS source (missing
+- [x] T007 [P] Add structured category-only failure logging helper used by the FS source (missing
       dir / I/O / parse / mismatch / escape) in `packages/frontend/src/lib/tenant/source.ts` or a
       small adjacent server-only module—never log another tenant’s file body or secrets
 
@@ -88,28 +88,28 @@ without affecting shelbyville.
 
 > Write these FIRST; ensure they FAIL before wiring.
 
-- [ ] T008 [P] [US1] Extend or add Vitest coverage in
+- [x] T008 [P] [US1] Extend or add Vitest coverage in
       `packages/frontend/tests/unit/tenant-operations.test.ts` (and/or `tenant-runtime.test.ts`)
       so host-mode operations use a filesystem temp dir: two tenants isolate; missing file →
       `unknown`; mismatch/malformed → `config-error`; production ignores static settings
-- [ ] T009 [P] [US1] Update `packages/frontend/tests/unit/tenant-fixtures.ts` (or adjacent helper)
+- [x] T009 [P] [US1] Update `packages/frontend/tests/unit/tenant-fixtures.ts` (or adjacent helper)
       to create temp tenant-config directories for tests instead of relying on
       `TENANT_CONFIG_RECORDS_JSON` payloads where host-source tests need FS realism
 
 ### Implementation for User Story 1
 
-- [ ] T010 [US1] Wire `createEnvTenantOperations` in
+- [x] T010 [US1] Wire `createEnvTenantOperations` in
       `packages/frontend/src/lib/tenant/operations.ts` to construct
       `createFilesystemTenantSource` from `TENANT_CONFIG_DIR` at startup (CWD resolution via T006);
       stop reading `TENANT_CONFIG_RECORDS_JSON` for host records; keep host-binding /
       `TenantOperationResult` shapes unchanged
-- [ ] T011 [US1] Update `packages/frontend/src/lib/tenant/prod.ts` to use the filesystem source
+- [x] T011 [US1] Update `packages/frontend/src/lib/tenant/prod.ts` to use the filesystem source
       from `TENANT_CONFIG_DIR` (fail-fast at module/source construction); never read
       `TENANT_RESOLUTION` / `TENANT_STATIC_ALIAS` / JSON env vars
-- [ ] T012 [US1] Update `packages/frontend/src/lib/tenant/dev.ts` host-mode path to use the same
+- [x] T012 [US1] Update `packages/frontend/src/lib/tenant/dev.ts` host-mode path to use the same
       filesystem source for host association (static path still deferred to US2); preserve
       `selectTenantMode` / `invalid-mode` diagnostic behavior
-- [ ] T013 [US1] Run `pnpm --filter @pathableai/pre-ets-frontend test:unit` and fix regressions in
+- [x] T013 [US1] Run `pnpm --filter @pathableai/pre-ets-frontend test:unit` and fix regressions in
       tenant unit suites caused by the host-source cutover (make T008–T012 green)
 
 **Checkpoint**: Host MVP works with fixtures + `TENANT_CONFIG_DIR`; static mode may still be
@@ -128,21 +128,21 @@ build ignores static alias.
 
 ### Tests for User Story 2
 
-- [ ] T014 [P] [US2] Write failing Vitest cases in
+- [x] T014 [P] [US2] Write failing Vitest cases in
       `packages/frontend/tests/unit/tenant-operations.test.ts` (or `tenant-runtime.test.ts`) for
       static alias success, missing/blank/non-canonical alias → `config-error`, bad/mismatched
       file → `config-error`, and production forcing host despite static env
 
 ### Implementation for User Story 2
 
-- [ ] T015 [US2] Implement static-mode loading in
+- [x] T015 [US2] Implement static-mode loading in
       `packages/frontend/src/lib/tenant/dev.ts` and `operations.ts`: require usable
       `TENANT_STATIC_ALIAS`; `readTenantRecord(alias)` from FS source; adapt local error messaging
       to mention static alias + directory + restart; do not parse `TENANT_LOCAL_CONFIG_JSON`
-- [ ] T016 [US2] Ensure production paths (`prod.ts` / `createEnvTenantOperations` with
+- [x] T016 [US2] Ensure production paths (`prod.ts` / `createEnvTenantOperations` with
       `production: true`) ignore `TENANT_STATIC_ALIAS` and `TENANT_RESOLUTION=static` (existing
       mode policy); make T014 pass
-- [ ] T017 [US2] Run frontend unit tests again and confirm static + host cases both green
+- [x] T017 [US2] Run frontend unit tests again and confirm static + host cases both green
 
 **Checkpoint**: Host and static filesystem modes both work without JSON env documents.
 
@@ -158,20 +158,20 @@ docs/examples no longer require them.
 
 ### Tests for User Story 3
 
-- [ ] T018 [P] [US3] Add Vitest assertions that when FS source is configured, setting
+- [x] T018 [P] [US3] Add Vitest assertions that when FS source is configured, setting
       `TENANT_CONFIG_RECORDS_JSON` / `TENANT_LOCAL_CONFIG_JSON` to conflicting Display Names does
       not change `createEnvTenantOperations` / runtime results (silent ignore; no diagnostic
       required)
 
 ### Implementation for User Story 3
 
-- [ ] T019 [US3] Remove dead runtime paths that still call `parseRecordsJson` /
+- [x] T019 [US3] Remove dead runtime paths that still call `parseRecordsJson` /
       `parseLocalConfigJson` from `dev.ts`, `prod.ts`, and `operations.ts` (keep pure helpers only
       if still needed by unit tests; otherwise delete unused exports and satisfy
       `pnpm check:unused` / fallow)
-- [ ] T020 [US3] Sweep `packages/frontend` docs/comments/README snippets that instruct developers
+- [x] T020 [US3] Sweep `packages/frontend` docs/comments/README snippets that instruct developers
       to set inline JSON as the live source; point to fixtures + `TENANT_CONFIG_DIR` instead
-- [ ] T021 [US3] Align `specs/001-tenant-resolution/contracts/tenant-context.md` server-settings
+- [x] T021 [US3] Align `specs/001-tenant-resolution/contracts/tenant-context.md` server-settings
       table with a short supersession note linking to
       `specs/005-tenant-config-fs/contracts/filesystem-tenant-source.md` (avoid dual authoritative
       env docs)
@@ -186,34 +186,34 @@ docs/examples no longer require them.
 
 ### BDD ordering gate (must follow this order)
 
-- [ ] T022 Implement temp-dir tenant fixture helpers in `tests/bdd/support/` (e.g. extend
+- [x] T022 Implement temp-dir tenant fixture helpers in `tests/bdd/support/` (e.g. extend
       `fixtures.ts` / `server.ts`) that write `{alias}.json` files and set `TENANT_CONFIG_DIR` (+
       `TENANT_STATIC_ALIAS` when static)—**do not** inject `TENANT_CONFIG_RECORDS_JSON` /
       `TENANT_LOCAL_CONFIG_JSON` for new filesystem scenarios
-- [ ] T023 Add/extend step definitions for `@tenant-config-fs` scenarios in
+- [x] T023 Add/extend step definitions for `@tenant-config-fs` scenarios in
       `tests/bdd/steps/tenant.steps.ts` and/or `tests/bdd/steps/tenant-fs.steps.ts` so
       `features/filesystem-host-tenant-configuration.feature`,
       `features/filesystem-static-tenant-name.feature`, and
       `features/filesystem-tenant-source-cutover.feature` bind (Pending stubs only if temporarily
       needed—prefer real steps once FS runtime exists)
-- [ ] T024 Include the three `features/filesystem-*.feature` files in the **default tenant**
+- [x] T024 Include the three `features/filesystem-*.feature` files in the **default tenant**
       feature list in `cucumber.mjs` and update `features/README.md` inventory/counts **only after**
       T022–T023 bind; ensure `pnpm test:bdd:dry` discovers them without undefined steps
-- [ ] T025 Remove remaining JSON env injection from default tenant BDD support paths in
+- [x] T025 Remove remaining JSON env injection from default tenant BDD support paths in
       `tests/bdd/support/server.ts` / `actions.ts` used by retained 001 scenarios (retarget those
       scenarios’ Given steps to filesystem temp dirs as needed)
 
 ### Docs, cleanup, validation
 
-- [ ] T026 [P] Walk `specs/005-tenant-config-fs/quickstart.md` scenarios against a local
+- [x] T026 [P] Walk `specs/005-tenant-config-fs/quickstart.md` scenarios against a local
       `pnpm --filter @pathableai/pre-ets-frontend dev` process; confirm the **Rollback** section
       still instructs operators to restore the prior release and/or correct the
       `TENANT_CONFIG_DIR` mount/path and **not** re-enable JSON env as a dual source (FR-013);
       fix doc/code gaps found
-- [ ] T027 [P] Run repository quality gates touched by this feature (`pnpm --filter
+- [x] T027 [P] Run repository quality gates touched by this feature (`pnpm --filter
       @pathableai/pre-ets-frontend typecheck`, `test:unit`, root `pnpm lint` / `pnpm format:check`
       / `pnpm check:unused` as applicable) and fix findings without check-disable comments
-- [ ] T028 Confirm `pnpm test:bdd` (default tenant partition) stays green with filesystem features
+- [x] T028 Confirm `pnpm test:bdd` (default tenant partition) stays green with filesystem features
       included and superseded JSON no longer required
 
 **Checkpoint**: Feature complete per spec SC-001–SC-007 evidence paths; ready for PR.

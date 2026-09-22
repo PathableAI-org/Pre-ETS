@@ -1,23 +1,27 @@
 import { bindHost } from "./host.ts"
-import { parseRecordsJson, type TenantSource } from "./source.ts"
+import { createFilesystemTenantSource, type TenantSource } from "./source.ts"
 import {
   CONFIG_UNAVAILABLE,
   type HostSuffix,
   isCanonicalTenantSlug,
   LOCAL_CONFIG_ERROR,
-  parseLocalConfigJson,
+  resolveTenantConfigDir,
+  resolveTenantStaticAlias,
   selectTenantMode,
   type TenantConfig,
-  type TenantMode,
-  type TenantRecord
+  type TenantMode
 } from "./types.ts"
 
 export interface CreateTenantOperationsOptions {
-  readonly hostRecordsJson?: string | undefined
+  readonly allowLoopbackHttp?: boolean | undefined
+  readonly configDir?: string | undefined
+  readonly cwd?: string | undefined
   readonly hostSuffix: HostSuffix
-  readonly localConfigJson?: string | undefined
   readonly mode: TenantMode
   readonly production?: boolean | undefined
+  readonly staticAlias?: string | undefined
+  /** Injected source for unit tests and in-process harnesses. */
+  readonly tenantSource?: TenantSource | undefined
 }
 
 export type TenantOperationOrigin = "host-associated" | "local-static"
@@ -43,24 +47,39 @@ export interface TenantOperations {
 
 export function createTenantOperations(options: CreateTenantOperationsOptions): TenantOperations {
   const mode = options.production === true ? "host" : options.mode
-  let hostSource: TenantSource | undefined
-  let staticRecord: TenantRecord | undefined
+  const source = resolveSource(options)
+  let staticAlias: string | undefined
 
   return {
     async resolve(input) {
       if (mode === "static") {
         try {
-          const record = loadStaticRecord()
+          const alias = loadStaticAlias()
+          const record = await source.readTenantRecord(alias)
+          if (record === undefined) {
+            return {
+              kind: "config-error",
+              message: LOCAL_CONFIG_ERROR
+            }
+          }
+
+          if (record.slug !== alias) {
+            return {
+              kind: "config-error",
+              message: LOCAL_CONFIG_ERROR
+            }
+          }
+
           return {
             config: record.config,
             kind: "ok",
             origin: "local-static",
             tenantId: record.slug
           }
-        } catch (error) {
+        } catch {
           return {
             kind: "config-error",
-            message: error instanceof Error ? error.message : LOCAL_CONFIG_ERROR
+            message: LOCAL_CONFIG_ERROR
           }
         }
       }
@@ -71,7 +90,7 @@ export function createTenantOperations(options: CreateTenantOperationsOptions): 
       }
 
       try {
-        const record = await loadHostSource().readTenantRecord(slug)
+        const record = await source.readTenantRecord(slug)
         if (record === undefined) {
           return { kind: "unknown" }
         }
@@ -98,14 +117,9 @@ export function createTenantOperations(options: CreateTenantOperationsOptions): 
     }
   }
 
-  function loadHostSource(): TenantSource {
-    hostSource ??= parseRecordsJson(options.hostRecordsJson ?? "[]")
-    return hostSource
-  }
-
-  function loadStaticRecord(): TenantRecord {
-    staticRecord ??= parseLocalConfigJson(options.localConfigJson)
-    return staticRecord
+  function loadStaticAlias(): string {
+    staticAlias ??= resolveTenantStaticAlias(options.staticAlias)
+    return staticAlias
   }
 }
 
@@ -116,13 +130,17 @@ export function createEnvTenantOperations(
   production?: boolean
 ): TenantOperations {
   const isProduction = production ?? env.NODE_ENV === "production"
+  const configDir = resolveTenantConfigDir(env.TENANT_CONFIG_DIR)
+  const allowLoopbackHttp = !isProduction || env.BDD_ALLOW_LOOPBACK_HTTP === "1"
+  const tenantSource = createFilesystemTenantSource(configDir, { allowLoopbackHttp })
 
   if (isProduction) {
     return createTenantOperations({
-      hostRecordsJson: env.TENANT_CONFIG_RECORDS_JSON,
+      allowLoopbackHttp,
       hostSuffix: "pathable.com",
       mode: "host",
-      production: true
+      production: true,
+      tenantSource
     })
   }
 
@@ -137,13 +155,29 @@ export function createEnvTenantOperations(
   }
 
   return createTenantOperations({
-    hostRecordsJson: env.TENANT_CONFIG_RECORDS_JSON,
+    allowLoopbackHttp,
     hostSuffix: "localhost",
-    localConfigJson: env.TENANT_LOCAL_CONFIG_JSON,
-    mode: selection.mode
+    mode: selection.mode,
+    staticAlias: env.TENANT_STATIC_ALIAS,
+    tenantSource
   })
 }
 
 export function requireCanonicalTenant(tenant: string): boolean {
   return isCanonicalTenantSlug(tenant)
+}
+
+function resolveSource(options: CreateTenantOperationsOptions): TenantSource {
+  if (options.tenantSource !== undefined) {
+    return options.tenantSource
+  }
+
+  if (options.configDir === undefined || options.configDir.trim() === "") {
+    throw new Error(CONFIG_UNAVAILABLE)
+  }
+
+  return createFilesystemTenantSource(options.configDir, {
+    ...(options.allowLoopbackHttp === undefined ? {} : { allowLoopbackHttp: options.allowLoopbackHttp }),
+    ...(options.cwd === undefined ? {} : { cwd: options.cwd })
+  })
 }

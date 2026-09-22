@@ -1,3 +1,5 @@
+import path from "node:path"
+
 export type HostSuffix = "localhost" | "pathable.com"
 
 export type OidcClientAuth = "confidential" | "public"
@@ -47,7 +49,14 @@ export const INVALID_MODE_DIAGNOSTIC: ModeDiagnostic = {
 
 export const CONFIG_UNAVAILABLE = "Tenant configuration is unavailable."
 export const LOCAL_CONFIG_ERROR =
-  "Supply a valid TENANT_LOCAL_CONFIG_JSON record with slug, Display Name, and oidc, then restart."
+  "Supply a valid TENANT_STATIC_ALIAS naming a readable {alias}.json under TENANT_CONFIG_DIR, then restart."
+
+export type FilesystemFailureCategory =
+  | "escape"
+  | "io"
+  | "mismatch"
+  | "missing-dir"
+  | "parse"
 
 const SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/
 const ALLOWED_CONFIG_KEYS = new Set(["displayName", "idleTimeoutMinutes", "oidc"])
@@ -61,26 +70,6 @@ export function effectiveIdleTimeoutMinutes(config: TenantConfig): number {
 
 export function isCanonicalTenantSlug(value: string): boolean {
   return value.length >= 1 && value.length <= 63 && value !== "www" && SLUG_PATTERN.test(value)
-}
-
-export function parseLocalConfigJson(raw: string | undefined): TenantRecord {
-  if (raw === undefined || raw === "") {
-    throw new Error(LOCAL_CONFIG_ERROR)
-  }
-
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(raw)
-  } catch {
-    throw new Error(LOCAL_CONFIG_ERROR)
-  }
-
-  const record = parseTenantRecord(parsed)
-  if (record === undefined) {
-    throw new Error(LOCAL_CONFIG_ERROR)
-  }
-
-  return record
 }
 
 export function parseTenantConfig(
@@ -151,6 +140,38 @@ export function parseTenantRecord(
     config,
     slug: record.slug
   }
+}
+
+/**
+ * Resolve `TENANT_CONFIG_DIR`. Empty/missing → unavailable. Relative paths resolve
+ * against `cwd` (defaults to `process.cwd()` at the call site / boot).
+ */
+export function resolveTenantConfigDir(
+  raw: string | undefined,
+  cwd: string = process.cwd()
+): string {
+  if (raw === undefined || raw.trim() === "") {
+    throw new Error(CONFIG_UNAVAILABLE)
+  }
+
+  const trimmed = raw.trim()
+  return path.isAbsolute(trimmed) ? trimmed : path.resolve(cwd, trimmed)
+}
+
+/**
+ * Canonicalize `TENANT_STATIC_ALIAS`. Missing, blank, or non-canonical → local config error.
+ */
+export function resolveTenantStaticAlias(raw: string | undefined): string {
+  if (raw === undefined || raw.trim() === "") {
+    throw new Error(LOCAL_CONFIG_ERROR)
+  }
+
+  const alias = raw.trim()
+  if (!isCanonicalTenantSlug(alias)) {
+    throw new Error(LOCAL_CONFIG_ERROR)
+  }
+
+  return alias
 }
 
 export function selectTenantMode(rawMode: string | undefined, production = false): ModeSelection {

@@ -1,7 +1,7 @@
 # Quickstart: Validate Filesystem Tenant Configuration
 
-**Status**: Planning artifact for [spec.md](./spec.md). Runtime verification happens after
-implementation (`/speckit-tasks` / `/speckit-implement`).
+**Status**: Implemented on `005-tenant-config-fs-impl`. Validate against a running frontend after
+`pnpm install --frozen-lockfile`.
 
 Run commands from the repository root. Use Node from `.node-version` and pnpm from
 `package.json`. Install with `pnpm install --frozen-lockfile`.
