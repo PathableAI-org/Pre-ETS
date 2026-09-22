@@ -15,10 +15,12 @@ pnpm test:bdd
 pnpm test:bdd:session
 pnpm test:bdd:oidc
 pnpm test:bdd:idle
+pnpm test:bdd:tenant-fs
 ```
 
 `test:bdd:dry` sets `CUCUMBER_SESSION=1`, `CUCUMBER_OIDC=1`, and `CUCUMBER_IDLE=1` and discovers every
-scenario (tenant + session + OIDC + idle) without executing steps. `test:bdd` runs only the tenant suite: the
+scenario (tenant including filesystem-config + session + OIDC + idle) without executing steps.
+`test:bdd` runs the tenant suite (tenant-resolution + `@tenant-config-fs`): the
 `@production` partition first, then `not @production`, writing distinct JSON reports under
 `reports/`. Session, OIDC, and idle stubs stay out of that default path.
 
@@ -64,6 +66,21 @@ pnpm test:bdd:oidc
 Use `pnpm test:bdd:dry` to check combined discovery and `pnpm test:bdd` for the tenant
 acceptance suite. Dry runs do not prove implementation; the OIDC suite must fail until its
 bindings and implementation are complete.
+
+## Filesystem tenant-config
+
+`tenant-fs.steps.ts` binds `@tenant-config-fs` scenarios:
+
+- `features/filesystem-host-tenant-configuration.feature`
+- `features/filesystem-static-tenant-name.feature`
+- `features/filesystem-tenant-source-cutover.feature`
+
+These features are part of the default tenant suite in `cucumber.mjs`. From the repository root:
+
+```sh
+pnpm test:bdd:tenant-fs
+pnpm test:bdd
+```
 
 ## Idle-session timeout
 

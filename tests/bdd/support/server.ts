@@ -9,7 +9,7 @@ import { chromium } from "playwright"
 
 import type { TenantWorld } from "./world.ts"
 
-import { invalidEnvShape, recordsJsonForWorld, syntheticTenantConfig } from "./fixtures.ts"
+import { materializeTenantConfigDir } from "./fixtures.ts"
 import { ensureSessionSettings } from "./session-env.ts"
 
 const REPO_ROOT = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)))
@@ -69,9 +69,17 @@ export async function startOwnedProcess(world: TenantWorld): Promise<void> {
   if (world.runtime !== "production") {
     await fs.promises.rm(path.join(FRONTEND_ROOT, ".next", "dev", "lock"), { force: true })
   }
+
+  if (world.runtime === "production" && world.oidcMockIssuer === undefined) {
+    const { ensureMockOidcIssuer } = await import("./oidc-mock.ts")
+    await ensureMockOidcIssuer(world)
+  }
+
   const child = spawn(
     path.join(FRONTEND_ROOT, "node_modules/.bin/next"),
-    [world.runtime === "production" ? "start" : "dev", "-H", "127.0.0.1", "-p", String(world.port)],
+    world.runtime === "production"
+      ? ["start", "-H", "127.0.0.1", "-p", String(world.port)]
+      : ["dev", "--webpack", "-H", "127.0.0.1", "-p", String(world.port)],
     {
       cwd: FRONTEND_ROOT,
       detached: true,
@@ -91,27 +99,12 @@ export async function startOwnedProcess(world: TenantWorld): Promise<void> {
 }
 
 function applyLocalConfigEnv(env: NodeJS.ProcessEnv, world: TenantWorld): void {
-  if (world.localConfigProblem !== undefined) {
-    const payload = localConfigPayload(world.localConfigProblem)
-    if (payload !== undefined) {
-      env.TENANT_LOCAL_CONFIG_JSON = payload
-    }
+  const alias = world.staticTenantAlias ?? world.localStaticRecord?.slug
+  if (alias === undefined) {
     return
   }
 
-  if (world.localStaticRecord === undefined) {
-    return
-  }
-
-  const production = world.runtime === "production"
-  env.TENANT_LOCAL_CONFIG_JSON = JSON.stringify({
-    config: syntheticTenantConfig(
-      world.localStaticRecord.displayName,
-      world.localStaticRecord.slug,
-      { production }
-    ),
-    slug: world.localStaticRecord.slug
-  })
+  env.TENANT_STATIC_ALIAS = alias
 }
 
 function applyOidcEnv(env: NodeJS.ProcessEnv, world: TenantWorld): void {
@@ -123,32 +116,38 @@ function applyOidcEnv(env: NodeJS.ProcessEnv, world: TenantWorld): void {
 
 function applySessionEnv(env: NodeJS.ProcessEnv, world: TenantWorld): void {
   env.NEXT_TELEMETRY_DISABLED = "1"
+  // Prefer polling watchers in the BDD harness so macOS/sandbox EMFILE from
+  // recursive native watches does not tear down `.next/dev` mid-request.
+  env.WATCHPACK_POLLING = "true"
+  env.CHOKIDAR_USEPOLLING = "true"
   env.NODE_ENV = world.runtime === "production" ? "production" : "development"
   env.REDIS_URL = world.redisUrl ?? process.env.REDIS_URL ?? "redis://127.0.0.1:6379"
   env.SESSION_SIGNING_SECRET = world.sessionSigningSecret
   env.SESSION_TTL_SECONDS = String(world.sessionTtlSeconds)
   env.SESSION_STORE_TIMEOUT_MS = String(world.sessionStoreTimeoutMs)
   env.SESSION_KEY_PREFIX = world.sessionKeyPrefix
+  if (world.runtime === "production" && world.oidcMockIssuer !== undefined) {
+    env.BDD_ALLOW_LOOPBACK_HTTP = "1"
+  }
 }
 
 function applyTenantRecordsEnv(env: NodeJS.ProcessEnv, world: TenantWorld): void {
   const production = world.runtime === "production"
-  if (world.oidcFixtures !== undefined || world.oidcUnreadableConfig) {
-    env.TENANT_CONFIG_RECORDS_JSON = recordsJsonForWorld(world, production)
-    return
+  const dir = materializeTenantConfigDir(world, production)
+  if (world.tenantConfigDirProblem === "an empty path") {
+    env.TENANT_CONFIG_DIR = ""
+  } else {
+    env.TENANT_CONFIG_DIR = dir
   }
 
-  const records = world.tenants.map((tenant) => {
-    if (tenant.slug === "springfield" && world.invalidDisplayName !== undefined) {
-      return invalidEnvShape(world.invalidDisplayName)
-    }
+  // Former JSON documents may be set to prove silent ignore (filesystem remains authoritative).
+  if (world.formerInlineRecordsJson !== undefined) {
+    env.TENANT_CONFIG_RECORDS_JSON = world.formerInlineRecordsJson
+  }
 
-    return {
-      config: syntheticTenantConfig(tenant.displayName, tenant.slug, { production }),
-      slug: tenant.slug
-    }
-  })
-  env.TENANT_CONFIG_RECORDS_JSON = JSON.stringify(records)
+  if (world.formerLocalConfigJson !== undefined) {
+    env.TENANT_LOCAL_CONFIG_JSON = world.formerLocalConfigJson
+  }
 }
 
 function applyTenantResolutionEnv(env: NodeJS.ProcessEnv, world: TenantWorld): void {
@@ -190,10 +189,13 @@ function buildProcessEnv(world: TenantWorld): NodeJS.ProcessEnv {
 
 function clearHarnessEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   delete env.TENANT_RESOLUTION
+  delete env.TENANT_CONFIG_DIR
+  delete env.TENANT_STATIC_ALIAS
   delete env.TENANT_CONFIG_RECORDS_JSON
   delete env.TENANT_LOCAL_CONFIG_JSON
   delete env.OIDC_CLIENT_SECRETS_JSON
   delete env.OIDC_TX_KEY_PREFIX
+  delete env.BDD_ALLOW_LOOPBACK_HTTP
   return env
 }
 
@@ -208,24 +210,15 @@ async function discardBrowserPages(world: TenantWorld): Promise<void> {
   world.shelbyvillePage = undefined
 }
 
-function localConfigPayload(problem: string): string | undefined {
-  switch (problem) {
-    case "a missing tenant slug": {
-      return JSON.stringify({ config: { displayName: "Local Demo" } })
-    }
-    case "inconsistent tenant identity": {
-      return JSON.stringify({
-        config: { displayName: "Local Demo" },
-        identity: "shelbyville",
-        slug: "springfield"
-      })
-    }
-    case "no supplied record": {
-      return undefined
-    }
-    default: {
-      return JSON.stringify(invalidEnvShape(problem))
-    }
+function filesystemSignatureFields(world: TenantWorld): Record<string, unknown> {
+  return {
+    aliasProblems: world.aliasFileProblems ?? {},
+    configDirProblem: world.tenantConfigDirProblem ?? "",
+    formerInline: world.formerInlineRecordsJson ?? "",
+    formerLocal: world.formerLocalConfigJson ?? "",
+    omitAliases: world.omitAliasFiles ?? [],
+    staticAlias: world.staticTenantAlias ?? world.localStaticRecord?.slug ?? "",
+    tenants: world.tenants
   }
 }
 
@@ -244,8 +237,10 @@ function oidcSignatureFields(world: TenantWorld): Record<string, unknown> {
 function processSignature(world: TenantWorld): string {
   ensureSessionSettings(world)
   return JSON.stringify({
+    ...filesystemSignatureFields(world),
     ...oidcSignatureFields(world),
     ...sessionSignatureFields(world),
+    invalidDisplayName: world.invalidDisplayName ?? "",
     port: world.port
   })
 }

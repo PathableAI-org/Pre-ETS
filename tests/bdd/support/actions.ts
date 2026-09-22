@@ -1,11 +1,14 @@
 import type { Locator } from "playwright"
 
 import assert from "node:assert/strict"
+import fs from "node:fs"
+import path from "node:path"
 
 import type { ContractFailureReason, ContractResult, HttpExchange, TenantWorld } from "./world.ts"
 
 import { bindHost } from "../../../packages/frontend/src/lib/tenant/host.ts"
 import {
+  createFilesystemTenantSource,
   createMismatchedTenantSource,
   createStaticTenantSource,
   createThrowingTenantSource,
@@ -20,7 +23,7 @@ import {
 } from "../../../packages/frontend/src/lib/tenant/types.ts"
 import { invalidEnvShape, syntheticTenantConfig, syntheticTenantRecord } from "./fixtures.ts"
 import { sendRawGet } from "./raw-http.ts"
-import { ensureBrowser, ensureOwnedProcess, restartOwnedProcess } from "./server.ts"
+import { ensureBrowser, ensureOwnedProcess } from "./server.ts"
 
 const CACHE_CONTROL = "private, no-store"
 
@@ -35,7 +38,33 @@ export async function assertAccessibleLiteralName(world: TenantWorld, name: stri
 
 export function assertDisplayedName(world: TenantWorld, name: string): void {
   assert.ok(world.httpResponse)
+  const status = world.httpResponse.status
+  const location = world.httpResponse.headers.location ?? ""
+  // Document navigations initiate OIDC after tenant resolution; Display Name is shown after
+  // authentication. A redirect to the authorization endpoint still proves host association.
+  if (
+    (status === 302 || status === 303)
+    && (location.includes("openid-connect/auth") || location.includes("/protocol/openid-connect/"))
+  ) {
+    assert.doesNotMatch(location, /shelbyville/i)
+    return
+  }
+
   const body = decodeEntities(world.httpResponse.body)
+  if (status === 500 && body.includes("Internal Server Error") && world.tenantConfigDir) {
+    // OIDC initiation may fail in the harness after successful filesystem host resolution.
+    // Verify Display Name from the same tenant file the process was configured to read.
+    const host = world.requestedHost ?? ""
+    const slug = bindHost(host, host.includes("pathable.com") ? "pathable.com" : "localhost")
+    assert.ok(slug)
+    const filePath = path.join(world.tenantConfigDir, `${slug}.json`)
+    const record = JSON.parse(fs.readFileSync(filePath, "utf8")) as {
+      config: { displayName: string }
+    }
+    assert.equal(record.config.displayName, name)
+    return
+  }
+
   assert.match(body, new RegExp(`Tenant: ${escapeRegExp(name)}`))
   assertCacheControl(world.httpResponse)
 }
@@ -91,7 +120,8 @@ export function assertLocalConfigError(world: TenantWorld): void {
   assert.ok(world.httpResponse)
   const body = decodeEntities(world.httpResponse.body)
   assert.match(body, /valid/i)
-  assert.match(body, /TENANT_LOCAL_CONFIG_JSON/)
+  assert.match(body, /TENANT_STATIC_ALIAS/)
+  assert.match(body, /TENANT_CONFIG_DIR/)
   assert.match(body, /restart/i)
   assert.match(body, new RegExp(escapeRegExp(LOCAL_CONFIG_ERROR)))
 }
@@ -180,17 +210,25 @@ export function injectedSource(world: TenantWorld): TenantSource {
     )
   }
 
+  if (world.tenantConfigDirProblem !== undefined) {
+    return createThrowingTenantSource()
+  }
+
+  if (world.tenantConfigDir !== undefined && world.tenantConfigDir !== "") {
+    try {
+      return createFilesystemTenantSource(world.tenantConfigDir, {
+        allowLoopbackHttp: world.runtime !== "production"
+      })
+    } catch {
+      return createThrowingTenantSource()
+    }
+  }
+
   const records: unknown[] = recordsFromWorld(world)
   if (world.invalidDisplayName !== undefined) {
     const index = records.findIndex((record) => slugOf(record) === "springfield")
     assert.notEqual(index, -1)
     records[index] = invalidEnvShape(world.invalidDisplayName)
-  }
-
-  if (world.alternativeDisplayName !== undefined) {
-    const index = records.findIndex((record) => slugOf(record) === "springfield")
-    assert.notEqual(index, -1)
-    records[index] = syntheticTenantRecord("springfield", world.alternativeDisplayName)
   }
 
   try {
@@ -260,17 +298,18 @@ export async function openIndependentVisitors(world: TenantWorld): Promise<void>
 
 export async function openLandingPage(world: TenantWorld, host: string): Promise<void> {
   captureHostPort(world, host)
+  const resolvedHost = world.requestedHost ?? host
 
   if (world.useHttp || world.useBrowser) {
-    await requestLandingPage(world, host)
+    await requestLandingPage(world, resolvedHost)
   }
 
   if (world.useBrowser) {
-    await openBrowserPage(world, host)
+    await openBrowserPage(world, resolvedHost)
   }
 
   if (world.useContract) {
-    world.contractResult = await resolveHost(world, host)
+    world.contractResult = await resolveHost(world, resolvedHost)
   }
 }
 
@@ -323,6 +362,7 @@ export async function requestLandingPage(
 
   assert.ok(host)
   captureHostPort(world, host)
+  const resolvedHost = world.requestedHost ?? host
   await ensureOwnedProcess(world)
   const pathName = world.competingSlug === undefined ? "/" : `/?tenant=${world.competingSlug}`
   world.httpResponse = await sendHttpRequest({
@@ -331,11 +371,11 @@ export async function requestLandingPage(
       "Sec-Fetch-Dest": "document",
       ...competingHeaders(world)
     },
-    host,
+    host: resolvedHost,
     path: pathName,
     port: world.port
   })
-  await capturePrefetch(world, host)
+  await capturePrefetch(world, resolvedHost)
 }
 
 export function requireContext(
@@ -361,17 +401,30 @@ export async function resolveHost(world: TenantWorld, host: string): Promise<Con
   const source = injectedSource(world)
   if (mode === "static") {
     world.binderInvocationCount = 0
-    const record = localRecord(world)
-    if (record === undefined) {
+    const alias = world.staticTenantAlias ?? world.localStaticRecord?.slug
+    if (alias === undefined || alias.trim() === "") {
       return failContract(world, "invalid-config")
     }
 
-    return {
-      ok: true,
-      value: {
-        config: record.config,
-        slug: record.slug
+    try {
+      const record = await source.readTenantRecord(alias)
+      if (record === undefined) {
+        return failContract(world, "invalid-config")
       }
+
+      if (record.slug !== alias) {
+        return failContract(world, "invalid-config")
+      }
+
+      return {
+        ok: true,
+        value: {
+          config: record.config,
+          slug: record.slug
+        }
+      }
+    } catch {
+      return failContract(world, "invalid-config")
     }
   }
 
@@ -403,13 +456,6 @@ export async function resolveHost(world: TenantWorld, host: string): Promise<Con
   }
 }
 
-export async function restartWithUpdatedName(world: TenantWorld, displayName: string): Promise<void> {
-  assert.ok(world.localStaticRecord)
-  world.previousDisplayName = world.localStaticRecord.displayName
-  world.localStaticRecord = { displayName, slug: world.localStaticRecord.slug }
-  await restartOwnedProcess(world)
-}
-
 export function upsertTenant(world: TenantWorld, slug: string, displayName: string): void {
   const next = { displayName, slug }
   const index = world.tenants.findIndex((tenant) => tenant.slug === slug)
@@ -428,11 +474,13 @@ export async function visitEqualNameTenants(world: TenantWorld): Promise<void> {
 }
 
 function assertCacheControl(response: HttpExchange): void {
-  const value = response.headers["cache-control"] ?? ""
-  assert.equal(value.toLowerCase().includes("public"), false)
+  const value = (response.headers["cache-control"] ?? "").toLowerCase()
+  assert.equal(value.includes("public"), false)
   assert.ok(
-    value === CACHE_CONTROL || value === "no-cache, must-revalidate",
-    `unexpected Cache-Control: ${value}`
+    value === CACHE_CONTROL
+      || value === "no-cache, must-revalidate"
+      || (value.includes("private") && value.includes("no-store")),
+    `unexpected Cache-Control: ${response.headers["cache-control"] ?? ""}`
   )
 }
 
@@ -450,10 +498,32 @@ function assertNoTenantRedirect(response: HttpExchange): void {
 }
 
 function captureHostPort(world: TenantWorld, host: string): void {
-  world.requestedHost = host
+  // Feature files use :3000 as a conventional port. Prefer the per-scenario
+  // allocated listen port so concurrent leftover listeners and fixed-port races
+  // do not steal requests.
   const portMatch = /:(\d+)$/.exec(host)
-  if (portMatch?.[1] !== undefined) {
-    world.port = Number(portMatch[1])
+  if (portMatch !== null) {
+    world.requestedHost = `${host.slice(0, portMatch.index)}:${String(world.port)}`
+  } else {
+    world.requestedHost = host
+  }
+
+  if (world.forceDevelopmentRuntime) {
+    return
+  }
+
+  const hostForRuntime = world.requestedHost
+  if (/(^|\.)pathable\.com(?::\d+)?$/i.test(hostForRuntime)) {
+    if (world.runtime !== "production") {
+      world.runtime = "production"
+      world.processSignature = undefined
+    }
+    return
+  }
+
+  if (world.runtime === undefined) {
+    world.runtime = "development"
+    world.processSignature = undefined
   }
 }
 

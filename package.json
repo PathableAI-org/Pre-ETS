@@ -18,6 +18,7 @@
     "test:bdd:idle": "CUCUMBER_IDLE=1 CUCUMBER_REPORT=cucumber-idle cucumber-js --config cucumber.mjs --tags '@idle-session-timeout'",
     "test:bdd:idle:browser": "CUCUMBER_IDLE=1 CUCUMBER_REPORT=cucumber-idle-browser cucumber-js --config cucumber.mjs --tags '@idle-session-timeout and @browser and not @contract'",
     "test:bdd:idle:contract": "CUCUMBER_IDLE=1 CUCUMBER_REPORT=cucumber-idle-contract cucumber-js --config cucumber.mjs --tags '@idle-session-timeout and @contract'",
+    "test:bdd:tenant-fs": "CUCUMBER_REPORT=cucumber-tenant-fs cucumber-js --config cucumber.mjs --tags '@tenant-config-fs'",
     "fallow": "fallow",
     "check:unused": "fallow dead-code",
     "format:check": "dprint check \"*\" .github docs tests e2e && pnpm --filter \"./packages/*\" run format:check",
@@ -48,9 +49,9 @@
     "lint-staged": "17.5.1",
     "playwright": "1.63.0",
     "typescript": "6.0.3",
-    "typescript-eslint": "8.70.0"
+    "typescript-eslint": "8.70.1"
   },
-  "packageManager": "pnpm@12.4.2",
+  "packageManager": "pnpm@12.5.1",
   "engines": {
     "node": ">=24"
   }
