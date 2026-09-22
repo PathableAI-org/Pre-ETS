@@ -91,14 +91,6 @@ export async function startOwnedProcess(world: TenantWorld): Promise<void> {
 }
 
 function applyLocalConfigEnv(env: NodeJS.ProcessEnv, world: TenantWorld): void {
-  if (world.localConfigProblem !== undefined) {
-    const payload = localConfigPayload(world.localConfigProblem)
-    if (payload !== undefined) {
-      env.TENANT_LOCAL_CONFIG_JSON = payload
-    }
-    return
-  }
-
   if (world.localStaticRecord === undefined) {
     return
   }
@@ -206,27 +198,6 @@ async function discardBrowserPages(world: TenantWorld): Promise<void> {
   world.page = undefined
   world.springfieldPage = undefined
   world.shelbyvillePage = undefined
-}
-
-function localConfigPayload(problem: string): string | undefined {
-  switch (problem) {
-    case "a missing tenant slug": {
-      return JSON.stringify({ config: { displayName: "Local Demo" } })
-    }
-    case "inconsistent tenant identity": {
-      return JSON.stringify({
-        config: { displayName: "Local Demo" },
-        identity: "shelbyville",
-        slug: "springfield"
-      })
-    }
-    case "no supplied record": {
-      return undefined
-    }
-    default: {
-      return JSON.stringify(invalidEnvShape(problem))
-    }
-  }
 }
 
 function oidcSignatureFields(world: TenantWorld): Record<string, unknown> {

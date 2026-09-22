@@ -20,7 +20,7 @@ import {
 } from "../../../packages/frontend/src/lib/tenant/types.ts"
 import { invalidEnvShape, syntheticTenantConfig, syntheticTenantRecord } from "./fixtures.ts"
 import { sendRawGet } from "./raw-http.ts"
-import { ensureBrowser, ensureOwnedProcess, restartOwnedProcess } from "./server.ts"
+import { ensureBrowser, ensureOwnedProcess } from "./server.ts"
 
 const CACHE_CONTROL = "private, no-store"
 
@@ -185,12 +185,6 @@ export function injectedSource(world: TenantWorld): TenantSource {
     const index = records.findIndex((record) => slugOf(record) === "springfield")
     assert.notEqual(index, -1)
     records[index] = invalidEnvShape(world.invalidDisplayName)
-  }
-
-  if (world.alternativeDisplayName !== undefined) {
-    const index = records.findIndex((record) => slugOf(record) === "springfield")
-    assert.notEqual(index, -1)
-    records[index] = syntheticTenantRecord("springfield", world.alternativeDisplayName)
   }
 
   try {
@@ -401,13 +395,6 @@ export async function resolveHost(world: TenantWorld, host: string): Promise<Con
   } catch {
     return failContract(world, "unreadable-config")
   }
-}
-
-export async function restartWithUpdatedName(world: TenantWorld, displayName: string): Promise<void> {
-  assert.ok(world.localStaticRecord)
-  world.previousDisplayName = world.localStaticRecord.displayName
-  world.localStaticRecord = { displayName, slug: world.localStaticRecord.slug }
-  await restartOwnedProcess(world)
 }
 
 export function upsertTenant(world: TenantWorld, slug: string, displayName: string): void {

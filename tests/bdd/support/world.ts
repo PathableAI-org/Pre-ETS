@@ -60,7 +60,6 @@ export interface SyntheticTenantRecord {
 export type TenantResolutionMode = "host" | "static"
 
 export class TenantWorld extends World {
-  alternativeDisplayName: string | undefined = undefined
   authoritativeHost: string | undefined = undefined
   binderInvocationCount: number | undefined = undefined
   browser: Browser | undefined = undefined
@@ -84,7 +83,6 @@ export class TenantWorld extends World {
   invalidDisplayName: string | undefined = undefined
   knownHostResult: ContractResult | undefined = undefined
   lastVisitedUrl: string | undefined = undefined
-  localConfigProblem: string | undefined = undefined
   localStaticRecord: SyntheticTenantRecord | undefined = undefined
   modeDiagnostic: ModeDiagnostic | undefined = undefined
   oidcCallerOverride: undefined | { readonly source: string; readonly value: string } = undefined
@@ -112,7 +110,6 @@ export class TenantWorld extends World {
   playwrightChromium: BrowserType | undefined = undefined
   port = 3000
   prefetchResponse: HttpExchange | undefined = undefined
-  previousDisplayName: string | undefined = undefined
   previousSessionRecord: SessionRecord | undefined = undefined
   processSignature: string | undefined = undefined
   redisStoppedViaDocker = false
