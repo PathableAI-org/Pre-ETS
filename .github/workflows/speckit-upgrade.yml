@@ -1,0 +1,24 @@
+# Weekly Spec Kit upgrade check via shared reusable workflow.
+# Docs: https://github.com/PathableAI-org/github-workflows/blob/main/docs/speckit-upgrade.md
+name: Upgrade Spec Kit
+
+on:
+  schedule:
+    - cron: "0 14 * * 1"
+  workflow_dispatch:
+    inputs:
+      specify_version:
+        description: "Spec Kit release tag (e.g. v1.0.5). Leave empty for latest stable."
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  upgrade:
+    uses: PathableAI-org/github-workflows/.github/workflows/speckit-upgrade.yml@b6fc67fa23a6ecf6444a783d2399bbb826d0ca63
+    with:
+      specify_version: ${{ inputs.specify_version }}
