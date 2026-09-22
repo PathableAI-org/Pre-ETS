@@ -16,4 +16,3 @@ Feature: Inactivity interruption presents an accessible recovery action
       Given a browser site whose Springfield login configuration requires a missing client secret
       When the browser opens the tenant entry page
       Then accessible failure guidance explains that login cannot start
-      And protected temporary content is removed

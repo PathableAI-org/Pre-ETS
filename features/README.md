@@ -51,14 +51,14 @@ execution reference. No old `CUCUMBER_*` discovery switches or spec-specific BDD
 
 ## Refactor validation — 2026-09-22
 
-| Check                     | Observed result                                                                        |
-| ------------------------- | -------------------------------------------------------------------------------------- |
-| Full BDD runtime          | 65 passed: 40 application, 20 production HTTP, 5 development browser                   |
-| Discovery                 | 65 scenarios / 381 steps discovered; execution intentionally skipped                   |
-| Harness regression checks | 4 passed: tag validation, independent partitions, truthful presentation                |
-| Frontend tests            | 293 passed across 28 files                                                             |
-| Real-Keycloak E2E         | 5 passed, 1 failed: Shift+Tab moves focus away from the inactivity recovery button     |
-| Repository checks         | Typecheck, build, lint, formatting, unused-code check and diff whitespace check passed |
+| Check                     | Observed result                                                                            |
+| ------------------------- | ------------------------------------------------------------------------------------------ |
+| Full BDD runtime          | 65 passed: 40 application, 20 production HTTP, 5 development browser                       |
+| Discovery                 | 65 scenarios / 380 steps discovered; execution intentionally skipped                       |
+| Harness regression checks | 5 passed: tag validation, independent partitions, truthful presentation, fixture ownership |
+| Frontend tests            | 293 passed across 28 files                                                                 |
+| Real-Keycloak E2E         | 5 passed, 1 failed: Shift+Tab moves focus away from the inactivity recovery button         |
+| Repository checks         | Typecheck, build, lint, formatting, unused-code check and diff whitespace check passed     |
 
 The E2E focus assertion is unchanged in `e2e/timeout.spec.ts`; its failure is not suppressed or retried.
 This refactor changes test code/configuration only. CI configuration was inspected locally; no remote CI

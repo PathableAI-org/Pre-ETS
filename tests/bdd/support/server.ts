@@ -121,13 +121,13 @@ export async function startSite(world: CapabilityWorld): Promise<void> {
 }
 export async function stopSite(world: CapabilityWorld): Promise<void> {
   const child = world.process
-  if (!child?.pid || child.exitCode !== null) {
+  if (!child?.pid || !running(child)) {
     world.process = undefined
     return
   }
-  process.kill(-child.pid, "SIGTERM")
+  signalProcessGroup(child.pid, "SIGTERM")
   for (let tries = 0; tries < 30 && running(child); tries++) await delay(100)
-  if (running(child)) process.kill(-child.pid, "SIGKILL")
+  if (running(child)) signalProcessGroup(child.pid, "SIGKILL")
   world.process = undefined
 }
 
@@ -145,4 +145,12 @@ async function freePort(): Promise<number> {
 
 function running(child: ChildProcess): boolean {
   return child.exitCode === null && child.signalCode === null
+}
+
+function signalProcessGroup(pid: number, signal: NodeJS.Signals): void {
+  try {
+    process.kill(-pid, signal)
+  } catch (error) {
+    if (!(error instanceof Error && "code" in error && error.code === "ESRCH")) throw error
+  }
 }
