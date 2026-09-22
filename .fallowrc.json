@@ -25,6 +25,11 @@
     "**/.next/**",
     "**/next-env.d.ts"
   ],
+  "ignoreDependencies": [
+    "@effect/platform-node",
+    "effect",
+    "effect-solutions"
+  ],
   "rules": {
     "unused-dependencies": "error"
   },

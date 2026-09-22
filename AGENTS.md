@@ -9,6 +9,26 @@
   `agent-guidance/pathable-react/SKILL.md` from that package before making
   changes. Read only the linked reference relevant to the task.
 - Apply the shared strict TypeScript settings to all code, including non-Effect code.
+
+## Effect workspace routing
+
+Before designing or modifying Effect code in `packages/frontend`,
+`packages/backend`, or a future workspace extending `tsconfig.effect.json`,
+read [Effect agent guidance](docs/engineering/effect-guidance.md) and the target
+workspace's `AGENTS.md`: [frontend](packages/frontend/AGENTS.md),
+[backend](packages/backend/AGENTS.md). This explicit routing also applies when an
+agent starts at the repository root. Consult relevant Effect Solutions topics
+(`pnpm effect-solutions list` / `show`) and verify APIs against the installed
+Effect **4.0.0-rc.113** declarations before using examples. Do not run the CLI's
+interactive setup to rewrite this monorepo.
+
+Product Effect pins are coordinated on `4.0.0-rc.113` with matching
+`@effect/platform-node`. Existing product ownership still applies: frontend owns
+Next.js UI, tenant configuration, OIDC, and session state; backend owns the
+Effect REST domain layer. See
+[effect-guidance](docs/engineering/effect-guidance.md) and
+[domain persistence](docs/domain-persistence.md).
+
 - Prefer direct package scripts and README instructions over custom wrappers.
 - Keep each new tool setup in its own focused commit with its configuration,
   lockfile updates, documentation, and validation.
