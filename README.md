@@ -364,6 +364,12 @@ Commit shared scripts, templates, skills, extension configuration, and the
 constitution. Keep the current-feature pointer, local extension overrides, and
 regenerable composition cache out of version control.
 
+## Testing practices
+
+See [Testing as evidence](docs/engineering/testing/README.md) for choosing meaningful
+verification and [Property-based testing](docs/engineering/testing/property-based-testing.md)
+for designing properties and using fast-check with project examples.
+
 ## Browser E2E tests
 
 Run `pnpm test:e2e` after starting the Compose stack. See the

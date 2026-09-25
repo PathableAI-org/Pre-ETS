@@ -10,6 +10,12 @@
   changes. Read only the linked reference relevant to the task.
 - Apply the shared strict TypeScript settings to all code, including non-Effect code.
 
+## Testing guidance
+
+Before designing or changing tests, read [Testing as evidence](docs/engineering/testing/README.md).
+For property tests, also read [Property-based testing](docs/engineering/testing/property-based-testing.md).
+Choose evidence for a named expectation and the boundary responsible for it; do not add tests solely for coverage.
+
 ## Effect workspace routing
 
 Before designing or modifying Effect code in `packages/frontend`,
