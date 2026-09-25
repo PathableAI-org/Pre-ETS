@@ -15,9 +15,9 @@
   },
   "dependencies": {
     "@pathableai/react": "0.3.0",
-    "effect": "4.0.0-rc.113",
+    "effect": "4.0.0-rc.117",
     "jose": "6.2.12",
-    "next": "16.3.5",
+    "next": "16.3.6",
     "openid-client": "6.8.8",
     "react": "19.3.0",
     "react-dom": "19.3.0",
@@ -25,7 +25,7 @@
     "server-only": "0.0.1"
   },
   "devDependencies": {
-    "@next/eslint-plugin-next": "16.3.5",
+    "@next/eslint-plugin-next": "16.3.6",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "eslint-plugin-react-hooks": "7.1.1",
