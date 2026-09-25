@@ -45,28 +45,35 @@ Follow [Effect guidance](../effect-guidance.md) and the owning workspace's instr
 guide does not introduce `@effect/vitest` or another runner. Frontend session logic stays in the frontend; backend
 domain rules and durable storage stay in the backend, as described in [domain persistence](../../domain-persistence.md).
 
-## Prepare a future property test
+## Run a property in the frontend suite
 
-The lockfile currently contains fast-check transitively through Effect. Neither workspace declares it as a
-direct test dependency. Do not import it through Effect, a package-manager store path, or an accidental hoist.
-Use the owning workspace's manifest and root lockfile as the source of truth for dependency versions.
-The examples use the frontend's existing Vitest runner.
+The frontend workspace declares `fast-check` and `@fast-check/vitest` as direct development dependencies. Import
+property tests from the Vitest connector so timeouts and lifecycle hooks stay aligned with the runner. Do not import
+fast-check through Effect, a package-manager store path, or an accidental hoist.
 
-When a future change actually adopts these tests, add the direct development dependency from the repository root:
+```ts
+import { fc, test } from "@fast-check/vitest"
+import { expect } from "vitest"
 
-```sh
-pnpm --filter @pathableai/pre-ets-frontend add -D fast-check
+test.prop([fc.string(), fc.string()])("concatenation keeps both parts in order", (left, right) => {
+  const text = left + right
+
+  expect(text.startsWith(left)).toBe(true)
+  expect(text.endsWith(right)).toBe(true)
+})
 ```
 
-That command changes the frontend manifest and root lockfile. It is a future setup step, not part of adding these
-guides. Put the following complete example in `packages/frontend/tests/unit/session-properties.test.ts`, then run:
+Vitest globals stay off, so import `expect` from `vitest`. The connector's `test` and `it` replace Vitest's own for
+tests that use `.prop`; ordinary examples can keep importing `it` from `vitest`. The existing configuration already
+discovers `tests/unit/**/*.test.ts` in a Node environment. A connector smoke check lives in
+`packages/frontend/tests/unit/fast-check-vitest.test.ts`. Run it with:
 
 ```sh
-pnpm --filter @pathableai/pre-ets-frontend test:unit -- tests/unit/session-properties.test.ts
+pnpm --filter @pathableai/pre-ets-frontend test:unit -- tests/unit/fast-check-vitest.test.ts
 ```
 
-The existing configuration discovers `tests/unit/**/*.test.ts` in a Node environment. Use normal Vitest assertions;
-no special integration package is required.
+The session walkthrough below is an illustration of properties, not an installed suite. When you adopt one of those
+claims, put it in `packages/frontend/tests/unit/` and run it through the same connector.
 
 ## Walkthrough: session invariants
 
@@ -284,6 +291,7 @@ evidence for the uncertainties the property does not exercise.
 
 ## References
 
+- [Property-based testing with Vitest](https://fast-check.dev/docs/tutorials/setting-up-your-test-environment/property-based-testing-with-vitest/)
 - [fast-check arbitraries](https://fast-check.dev/docs/core-blocks/arbitraries/)
 - [fast-check properties](https://fast-check.dev/docs/core-blocks/properties/)
 - [fast-check configuration](https://fast-check.dev/docs/configuration/)
