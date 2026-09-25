@@ -114,6 +114,8 @@
       "matchUpdateTypes": ["minor", "patch", "digest", "pin", "pinDigest"],
       "matchPackageNames": [
         "vitest",
+        "@fast-check/vitest",
+        "fast-check",
         "vite",
         "@vitejs/plugin-react",
         "@playwright/test",
