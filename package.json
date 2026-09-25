@@ -27,8 +27,8 @@
     "test:bdd:checks": "node --test tests/bdd/checks/*.test.*"
   },
   "dependencies": {
-    "@effect/platform-node": "4.0.0-rc.113",
-    "effect": "4.0.0-rc.113",
+    "@effect/platform-node": "4.0.0-rc.117",
+    "effect": "4.0.0-rc.117",
     "redis": "6.2.1"
   },
   "devDependencies": {
