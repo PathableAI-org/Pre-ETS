@@ -1,23 +1,10 @@
 import { Array, pipe, Result, Schema, String } from "effect"
 
-const TenantAliasBrand = "@pathableai/pre-ets-frontend/TenantAlias" as const
-export type TenantAliasBrand = typeof TenantAliasBrand
+import type { TenantConfig, TenantStaticConfig } from "../config"
 
-export const TenantAlias = Schema.NonEmptyString.pipe(
-  Schema.check(Schema.isPattern(/^[a-z-]+$/)),
-  Schema.brand(TenantAliasBrand)
-)
-export type TenantAlias = typeof TenantAlias.Type
+import { TenantAlias, TenantConfigError } from "./schema"
 
-export class TenantAliasError extends Schema.TaggedError<TenantAliasError>()(
-  "@pathableai/pre-ets-frontend/TenantResolutionError",
-  {
-    cause: Schema.instanceOf(Schema.SchemaError),
-    message: Schema.String
-  }
-) {}
-
-export const tenantAliasFromHost: (a: string) => Result.Result<TenantAlias, TenantAliasError> = (
+export const tenantAliasFromHost: (a: string) => Result.Result<TenantAlias, TenantConfigError> = (
   host
 ) =>
   pipe(
@@ -28,9 +15,37 @@ export const tenantAliasFromHost: (a: string) => Result.Result<TenantAlias, Tena
     Schema.decodeResult(TenantAlias),
     Result.mapError(
       (e) =>
-        new TenantAliasError({
+        new TenantConfigError({
           cause: e,
           message: `Failed to read tenant alias from HOST: "${host}"`
         })
     )
   )
+
+export const tenantAliasFromStaticTenantConfig = (
+  config: TenantStaticConfig
+): Result.Result<TenantAlias, TenantConfigError> => {
+  return pipe(
+    config.staticAlias,
+    Schema.decodeResult(TenantAlias),
+    Result.mapError(
+      (e) =>
+        new TenantConfigError({
+          cause: e,
+          message: `Failed to read tenant alias from config value: "${config.staticAlias}"`
+        })
+    )
+  )
+}
+
+export const tenantAliasFromServerConfig = (
+  config: TenantConfig
+) =>
+(host: string): Result.Result<TenantAlias, TenantConfigError> => {
+  switch (config.resolution) {
+    case "host":
+      return tenantAliasFromHost(host)
+    case "static":
+      return tenantAliasFromStaticTenantConfig(config)
+  }
+}
