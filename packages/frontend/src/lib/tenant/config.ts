@@ -1,8 +1,8 @@
 import { Effect, type FileSystem, type Path, pipe, Schema } from "effect"
 
-import type * as ServerConfig from "../config"
+import type * as ServerConfig from "../config/index.ts"
 
-import { type TenantAlias, TenantConfig, TenantConfigError } from "./schema"
+import { type TenantAlias, TenantConfig, TenantConfigError } from "./schema.ts"
 
 const tenantConfigPathFromAlias = (
   config: ServerConfig.TenantConfig,

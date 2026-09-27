@@ -1,10 +1,10 @@
 import { Context, Effect, FileSystem, flow, Layer, Path, type Result } from "effect"
 
-import type { ServerConfig } from "../config"
-import type { TenantAlias, TenantConfig, TenantConfigError } from "./schema"
+import type { ServerConfig } from "../config/index.ts"
+import type { TenantAlias, TenantConfig, TenantConfigError } from "./schema.ts"
 
-import { tenantAliasFromServerConfig } from "./alias"
-import { tenantConfigFromAlias } from "./config"
+import { tenantAliasFromServerConfig } from "./alias.ts"
+import { tenantConfigFromAlias } from "./config.ts"
 
 export class TenantConfigService extends Context.Service<TenantConfigService, {
   readonly getAlias: (host: string) => Result.Result<TenantAlias, TenantConfigError>

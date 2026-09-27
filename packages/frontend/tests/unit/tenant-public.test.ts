@@ -71,13 +71,4 @@ describe("tenant public interface", () => {
       tenantId: "springfield"
     })
   })
-
-  it("reads a hostname and drops a single valid port", async () => {
-    const tenant = await loadTenant(configDirWith({}))
-
-    expect(tenant.hostnameOf("springfield.localhost")).toBe("springfield.localhost")
-    expect(tenant.hostnameOf("springfield.localhost:3000")).toBe("springfield.localhost")
-    expect(tenant.hostnameOf("a:b:c")).toBeUndefined()
-    expect(tenant.hostnameOf("springfield.localhost:65536")).toBeUndefined()
-  })
 })

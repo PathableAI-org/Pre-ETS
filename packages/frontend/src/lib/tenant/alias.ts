@@ -1,8 +1,8 @@
 import { Array, pipe, Result, Schema, String } from "effect"
 
-import type { TenantConfig, TenantStaticConfig } from "../config"
+import type { TenantConfig, TenantStaticConfig } from "../config/index.ts"
 
-import { TenantAlias, TenantConfigError } from "./schema"
+import { TenantAlias, TenantConfigError } from "./schema.ts"
 
 export const tenantAliasFromHost: (a: string) => Result.Result<TenantAlias, TenantConfigError> = (
   host

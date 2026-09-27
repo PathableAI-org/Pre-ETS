@@ -9,8 +9,7 @@ import { createClient } from "redis"
 import type { RecordQualifyingActivityResult } from "../../../packages/frontend/src/lib/session/activity.ts"
 import type { GuardAuthenticatedAccessResult } from "../../../packages/frontend/src/lib/session/guard.ts"
 import type { SetupSessionResult } from "../../../packages/frontend/src/lib/session/setup.ts"
-import type { TenantOperationResult } from "../../../packages/frontend/src/lib/tenant/operations.ts"
-import type { SessionConfig, SessionRecord, TenantConfig } from "./types.ts"
+import type { SessionConfig, SessionRecord } from "./types.ts"
 
 import { RedisSessionStore } from "../../../packages/frontend/src/lib/session/store.ts"
 
@@ -41,7 +40,6 @@ export class CapabilityWorld extends World {
   now = this.baseTime
   originalRecord: SessionRecord | undefined
   page: Page | undefined
-  parsedConfig: TenantConfig | undefined
   port = 0
   process: ChildProcess | undefined
   provider: Server | undefined
@@ -62,7 +60,5 @@ export class CapabilityWorld extends World {
     }),
     clock: () => this.now
   })
-  tenantResult: TenantOperationResult | undefined
-  tenantResults: TenantOperationResult[] = []
 }
 setWorldConstructor(CapabilityWorld)

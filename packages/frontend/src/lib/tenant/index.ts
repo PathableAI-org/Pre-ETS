@@ -75,29 +75,4 @@ export function getCurrentTenantConfig(tenant: string): Promise<TenantConfig> {
   )
 }
 
-/**  Working on refactor */
-export function hostnameOf(rawHost: string): string | undefined {
-  const separator = rawHost.lastIndexOf(":")
-  if (separator === -1) {
-    return rawHost
-  }
-
-  if (rawHost.indexOf(":") !== separator) {
-    return undefined
-  }
-
-  const hostname = rawHost.slice(0, separator)
-  const portText = rawHost.slice(separator + 1)
-  if (hostname === "" || !/^[1-9]\d{0,4}$/.test(portText)) {
-    return undefined
-  }
-
-  const port = Number(portText)
-  if (!Number.isInteger(port) || port < 1 || port > 65535) {
-    return undefined
-  }
-
-  return hostname
-}
-
 export * from "./schema.ts"

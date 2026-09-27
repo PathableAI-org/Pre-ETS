@@ -1,12 +1,15 @@
 import { Given, Then, When } from "@cucumber/cucumber"
+import { NodeServices } from "@effect/platform-node"
+import { Effect, Layer } from "effect"
 import assert from "node:assert/strict"
 
+import type { TenantConfigError } from "../../../packages/frontend/src/lib/tenant/schema.ts"
 import type { CapabilityWorld } from "../support/world.ts"
 
 import { signSessionCookie, verifySessionCookie } from "../../../packages/frontend/src/lib/session/cookie.ts"
-import { setupSession } from "../../../packages/frontend/src/lib/session/setup.ts"
+import { setupSession, type TenantResolveResult } from "../../../packages/frontend/src/lib/session/setup.ts"
 import { type SessionStore, SessionStoreError } from "../../../packages/frontend/src/lib/session/store.ts"
-import { createTenantOperations } from "../../../packages/frontend/src/lib/tenant/operations.ts"
+import { TenantConfigService } from "../../../packages/frontend/src/lib/tenant/service.ts"
 import { seedSession, sessionCookieHeader, writeTenants } from "../support/fixtures.ts"
 
 Given("isolated application session storage", async function(this: CapabilityWorld) {
@@ -28,12 +31,6 @@ Given("session writes will fail at the storage boundary", function(this: Capabil
   this.failWrites = true
 })
 When("application session setup handles a Springfield visit", async function(this: CapabilityWorld) {
-  const operations = createTenantOperations({
-    configDir: this.directory,
-    hostSuffix: "pathable.com",
-    mode: "host",
-    production: true
-  })
   const real = this.store
   const store: SessionStore = this.failWrites ?
     {
@@ -49,7 +46,7 @@ When("application session setup handles a Springfield visit", async function(thi
     {
       config: this.config,
       nowSeconds: () => this.now,
-      resolveTenant: (request) => operations.resolve({ host: new URL(request.url).host }),
+      resolveTenant: (request) => resolveHostTenant(this, new URL(request.url).host),
       store
     }
   )
@@ -124,4 +121,32 @@ async function alterStoredReference(world: CapabilityWorld, condition: string): 
     default:
       throw new Error(`Unknown stored condition: ${condition}`)
   }
+}
+
+function resolveHostTenant(world: CapabilityWorld, host: string): Promise<TenantResolveResult> {
+  const layer = TenantConfigService.layer({
+    tenant: { configDir: world.directory, resolution: "host" }
+  }).pipe(Layer.provide(NodeServices.layer))
+
+  const readTenant: Effect.Effect<TenantResolveResult, TenantConfigError, TenantConfigService> = Effect.gen(
+    function*() {
+      const service = yield* TenantConfigService
+      const alias = yield* service.getAlias(host).pipe(Effect.fromResult)
+      const config = yield* service.getConfigFromAlias(alias)
+      return { config, kind: "ok" as const, origin: "host-associated" as const, tenantId: alias }
+    }
+  )
+
+  return Effect.runPromise(
+    readTenant.pipe(
+      Effect.provide(layer, { local: true }),
+      Effect.catch((error: TenantConfigError) =>
+        Effect.succeed(
+          error.message.startsWith("Failed to read tenant config")
+            ? { kind: "unknown" as const }
+            : { kind: "config-error" as const, message: error.message }
+        )
+      )
+    )
+  )
 }

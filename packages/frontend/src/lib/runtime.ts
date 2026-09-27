@@ -1,7 +1,7 @@
 import { NodeServices } from "@effect/platform-node"
 import { Layer, ManagedRuntime } from "effect"
 
-import type { ServerConfig } from "./config"
+import type { ServerConfig } from "./config/index.ts"
 
 import { TenantConfigService } from "./tenant/service.ts"
 
