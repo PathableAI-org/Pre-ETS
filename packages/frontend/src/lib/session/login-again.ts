@@ -1,5 +1,5 @@
 import type { InitiateLoginDeps, InitiateLoginOutcome } from "../oidc/initiate.ts"
-import type { TenantRecord } from "../tenant/types.ts"
+import type { TenantRecord } from "../tenant/index.ts"
 
 import { initiateLogin } from "../oidc/initiate.ts"
 import { signSessionCookie, verifySessionCookie } from "./cookie.ts"

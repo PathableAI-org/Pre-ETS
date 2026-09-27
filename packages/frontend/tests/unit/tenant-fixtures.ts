@@ -2,7 +2,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 
-import type { TenantConfig, TenantOidcConfig, TenantRecord } from "../../src/lib/tenant/types.ts"
+import type { TenantConfig, TenantOidcConfig, TenantRecord } from "../../src/lib/tenant/index.ts"
 
 export const springfieldOidc: TenantOidcConfig = {
   clientAuth: "public",

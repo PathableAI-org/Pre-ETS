@@ -1,29 +1,48 @@
 import { Effect, Schema } from "effect"
 import "server-only"
 
-import type * as operations from "./operations.ts"
-
 import { Runtime } from "../runtime.ts"
 import { TenantAlias, type TenantConfig } from "./schema.ts"
 import { TenantConfigService } from "./service.ts"
 
-const tenantRuntime = process.env.NODE_ENV === "development"
-  ? await import("./dev.ts")
-  : await import("./prod.ts")
-
-export const getCurrentTenant = tenantRuntime.getCurrentTenant
-
 export * from "./alias.ts"
 export * from "./config.ts"
+
+export interface TenantRecord {
+  readonly config: TenantConfig
+  readonly slug: string
+}
 
 /**  Working on refactor */
 export function createEnvTenantOperations(
   _env: NodeJS.ProcessEnv = process.env,
   _production?: boolean
 ): {
-  readonly resolve: (input: { readonly host: string | undefined }) => Promise<operations.TenantOperationResult>
+  readonly resolve: (
+    input: { readonly host: string | undefined }
+  ) => Promise<
+    | {
+      readonly config: TenantConfig
+      readonly kind: "ok"
+      readonly origin: "host-associated"
+      readonly tenantId: string
+    }
+    | { readonly kind: "config-error"; readonly message: string }
+    | { readonly kind: "unknown" }
+  >
 } {
-  const resolve: (input: { readonly host: string | undefined }) => Promise<operations.TenantOperationResult> = async (
+  const resolve: (
+    input: { readonly host: string | undefined }
+  ) => Promise<
+    | {
+      readonly config: TenantConfig
+      readonly kind: "ok"
+      readonly origin: "host-associated"
+      readonly tenantId: string
+    }
+    | { readonly kind: "config-error"; readonly message: string }
+    | { readonly kind: "unknown" }
+  > = async (
     input
   ) => {
     const { host } = input

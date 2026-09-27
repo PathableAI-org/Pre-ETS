@@ -1,4 +1,4 @@
-import type { TenantConfig } from "../tenant/types.ts"
+import type { TenantConfig } from "../tenant/index.ts"
 
 import { readSingleNamedCookie } from "../http/cookie-header.ts"
 import { signSessionCookie, verifySessionCookie } from "./cookie.ts"

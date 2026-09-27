@@ -1,6 +1,6 @@
 import * as client from "openid-client"
 
-import type { TenantConfig, TenantRecord } from "../tenant/types.ts"
+import type { TenantConfig, TenantRecord } from "../tenant/index.ts"
 import type { DiscoveredOidcClient } from "./discovery.ts"
 import type { OidcSecretResolution } from "./secrets.ts"
 import type { OidcTransactionStore } from "./transaction.ts"

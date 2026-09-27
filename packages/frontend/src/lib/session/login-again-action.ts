@@ -1,5 +1,5 @@
 import type { InitiateLoginDeps } from "../oidc/initiate.ts"
-import type { TenantRecord } from "../tenant/types.ts"
+import type { TenantRecord } from "../tenant/index.ts"
 import type { SessionStore } from "./store.ts"
 import type { SessionConfig } from "./types.ts"
 

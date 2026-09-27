@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 
-import type { TenantConfig } from "./lib/tenant/types.ts"
+import type { TenantConfig } from "./lib/tenant/index.ts"
 
 import { completeLogin, type CompleteLoginOutcome } from "./lib/oidc/callback.ts"
 import { isDocumentNavigation } from "./lib/oidc/document-navigation.ts"
@@ -31,7 +31,7 @@ import {
   TENANT_ORIGIN_HEADER,
   TENANT_SLUG_HEADER
 } from "./lib/session/types.ts"
-import { createEnvTenantOperations } from "./lib/tenant/operations.ts"
+import { createEnvTenantOperations } from "./lib/tenant/index.ts"
 
 const CACHE_CONTROL = "private, no-store"
 const LOGIN_UNAVAILABLE_PATH = "/login-unavailable"

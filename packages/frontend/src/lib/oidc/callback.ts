@@ -1,14 +1,13 @@
 import * as client from "openid-client"
 
 import type { SessionStore } from "../session/store.ts"
-import type { TenantConfig, TenantRecord } from "../tenant/types.ts"
 import type { OidcSecretResolution } from "./secrets.ts"
 import type { OidcTransactionStore } from "./transaction.ts"
 
 import { readSingleNamedCookie } from "../http/cookie-header.ts"
 import { computeIdleExpiresAt } from "../session/idle.ts"
 import { SessionStoreError } from "../session/store.ts"
-import { effectiveIdleTimeoutMinutes } from "../tenant/types.ts"
+import { effectiveIdleTimeoutMinutes, type TenantConfig, type TenantRecord } from "../tenant/index.ts"
 import { verifyOidcCorrelationCookie } from "./cookie.ts"
 import { approvedApplicationOrigin } from "./initiation-http.ts"
 import { resolveClientAndDiscover, type ResolveClientAndDiscoverDeps } from "./resolve-client.ts"

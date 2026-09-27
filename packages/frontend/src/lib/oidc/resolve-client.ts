@@ -1,4 +1,4 @@
-import type { OidcClientAuth } from "../tenant/types.ts"
+import type { OidcClientAuth } from "../tenant/index.ts"
 import type { DiscoveredOidcClient } from "./discovery.ts"
 import type { OidcSecretResolution } from "./secrets.ts"
 
