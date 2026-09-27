@@ -7,7 +7,6 @@ import {
   LOCAL_CONFIG_ERROR,
   resolveTenantConfigDir,
   resolveTenantStaticAlias,
-  selectTenantMode,
   type TenantConfig,
   type TenantMode
 } from "./types.ts"
@@ -144,7 +143,7 @@ export function createEnvTenantOperations(
     })
   }
 
-  const selection = selectTenantMode(env.TENANT_RESOLUTION)
+  const selection = { mode: "static" } as const
   if ("diagnostic" in selection && !loggedInvalidMode) {
     loggedInvalidMode = true
     try {

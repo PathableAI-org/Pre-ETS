@@ -126,22 +126,3 @@ export function resolveTenantStaticAlias(raw: string | undefined): string {
 
   return alias
 }
-
-export function selectTenantMode(rawMode: string | undefined, production = false): ModeSelection {
-  if (production) {
-    return { mode: "host" }
-  }
-
-  if (rawMode === undefined || rawMode === "" || rawMode === "host") {
-    return { mode: "host" }
-  }
-
-  if (rawMode === "static") {
-    return { mode: "static" }
-  }
-
-  return {
-    diagnostic: INVALID_MODE_DIAGNOSTIC,
-    mode: "host"
-  }
-}

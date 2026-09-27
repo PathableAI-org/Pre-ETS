@@ -1,19 +1,17 @@
 import "server-only"
-import { headers } from "next/headers"
 import { forbidden } from "next/navigation"
 
-import { loadHostBoundTenantConfig, requireHostTenantSlug, requireProcessTenantSource } from "./runtime-shared.ts"
+import { requireProcessTenantSource } from "./runtime-shared.ts"
 import { createFilesystemTenantSource, type TenantSource } from "./source.ts"
 import {
   CONFIG_UNAVAILABLE,
   LOCAL_CONFIG_ERROR,
   resolveTenantConfigDir,
   resolveTenantStaticAlias,
-  selectTenantMode,
   type TenantConfig
 } from "./types.ts"
 
-const selection = selectTenantMode(process.env.TENANT_RESOLUTION)
+const selection = { mode: "static" } as const
 if ("diagnostic" in selection) {
   try {
     console.error(JSON.stringify(selection.diagnostic))
@@ -21,8 +19,6 @@ if ("diagnostic" in selection) {
     // Logging failure must not change tenant selection.
   }
 }
-
-const staticMode = selection.mode === "static"
 
 let processSource: TenantSource | undefined
 let processSourceError: Error | undefined
@@ -37,21 +33,12 @@ try {
 
 let cachedStaticAlias: string | undefined
 
-export async function getCurrentTenant(): Promise<string> {
-  if (staticMode) {
-    return staticAlias()
-  }
-
-  const host = (await headers()).get("host") ?? undefined
-  return requireHostTenantSlug(host, "localhost")
+export function getCurrentTenant(): Promise<string> {
+  return Promise.resolve(staticAlias())
 }
 
 export async function getCurrentTenantConfig(tenant: string): Promise<TenantConfig> {
   const source = requireSource()
-  if (!staticMode) {
-    return await loadHostBoundTenantConfig(source, tenant)
-  }
-
   return await loadStaticTenantConfig(source, tenant)
 }
 
