@@ -349,6 +349,7 @@ describe("OIDC initiate / proxy contracts", () => {
           tenantRecord: {
             config: {
               displayName: "Springfield Demo",
+              idleTimeoutMinutes: 30,
               oidc: {
                 ...springfieldConfig.oidc,
                 clientAuth: "confidential"

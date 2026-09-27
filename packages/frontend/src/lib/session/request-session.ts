@@ -1,6 +1,6 @@
 import { redirect, unauthorized } from "next/navigation"
 
-import type { TenantConfig } from "../tenant/types.ts"
+import type { TenantConfig } from "../tenant/index.ts"
 import type { SessionStore } from "./store.ts"
 
 import { getCurrentTenantConfig } from "../tenant/index.ts"

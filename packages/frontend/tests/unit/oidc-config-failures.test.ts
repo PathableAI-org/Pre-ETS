@@ -41,6 +41,7 @@ describe("OIDC config failure taxonomy", () => {
         tenantRecord: {
           config: {
             displayName: "Springfield Demo",
+            idleTimeoutMinutes: 30,
             oidc: { ...springfieldConfig.oidc, clientAuth: "confidential" }
           },
           slug: "springfield"

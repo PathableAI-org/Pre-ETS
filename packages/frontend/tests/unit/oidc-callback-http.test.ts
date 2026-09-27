@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import type { OidcTransactionStore } from "../../src/lib/oidc/transaction.ts"
 import type { SessionStore } from "../../src/lib/session/store.ts"
-import type { TenantRecord } from "../../src/lib/tenant/types.ts"
+import type { TenantRecord } from "../../src/lib/tenant/index.ts"
 
 import { completeLogin } from "../../src/lib/oidc/callback.ts"
 import { signOidcCorrelationCookie } from "../../src/lib/oidc/cookie.ts"
@@ -133,6 +133,7 @@ function springfieldTenant(issuer: string): TenantRecord {
   return {
     config: {
       displayName: "Springfield Demo",
+      idleTimeoutMinutes: 30,
       oidc: {
         clientAuth: "public",
         clientId: "springfield-web",

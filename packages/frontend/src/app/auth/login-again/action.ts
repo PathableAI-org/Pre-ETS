@@ -9,7 +9,7 @@ import type { RedisSessionStore } from "../../../lib/session/store.ts"
 import { OIDC_COOKIE_NAME, oidcCookieAttributes } from "../../../lib/oidc/types.ts"
 import { applyLoginAgainCookies, buildLoginAgainRedirect } from "../../../lib/session/login-again-runtime.ts"
 import { cookieAttributes, SESSION_COOKIE_NAME } from "../../../lib/session/types.ts"
-import { createEnvTenantOperations } from "../../../lib/tenant/operations.ts"
+import { createEnvTenantOperations } from "../../../lib/tenant/index.ts"
 
 const storeCache: {
   oidcStore: RedisOidcTransactionStore | undefined

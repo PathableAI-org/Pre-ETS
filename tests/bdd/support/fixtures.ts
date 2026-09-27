@@ -49,16 +49,15 @@ export function tenantConfig(world: CapabilityWorld, tenant = "springfield", dis
 }
 export async function writeConfidentialTenant(world: CapabilityWorld): Promise<void> {
   const config = tenantConfig(world)
-  const oidc = { ...config.oidc, clientAuth: "confidential" }
   await fs.writeFile(
     path.join(world.directory, "springfield.json"),
-    JSON.stringify({ config: { ...config, oidc }, slug: "springfield" })
+    JSON.stringify({ ...config, oidc: { ...config.oidc, clientAuth: "confidential" } })
   )
 }
 export async function writeTenant(world: CapabilityWorld, tenant: string, displayName?: string): Promise<void> {
   await fs.writeFile(
     path.join(world.directory, `${tenant}.json`),
-    JSON.stringify({ config: tenantConfig(world, tenant, displayName), slug: tenant })
+    JSON.stringify(tenantConfig(world, tenant, displayName))
   )
 }
 

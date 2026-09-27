@@ -1,6 +1,6 @@
 import "server-only"
 
-import type { OidcClientAuth } from "../tenant/types.ts"
+import type { OidcClientAuth } from "../tenant/index.ts"
 
 export type OidcSecretResolution =
   | { readonly kind: "config-refusal" }

@@ -2,7 +2,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 
-import type { TenantConfig, TenantOidcConfig, TenantRecord } from "../../src/lib/tenant/types.ts"
+import type { TenantConfig, TenantOidcConfig, TenantRecord } from "../../src/lib/tenant/index.ts"
 
 export const springfieldOidc: TenantOidcConfig = {
   clientAuth: "public",
@@ -20,16 +20,19 @@ export const shelbyvilleOidc: TenantOidcConfig = {
 
 export const springfieldConfig: TenantConfig = {
   displayName: "Springfield Demo",
+  idleTimeoutMinutes: 30,
   oidc: springfieldOidc
 }
 
 export const shelbyvilleConfig: TenantConfig = {
   displayName: "Shelbyville Demo",
+  idleTimeoutMinutes: 30,
   oidc: shelbyvilleOidc
 }
 
 export const localConfig: TenantConfig = {
   displayName: "Local Demo",
+  idleTimeoutMinutes: 30,
   oidc: springfieldOidc
 }
 
