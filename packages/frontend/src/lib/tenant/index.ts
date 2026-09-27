@@ -64,11 +64,6 @@ export function createEnvTenantOperations(
   return { resolve }
 }
 
-/**  Use the idleTimeoutMinutes property of the TenantConfig object instead. */
-export function effectiveIdleTimeoutMinutes(config: TenantConfig): number {
-  return config.idleTimeoutMinutes
-}
-
 /**  Working on refactor */
 export function getCurrentTenantConfig(tenant: string): Promise<TenantConfig> {
   return Runtime.runPromise(
