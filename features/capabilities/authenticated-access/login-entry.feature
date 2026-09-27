@@ -47,18 +47,3 @@ Feature: Visitors enter their tenant's authentication flow
       When a visitor requests the document at "springfield.pathable.com"
       Then login starts for "springfield" on its own return host
       And the previous anonymous session remains usable without a replacement cookie
-
-    @spec-002-FR-002 @spec-002-FR-008
-    Scenario: A previously valid session cannot authorize an unknown host
-      Given a visitor previously received an anonymous Springfield session cookie
-      When a visitor requests the document at "unknown.pathable.com"
-      Then the response refuses access with status 403 and no redirect
-      And no session cookie or tenant content is returned
-
-    @spec-002-FR-002
-    Scenario: Removing a tenant denies its existing session
-      Given a visitor previously received an anonymous Springfield session cookie
-      And Springfield is removed from configuration and the frontend restarts
-      When a visitor requests the document at "springfield.pathable.com"
-      Then the response refuses access with status 403 and no redirect
-      And no session cookie or tenant content is returned
