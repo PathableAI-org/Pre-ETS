@@ -1,4 +1,4 @@
-import { hostnameOf } from "../tenant/host.ts"
+import { hostnameOf } from "../tenant/index.ts"
 
 /**
  * Build the approved application origin for `redirect_uri` from the same Host
