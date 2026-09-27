@@ -1,12 +1,11 @@
-import { Context, Effect, FileSystem, flow, Layer, Path, type Result } from "effect"
+import { Effect, Schema } from "effect"
 import "server-only"
 
-import type { ServerConfig } from "../config/index.ts"
-import type { TenantAlias, TenantConfig, TenantConfigError } from "./schema.ts"
+import type * as operations from "./operations.ts"
 
-import { tenantAliasFromServerConfig } from "./alias.ts"
-import { tenantConfigFromAlias } from "./config.ts"
-import * as operations from "./operations.ts"
+import { Runtime } from "../runtime.ts"
+import { TenantAlias, type TenantConfig } from "./schema.ts"
+import { TenantConfigService } from "./service.ts"
 
 const tenantRuntime = process.env.NODE_ENV === "development"
   ? await import("./dev.ts")
@@ -17,40 +16,49 @@ export const getCurrentTenant = tenantRuntime.getCurrentTenant
 export * from "./alias.ts"
 export * from "./config.ts"
 
-export class TenantConfigService extends Context.Service<TenantConfigService, {
-  readonly getAlias: (host: string) => Result.Result<TenantAlias, TenantConfigError>
-  readonly getConfigFromAlias: (alias: TenantAlias) => Effect.Effect<TenantConfig, TenantConfigError>
-  readonly getConfigFromHost: (host: string) => Effect.Effect<TenantConfig, TenantConfigError>
-}>()("@pathableai/pre-ets-frontend/TenantConfigService") {
-  static readonly layer = (
-    config: ServerConfig
-  ) =>
-    Layer.effect(
-      TenantConfigService,
+/**  Working on refactor */
+export function createEnvTenantOperations(
+  _env: NodeJS.ProcessEnv = process.env,
+  _production?: boolean
+): {
+  readonly resolve: (input: { readonly host: string | undefined }) => Promise<operations.TenantOperationResult>
+} {
+  const resolve: (input: { readonly host: string | undefined }) => Promise<operations.TenantOperationResult> = async (
+    input
+  ) => {
+    const { host } = input
+    if (host === undefined) {
+      return { kind: "unknown" }
+    }
+
+    return await Runtime.runPromise(
       Effect.gen(function*() {
-        const path = yield* Path.Path
-        const fs = yield* FileSystem.FileSystem
+        const service = yield* TenantConfigService
+        const alias = yield* service.getAlias(host).pipe(Effect.fromResult)
+        const config = yield* service.getConfigFromAlias(alias)
 
-        const getAlias = tenantAliasFromServerConfig(config.tenant)
-        const getConfigFromAlias = tenantConfigFromAlias(config.tenant, path, fs)
-        const getConfigFromHost = flow(
-          getAlias,
-          Effect.fromResult,
-          Effect.flatMap((alias) => getConfigFromAlias(alias))
-        )
-
-        return TenantConfigService.of({
-          getAlias,
-          getConfigFromAlias,
-          getConfigFromHost
-        })
+        return { config, kind: "ok", origin: "host-associated", tenantId: alias }
       })
     )
+  }
+
+  return { resolve }
 }
 
 /**  Use the idleTimeoutMinutes property of the TenantConfig object instead. */
 export function effectiveIdleTimeoutMinutes(config: TenantConfig): number {
   return config.idleTimeoutMinutes
+}
+
+/**  Working on refactor */
+export function getCurrentTenantConfig(tenant: string): Promise<TenantConfig> {
+  return Runtime.runPromise(
+    Effect.gen(function*() {
+      const service = yield* TenantConfigService
+      const alias = yield* Schema.decodeEffect(TenantAlias)(tenant)
+      return yield* service.getConfigFromAlias(alias)
+    })
+  )
 }
 
 /**  Working on refactor */
@@ -77,11 +85,5 @@ export function hostnameOf(rawHost: string): string | undefined {
 
   return hostname
 }
-
-/**  Working on refactor */
-export const getCurrentTenantConfig = tenantRuntime.getCurrentTenantConfig
-
-/**  Working on refactor */
-export const createEnvTenantOperations = operations.createEnvTenantOperations
 
 export * from "./schema.ts"
