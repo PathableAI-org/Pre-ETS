@@ -4,9 +4,8 @@ import { Layer, ManagedRuntime } from "effect"
 import type { ServerConfig } from "./config"
 
 import { TenantConfigService } from "./tenant/service.ts"
-import { resolveTenantConfigDir } from "./tenant/types"
 
-const configDir = resolveTenantConfigDir(process.env.TENANT_CONFIG_DIR)
+const configDir = process.env.TENANT_CONFIG_DIR ?? ""
 const serverConfig: ServerConfig = process.env.NODE_ENV === "production"
   ? {
     tenant: {
