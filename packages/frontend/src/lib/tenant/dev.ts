@@ -3,13 +3,7 @@ import { forbidden } from "next/navigation"
 
 import { requireProcessTenantSource } from "./runtime-shared.ts"
 import { createFilesystemTenantSource, type TenantSource } from "./source.ts"
-import {
-  CONFIG_UNAVAILABLE,
-  LOCAL_CONFIG_ERROR,
-  resolveTenantConfigDir,
-  resolveTenantStaticAlias,
-  type TenantConfig
-} from "./types.ts"
+import { CONFIG_UNAVAILABLE, LOCAL_CONFIG_ERROR, resolveTenantConfigDir, type TenantConfig } from "./types.ts"
 
 const selection = { mode: "static" } as const
 if ("diagnostic" in selection) {
@@ -76,6 +70,6 @@ function requireSource(): TenantSource {
 }
 
 function staticAlias(): string {
-  cachedStaticAlias ??= resolveTenantStaticAlias(process.env.TENANT_STATIC_ALIAS)
+  cachedStaticAlias ??= process.env.TENANT_STATIC_ALIAS ?? ""
   return cachedStaticAlias
 }

@@ -110,19 +110,3 @@ export function resolveTenantConfigDir(
   const trimmed = raw.trim()
   return path.isAbsolute(trimmed) ? trimmed : path.resolve(cwd, trimmed)
 }
-
-/**
- * Canonicalize `TENANT_STATIC_ALIAS`. Missing, blank, or non-canonical → local config error.
- */
-export function resolveTenantStaticAlias(raw: string | undefined): string {
-  if (raw === undefined || raw.trim() === "") {
-    throw new Error(LOCAL_CONFIG_ERROR)
-  }
-
-  const alias = raw.trim()
-  if (!isCanonicalTenantSlug(alias)) {
-    throw new Error(LOCAL_CONFIG_ERROR)
-  }
-
-  return alias
-}

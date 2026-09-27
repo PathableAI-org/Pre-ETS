@@ -6,7 +6,6 @@ import {
   isCanonicalTenantSlug,
   LOCAL_CONFIG_ERROR,
   resolveTenantConfigDir,
-  resolveTenantStaticAlias,
   type TenantConfig,
   type TenantMode
 } from "./types.ts"
@@ -117,7 +116,7 @@ export function createTenantOperations(options: CreateTenantOperationsOptions): 
   }
 
   function loadStaticAlias(): string {
-    staticAlias ??= resolveTenantStaticAlias(options.staticAlias)
+    staticAlias ??= options.staticAlias ?? ""
     return staticAlias
   }
 }
