@@ -2,23 +2,13 @@ import path from "node:path"
 
 export type HostSuffix = "localhost" | "pathable.com"
 
-export type OidcClientAuth = "confidential" | "public"
+export type { OidcClientAuth, TenantConfig, TenantOidcConfig } from "./schema"
 
-export interface TenantConfig {
-  readonly displayName: string
-  /** When omitted, effective idle policy for new sessions is 30 minutes. */
-  readonly idleTimeoutMinutes?: number
-  readonly oidc: TenantOidcConfig
-}
+import { Schema } from "effect"
+
+import { TenantConfig } from "./schema"
 
 export type TenantMode = "host" | "static"
-
-export interface TenantOidcConfig {
-  readonly clientAuth: OidcClientAuth
-  readonly clientId: string
-  readonly connection?: string
-  readonly issuer: string
-}
 
 export interface TenantRecord {
   readonly config: TenantConfig
@@ -59,13 +49,10 @@ export type FilesystemFailureCategory =
   | "parse"
 
 const SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/
-const ALLOWED_CONFIG_KEYS = new Set(["displayName", "idleTimeoutMinutes", "oidc"])
-const ALLOWED_OIDC_KEYS = new Set(["clientAuth", "clientId", "connection", "issuer"])
-const CLIENT_AUTH_VALUES = new Set<OidcClientAuth>(["confidential", "public"])
 
 /** Effective idle duration for new authenticated sessions (omit → 30). */
 export function effectiveIdleTimeoutMinutes(config: TenantConfig): number {
-  return config.idleTimeoutMinutes ?? 30
+  return config.idleTimeoutMinutes
 }
 
 export function isCanonicalTenantSlug(value: string): boolean {
@@ -74,43 +61,9 @@ export function isCanonicalTenantSlug(value: string): boolean {
 
 export function parseTenantConfig(
   value: unknown,
-  options: { readonly allowLoopbackHttp?: boolean } = {}
+  _options: { readonly allowLoopbackHttp?: boolean } = {}
 ): TenantConfig | undefined {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    return undefined
-  }
-
-  const record = value as Record<string, unknown>
-  if (Object.keys(record).some((key) => !ALLOWED_CONFIG_KEYS.has(key))) {
-    return undefined
-  }
-
-  if (typeof record.displayName !== "string" || record.displayName.trim() === "") {
-    return undefined
-  }
-
-  const oidc = parseTenantOidcConfig(record.oidc, options)
-  if (oidc === undefined) {
-    return undefined
-  }
-
-  const idleTimeoutMinutes = parseOptionalIdleTimeoutMinutes(record)
-  if (idleTimeoutMinutes === "invalid") {
-    return undefined
-  }
-
-  if (idleTimeoutMinutes === undefined) {
-    return {
-      displayName: record.displayName,
-      oidc
-    }
-  }
-
-  return {
-    displayName: record.displayName,
-    idleTimeoutMinutes,
-    oidc
-  }
+  return Schema.decodeUnknownSync(TenantConfig)(value)
 }
 
 export function parseTenantRecord(
@@ -190,140 +143,5 @@ export function selectTenantMode(rawMode: string | undefined, production = false
   return {
     diagnostic: INVALID_MODE_DIAGNOSTIC,
     mode: "host"
-  }
-}
-
-function allowLoopbackHttpDefault(): boolean {
-  return process.env.NODE_ENV === "development"
-}
-
-function isAllowedIssuerProtocol(
-  url: URL,
-  options: { readonly allowLoopbackHttp?: boolean }
-): boolean {
-  const protocol = url.protocol.toLowerCase()
-  const allowLoopbackHttp = options.allowLoopbackHttp ?? allowLoopbackHttpDefault()
-
-  if (protocol === "https:") {
-    return true
-  }
-
-  if (protocol === "http:") {
-    return allowLoopbackHttp && isLoopbackHostname(url.hostname)
-  }
-
-  return false
-}
-
-function isLoopbackHostname(hostname: string): boolean {
-  const host = hostname.toLowerCase()
-  return host === "127.0.0.1" || host === "localhost" || host === "::1" || host === "[::1]"
-}
-
-function isValidIssuer(
-  raw: string,
-  options: { readonly allowLoopbackHttp?: boolean }
-): boolean {
-  const url = parseAbsoluteIssuerUrl(raw)
-  if (url === undefined) {
-    return false
-  }
-
-  return isAllowedIssuerProtocol(url, options)
-}
-
-function parseAbsoluteIssuerUrl(raw: string): undefined | URL {
-  let url: URL
-  try {
-    url = new URL(raw)
-  } catch {
-    return undefined
-  }
-
-  // Reject normalized forms (whitespace, omitted trailing slash on origin-only URLs, etc.).
-  if (url.href !== raw && url.toString() !== raw) {
-    return undefined
-  }
-
-  // Reject userinfo; relative/incomplete strings fail URL parsing above.
-  if (url.username !== "" || url.password !== "") {
-    return undefined
-  }
-
-  return url
-}
-
-function parseOptionalIdleTimeoutMinutes(
-  record: Record<string, unknown>
-): "invalid" | number | undefined {
-  if (!("idleTimeoutMinutes" in record)) {
-    return undefined
-  }
-
-  const value = record.idleTimeoutMinutes
-  if (
-    typeof value !== "number"
-    || !Number.isSafeInteger(value)
-    || value < 5
-    || value > 30
-  ) {
-    return "invalid"
-  }
-
-  return value
-}
-
-function parseRequiredOidcFields(
-  oidc: Record<string, unknown>,
-  options: { readonly allowLoopbackHttp?: boolean }
-): Omit<TenantOidcConfig, "connection"> | undefined {
-  if (typeof oidc.issuer !== "string" || !isValidIssuer(oidc.issuer, options)) {
-    return undefined
-  }
-
-  if (typeof oidc.clientId !== "string" || oidc.clientId.trim() === "") {
-    return undefined
-  }
-
-  if (typeof oidc.clientAuth !== "string" || !CLIENT_AUTH_VALUES.has(oidc.clientAuth as OidcClientAuth)) {
-    return undefined
-  }
-
-  return {
-    clientAuth: oidc.clientAuth as OidcClientAuth,
-    clientId: oidc.clientId,
-    issuer: oidc.issuer
-  }
-}
-
-function parseTenantOidcConfig(
-  value: unknown,
-  options: { readonly allowLoopbackHttp?: boolean }
-): TenantOidcConfig | undefined {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    return undefined
-  }
-
-  const oidc = value as Record<string, unknown>
-  if (Object.keys(oidc).some((key) => !ALLOWED_OIDC_KEYS.has(key))) {
-    return undefined
-  }
-
-  const required = parseRequiredOidcFields(oidc, options)
-  if (required === undefined) {
-    return undefined
-  }
-
-  if (!("connection" in oidc)) {
-    return required
-  }
-
-  if (typeof oidc.connection !== "string" || oidc.connection.trim() === "") {
-    return undefined
-  }
-
-  return {
-    ...required,
-    connection: oidc.connection
   }
 }

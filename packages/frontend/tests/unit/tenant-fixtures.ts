@@ -20,16 +20,19 @@ export const shelbyvilleOidc: TenantOidcConfig = {
 
 export const springfieldConfig: TenantConfig = {
   displayName: "Springfield Demo",
+  idleTimeoutMinutes: 30,
   oidc: springfieldOidc
 }
 
 export const shelbyvilleConfig: TenantConfig = {
   displayName: "Shelbyville Demo",
+  idleTimeoutMinutes: 30,
   oidc: shelbyvilleOidc
 }
 
 export const localConfig: TenantConfig = {
   displayName: "Local Demo",
+  idleTimeoutMinutes: 30,
   oidc: springfieldOidc
 }
 

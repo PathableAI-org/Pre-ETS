@@ -133,6 +133,7 @@ function springfieldTenant(issuer: string): TenantRecord {
   return {
     config: {
       displayName: "Springfield Demo",
+      idleTimeoutMinutes: 30,
       oidc: {
         clientAuth: "public",
         clientId: "springfield-web",
