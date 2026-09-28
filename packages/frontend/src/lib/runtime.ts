@@ -6,9 +6,6 @@ import type { ServerConfig } from "./config/index.ts"
 import { TenantConfigService } from "./tenant/service.ts"
 
 const configDir = process.env.TENANT_CONFIG_DIR?.trim() ?? ""
-if (configDir === "") {
-  throw new Error("Tenant configuration is unavailable.")
-}
 const serverConfig: ServerConfig = process.env.NODE_ENV === "production"
   ? {
     tenant: {

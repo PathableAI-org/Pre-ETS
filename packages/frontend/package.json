@@ -14,7 +14,7 @@
     "test:unit": "vitest run --config vitest.config.ts"
   },
   "dependencies": {
-    "@effect/platform-node": "4.0.0-rc.117",
+    "@effect/platform-node": "4.0.0-rc.118",
     "@pathableai/react": "0.3.0",
     "effect": "4.0.0-rc.118",
     "jose": "6.2.12",
