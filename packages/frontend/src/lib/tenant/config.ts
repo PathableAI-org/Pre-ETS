@@ -50,9 +50,6 @@ export const tenantConfigFromAlias: (
             cause: e,
             message: `Failed to parse tenant config from ${configPath}`
           })
-        ),
-        Effect.tap(
-          (config) => Effect.logDebug("Parsed tenant config", { config })
         )
       )
     }
