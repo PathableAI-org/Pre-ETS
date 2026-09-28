@@ -6,6 +6,11 @@ import type { ServerConfig } from "./config/index.ts"
 import { TenantConfigService } from "./tenant/service.ts"
 
 const configDir = process.env.TENANT_CONFIG_DIR?.trim() ?? ""
+// `next build` evaluates this module while collecting page data, before the
+// process that serves the app has TENANT_CONFIG_DIR. `next start` evaluates it again.
+if (configDir === "" && process.env.NEXT_PHASE !== "phase-production-build") {
+  throw new Error("Tenant configuration is unavailable.")
+}
 const serverConfig: ServerConfig = process.env.NODE_ENV === "production"
   ? {
     tenant: {
