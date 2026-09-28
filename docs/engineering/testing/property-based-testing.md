@@ -45,6 +45,52 @@ Follow [Effect guidance](../effect-guidance.md) and the owning workspace's instr
 guide does not introduce `@effect/vitest` or another runner. Frontend session logic stays in the frontend; backend
 domain rules and durable storage stay in the backend, as described in [domain persistence](../../domain-persistence.md).
 
+## Properties at the public-service boundary
+
+Properties and scenarios are complementary. A scenario defines the environment; a property searches an input
+space within that environment. Properties can exercise an exported Effect service just as they can a pure helper.
+Prefer the public contract when it economically supports the authoritative claim. A corresponding helper property
+is optional and should contribute a different claim or useful failure localization.
+
+For example, consider this conceptual tenant-resolution contract. The operation names and configured base hostname
+below are illustrative, not existing APIs or new product requirements:
+
+```text
+scenario: static configuration for a synthetic tenant
+  provide the real tenant service with this configuration and required capabilities
+  obtain the service from Effect context
+  for every host in the contract's accepted input domain:
+    resolveTenant(host) returns the configured alias
+
+scenario: host resolution with base hostname example.com
+  for every permitted, non-reserved tenant label T:
+    resolveTenant(T + ".example.com") returns T
+  named examples:
+    example.com has no tenant
+    www.example.com does not resolve to tenant www
+```
+
+These observations go through the public service, not its alias-parsing helper. Use explicit assertions for the
+contract's distinguishable errors rather than merely asserting that an operation fails. Generate only the hostname
+and label domain the application owns; do not invent public-suffix parsing or general Internet hostname validation.
+Keep reserved labels in explicit rejection examples rather than silently omitting them from all evidence.
+
+The current service exposes `getAlias`, `getConfigFromAlias`, and `getConfigFromHost`; `getAlias` returns a `Result`,
+while the configuration operations return Effects. Its Layer currently accepts a plain configuration argument.
+Adapt tests to the actual interface and [tenant contract](../../multi-tenancy.md); the conceptual examples do not
+claim these properties have been implemented or verified. Configuration as an environmental requirement is a
+[design direction](../effect-guidance.md#configuration-belongs-in-the-dependency-graph).
+
+When implementing an asynchronous service property, await the Effect's execution and the property runner. Supply
+the real service under test with deterministic dependency Layers. Create fresh mutable scenario state for every
+generated case, including shrinking attempts, and release scoped resources after each attempt even on failure.
+Do not share a stateful runtime or cached fixture across attempts unless isolation is established. A pure operation
+such as the current `getAlias` can be asserted synchronously after obtaining its service from context.
+
+These tests establish service behavior in the supplied environment. Real adapter semantics, framework error mapping,
+and browser workflows require distinct evidence when relevant; see
+[Testing as evidence](README.md#different-boundaries-make-different-claims).
+
 ## Run a property in the frontend suite
 
 The frontend workspace declares `fast-check` and `@fast-check/vitest` as direct development dependencies. Import
@@ -208,7 +254,7 @@ that exposes a contract disagreement. Types describe shape; generators must also
 
 Use `fc.asyncProperty` when the assertion must await work, and await `fc.assert` in the Vitest test. For a complete,
 small example, this test exercises the existing asynchronous activity operation's missing-cookie rejection. Save it
-as a separate `tests/unit/session-activity-properties.test.ts` file after the future dependency setup above.
+as a separate `tests/unit/session-activity-properties.test.ts` file using the existing dependencies described above.
 
 ```ts
 import fc from "fast-check"
