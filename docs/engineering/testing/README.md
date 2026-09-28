@@ -29,9 +29,11 @@ Coverage can point to unexplored code. It cannot tell us whether assertions prot
 or a user's ability to recover access. Executing every line with weak assertions can leave all three unprotected.
 A function, class, branch, or architectural layer does not create a testing obligation merely by existing.
 
-Choose the smallest boundary that produces convincing evidence. Add broader checks when composition, real
-infrastructure, or a user's experience introduces a distinct uncertainty. Two tests about the same feature can
-protect different expectations; two tests at different layers can still repeat the same weak observation.
+Make the strongest useful claim at the highest meaningful boundary where it can be tested economically.
+For a module contract, prefer its public service when that boundary can establish the claim directly. Use narrower
+helper tests when they add distinct evidence or useful failure localization, rather than choosing private functions
+only because they are smaller. Add broader checks when composition, real infrastructure, or a user's experience
+introduces a distinct uncertainty. Tests at different layers can still repeat the same observation.
 
 Prefer semantic assertions that survive an implementation change. A recovery test should establish that a user
 can regain access through the intended interaction. The presence of a button, a particular DOM ancestry, or the
@@ -59,6 +61,45 @@ see [domain persistence](../../domain-persistence.md).
 Property testing describes how cases are generated and checked. Unit, integration, and end-to-end describe
 execution boundaries: a property can run against a pure function or a real adapter. BDD is a way to discover and
 express behavior. Writing a Gherkin scenario does not decide whether it should execute through a browser.
+
+## Public-service scenarios
+
+Start with the capability another module needs and the observable outcomes it can rely on. A scenario supplies
+the environment in which that capability operates: configuration, dependencies, and relevant starting state.
+In Effect, this often means assembling a particular Layer graph in a Vitest test.
+
+Provide the real service implementation under test with the scenario's dependencies, obtain the service from
+Effect context, and call its public operations. Assert returned values, public failures, and observable state
+changes where they are part of the contract. Do not replace the service under test with a canned implementation
+or assert which private helper it called. See [module design guidance](../effect-guidance.md#design-modules-from-the-consumer-inward).
+
+Filesystem, path, clock, and other platform capabilities can have deterministic test implementations when the
+module genuinely depends on them. Supply the module's world rather than mocking its internals. These tests need
+not exhaustively verify the supplied platform, and they do not establish the semantics of a real filesystem,
+Redis adapter, or network integration.
+
+A static-tenant scenario can contain a property that accepted host inputs do not change the configured alias.
+A host-based scenario can contain generated tenant-label cases and concrete examples for deliberate edge rules.
+Properties describe broad input spaces; examples communicate named decisions. Both can exercise the same public
+service. The [property guide](property-based-testing.md#properties-at-the-public-service-boundary) illustrates this
+without introducing a new tenant contract.
+
+## Different boundaries make different claims
+
+| Boundary              | Claim and appropriate evidence                                                                                                                |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| Public service        | What another module can rely on: scenario Layers, public outcomes, and properties where useful.                                               |
+| Pure transformation   | A mathematical or structural invariant: direct properties when they add evidence or useful failure localization.                              |
+| Framework integration | Whether Next invokes and interprets application Effects correctly: focused checks of input and response/error mapping.                        |
+| Application workflow  | Whether a user can accomplish a workflow or a cross-feature guarantee holds: application, HTTP, or browser evidence as required by the claim. |
+
+This is a hierarchy of semantic claims, not a required test pyramid. Avoid repeating the module's full behavior
+matrix at the framework boundary or duplicating a service property against private helpers without a distinct reason.
+
+For new module-contract scenarios, prefer Vitest and Effect Layers. Use BDD to describe externally meaningful
+application behavior and use Playwright when actual browser interaction is required. Existing Cucumber application,
+HTTP, and browser suites remain valid execution boundaries; these recommendations do not migrate them or imply
+that every Gherkin scenario runs through a browser. Stable cross-feature invariants can also justify E2E workflows.
 
 ## Existing suites and execution references
 
