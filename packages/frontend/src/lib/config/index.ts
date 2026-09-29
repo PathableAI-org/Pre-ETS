@@ -1,4 +1,4 @@
-import { Config, ConfigProvider, Context, Effect, Layer } from "effect"
+import { Config, ConfigProvider, Effect } from "effect"
 
 export type TenantConfig = TenantHostConfig | TenantStaticConfig
 
@@ -19,7 +19,7 @@ const tenantConfigurationUnavailable = new ConfigProvider.SourceError({
   message: "Tenant configuration is unavailable."
 })
 
-const tenantConfigDir = Config.String("TENANT_CONFIG_DIR").pipe(
+const _tenantConfigDir = Config.String("TENANT_CONFIG_DIR").pipe(
   Config.map((value) => value.trim()),
   Config.orElse(() => Config.succeed("")),
   Config.mapEffect((value) =>
@@ -29,39 +29,17 @@ const tenantConfigDir = Config.String("TENANT_CONFIG_DIR").pipe(
   )
 )
 
-const nodeEnv = Config.String("NODE_ENV").pipe(Config.withDefault("development"))
+const _nodeEnv = Config.String("NODE_ENV").pipe(Config.withDefault("development"))
 
-const tenantStaticAlias = Config.String("TENANT_STATIC_ALIAS").pipe(Config.withDefault(""))
+const _tenantStaticAlias = Config.String("TENANT_STATIC_ALIAS").pipe(Config.withDefault(""))
 
-export class ServerConfig extends Context.Service<ServerConfig, {
-  readonly tenant: TenantConfig
-}>()("@pathableai/pre-ets-frontend/ServerConfig") {
-  static readonly layer = Layer.effect(
-    ServerConfig,
-    Effect.gen(function*() {
-      // The default ConfigProvider reference snapshots process.env once per process.
-      // Parse a fresh provider so each layer build reads the environment at construction.
-      const provider = ConfigProvider.fromEnv()
-      const configDir = yield* tenantConfigDir.parse(provider)
-      const env = yield* nodeEnv.parse(provider)
+const _tenantConfig = Config.all({
+  configDir: Config.String("CONFIG_DIR")
+})
 
-      if (env === "production") {
-        return ServerConfig.of({
-          tenant: {
-            configDir,
-            resolution: "host"
-          }
-        })
-      }
-
-      const staticAlias = yield* tenantStaticAlias.parse(provider)
-      return ServerConfig.of({
-        tenant: {
-          configDir,
-          resolution: "static",
-          staticAlias
-        }
-      })
-    })
+export const ServerConfig = Config.all({
+  // tenant: Config.nested(_tenantConfig, "TENANT"),
+  env: Config.Literals(["development", "production", "test"], "NODE_ENV").pipe(
+    Config.withDefault("development")
   )
-}
+})
