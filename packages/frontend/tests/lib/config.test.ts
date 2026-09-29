@@ -6,17 +6,8 @@ import { ServerConfig } from "../../src/lib/config"
 
 const BaseConfigProvider = ConfigProvider.fromUnknown({
   NODE_ENV: "development",
-  OIDC_CLIENT_SECRETS_JSON: "{}",
-  OIDC_TX_KEY_PREFIX: "pre-ets:oidc-tx:",
-  OIDC_TX_SIGNING_SECRET: "synthetic-oidc-tx-signing-secret",
-  OIDC_TX_TTL_SECONDS: "600",
-  REDIS_URL: "redis://127.0.0.1:6379",
-  SESSION_KEY_PREFIX: "pre-ets:session:",
-  SESSION_SIGNING_SECRET: "synthetic-session-signing-secret",
-  SESSION_STORE_TIMEOUT_MS: "2000",
-  SESSION_TTL_SECONDS: "86400",
   TENANT_CONFIG_DIR: "/absolute/path/to/packages/frontend/fixtures/tenant-config",
-  TENANT_RESOLUTION: "static",
+  TENANT_RESOLUTION: "host",
   TENANT_STATIC_ALIAS: "springfield"
 })
 
@@ -70,14 +61,152 @@ describe("ServerConfig", () => {
     })
   })
 
-  describe("tenant.configDir", () => {
-    it.effect("fails if not set", () => {
-      return Effect.gen(function*() {
-        const exit = yield* Effect.exit(ServerConfig)
-        assert.isTrue(Exit.isFailure(exit))
-      }).pipe(
-        Effect.provideService(ConfigProvider.ConfigProvider, withoutKeys("TENANT_CONFIG_DIR"))
-      )
+  describe(".tenant", () => {
+    describe(".configDir", () => {
+      it.effect.each([
+        ["static"],
+        ["host"]
+      ])("fails if not set when resolution is %s", ([resolution]) => {
+        return Effect.gen(function*() {
+          const exit = yield* Effect.exit(ServerConfig)
+          assert.isTrue(Exit.isFailure(exit))
+        }).pipe(
+          Effect.provideService(
+            ConfigProvider.ConfigProvider,
+            withConfigOverrides({
+              TENANT_RESOLUTION: resolution
+            }, ["TENANT_CONFIG_DIR"])
+          )
+        )
+      })
+      it.effect("succeeds if set", () => {
+        const configDir = "/absolute/path/to/packages/frontend/fixtures/tenant-config"
+        return Effect.gen(function*() {
+          const config = yield* ServerConfig
+          assert.deepEqual(config.tenant.configDir, configDir)
+        }).pipe(
+          Effect.provideService(
+            ConfigProvider.ConfigProvider,
+            withConfigOverrides({
+              TENANT_CONFIG_DIR: configDir
+            })
+          )
+        )
+      })
+    })
+    describe(".resolution", () => {
+      describe("when .env is production", () => {
+        it.effect("fails if resolution is static", () => {
+          return Effect.gen(function*() {
+            const exit = yield* Effect.exit(ServerConfig)
+            assert.isTrue(Exit.isFailure(exit))
+          }).pipe(
+            Effect.provideService(
+              ConfigProvider.ConfigProvider,
+              withConfigOverrides({
+                NODE_ENV: "production",
+                TENANT_RESOLUTION: "static"
+              })
+            )
+          )
+        })
+        it.effect("succeeds if resolution is host", () => {
+          return Effect.gen(function*() {
+            const config = yield* ServerConfig
+            assert.deepEqual(config.tenant.resolution, "host")
+          }).pipe(
+            Effect.provideService(
+              ConfigProvider.ConfigProvider,
+              withConfigOverrides({
+                NODE_ENV: "production",
+                TENANT_RESOLUTION: "host"
+              })
+            )
+          )
+        })
+      })
+
+      describe("when env is not production", () => {
+        it.effect.each([
+          ["development", "host"],
+          ["development", "static"],
+          ["test", "host"],
+          ["test", "static"]
+        ])("succeeds if resolution is %s", ([env, resolution]) => {
+          return Effect.gen(function*() {
+            const config = yield* ServerConfig
+            assert.deepEqual(config.tenant.resolution, resolution)
+          }).pipe(
+            Effect.provideService(
+              ConfigProvider.ConfigProvider,
+              withConfigOverrides({
+                NODE_ENV: env,
+                TENANT_RESOLUTION: resolution
+              })
+            )
+          )
+        })
+      })
+    })
+    describe(".staticAlias", () => {
+      describe("when .resolution is static", () => {
+        it.effect("fails if staticAlias is not set", () => {
+          return Effect.gen(function*() {
+            const exit = yield* Effect.exit(ServerConfig)
+            assert.isTrue(Exit.isFailure(exit))
+          }).pipe(
+            Effect.provideService(
+              ConfigProvider.ConfigProvider,
+              withConfigOverrides({
+                TENANT_RESOLUTION: "static"
+              }, ["TENANT_STATIC_ALIAS"])
+            )
+          )
+        })
+        it.effect("succeeds if staticAlias is set", () => {
+          return Effect.gen(function*() {
+            const config = yield* ServerConfig
+            assert.deepPropertyVal(config.tenant, "staticAlias", "springfield")
+          }).pipe(
+            Effect.provideService(
+              ConfigProvider.ConfigProvider,
+              withConfigOverrides({
+                TENANT_RESOLUTION: "static",
+                TENANT_STATIC_ALIAS: "springfield"
+              })
+            )
+          )
+        })
+      })
+      describe("when .resolution is host", () => {
+        it.effect("succeeds if staticAlias is not set", () => {
+          return Effect.gen(function*() {
+            const config = yield* ServerConfig
+            assert.doesNotHaveAnyKeys(config.tenant, ["staticAlias"])
+          }).pipe(
+            Effect.provideService(
+              ConfigProvider.ConfigProvider,
+              withConfigOverrides({
+                TENANT_RESOLUTION: "host"
+              }, ["TENANT_STATIC_ALIAS"])
+            )
+          )
+        })
+        it.effect("ignores staticAlias if set", () => {
+          return Effect.gen(function*() {
+            const config = yield* ServerConfig
+            assert.doesNotHaveAnyKeys(config.tenant, ["staticAlias"])
+          }).pipe(
+            Effect.provideService(
+              ConfigProvider.ConfigProvider,
+              withConfigOverrides({
+                TENANT_RESOLUTION: "host",
+                TENANT_STATIC_ALIAS: "springfield"
+              })
+            )
+          )
+        })
+      })
     })
   })
 })

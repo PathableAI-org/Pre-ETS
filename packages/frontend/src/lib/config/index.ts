@@ -1,45 +1,42 @@
-import { Config, ConfigProvider, Effect } from "effect"
+import { Config, Schema, SchemaIssue, type Types } from "effect"
 
-export type TenantConfig = TenantHostConfig | TenantStaticConfig
+import { type HostTenantConfig, TenantConfig } from "./tenant-config"
 
-export interface TenantHostConfig extends TenantBaseConfig {
-  readonly resolution: "host"
+interface RawEnvironmentWithTenantConfig {
+  readonly env: "development" | "production" | "test"
+  readonly tenant: Config.Success<typeof TenantConfig>
 }
 
-export interface TenantStaticConfig extends TenantBaseConfig {
-  readonly resolution: "static"
-  readonly staticAlias: string
+type WithValidatedTenant<T extends RawEnvironmentWithTenantConfig> =
+  | (Omit<T, "env" | "tenant"> & {
+    readonly env: "production"
+    readonly tenant: HostTenantConfig
+  })
+  | (Omit<T, "env" | "tenant"> & {
+    readonly env: Exclude<T["env"], "production">
+    readonly tenant: T["tenant"]
+  })
+
+const validateEnvWithTenantConfig = <T extends RawEnvironmentWithTenantConfig>(
+  config: T
+): Config.Config<Types.Simplify<WithValidatedTenant<T>>> => {
+  if (config.env === "production" && config.tenant.resolution === "static") {
+    return Config.fail(
+      new Schema.SchemaError(
+        new SchemaIssue.InvalidValue({
+          message: "TENANT_RESOLUTION must be host when env is production"
+        })
+      )
+    )
+  }
+  return Config.succeed(config as Types.Simplify<WithValidatedTenant<T>>)
 }
-
-interface TenantBaseConfig {
-  readonly configDir: string
-}
-
-const tenantConfigurationUnavailable = new ConfigProvider.SourceError({
-  message: "Tenant configuration is unavailable."
-})
-
-const _tenantConfigDir = Config.String("TENANT_CONFIG_DIR").pipe(
-  Config.map((value) => value.trim()),
-  Config.orElse(() => Config.succeed("")),
-  Config.mapEffect((value) =>
-    value === ""
-      ? Effect.fail(new Config.ConfigError(tenantConfigurationUnavailable))
-      : Effect.succeed(value)
-  )
-)
-
-const _nodeEnv = Config.String("NODE_ENV").pipe(Config.withDefault("development"))
-
-const _tenantStaticAlias = Config.String("TENANT_STATIC_ALIAS").pipe(Config.withDefault(""))
-
-const _tenantConfig = Config.all({
-  configDir: Config.String("CONFIG_DIR")
-})
 
 export const ServerConfig = Config.all({
-  // tenant: Config.nested(_tenantConfig, "TENANT"),
   env: Config.Literals(["development", "production", "test"], "NODE_ENV").pipe(
     Config.withDefault("development")
-  )
-})
+  ),
+  tenant: TenantConfig
+}).pipe(
+  Config.flatMap(validateEnvWithTenantConfig)
+)
