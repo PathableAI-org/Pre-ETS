@@ -27,9 +27,28 @@ const bootRuntime = Effect.gen(function*() {
   Effect.provide(Logger.layer([Logger.consolePretty()]))
 )
 
-const exit = Effect.runSyncExit(bootRuntime)
-if (Exit.isFailure(exit)) {
-  process.exit(1)
+const nextProductionBuildPhase = "phase-production-build"
+
+const startServerRuntime = () => {
+  const exit = Effect.runSyncExit(bootRuntime)
+  if (Exit.isFailure(exit)) {
+    process.exit(1)
+  }
+  return exit.value
 }
 
-export const Runtime = exit.value
+type ServerRuntime = ReturnType<typeof startServerRuntime>
+
+const unavailableDuringNextBuild: ServerRuntime = new Proxy({} as ServerRuntime, {
+  get(_target, property) {
+    throw new Error(
+      `Server runtime (${String(property)}) is not loaded during the Next.js production build.`
+    )
+  }
+})
+
+// Next loads this module while collecting page data. NEXT_PHASE is set before those
+// workers start, and a missing tenant directory must not stop the build.
+export const Runtime = process.env.NEXT_PHASE === nextProductionBuildPhase
+  ? unavailableDuringNextBuild
+  : startServerRuntime()

@@ -1,6 +1,6 @@
 import { Config, Schema, SchemaIssue, type Types } from "effect"
 
-import { type HostTenantConfig, TenantConfig } from "./tenant-config"
+import { type HostTenantConfig, TenantConfig } from "./tenant-config.ts"
 
 export type {
   HostTenantConfig,
