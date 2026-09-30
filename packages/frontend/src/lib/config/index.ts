@@ -1,4 +1,4 @@
-import { Config, Schema, SchemaIssue, type Types } from "effect"
+import { Config, type Types } from "effect"
 
 import { type HostTenantConfig, TenantConfig } from "./tenant-config.ts"
 
@@ -28,13 +28,13 @@ const validateEnvWithTenantConfig = <T extends RawEnvironmentWithTenantConfig>(
   config: T
 ): Config.Config<Types.Simplify<WithValidatedTenant<T>>> => {
   if (config.env === "production" && config.tenant.resolution === "static") {
-    return Config.fail(
-      new Schema.SchemaError(
-        new SchemaIssue.InvalidValue({
-          message: "TENANT_RESOLUTION must be host when env is production"
-        })
-      )
-    )
+    return Config.succeed({
+      ...config,
+      tenant: {
+        configDir: config.tenant.configDir,
+        resolution: "host"
+      }
+    } as Types.Simplify<WithValidatedTenant<T>>)
   }
   return Config.succeed(config as Types.Simplify<WithValidatedTenant<T>>)
 }

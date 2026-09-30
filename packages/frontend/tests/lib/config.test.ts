@@ -96,16 +96,20 @@ describe("ServerConfig", () => {
     })
     describe(".resolution", () => {
       describe("when .env is production", () => {
-        it.effect("fails if resolution is static", () => {
+        it.effect("ignores static resolution and its alias", () => {
           return Effect.gen(function*() {
-            const exit = yield* Effect.exit(ServerConfig)
-            assert.isTrue(Exit.isFailure(exit))
+            const config = yield* ServerConfig
+            assert.deepEqual(config.tenant, {
+              configDir: "/absolute/path/to/packages/frontend/fixtures/tenant-config",
+              resolution: "host"
+            })
           }).pipe(
             Effect.provideService(
               ConfigProvider.ConfigProvider,
               withConfigOverrides({
                 NODE_ENV: "production",
-                TENANT_RESOLUTION: "static"
+                TENANT_RESOLUTION: "static",
+                TENANT_STATIC_ALIAS: "shelbyville"
               })
             )
           )
