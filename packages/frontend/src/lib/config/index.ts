@@ -1,67 +1,49 @@
-import { Config, ConfigProvider, Context, Effect, Layer } from "effect"
+import { Config, type Types } from "effect"
 
-export type TenantConfig = TenantHostConfig | TenantStaticConfig
+import { type HostTenantConfig, TenantConfig } from "./tenant-config.ts"
 
-export interface TenantHostConfig extends TenantBaseConfig {
-  readonly resolution: "host"
+export type {
+  HostTenantConfig,
+  StaticTenantConfig,
+  TenantConfig,
+  StaticTenantConfig as TenantStaticConfig
+} from "./tenant-config.ts"
+
+interface RawEnvironmentWithTenantConfig {
+  readonly env: "development" | "production" | "test"
+  readonly tenant: Config.Success<typeof TenantConfig>
 }
 
-export interface TenantStaticConfig extends TenantBaseConfig {
-  readonly resolution: "static"
-  readonly staticAlias: string
-}
+type WithValidatedTenant<T extends RawEnvironmentWithTenantConfig> =
+  | (Omit<T, "env" | "tenant"> & {
+    readonly env: "production"
+    readonly tenant: HostTenantConfig
+  })
+  | (Omit<T, "env" | "tenant"> & {
+    readonly env: Exclude<T["env"], "production">
+    readonly tenant: T["tenant"]
+  })
 
-interface TenantBaseConfig {
-  readonly configDir: string
-}
-
-const tenantConfigurationUnavailable = new ConfigProvider.SourceError({
-  message: "Tenant configuration is unavailable."
-})
-
-const tenantConfigDir = Config.String("TENANT_CONFIG_DIR").pipe(
-  Config.map((value) => value.trim()),
-  Config.orElse(() => Config.succeed("")),
-  Config.mapEffect((value) =>
-    value === ""
-      ? Effect.fail(new Config.ConfigError(tenantConfigurationUnavailable))
-      : Effect.succeed(value)
-  )
-)
-
-const nodeEnv = Config.String("NODE_ENV").pipe(Config.withDefault("development"))
-
-const tenantStaticAlias = Config.String("TENANT_STATIC_ALIAS").pipe(Config.withDefault(""))
-
-export class ServerConfig extends Context.Service<ServerConfig, {
-  readonly tenant: TenantConfig
-}>()("@pathableai/pre-ets-frontend/ServerConfig") {
-  static readonly layer = Layer.effect(
-    ServerConfig,
-    Effect.gen(function*() {
-      // The default ConfigProvider reference snapshots process.env once per process.
-      // Parse a fresh provider so each layer build reads the environment at construction.
-      const provider = ConfigProvider.fromEnv()
-      const configDir = yield* tenantConfigDir.parse(provider)
-      const env = yield* nodeEnv.parse(provider)
-
-      if (env === "production") {
-        return ServerConfig.of({
-          tenant: {
-            configDir,
-            resolution: "host"
-          }
-        })
+const validateEnvWithTenantConfig = <T extends RawEnvironmentWithTenantConfig>(
+  config: T
+): Config.Config<Types.Simplify<WithValidatedTenant<T>>> => {
+  if (config.env === "production" && config.tenant.resolution === "static") {
+    return Config.succeed({
+      ...config,
+      tenant: {
+        configDir: config.tenant.configDir,
+        resolution: "host"
       }
-
-      const staticAlias = yield* tenantStaticAlias.parse(provider)
-      return ServerConfig.of({
-        tenant: {
-          configDir,
-          resolution: "static",
-          staticAlias
-        }
-      })
-    })
-  )
+    } as Types.Simplify<WithValidatedTenant<T>>)
+  }
+  return Config.succeed(config as Types.Simplify<WithValidatedTenant<T>>)
 }
+
+export const ServerConfig = Config.all({
+  env: Config.Literals(["development", "production", "test"], "NODE_ENV").pipe(
+    Config.withDefault("development")
+  ),
+  tenant: TenantConfig
+}).pipe(
+  Config.flatMap(validateEnvWithTenantConfig)
+)

@@ -26,6 +26,7 @@
     "server-only": "0.0.1"
   },
   "devDependencies": {
+    "@effect/vitest": "^4.0.0-rc.118",
     "@fast-check/vitest": "0.5.0",
     "@next/eslint-plugin-next": "16.3.6",
     "@types/react": "19.3.0",
