@@ -189,8 +189,8 @@ importers:
         specifier: 0.96.1
         version: 0.96.1
       '@effect/language-service':
-        specifier: 0.87.2
-        version: 0.87.2
+        specifier: 0.87.3
+        version: 0.87.3
       '@eslint/js':
         specifier: 10.0.1
         version: 10.0.1(eslint@10.11.0(supports-color@11.0.0))
@@ -544,8 +544,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@effect/language-service@0.87.2':
-    resolution: {integrity: sha512-CfiSoaVQO8pZgaMZGw5VvMvRGybsJ2LaSDoLYaqiVGvo/YYPYVR2GzUKY0h1NtIweq/+SQ5XLrvtzPIttWQ0GQ==}
+  '@effect/language-service@0.87.3':
+    resolution: {integrity: sha512-g1OmRBZF5chbW9QMNoirPo5Bb4zzU2HfP88tR7/VSZEUxHJ1/qVb8AQ0kUh2ggctLH1I715yCwP4gkw56PTjpQ==}
     hasBin: true
 
   '@effect/platform-bun@4.0.0-beta.59':
@@ -2765,7 +2765,7 @@ snapshots:
   '@dprint/win32-x64@0.57.4':
     optional: true
 
-  '@effect/language-service@0.87.2': {}
+  '@effect/language-service@0.87.3': {}
 
   '@effect/platform-bun@4.0.0-beta.59(effect@4.0.0-beta.59)':
     dependencies:
