@@ -2,6 +2,13 @@ import { Config, Schema, SchemaIssue, type Types } from "effect"
 
 import { type HostTenantConfig, TenantConfig } from "./tenant-config"
 
+export type {
+  HostTenantConfig,
+  StaticTenantConfig,
+  TenantConfig,
+  StaticTenantConfig as TenantStaticConfig
+} from "./tenant-config.ts"
+
 interface RawEnvironmentWithTenantConfig {
   readonly env: "development" | "production" | "test"
   readonly tenant: Config.Success<typeof TenantConfig>

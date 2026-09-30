@@ -6,7 +6,6 @@ import assert from "node:assert/strict"
 import type { TenantConfigError } from "../../../packages/frontend/src/lib/tenant/schema.ts"
 import type { CapabilityWorld } from "../support/world.ts"
 
-import { ServerConfig } from "../../../packages/frontend/src/lib/config/index.ts"
 import { signSessionCookie, verifySessionCookie } from "../../../packages/frontend/src/lib/session/cookie.ts"
 import { setupSession, type TenantResolveResult } from "../../../packages/frontend/src/lib/session/setup.ts"
 import { type SessionStore, SessionStoreError } from "../../../packages/frontend/src/lib/session/store.ts"
@@ -125,10 +124,10 @@ async function alterStoredReference(world: CapabilityWorld, condition: string): 
 }
 
 function resolveHostTenant(world: CapabilityWorld, host: string): Promise<TenantResolveResult> {
-  const layer = TenantConfigService.layer.pipe(
-    Layer.provide(Layer.succeed(ServerConfig, {
-      tenant: { configDir: world.directory, resolution: "host" }
-    })),
+  const layer = TenantConfigService.layer({
+    env: "test",
+    tenant: { configDir: world.directory, resolution: "host" }
+  }).pipe(
     Layer.provide(NodeServices.layer)
   )
 

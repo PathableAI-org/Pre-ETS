@@ -17,11 +17,11 @@ export interface StaticTenantConfig extends BaseTenantConfig {
   readonly staticAlias: string
 }
 
+export type TenantConfig = HostTenantConfig | StaticTenantConfig
+
 interface BaseTenantConfig {
   readonly configDir: string
 }
-
-type TenantConfig = HostTenantConfig | StaticTenantConfig
 
 const validateTenantConfig = (config: Config.Success<typeof _RawTenantConfig>): Config.Config<TenantConfig> => {
   if (config.resolution === "host") {
