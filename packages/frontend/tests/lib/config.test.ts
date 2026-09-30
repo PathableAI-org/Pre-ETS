@@ -19,10 +19,11 @@ const withConfigOverrides = (overrides: Record<string, unknown>, excludeKeys: st
 }
 
 const _withoutKeys = (...keys: string[]) => (provider: ConfigProvider.ConfigProvider) => {
+  const missing: ConfigProvider.Node | undefined = undefined
   return ConfigProvider.make(
     (path) => {
       if (keys.includes(path.join("."))) {
-        return Effect.succeed(undefined)
+        return Effect.succeed(missing)
       }
       return provider.load(path)
     }
