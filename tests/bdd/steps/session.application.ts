@@ -125,6 +125,7 @@ async function alterStoredReference(world: CapabilityWorld, condition: string): 
 
 function resolveHostTenant(world: CapabilityWorld, host: string): Promise<TenantResolveResult> {
   const layer = TenantConfigService.layer({
+    baseHostname: "localhost",
     env: "test",
     tenant: { configDir: world.directory, resolution: "host" }
   }).pipe(
