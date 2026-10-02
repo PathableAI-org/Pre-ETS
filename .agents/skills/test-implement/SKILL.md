@@ -55,9 +55,17 @@ separately. Briefly explain those choices; no separate planning artifact is need
 
 A property is authoritative only for the claim and boundary it actually exercises;
 a finite run is not a proof. Do not turn a small enumeration into random sampling
-or invent laws merely to prefer properties. Retain deliberate boundary examples
-when generation cannot guarantee them. A scenario can contain a property, including
-one exercised through a public Effect service.
+or invent laws merely to prefer properties. A property replaces an example list of
+the values its arbitrary already generates. Do not add a parameterized case that
+repeats those values, such as the characters an alias accepts; that enumeration is
+what the property exists to avoid. Retain a separate example only when generation
+cannot reach a boundary the claim depends on. A scenario can contain a property,
+including one exercised through a public Effect service.
+
+When the claim is which values a public Schema accepts or rejects, that Schema is
+the boundary. Place the test with the Schema. Do not attach it to a service
+operation that only decodes the Schema, such as `.getAlias`. If a property
+arbitrary already draws the accepted values, omit that Schema character test as well.
 
 Treat a directory with an `index.ts` or `index.tsx` as one module whose entry point
 defines the public interface. Follow re-exports, and exercise public exports rather
@@ -119,7 +127,10 @@ State the law and domain before constructing arbitraries. Construct valid input
 relationships with useful shrinking rather than excessive filtering, unchecked
 casts, or early returns that make the assertion vacuous. Make important boundaries
 reachable and deliberately exercise exact limits when the claim depends on them.
-Test invalid inputs at the boundary that owns their rejection.
+Do not add a second test that lists members of a domain the arbitrary already
+generates. Test invalid inputs at the boundary that owns their rejection. Schema
+acceptance and rejection belong with the public Schema, not with a consumer that
+only decodes it.
 
 Create fresh mutable state and acquire/release scoped resources inside every
 generated attempt, including shrinking attempts. A test-level hook or shared Layer

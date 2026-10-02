@@ -1,13 +1,24 @@
 import { describe, expect, it } from "@effect/vitest"
 import { Arbitrary, Effect, FileSystem, Layer, Path, PlatformError, Result, Schema } from "effect"
 
-import type { TenantConfig as TenantResolution } from "../../src/lib/config/index.ts"
-
 import { TenantAlias, TenantConfigError, TenantConfigService } from "../../src/lib/tenant/index.ts"
+import { MixedCase, TenantAliasArb } from "../arbitraries.ts"
+import * as Fixtures from "../fixtures.ts"
 
 const configDir = "/tenant-test/config"
-const hostResolution: TenantResolution = { configDir, resolution: "host" }
-const staticResolution = (staticAlias: string): TenantResolution => ({ configDir, resolution: "static", staticAlias })
+const hostResolution: Fixtures.ServerConfigOverride = {
+  tenant: {
+    configDir,
+    resolution: "host"
+  }
+}
+const staticResolution = (staticAlias: string): Fixtures.ServerConfigOverride => ({
+  tenant: {
+    configDir,
+    resolution: "static",
+    staticAlias
+  }
+})
 const requestedAlias = Schema.decodeUnknownSync(TenantAlias)("springfield")
 const requestedPath = `${configDir}/springfield.json`
 const tenantDocument = {
@@ -29,10 +40,10 @@ const fileError = (path: string, reason: "NotFound" | "PermissionDenied") =>
 
 // Only the platform dependency is simulated; the real service reads and decodes each document.
 const scenario = (
-  tenant: TenantResolution = hostResolution,
+  config: Fixtures.ServerConfigOverride,
   files: ReadonlyMap<string, PlatformError.PlatformError | string> = new Map()
 ) =>
-  TenantConfigService.layer({ env: "test", tenant }).pipe(
+  TenantConfigService.layer(Fixtures.buildServerConfig(config)).pipe(
     Layer.provide(Path.layer),
     Layer.provide(FileSystem.layerNoop({
       readFileString: (path) => {
@@ -57,40 +68,6 @@ const expectTenantFailure = <A>(operation: Effect.Effect<A, TenantConfigError, T
     expect(error).toBeInstanceOf(TenantConfigError)
     return error
   })
-const aliasArbitrary = Arbitrary.array(
-  Arbitrary.schema(
-    Schema.Literals([
-      "a",
-      "b",
-      "c",
-      "d",
-      "e",
-      "f",
-      "g",
-      "h",
-      "i",
-      "j",
-      "k",
-      "l",
-      "m",
-      "n",
-      "o",
-      "p",
-      "q",
-      "r",
-      "s",
-      "t",
-      "u",
-      "v",
-      "w",
-      "x",
-      "y",
-      "z",
-      "-"
-    ])
-  ),
-  { maxLength: 63, minLength: 1 }
-).pipe(Arbitrary.map((characters) => characters.join("")))
 const invalidHosts = [
   "",
   ".example.com",
@@ -122,38 +99,26 @@ describe("TenantConfigService", () => {
     describe("when tenant resolution is host-based", () => {
       it.effect.prop(
         "returns the lowercase first host label as the tenant alias",
-        { alias: aliasArbitrary },
-        ({ alias }) =>
+        { alias: MixedCase(TenantAliasArb), baseHostname: Schema.URL },
+        ({ alias, baseHostname }) =>
           Effect.gen(function*() {
             const service = yield* TenantConfigService
-            for (const host of [alias.toUpperCase(), `${alias.toUpperCase()}.OTHER.example:3000`]) {
-              expect(service.getAlias(host)).toEqual(Result.succeed(alias))
-            }
-          }).pipe(Effect.provide(scenario()))
-      )
-      it.effect.each(["a", "north-school", "-", "-north", "north-", "north--school"])(
-        "accepts tenant labels containing lowercase letters and hyphens" + ": %s",
-        (alias) =>
-          Effect.gen(function*() {
-            const service = yield* TenantConfigService
-            expect(service.getAlias(`${alias}.example.com`)).toEqual(Result.succeed(alias))
-          }).pipe(Effect.provide(scenario()))
-      )
-      it.effect.each(invalidHosts)(
-        "fails with TenantConfigError when the first label is empty or contains characters other than letters and hyphens" +
-          ": %s",
-        (host) =>
-          Effect.gen(function*() {
-            const service = yield* TenantConfigService
-            const error = yield* Effect.fromResult(Result.flip(service.getAlias(host)))
-            expect(error).toBeInstanceOf(TenantConfigError)
-          }).pipe(Effect.provide(scenario()))
+            const result = service.getAlias(`${alias}.${baseHostname}`)
+            expect(result).toEqual(Result.succeed(alias.toLowerCase()))
+          }).pipe(Effect.provide(
+            scenario({
+              baseHostname: baseHostname.hostname,
+              tenant: {
+                resolution: "host"
+              }
+            })
+          ))
       )
     })
 
     describe("when tenant resolution is static", () => {
       it.effect.prop("returns the configured alias regardless of the supplied host, including an empty host", {
-        alias: aliasArbitrary,
+        alias: TenantAliasArb,
         host: Schema.String
       }, ({ alias, host }) =>
         Effect.gen(function*() {
@@ -195,7 +160,7 @@ describe("TenantConfigService", () => {
 
     describe("when the tenant file cannot be read", () => {
       it.effect("fails with TenantConfigError for a missing file", () =>
-        expectTenantFailure(loadRequested).pipe(Effect.provide(scenario())))
+        expectTenantFailure(loadRequested).pipe(Effect.provide(scenario(hostResolution))))
       it.effect("fails with TenantConfigError for an inaccessible file", () =>
         expectTenantFailure(loadRequested).pipe(
           Effect.provide(
@@ -304,7 +269,7 @@ describe("TenantConfigService", () => {
   describe(".getConfigFromHost", () => {
     describe("when tenant resolution is host-based", () => {
       it.effect.prop("returns the configuration belonging to the alias resolved from the supplied host", {
-        alias: aliasArbitrary
+        alias: TenantAliasArb
       }, ({ alias }) =>
         Effect.gen(function*() {
           const service = yield* TenantConfigService
