@@ -364,6 +364,12 @@ Commit shared scripts, templates, skills, extension configuration, and the
 constitution. Keep the current-feature pointer, local extension overrides, and
 regenerable composition cache out of version control.
 
+## Durable requirements
+
+The [requirements register](docs/requirements/README.md) provides area templates, stable requirement IDs,
+lifecycle and verification conventions, and the repository-local `requirements-author` and `requirements-review`
+skills. It starts empty and works independently of Spec Kit; existing feature specifications have not been migrated.
+
 ## Testing practices
 
 See [Testing as evidence](docs/engineering/testing/README.md) for choosing meaningful
