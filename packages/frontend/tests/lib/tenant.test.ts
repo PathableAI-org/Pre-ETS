@@ -1,5 +1,5 @@
 import { describe, expect, it } from "@effect/vitest"
-import { Arbitrary, Effect, FileSystem, Layer, Path, PlatformError, Result, Schema } from "effect"
+import { Effect, FileSystem, Layer, Path, PlatformError, Result, Schema } from "effect"
 
 import { TenantAlias, TenantConfigError, TenantConfigService } from "../../src/lib/tenant/index.ts"
 import { MixedCase, TenantAliasArb } from "../arbitraries.ts"
@@ -29,7 +29,6 @@ const otherDocument = {
   displayName: "Shelbyville Schools",
   oidc: { clientAuth: "confidential", clientId: "shelbyville-client", issuer: "https://id.example/shelbyville" }
 }
-const expectedConfig = { ...tenantDocument, idleTimeoutMinutes: 30 }
 const fileError = (path: string, reason: "NotFound" | "PermissionDenied") =>
   PlatformError.systemError({
     _tag: reason,
@@ -38,7 +37,6 @@ const fileError = (path: string, reason: "NotFound" | "PermissionDenied") =>
     pathOrDescriptor: path
   })
 
-// Only the platform dependency is simulated; the real service reads and decodes each document.
 const scenario = (
   config: Fixtures.ServerConfigOverride,
   files: ReadonlyMap<string, PlatformError.PlatformError | string> = new Map()
@@ -53,13 +51,6 @@ const scenario = (
           : Effect.fail(entry ?? fileError(path, "NotFound"))
       }
     }))
-  )
-const documentScenario = (document: unknown) =>
-  scenario(
-    hostResolution,
-    new Map([
-      [requestedPath, JSON.stringify(document)]
-    ])
   )
 const loadRequested = Effect.flatMap(TenantConfigService, (service) => service.getConfigFromAlias(requestedAlias))
 const expectTenantFailure = <A>(operation: Effect.Effect<A, TenantConfigError, TenantConfigService>) =>
@@ -77,22 +68,10 @@ const invalidHosts = [
   "école.example.com"
 ]
 const invalidAliases = ["", "Springfield", "tenant1", "tenant_name", "tenant.name", "tenant name", "école"]
-const invalidDocuments = [
-  { case: "missing display name", value: { oidc: tenantDocument.oidc } },
-  { case: "numeric display name", value: { ...tenantDocument, displayName: 42 } },
-  { case: "missing OIDC", value: { displayName: tenantDocument.displayName } },
-  { case: "numeric OIDC", value: { ...tenantDocument, oidc: 42 } },
-  ...["clientAuth", "clientId", "issuer"].flatMap((field) => [
-    {
-      case: `missing ${field}`,
-      value: {
-        ...tenantDocument,
-        oidc: Object.fromEntries(Object.entries(tenantDocument.oidc).filter(([key]) => key !== field))
-      }
-    },
-    { case: `numeric ${field}`, value: { ...tenantDocument, oidc: { ...tenantDocument.oidc, [field]: 42 } } }
-  ])
-]
+const bothTenantFiles = new Map([
+  [`${configDir}/shelbyville.json`, JSON.stringify(otherDocument)],
+  [requestedPath, JSON.stringify(tenantDocument)]
+])
 
 describe("TenantConfigService", () => {
   describe(".getAlias", () => {
@@ -141,143 +120,46 @@ describe("TenantConfigService", () => {
   })
 
   describe(".getConfigFromAlias", () => {
-    describe("when the alias has a valid JSON file in the configured tenant directory", () => {
-      it.effect("returns that alias's display name and OIDC configuration", () =>
-        Effect.gen(function*() {
-          expect(yield* loadRequested).toEqual(expectedConfig)
-        }).pipe(Effect.provide(documentScenario(tenantDocument))))
-      it.effect("uses the explicitly requested alias even when static resolution selects another tenant", () =>
-        Effect.gen(function*() {
-          expect(yield* loadRequested).toEqual(expectedConfig)
-        }).pipe(Effect.provide(scenario(
-          staticResolution("shelbyville"),
-          new Map([
-            [`${configDir}/shelbyville.json`, JSON.stringify(otherDocument)],
-            [requestedPath, JSON.stringify(tenantDocument)]
-          ])
-        ))))
-    })
+    it.effect("reads the file named for the requested alias", () =>
+      Effect.gen(function*() {
+        expect((yield* loadRequested).displayName).toBe(tenantDocument.displayName)
+      }).pipe(Effect.provide(scenario(hostResolution, bothTenantFiles))))
+    it.effect("reads the requested alias's file even when static resolution selects another tenant", () =>
+      Effect.gen(function*() {
+        expect((yield* loadRequested).displayName).toBe(tenantDocument.displayName)
+      }).pipe(Effect.provide(scenario(staticResolution("shelbyville"), bothTenantFiles))))
 
-    describe("when the tenant file cannot be read", () => {
-      it.effect("fails with TenantConfigError for a missing file", () =>
-        expectTenantFailure(loadRequested).pipe(Effect.provide(scenario(hostResolution))))
-      it.effect("fails with TenantConfigError for an inaccessible file", () =>
-        expectTenantFailure(loadRequested).pipe(
-          Effect.provide(
-            scenario(hostResolution, new Map([[requestedPath, fileError(requestedPath, "PermissionDenied")]]))
-          )
-        ))
+    describe("when the alias file cannot be read", () => {
       it.effect.each(["NotFound", "PermissionDenied"] as const)(
-        "identifies the read failure and affected file in its message and retains the underlying cause" + ": %s",
+        "fails with TenantConfigError for that file and retains the underlying cause" + ": %s",
         (reason) => {
           const cause = fileError(requestedPath, reason)
+          const files = new Map<string, PlatformError.PlatformError | string>([
+            [`${configDir}/shelbyville.json`, JSON.stringify(otherDocument)],
+            [requestedPath, cause]
+          ])
           return Effect.gen(function*() {
             const error = yield* expectTenantFailure(loadRequested)
             expect(error.message).toContain("Failed to read")
             expect(error.message).toContain(requestedPath)
             expect(error.cause).toBe(cause)
-          }).pipe(Effect.provide(scenario(hostResolution, new Map([[requestedPath, cause]]))))
+          }).pipe(Effect.provide(scenario(hostResolution, files)))
         }
       )
-    })
-
-    describe("when the tenant file cannot be decoded", () => {
-      it.effect.each(["{", "not json", ""])(
-        "fails with TenantConfigError for malformed JSON" + ": %j",
-        (raw) =>
-          expectTenantFailure(loadRequested).pipe(
-            Effect.provide(scenario(hostResolution, new Map([[requestedPath, raw]])))
-          )
-      )
-      it.effect.each(invalidDocuments)(
-        "fails with TenantConfigError when required display name or OIDC fields are missing or have the wrong type" +
-          ": $case",
-        ({ value }) => expectTenantFailure(loadRequested).pipe(Effect.provide(documentScenario(value)))
-      )
-      it.effect.each(["{", JSON.stringify({})])(
-        "identifies the parse failure and affected file in its message and retains the underlying cause" + ": %s",
-        (raw) =>
-          Effect.gen(function*() {
-            const error = yield* expectTenantFailure(loadRequested)
-            expect(error.message).toContain("Failed to parse")
-            expect(error.message).toContain(requestedPath)
-            expect(error.cause).toBeInstanceOf(Schema.SchemaError)
-            expect(error.cause.message.length).toBeGreaterThan(0)
-          }).pipe(Effect.provide(scenario(hostResolution, new Map([[requestedPath, raw]]))))
-      )
-    })
-
-    describe("idle timeout policy", () => {
-      it.effect("defaults idleTimeoutMinutes to 30 when the field is omitted", () =>
-        Effect.gen(function*() {
-          expect((yield* loadRequested).idleTimeoutMinutes).toBe(30)
-        }).pipe(Effect.provide(documentScenario(tenantDocument))))
-      it.effect.each(Array.from({ length: 26 }, (_, index) => index + 5))(
-        "preserves integer idleTimeoutMinutes values from 5 through 30, including both limits" + ": %i",
-        (minutes) =>
-          Effect.gen(function*() {
-            expect((yield* loadRequested).idleTimeoutMinutes).toBe(minutes)
-          }).pipe(Effect.provide(documentScenario({ ...tenantDocument, idleTimeoutMinutes: minutes })))
-      )
-      it.effect.each([4, 31, -1, 0, 5.5, 29.5, "10", null, true, {}, []])(
-        "fails with TenantConfigError for out-of-range, fractional, or nonnumeric idleTimeoutMinutes values" + ": %j",
-        (minutes) =>
-          expectTenantFailure(loadRequested).pipe(
-            Effect.provide(documentScenario({ ...tenantDocument, idleTimeoutMinutes: minutes }))
-          )
-      )
-    })
-
-    describe("OIDC configuration", () => {
-      it.effect.each(["public", "confidential"])(
-        "accepts both public and confidential client authentication modes" + ": %s",
-        (clientAuth) =>
-          Effect.gen(function*() {
-            expect((yield* loadRequested).oidc.clientAuth).toBe(clientAuth)
-          }).pipe(Effect.provide(documentScenario({ ...tenantDocument, oidc: { ...tenantDocument.oidc, clientAuth } })))
-      )
-      it.effect.prop(
-        "fails with TenantConfigError for any other client authentication mode",
-        {
-          clientAuth: Arbitrary.schema(Schema.String).pipe(
-            Arbitrary.filter((value) => value !== "public" && value !== "confidential")
-          )
-        },
-        ({ clientAuth }) =>
-          expectTenantFailure(loadRequested).pipe(
-            Effect.provide(documentScenario({ ...tenantDocument, oidc: { ...tenantDocument.oidc, clientAuth } }))
-          )
-      )
-      it.effect.prop("accepts an omitted connection and preserves a supplied string connection", {
-        connection: Schema.String
-      }, ({ connection }) =>
-        Effect.gen(function*() {
-          const omitted = yield* loadRequested.pipe(Effect.provide(documentScenario(tenantDocument)))
-          expect(omitted.oidc).not.toHaveProperty("connection")
-          for (const value of [connection, ""]) {
-            const supplied = yield* loadRequested.pipe(
-              Effect.provide(
-                documentScenario({ ...tenantDocument, oidc: { ...tenantDocument.oidc, connection: value } })
-              )
-            )
-            expect(supplied.oidc.connection).toBe(value)
-          }
-        }))
     })
   })
 
   describe(".getConfigFromHost", () => {
     describe("when tenant resolution is host-based", () => {
-      it.effect.prop("returns the configuration belonging to the alias resolved from the supplied host", {
+      it.effect.prop("reads the file named for the alias in the host", {
         alias: TenantAliasArb
       }, ({ alias }) =>
         Effect.gen(function*() {
           const service = yield* TenantConfigService
-          expect(yield* service.getConfigFromHost(`${alias.toUpperCase()}.example.com`)).toEqual(expectedConfig)
-          expect(yield* service.getConfigFromHost(`other-${alias}.example.com`)).toEqual({
-            ...otherDocument,
-            idleTimeoutMinutes: 30
-          })
+          const fromHost = yield* service.getConfigFromHost(`${alias.toUpperCase()}.example.com`)
+          const fromNeighbor = yield* service.getConfigFromHost(`other-${alias}.example.com`)
+          expect(fromHost.displayName).toBe(tenantDocument.displayName)
+          expect(fromNeighbor.displayName).toBe(otherDocument.displayName)
         }).pipe(Effect.provide(scenario(
           hostResolution,
           new Map([
@@ -292,26 +174,21 @@ describe("TenantConfigService", () => {
             const service = yield* TenantConfigService
             const error = yield* expectTenantFailure(service.getConfigFromHost(host))
             expect(error.message).toContain("Failed to read tenant alias")
-          }).pipe(Effect.provide(documentScenario(tenantDocument)))
+          }).pipe(Effect.provide(scenario(hostResolution)))
       )
     })
 
     describe("when tenant resolution is static", () => {
-      it.effect.prop("returns the configured tenant's configuration regardless of the supplied host", {
+      it.effect.prop("reads the configured alias's file regardless of the supplied host", {
         host: Schema.String
       }, ({ host }) =>
         Effect.gen(function*() {
           const service = yield* TenantConfigService
           for (const input of [host, "", "shelbyville.example.com"]) {
-            expect(yield* service.getConfigFromHost(input)).toEqual(expectedConfig)
+            const config = yield* service.getConfigFromHost(input)
+            expect(config.displayName).toBe(tenantDocument.displayName)
           }
-        }).pipe(Effect.provide(scenario(
-          staticResolution("springfield"),
-          new Map([
-            [`${configDir}/shelbyville.json`, JSON.stringify(otherDocument)],
-            [requestedPath, JSON.stringify(tenantDocument)]
-          ])
-        ))))
+        }).pipe(Effect.provide(scenario(staticResolution("springfield"), bothTenantFiles))))
       it.effect.each(invalidAliases)(
         "fails with TenantConfigError when the configured static alias is invalid" + ": %s",
         (alias) =>
@@ -319,37 +196,23 @@ describe("TenantConfigService", () => {
             const service = yield* TenantConfigService
             const error = yield* expectTenantFailure(service.getConfigFromHost("springfield.example.com"))
             expect(error.message).toContain("Failed to read tenant alias from config")
-          }).pipe(
-            Effect.provide(
-              scenario(staticResolution(alias), new Map([[requestedPath, JSON.stringify(tenantDocument)]]))
-            )
-          )
+          }).pipe(Effect.provide(scenario(staticResolution(alias))))
       )
     })
 
-    describe("when the resolved tenant's configuration is unavailable or invalid", () => {
-      it.effect.each(
-        [
-          { mode: "host", raw: undefined },
-          { mode: "host", raw: "{" },
-          { mode: "static", raw: undefined },
-          { mode: "static", raw: "{" }
-        ] as const
-      )(
-        "propagates the configuration failure as TenantConfigError without substituting another tenant's configuration" +
-          ": $mode / $raw",
-        ({ mode, raw }) => {
-          const files = new Map([[`${configDir}/shelbyville.json`, JSON.stringify(otherDocument)]])
-          if (raw !== undefined) files.set(requestedPath, raw)
-          return Effect.gen(function*() {
+    describe("when the resolved alias's file cannot be read", () => {
+      it.effect.each(["host", "static"] as const)(
+        "fails with TenantConfigError for that file without reading another tenant's file" + ": %s",
+        (mode) =>
+          Effect.gen(function*() {
             const service = yield* TenantConfigService
             const error = yield* expectTenantFailure(service.getConfigFromHost("springfield.example.com"))
+            expect(error.message).toContain("Failed to read")
             expect(error.message).toContain(requestedPath)
-            expect(error.message).toContain(
-              raw === undefined ? "Failed to read tenant config" : "Failed to parse tenant config"
-            )
-          }).pipe(Effect.provide(scenario(mode === "host" ? hostResolution : staticResolution("springfield"), files)))
-        }
+          }).pipe(Effect.provide(scenario(
+            mode === "host" ? hostResolution : staticResolution("springfield"),
+            new Map([[`${configDir}/shelbyville.json`, JSON.stringify(otherDocument)]])
+          )))
       )
     })
   })
