@@ -3,6 +3,7 @@
 **Status:** draft
 **Planning date:** 2026-10-03
 **Source revision:** [31e476c](https://github.com/PathableAI-org/Pre-ETS/commit/31e476c89efbe356c6b59fb75e4ead06d63667ca)
+**Requirement decision revision:** [4eb0fa5](https://github.com/PathableAI-org/Pre-ETS/commit/4eb0fa5)
 **Approval:** Pending maintainer adoption of decomposition
 
 ## Goal
@@ -56,20 +57,26 @@ No criterion is classified as already verified. Runtime evidence and deployed in
 Documentation pins still mention Effect RC113 while the source manifest pins 4.0.0; future code work must verify installed
 APIs and resolve relevant guidance drift without changing approved requirements.
 
-## Blockers and decisions
+## Decisions and remaining limits
 
-| ID | Affected work                                                           | Needed decision or prerequisite                                                                                                                                                                            |
-| -- | ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| B1 | TENANT-004 AC5, configured membership in S1, affected S2/S3/S4 failures | Resolve directory/unreadable/corrupt and host-mode missing-file policy; establish how unknown aliases differ from configured tenants with unavailable files. No registry or HTTP outcome is invented here. |
-| B2 | SECURITY-001 AC1–2, S4 external provisioning                            | Identify external configuration producers and how they apply shared validation and control secrets placed in allowed text. Repository fixtures cannot establish universal content safety.                  |
+- **B1 resolved — maintainer direction, 2026-10-03:** directory configuration/access failures return HTTP 500 in
+  both modes. With a usable directory, missing host files and unreadable/malformed selected files in either mode
+  return ordinary HTTP 404 without fallback. Missing static files retain HTTP 500. See
+  [TENANT-004](../requirements/tenant-resolution.md#preets-tenant-004). No configured-tenant registry is needed.
+- **B2 provider scope resolved — maintainer direction, 2026-10-03:** avoid secret dependencies where possible;
+  permitted tenant files contain non-secret lookup keys when needed. A vendor-agnostic server-only provider resolves
+  those keys; credentials and resolved values remain outside configuration and diagnostics. See
+  [SECURITY-001](../requirements/security.md#preets-security-001). Concrete provider selection/integration is deferred
+  until cloud infrastructure work begins. A deterministic provider supports current contract verification.
+- **Remaining external-content limit:** shared schema checks cannot detect all secrets pasted into allowed text.
+  Producer controls and their evidence remain an open requirement question, not a concrete provider selection blocker.
 
-B1 requires a linked requirements decision before affected paths are implemented. S3 may deliver approved independent
-paths first; that would be partial delivery, not closure of all selected criteria. B2 remains an external-producer safety and
-verification gap. Maintainer adoption of this plan does not resolve them.
+These decisions resolve policy gates without approving this delivery decomposition or establishing runtime verification.
 
 ## Delivery slices and proposed issues
 
-Issue bodies below use the delivery issue template. Links are pinned to the inspected source revision. They are
+Issue bodies below use the delivery issue template. Requirement links are pinned to the decision revision;
+implementation observations retain their original source revision. They are
 proposals without GitHub issue numbers. Planned evidence is part of each slice; shared fixtures/harness adaptation
 belongs to S4 rather than a separate blanket testing issue.
 
@@ -85,8 +92,8 @@ Frontend consumers obtain the intended configuration in host and static modes.
 
 #### Requirements
 
-- [PREETS-TENANT-003](https://github.com/PathableAI-org/Pre-ETS/blob/31e476c89efbe356c6b59fb75e4ead06d63667ca/docs/requirements/tenant-resolution.md#preets-tenant-003) AC 1, 3
-- [PREETS-TENANT-004](https://github.com/PathableAI-org/Pre-ETS/blob/31e476c89efbe356c6b59fb75e4ead06d63667ca/docs/requirements/tenant-resolution.md#preets-tenant-004) AC 1–3
+- [PREETS-TENANT-003](https://github.com/PathableAI-org/Pre-ETS/blob/4eb0fa5/docs/requirements/tenant-resolution.md#preets-tenant-003) AC 1, 3
+- [PREETS-TENANT-004](https://github.com/PathableAI-org/Pre-ETS/blob/4eb0fa5/docs/requirements/tenant-resolution.md#preets-tenant-004) AC 1–3
 
 #### In scope
 
@@ -94,11 +101,11 @@ Require BASE_HOSTNAME only in host mode; parse the literal alias/base pattern; r
 
 #### Out of scope
 
-Request/auth integration, diagnostics, and undecided failure outcomes.
+Request/auth integration, diagnostics, and HTTP failure mapping owned by S3.
 
 #### Dependencies
 
-Successful-path work can start independently. B1 gates configured membership classification and affected failure paths.
+Selection/retrieval work can start independently; S3 maps directory/file failures. No separate membership registry is required.
 
 #### Completion evidence
 
@@ -120,7 +127,7 @@ Authenticated requests, consuming authentication flows, and diagnostics obtain n
 
 #### Requirements
 
-- [PREETS-TENANT-003](https://github.com/PathableAI-org/Pre-ETS/blob/31e476c89efbe356c6b59fb75e4ead06d63667ca/docs/requirements/tenant-resolution.md#preets-tenant-003) AC 2, 4
+- [PREETS-TENANT-003](https://github.com/PathableAI-org/Pre-ETS/blob/4eb0fa5/docs/requirements/tenant-resolution.md#preets-tenant-003) AC 2, 4
 
 #### In scope
 
@@ -128,11 +135,11 @@ Inventory tenant-dependent request paths; integrate the shared selection/retriev
 
 #### Out of scope
 
-Diagnostic response construction and undecided configuration-failure policy.
+Diagnostic response construction and HTTP failure mapping owned by S3.
 
 #### Dependencies
 
-S1 capability required for integration; B1 gates affected failure integration. Coordinate diagnostic context with S4.
+S1 capability required for integration; coordinate S3 failure mapping and S4 diagnostic context.
 
 #### Completion evidence
 
@@ -150,28 +157,28 @@ Tenant resolution pilot, slice S2. Publication must link the committed plan revi
 
 #### Outcome
 
-Invalid host-mode tenants receive ordinary HTTP/browser not-found behavior; absent static configuration receives HTTP 500 without fallback.
+Invalid host-mode tenants and unreadable/malformed selected files receive ordinary HTTP/browser not-found behavior. Directory configuration/access failures in either mode and missing static files receive HTTP 500 without fallback.
 
 #### Requirements
 
-- [PREETS-TENANT-004](https://github.com/PathableAI-org/Pre-ETS/blob/31e476c89efbe356c6b59fb75e4ead06d63667ca/docs/requirements/tenant-resolution.md#preets-tenant-004) AC 4, 5
-- [PREETS-TENANT-005](https://github.com/PathableAI-org/Pre-ETS/blob/31e476c89efbe356c6b59fb75e4ead06d63667ca/docs/requirements/tenant-resolution.md#preets-tenant-005) AC 1–5
+- [PREETS-TENANT-004](https://github.com/PathableAI-org/Pre-ETS/blob/4eb0fa5/docs/requirements/tenant-resolution.md#preets-tenant-004) AC 2, 4, 5
+- [PREETS-TENANT-005](https://github.com/PathableAI-org/Pre-ETS/blob/4eb0fa5/docs/requirements/tenant-resolution.md#preets-tenant-005) AC 1–5
 
 #### In scope
 
-Implement approved 404/500 outcomes, preserve failure meaning, static host exemption, and ordinary missing-page presentation. Resolve affected policy through requirement decisions before implementing it.
+Implement directory failures as 500 in both modes; with a usable directory, map missing host files and unreadable/malformed files in either mode to ordinary 404. Preserve missing static-file 500, static host exemption, no fallback, and ordinary missing-page presentation.
 
 #### Out of scope
 
-Invented outcomes for unreadable/corrupt configuration or a new tenant registry.
+A separate configured-tenant registry and unrelated authentication failure policy.
 
 #### Dependencies
 
-S1/S2 integration; B1 blocks unknown-alias versus configured-unavailable handling and AC5 response policy. Static missing-file 500 and pattern-mismatch 404 are approved and can proceed independently of that policy.
+S1/S2 integration; directory/file response policy is resolved by B1.
 
 #### Completion evidence
 
-Actual HTTP 404/500 status and no fallback; browser comparison with ordinary missing-page navigation; static mode repeats invalid hosts successfully. Public failures distinguish known unavailable configuration from unknown aliases after B1 is resolved. Implementation must be merged and its executed evidence recorded with revision, scope, and limitations. Issue closure does not update requirement verification.
+Actual HTTP 404/500 status and no fallback; browser comparison with ordinary missing-page navigation; static mode repeats invalid hosts successfully. Exercise missing settings, nonexistent/non-directory/unreadable directories in both modes as 500. With a usable directory, exercise missing host files and unreadable/invalid-JSON/schema-invalid files as 404; verify static missing-file 500 separately. Implementation must be merged and its executed evidence recorded with revision, scope, and limitations. Issue closure does not update requirement verification.
 
 #### Delivery plan
 
@@ -189,24 +196,24 @@ The diagnostic endpoint returns full permitted non-secret configuration from nor
 
 #### Requirements
 
-- [PREETS-TENANT-006](https://github.com/PathableAI-org/Pre-ETS/blob/31e476c89efbe356c6b59fb75e4ead06d63667ca/docs/requirements/tenant-resolution.md#preets-tenant-006) AC 1–6
-- [PREETS-SECURITY-001](https://github.com/PathableAI-org/Pre-ETS/blob/31e476c89efbe356c6b59fb75e4ead06d63667ca/docs/requirements/security.md#preets-security-001) AC 1–3
+- [PREETS-TENANT-006](https://github.com/PathableAI-org/Pre-ETS/blob/4eb0fa5/docs/requirements/tenant-resolution.md#preets-tenant-006) AC 1–6
+- [PREETS-SECURITY-001](https://github.com/PathableAI-org/Pre-ETS/blob/4eb0fa5/docs/requirements/security.md#preets-security-001) AC 1–3
 
 #### In scope
 
-Enforce explicit permitted Effect Schema fields and unexpected-field rejection at relevant nested boundaries; retain separate server-only secrets. Add GET /_test/tenant-config in all application environments and no-store on success/404/500. Add scoped production configuration Copilot guidance as delivery work.
+Enforce explicit permitted Effect Schema fields and unexpected-field rejection at relevant nested boundaries; permit non-secret lookup keys and resolve them through a vendor-agnostic server-only provider contract, with a deterministic verification implementation. Add GET /_test/tenant-config in all application environments and no-store on success/404/500. Add scoped production configuration Copilot guidance as delivery work.
 
 #### Out of scope
 
-Redaction DTOs, environment gating, production ingress rules, and claims that validation detects secrets inside every allowed string.
+Concrete cloud/Kubernetes/Docker provider selection or integration, redaction DTOs, environment gating, production ingress rules, and claims that validation detects secrets inside every allowed string.
 
 #### Dependencies
 
-S1/S2/S3 for complete route behavior; B1 gates affected failures. Implement and verify the security contract before shipping disclosure. Production deployment is outside this effort; future ingress protection remains required before production exposure. B2 identifies external-producer integration still needed.
+S1/S2/S3 for complete route behavior; directory/file policy is resolved. Implement and verify the security contract before shipping disclosure. Production deployment is outside this effort; future ingress protection remains required before production exposure. Concrete provider integration is deferred; external-content safety remains an explicit evidence limitation.
 
 #### Completion evidence
 
-Vitest with @effect/vitest exercises the real loader with permitted and forbidden nested fields. Compare complete diagnostic JSON with independently parsed expected files. Synthetic secrets from the separate provider never appear. Repeat direct application tests in production mode and check no-store on approved error outcomes; fixture checks do not prove all external content safe. Implementation must be merged and its executed evidence recorded with revision, scope, and limitations. Issue closure does not update requirement verification.
+Vitest with @effect/vitest exercises the real loader with permitted and forbidden nested fields. Compare complete diagnostic JSON with independently parsed expected files. Resolve synthetic lookup keys through the deterministic server-only provider; returned JSON includes the permitted keys but never resolved secret values or provider credentials. Repeat direct application tests in production mode and check no-store on approved error outcomes; fixture checks do not prove all external content safe. Implementation must be merged and its executed evidence recorded with revision, scope, and limitations. Issue closure does not update requirement verification.
 
 #### Delivery plan
 
@@ -223,15 +230,15 @@ and diagnostic application outcomes.
 
 ### Requirements
 
-- [PREETS-TENANT-003](https://github.com/PathableAI-org/Pre-ETS/blob/31e476c89efbe356c6b59fb75e4ead06d63667ca/docs/requirements/tenant-resolution.md#preets-tenant-003) AC 1–4
-- [PREETS-TENANT-004](https://github.com/PathableAI-org/Pre-ETS/blob/31e476c89efbe356c6b59fb75e4ead06d63667ca/docs/requirements/tenant-resolution.md#preets-tenant-004) AC 1–5
-- [PREETS-TENANT-005](https://github.com/PathableAI-org/Pre-ETS/blob/31e476c89efbe356c6b59fb75e4ead06d63667ca/docs/requirements/tenant-resolution.md#preets-tenant-005) AC 1–5
-- [PREETS-TENANT-006](https://github.com/PathableAI-org/Pre-ETS/blob/31e476c89efbe356c6b59fb75e4ead06d63667ca/docs/requirements/tenant-resolution.md#preets-tenant-006) AC 1–6
-- [PREETS-SECURITY-001](https://github.com/PathableAI-org/Pre-ETS/blob/31e476c89efbe356c6b59fb75e4ead06d63667ca/docs/requirements/security.md#preets-security-001) AC 1–3
+- [PREETS-TENANT-003](https://github.com/PathableAI-org/Pre-ETS/blob/4eb0fa5/docs/requirements/tenant-resolution.md#preets-tenant-003) AC 1–4
+- [PREETS-TENANT-004](https://github.com/PathableAI-org/Pre-ETS/blob/4eb0fa5/docs/requirements/tenant-resolution.md#preets-tenant-004) AC 1–5
+- [PREETS-TENANT-005](https://github.com/PathableAI-org/Pre-ETS/blob/4eb0fa5/docs/requirements/tenant-resolution.md#preets-tenant-005) AC 1–5
+- [PREETS-TENANT-006](https://github.com/PathableAI-org/Pre-ETS/blob/4eb0fa5/docs/requirements/tenant-resolution.md#preets-tenant-006) AC 1–6
+- [PREETS-SECURITY-001](https://github.com/PathableAI-org/Pre-ETS/blob/4eb0fa5/docs/requirements/security.md#preets-security-001) AC 1–3
 
 ### In scope
 
-Contain proposed children S1–S4 and coordinate decisions B1–B2, compatibility with auth/session consumers, fixture/harness
+Contain proposed children S1–S4 and apply resolved decisions B1–B2, compatibility with auth/session consumers, fixture/harness
 adaptation, and production configuration review guidance. Verify direct application behavior; cloud infrastructure
 and production rollout belong to a later effort.
 
@@ -242,7 +249,7 @@ cloud infrastructure, production rollout, and unrelated session/domain changes.
 
 ### Dependencies
 
-Containment: S1–S4 are proposed children. Blocking: S2 integrates S1; S3 integrates S1/S2 with affected paths gated by B1;
+Containment: S1–S4 are proposed children. Blocking: S2 integrates S1; S3 integrates S1/S2 using the resolved directory/file policy;
 S4 integrates S1/S2/S3 and verifies security before disclosure. Direct application verification does not require a
 production ingress deployment. This effort does not satisfy the separate production ingress obligation.
 
@@ -262,31 +269,31 @@ relationships with actual issue references. No publication is authorized by this
 All evidence below is planned. Rows describing partial work retain explicit blockers; no criterion has existing
 reviewed execution evidence in this plan.
 
-| Requirement         | AC | Disposition and slices | Planned evidence and remaining conditions                                                         |
-| ------------------- | -- | ---------------------- | ------------------------------------------------------------------------------------------------- |
-| PREETS-TENANT-003   | 1  | Planned S1/S2/S4       | Two tenants and interleaved HTTP selection; B1 affects configured membership                      |
-| PREETS-TENANT-003   | 2  | Planned S2/S4          | Authenticated, consuming-auth, and diagnostic context before behavior                             |
-| PREETS-TENANT-003   | 3  | Planned S1/S2/S4       | Static hosts select one alias without BASE_HOSTNAME                                               |
-| PREETS-TENANT-003   | 4  | Planned S2             | Configuration-consuming frontend outcomes plus independent-request controls                       |
-| PREETS-TENANT-004   | 1  | Planned S1/S2/S4       | Interleaved parsed values and consuming frontend behavior                                         |
-| PREETS-TENANT-004   | 2  | Planned S1             | Required directory in both modes; invalid-directory response policy blocked B1                    |
-| PREETS-TENANT-004   | 3  | Planned S1/S4          | Usable static file and independently parsed comparison                                            |
-| PREETS-TENANT-004   | 4  | Planned S3/S4          | Actual missing-static-file HTTP 500, no fallback                                                  |
-| PREETS-TENANT-004   | 5  | Blocked B1; S3         | Public failure classification plus decided HTTP policy; unknown/configured distinction unresolved |
-| PREETS-TENANT-005   | 1  | Planned S3             | Pattern mismatch actual HTTP 404                                                                  |
-| PREETS-TENANT-005   | 2  | Blocked B1; S3         | Unknown alias HTTP 404 after membership distinction is decided                                    |
-| PREETS-TENANT-005   | 3  | Partial plan S3; B1    | No fallback for both categories; unknown-alias case blocked                                       |
-| PREETS-TENANT-005   | 4  | Partial plan S3; B1    | Browser ordinary not-found comparison for both categories                                         |
-| PREETS-TENANT-005   | 5  | Planned S1/S3/S4       | Static success for varied hosts and missing-file 500                                              |
-| PREETS-TENANT-006   | 1  | Planned S4             | Complete JSON equals independently parsed expected file                                           |
-| PREETS-TENANT-006   | 2  | Partial plan S4; B1    | Interleaved normal-context responses; configured membership unresolved                            |
-| PREETS-TENANT-006   | 3  | Planned S4             | Static complete configuration for varied hosts                                                    |
-| PREETS-TENANT-006   | 4  | Partial plan S3/S4; B1 | 404/500 actual statuses; unknown alias distinction blocked                                        |
-| PREETS-TENANT-006   | 5  | Planned S4             | Direct production-mode application response; production ingress outside this effort               |
-| PREETS-TENANT-006   | 6  | Partial plan S4; B1    | No-store on success/404/500; affected failure cases blocked                                       |
-| PREETS-SECURITY-001 | 1  | Partial plan S4; B2    | Nested forbidden-field rejection; external producer/content controls unresolved                   |
-| PREETS-SECURITY-001 | 2  | Planned S4; B2         | Separate provider synthetic secrets absent from diagnostic JSON; external safety limits           |
-| PREETS-SECURITY-001 | 3  | Planned S4             | Full permitted JSON comparison; no redaction DTO                                                  |
+| Requirement         | AC | Disposition and slices | Planned evidence and remaining conditions                                                               |
+| ------------------- | -- | ---------------------- | ------------------------------------------------------------------------------------------------------- |
+| PREETS-TENANT-003   | 1  | Planned S1/S2/S4       | Two tenants and interleaved HTTP selection; approved literal host parsing                               |
+| PREETS-TENANT-003   | 2  | Planned S2/S4          | Authenticated, consuming-auth, and diagnostic context before behavior                                   |
+| PREETS-TENANT-003   | 3  | Planned S1/S2/S4       | Static hosts select one alias without BASE_HOSTNAME                                                     |
+| PREETS-TENANT-003   | 4  | Planned S2             | Configuration-consuming frontend outcomes plus independent-request controls                             |
+| PREETS-TENANT-004   | 1  | Planned S1/S2/S4       | Interleaved parsed values and consuming frontend behavior                                               |
+| PREETS-TENANT-004   | 2  | Planned S1             | Required directory in both modes; directory configuration/access failures return 500 via S3             |
+| PREETS-TENANT-004   | 3  | Planned S1/S4          | Usable static file and independently parsed comparison                                                  |
+| PREETS-TENANT-004   | 4  | Planned S3/S4          | Actual missing-static-file HTTP 500, no fallback                                                        |
+| PREETS-TENANT-004   | 5  | Planned S3             | Usable directory: missing host file or unreadable/malformed file returns 404; static missing file 500   |
+| PREETS-TENANT-005   | 1  | Planned S3             | Pattern mismatch actual HTTP 404                                                                        |
+| PREETS-TENANT-005   | 2  | Planned S3             | Unknown alias/missing host file returns actual HTTP 404                                                 |
+| PREETS-TENANT-005   | 3  | Planned S3             | No fallback for both categories; unknown alias and file failures exercise approved 404                  |
+| PREETS-TENANT-005   | 4  | Planned S3             | Browser ordinary not-found comparison for both categories                                               |
+| PREETS-TENANT-005   | 5  | Planned S1/S3/S4       | Static success for varied hosts and missing-file 500                                                    |
+| PREETS-TENANT-006   | 1  | Planned S4             | Complete JSON equals independently parsed expected file                                                 |
+| PREETS-TENANT-006   | 2  | Planned S4             | Interleaved normal-context responses; no separate configured-membership registry needed                 |
+| PREETS-TENANT-006   | 3  | Planned S4             | Static complete configuration for varied hosts                                                          |
+| PREETS-TENANT-006   | 4  | Planned S3/S4          | 404/500 actual statuses; directory/file outcomes follow approved policy                                 |
+| PREETS-TENANT-006   | 5  | Planned S4             | Direct production-mode application response; production ingress outside this effort                     |
+| PREETS-TENANT-006   | 6  | Planned S4             | No-store on success/404/500; all approved directory/file failure outcomes covered                       |
+| PREETS-SECURITY-001 | 1  | Planned S4             | Nested forbidden-field rejection; non-secret keys permitted; external content safety limitation remains |
+| PREETS-SECURITY-001 | 2  | Planned S4             | Vendor-agnostic deterministic provider resolves keys; values/credentials absent from diagnostic JSON    |
+| PREETS-SECURITY-001 | 3  | Planned S4             | Full permitted JSON comparison; no redaction DTO                                                        |
 
 ## Review and planning gaps
 
@@ -295,7 +302,7 @@ for all 23 selected criteria. Review corrections distinguish parent containment 
 verification from production shipping, retain partial failure coverage, and avoid treating existing service/schema code
 as evidence. No confirmed planning defect remains within this local review's scope.
 
-Open decisions B1–B2 remain; the plan is not implementation-ready for those paths. Proposed production configuration
+B1 and B2 provider scope are resolved. External producer/content controls remain an evidence limitation; concrete provider integration and cloud infrastructure are deferred. Proposed production configuration
 review instructions are S4 delivery work, not implemented workflow guidance. Infrastructure work is deferred. There is no separate
 verification issue because the shared diagnostic/fixture infrastructure has a concrete S4 outcome and remaining evidence
 belongs to each responsible slice.
