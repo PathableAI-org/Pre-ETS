@@ -1,0 +1,34 @@
+---
+name: delivery-plan
+description: Create or update a repo-local delivery plan from accepted Pre-ETS requirements, proposing coherent issues without publishing them. Independent of Spec Kit.
+---
+
+# Delivery plan
+
+Read the [delivery guide](../../../docs/delivery/README.md), [plan template](../../../docs/delivery/templates/plan.md),
+[requirements guide](../../../docs/requirements/README.md), and [issue template](../../../.github/ISSUE_TEMPLATE/delivery.md).
+These own format, authority, states, and coverage conventions.
+
+Read requested entries, related requirements, implementation dependencies, and approved constraints. Resolve selected
+ACs from the register; proposed and retired entries are dependency/history context, not accepted implementation scope.
+Ask about material intent conflicts; independent work can proceed with explicit blockers. Do not invent policy.
+
+Inspect relevant architecture, current implementation, assertions and execution evidence, and existing plans/issues.
+Use read-only GitHub access when available; report unavailable access or incomplete searches. Existing code can reduce
+remaining work but does not establish requirement satisfaction or verification. Record revision and inspection limits.
+Respect workspace routing when inspecting Effect design. Do not demand historical Spec Kit synchronization.
+
+Create or update a draft plan under docs/delivery and index it in the guide. Preserve existing issue links and approval
+history. Group work into outcomes with local slice IDs, exact criterion coverage, included/excluded conditions, real
+sequencing dependencies, shipping gates, and issue-ready proposals. Use the issue template and source-pinned full URLs
+inside issue bodies. Keep parent containment distinct from blocking. Explain enabling work and any separate shared
+verification slice through the supported accepted criteria.
+
+Read [Testing as evidence](../../../docs/engineering/testing/README.md). Identify plausible responsible evidence
+boundaries and limitations without fabricating executions. Account for every selected AC, including partial coverage,
+blocked paths, justified deferrals, and any actual reviewed evidence. Review links, duplication, coverage, and issue
+coherence; report remaining decisions. Leave approval pending unless a maintainer decision is explicitly supplied.
+
+Stay within delivery documentation. Do not approve decomposition, alter requirements, implement code/tests, change
+Spec Kit, commit automatically, write to GitHub, or introduce RTM/Projects automation. Planning authorization is not
+publication authorization. Report changed artifacts, coverage gaps, decisions, and evidence/access limitations.

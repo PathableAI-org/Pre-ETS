@@ -44,3 +44,7 @@ Review the requirements register for these conventions:
 
 Check relative links and requirement dependencies. Report actionable defects with the requirement ID, location,
 consequence, and suggested correction; distinguish them from unresolved decisions and evidence limitations.
+
+Delivery plans under `docs/delivery/` describe proposed work and criterion coverage. Follow their cross-links without
+treating decomposition approval, issue closure, or PR merge as requirement acceptance or verification. Actual issue/PR
+URLs may be added to delivery references later; a draft plan need not contain published references.
