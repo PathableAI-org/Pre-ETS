@@ -10,7 +10,7 @@ minimumReleaseAgeExclude:
   - "@types/node@24.13.5 || 24.13.6 || 24.19.1"
   - "@pathableai/react@0.3.0"
   - "@pathableai/styles@0.2.0"
-  - eslint@10.11.0
+  - eslint@10.11.0 || 10.12.0
   - "@typescript-eslint/eslint-plugin@8.70.1"
   - "@typescript-eslint/parser@8.70.1"
   - "@typescript-eslint/project-service@8.70.1"
@@ -38,3 +38,20 @@ minimumReleaseAgeExclude:
   - "@next/swc-win32-arm64-msvc@16.3.8"
   - "@next/swc-win32-x64-msvc@16.3.8"
   - next@16.3.8
+  - "@dprint/android-arm64@0.59.0"
+  - "@dprint/android-x64@0.59.0"
+  - "@dprint/darwin-arm64@0.59.0"
+  - "@dprint/darwin-x64@0.59.0"
+  - "@dprint/linux-arm64-glibc@0.59.0"
+  - "@dprint/linux-arm64-musl@0.59.0"
+  - "@dprint/linux-loong64-glibc@0.59.0"
+  - "@dprint/linux-loong64-musl@0.59.0"
+  - "@dprint/linux-ppc64-glibc@0.59.0"
+  - "@dprint/linux-ppc64-musl@0.59.0"
+  - "@dprint/linux-riscv64-glibc@0.59.0"
+  - "@dprint/linux-x64-glibc@0.59.0"
+  - "@dprint/linux-x64-musl@0.59.0"
+  - "@dprint/markdown@0.25.0"
+  - "@dprint/win32-arm64@0.59.0"
+  - "@dprint/win32-x64@0.59.0"
+  - dprint@0.59.0
