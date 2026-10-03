@@ -7,6 +7,8 @@ Links below are relative to the copied area document. Repeat the requirement sec
 ## PREETS-<AREA>-<NNN>
 
 **Title:** <Short name of the obligation>
+**Classification:** <Nature of the obligation>
+**Owner / responsible boundary:** <Optional owner or boundary>
 **Lifecycle:** proposed
 **Verification:** unverified
 
@@ -26,6 +28,10 @@ Links below are relative to the copied area document. Repeat the requirement sec
 1. <Under named conditions, the consumer can observe a specific outcome.>
 2. <A relevant failure or boundary outcome, if required by the source.>
 
+### Design constraints
+
+<Optional explicitly approved implementation choices; distinguish these from observable outcomes.>
+
 ### Open questions
 
 <Unresolved decisions and source conflicts, or None.>
@@ -41,6 +47,10 @@ Links below are relative to the copied area document. Repeat the requirement sec
 ### Delivery references
 
 <Optional issue/PR URLs describing work toward this obligation.>
+
+### Verification plan
+
+<Optional future evidence: claims, responsible boundaries, meaningful violations, and limitations.>
 
 ### Verification evidence
 

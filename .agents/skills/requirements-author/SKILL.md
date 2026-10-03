@@ -15,6 +15,13 @@ but do not promote incidental code behavior or interesting discovery facts into 
 Ask about material intent conflicts before changing a dependent promise; independent proposals may proceed
 with explicitly recorded questions. Attribute inaccessible sources and report the access limitation.
 
+Consider separate obligations when they can change independently or have different owners, failure modes, or
+verification boundaries; avoid fragmentation without a useful distinction. Record classification separately
+from source attribution according to the guide. Keep supplied source labels and approval boundaries intact.
+Separate explicitly approved design constraints from behavioral promises rather than removing those constraints.
+Check selectors, prerequisites in each mode, failure outcomes, and the intended classes behind broad claims such
+as “all requests.” Ask about material gaps instead of importing policy from incidental implementation behavior.
+
 Create or extend a coherent area document and link new areas from the register index. Express the consumer,
 conditions, observable outcome, rationale, sources, and acceptance criteria. Replace template placeholders;
 omit optional references when absent. Default new entries to `proposed` and `unverified`. Record acceptance

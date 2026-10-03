@@ -15,6 +15,12 @@ and attributable sources support the obligation; and whether its acceptance crit
 meaningful violation. Identify conflicting sources, unresolved product decisions, and accidental implementation
 constraints. Treat inaccessible sources as an assessment limitation, not proof that attribution is invalid.
 
+Assess whether independent obligations with different owners, failure modes, or evidence boundaries need distinct
+IDs without demanding fragmentation. Check classification separately from source attribution and verify that
+approved design constraints are identified as such. Distinguish accidental implementation constraints from
+explicit maintainer choices; review feedback must not silently override approved intent. Check selectors,
+mode-specific prerequisites and failure outcomes, and the request classes covered by broad quantifiers.
+
 Check IDs, lifecycle and decision references, retirement history, and replacement links against the guide.
 Acceptance and verification are independent. A closed issue or present implementation does not demonstrate
 approval or satisfaction. Missing optional delivery/design references are not inherently defects.

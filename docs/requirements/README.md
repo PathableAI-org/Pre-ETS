@@ -36,6 +36,28 @@ Identify the relevant source section, decision, test title, or scenario rather t
 If a source cannot be accessed, preserve its attribution and describe the limitation; access is not a prerequisite
 for drafting a proposal from supplied material. Keep credentials and sensitive client data out of the register.
 
+## Obligation boundaries and classification
+
+Consider separate IDs when obligations can change independently or have different owners, failure modes, or
+verification boundaries. Keep closely related promises together when splitting would obscure their meaning;
+there is no required number of requirements per feature.
+
+Use **Classification** to identify the nature of the obligation, such as Functional Requirement, Security
+Requirement, or Regulatory Requirement. Classification is distinct from **Source**, which records the supplied
+basis or attribution. Preserve source labels supplied by the maintainer; a classification is not evidence of
+approval or a regulatory citation. Add detailed attribution when supplied, without inventing references.
+
+An optional **Owner / responsible boundary** identifies who or what must deliver the outcome. An optional
+**Design constraints** section records explicitly approved implementation choices separately from observable
+behavior. These constraints are valid obligations; do not discard them merely because they prescribe an
+interface, storage layout, or technique. Distinguish them from incidental implementation behavior.
+
+Check selectors, prerequisites per mode, and failure outcomes. Qualify broad claims such as “all requests” with
+the intended request classes; do not silently narrow an approved scope. Keep unresolved outcomes explicit.
+
+A requirement may contain a **Verification plan** describing future evidence and its responsible boundary.
+Keep that plan separate from **Verification evidence**, which records reviewed execution and limitations.
+
 ## Lifecycle and verification
 
 Lifecycle describes the decision about the requirement:
