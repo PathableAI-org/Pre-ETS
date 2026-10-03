@@ -11,7 +11,7 @@ services:
       start_period: 2s
 
   keycloak:
-    image: quay.io/keycloak/keycloak:26.7.4
+    image: quay.io/keycloak/keycloak:26.8.0
     # Import tracked realm JSON on first boot (realm absent). Recreate the
     # container to re-import after editing docker/keycloak/pre-ets-realm.json.
     command: ["start-dev", "--import-realm"]
