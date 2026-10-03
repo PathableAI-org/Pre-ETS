@@ -253,7 +253,8 @@ accidentally select another tenant.
 
 ### Acceptance criteria
 
-1. Requests for two configured tenant hosts select their respective tenants, including interleaved requests.
+1. When host-based resolution is enabled, requests for two configured tenant hosts select their respective tenants,
+   including interleaved requests.
 2. Every authenticated request, tenant-configuration-consuming authentication flow, and diagnostic request uses the
    selected tenant context before executing tenant-dependent behavior.
 3. In static mode with usable configuration, requests with known, unknown, or unresolvable hosts select the same
@@ -308,6 +309,10 @@ A frontend consumer must receive the parsed configuration corresponding to its s
 selected configuration file does not exist, the request must receive HTTP 500 Internal Server Error without fallback
 configuration.
 
+A host that cannot identify a configured tenant is a tenant-resolution failure. A configured tenant whose
+configuration is missing, unreadable, or corrupt has an application configuration failure; that failure must not
+be classified as an unknown tenant solely to reuse tenant-resolution HTTP 404 handling.
+
 ### Rationale and sources
 
 Consumers need the configuration corresponding to the selected tenant. Missing static configuration is a system
@@ -324,6 +329,8 @@ failure, not an unknown host, and must not silently substitute another file.
 2. `TENANT_CONFIG_DIR` is required in every resolution mode and identifies a directory of `{alias}.json` tenant files.
 3. In static mode, an existing usable file for `TENANT_STATIC_ALIAS` supplies its parsed configuration.
 4. In static mode, a missing selected `{alias}.json` file produces an actual HTTP 500 response without fallback.
+5. A configured tenant's unavailable or corrupt configuration is classified as an application configuration
+   failure, not an unknown-tenant resolution failure. Its undecided response policy remains a planning dependency.
 
 ### Design constraints
 
@@ -335,13 +342,21 @@ failure, not an unknown host, and must not silently substitute another file.
 
 - What behavior applies to missing or invalid directory configuration, unreadable files, invalid JSON, or missing
   configuration files in host mode? Missing selected files in static mode have the approved HTTP 500 outcome;
-  remaining configuration-failure cases are undecided.
+  remaining configuration-failure cases are undecided. A missing host-mode file may represent an unknown alias
+  or unavailable configuration for a configured tenant; planning must establish how that distinction is known.
+
+### Implementation dependencies
+
+Resolve the open configuration-failure policies before implementing the affected failure paths. Planning must
+explain how an unknown alias is distinguished from a configured tenant with unavailable configuration, particularly
+when alias-named files are the configuration source. This document does not invent a tenant registry or assign
+undecided HTTP outcomes. Track the decisions in linked delivery work when that work is created.
 
 ### Related requirements
 
 - Replaces [PREETS-TENANT-001](#preets-tenant-001).
 - Used by [PREETS-TENANT-003](#preets-tenant-003) and [PREETS-TENANT-006](#preets-tenant-006).
-- Proposed content constraint: [PREETS-SECURITY-001](security.md#preets-security-001).
+- Required content constraint: [PREETS-SECURITY-001](security.md#preets-security-001).
 
 ### Verification plan
 
@@ -349,6 +364,8 @@ Use distinguishable synthetic `{alias}.json` files in a real configured director
 responses with independently parsed expected files. Observe a configuration-consuming frontend interaction as well.
 Establish the directory prerequisite in both modes at the configuration boundary. Exercise static mode with a usable
 selected file and with that file absent; observe HTTP 500 for the latter. An error message alone does not prove status.
+After planning resolves the failure policies, exercise unavailable/corrupt configuration for a known tenant
+and an unknown alias separately; assert their distinct failure categories at the responsible application boundary.
 
 ### Verification evidence
 
@@ -420,6 +437,9 @@ No reviewed, executed evidence has been recorded. This documentation change does
 The test runner must obtain the parsed configuration for the effective request tenant as JSON through
 `GET /_test/tenant-config`. The endpoint must use normal application tenant context, including static selection,
 and remain available directly at the application boundary in every environment, including production.
+Diagnostic responses must include `Cache-Control: no-store`. Full configuration disclosure
+requires the non-secret configuration invariant in PREETS-SECURITY-001; independently verified production ingress
+protection remains required by PREETS-INFRA-001.
 
 ### Rationale and sources
 
@@ -427,19 +447,22 @@ The test runner needs direct configuration evidence from normal request resoluti
 An independent comparison with the expected file can detect wrong-tenant configuration selection.
 
 - Source: Functional Requirement.
-- Decision: Maintainer approval on 2026-10-03 authorizes this replacement, preserving the approved behavior from
+- Decision: Maintainer review approval on 2026-10-03 adds the non-secret delivery dependency and diagnostic
+  `Cache-Control: no-store` behavior. Maintainer approval on 2026-10-03 authorizes this replacement, preserving the approved behavior from
   2026-10-02 and 2026-10-03 except for the explicitly revised request scope and static selector clarification.
 
 ### Acceptance criteria
 
 1. Successful `GET /_test/tenant-config` responses contain the complete parsed configuration selected by normal
    request resolution, equal to the independently parsed expected `{alias}.json` file in `TENANT_CONFIG_DIR`.
-2. Requests for two configured tenant hosts return their respective configurations rather than a separate lookup
+2. When host-based resolution is enabled, requests for two configured tenant hosts return their respective
+   configurations rather than a separate lookup
    or fixture echo; interleaved requests do not substitute another tenant's configuration.
 3. With a usable static file, the endpoint returns `TENANT_STATIC_ALIAS`'s configuration regardless of Host.
 4. Unknown or unresolvable hosts in host mode receive HTTP 404; a missing static file receives HTTP 500.
 5. Direct application access under production configuration retains the endpoint; environment gating does not
    disable it. Production ingress protection is a separate obligation.
+6. Diagnostic responses include `Cache-Control: no-store`, including HTTP 404 and HTTP 500 responses from this route.
 
 ### Design constraints
 
@@ -449,20 +472,27 @@ An independent comparison with the expected file can detect wrong-tenant configu
 
 None.
 
+### Implementation dependencies
+
+Implement and verify PREETS-SECURITY-001's non-secret configuration contract before shipping full diagnostic
+configuration disclosure. Verify production ingress protection independently; it does not replace safe content.
+Resolve applicable configuration-failure policies in PREETS-TENANT-004 before implementing those paths.
+
 ### Related requirements
 
 - Replaces the diagnostic obligation in [PREETS-TENANT-002](#preets-tenant-002).
 - Depends on [PREETS-TENANT-003](#preets-tenant-003), [PREETS-TENANT-004](#preets-tenant-004), and
   [PREETS-TENANT-005](#preets-tenant-005).
 - Production access restriction: [PREETS-INFRA-001](infrastructure.md#preets-infra-001).
-- Proposed content constraint: [PREETS-SECURITY-001](security.md#preets-security-001).
+- Required content constraint: [PREETS-SECURITY-001](security.md#preets-security-001).
 
 ### Verification plan
 
 Call the endpoint against a running frontend for two tenants, interleaved requests, both host failure categories,
 and static mode with present and missing files. Independently read and parse the expected file; compare complete
 parsed values rather than whitespace or object-key order. Do not derive expected values from the response or the
-application's selection implementation. Repeat direct application access under production configuration.
+application's selection implementation. Assert `Cache-Control: no-store` on successful and failed diagnostic
+responses. Repeat direct application access under production configuration.
 
 This evidence establishes selected configuration and retrieval. It does not establish frontend user behavior or
 production ingress blocking, which have their own boundaries and verification plans.

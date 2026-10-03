@@ -5,12 +5,14 @@
 **Title:** Exclude secret material from tenant configuration
 **Classification:** Security Requirement
 **Owner / responsible boundary:** Tenant configuration producers and frontend configuration contract
-**Lifecycle:** proposed
+**Lifecycle:** accepted
 **Verification:** unverified
 
 ### Statement
 
-Tenant configuration must contain no credentials or secret key material. The full parsed configuration exposed
+Tenant configuration is a non-secret application configuration artifact. Credentials, private keys, tokens, and
+other secret material must be obtained through separate server-only mechanisms and must never be included in
+tenant configuration. The full parsed configuration exposed
 through the diagnostic interface must be safe to disclose without revealing such secrets.
 
 ### Rationale and sources
@@ -20,7 +22,8 @@ credentials or secret key material. Server-only secret resolution must remain ou
 
 - Source: Security Requirement.
 - Decision: Maintainer approval on 2026-10-03 authorizes recording this candidate security invariant as proposed.
-  Acceptance and enforcement remain pending.
+  Maintainer approval of the review refinements on 2026-10-03 accepts the non-secret configuration invariant as
+  a prerequisite for shipping full diagnostic disclosure. Implementation and enforcement evidence remain pending.
 
 ### Acceptance criteria
 
@@ -28,7 +31,7 @@ credentials or secret key material. Server-only secret resolution must remain ou
    or secret key material.
 2. Any authentication capability requiring secrets obtains them separately from the tenant configuration returned
    by `GET /_test/tenant-config`.
-3. The diagnostic endpoint still returns the full parsed configuration; this proposal does not introduce redaction
+3. The diagnostic endpoint still returns the full parsed configuration; this requirement does not introduce redaction
    or a separate diagnostic DTO.
 
 ### Open questions
@@ -51,7 +54,9 @@ configuration contract must be flagged; secrets required by authentication must 
 provider; and diagnostic JSON must remain the complete permitted tenant configuration. Inspect field meaning,
 types, data flow, and nested structures, not just suspicious names. `Config.secret` in a separate server-only
 secret provider is not itself a violation. Copilot feedback is advisory review evidence, not proof of compliance
-or a substitute for deterministic checks. Adding these review instructions is planned work, not completed setup.
+or a substitute for deterministic checks. The requirements-document review instructions are recorded in
+[Copilot guidance](../../.github/instructions/requirements.instructions.md). Instructions for reviewing production
+configuration code and the automated enforcement checks remain planned work.
 
 Automate fixture and runtime configuration validation with Effect Schema using explicit permitted fields and
 rejection of unexpected fields at relevant nested boundaries. Use Vitest with `@effect/vitest` to exercise the real
