@@ -35,7 +35,7 @@ Inspection on the source revision above found:
 - [Tenant service](../../packages/frontend/src/lib/tenant/service.ts) already exposes alias and file retrieval;
   [loader](../../packages/frontend/src/lib/tenant/config.ts) uses Effect Schema. Reuse these boundaries where suitable.
 - [Host parsing](../../packages/frontend/src/lib/tenant/alias.ts) currently takes the first dot-delimited label and
-  lowercases it. [Mode configuration](../../packages/frontend/src/lib/config/tenant-config.ts) lacks https://github.com/PathableAI-org/Pre-ETS/commit/31e476c89efbe356c6b59fb75e4ead06d63667ca_HOSTNAME.
+  lowercases it. [Mode configuration](../../packages/frontend/src/lib/config/tenant-config.ts) lacks `BASE_HOSTNAME`.
   These observations identify work against the accepted literal-pattern contract.
 - [Proxy](../../packages/frontend/src/proxy.ts) matches only root and auth callback, contains a dummy anonymous
   springfield path, and retains tenant failure 403 handling. [Compatibility operations](../../packages/frontend/src/lib/tenant/index.ts)
