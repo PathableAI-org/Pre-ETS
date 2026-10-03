@@ -33,8 +33,9 @@ credentials or secret key material. Server-only secret resolution must remain ou
 
 ### Open questions
 
-- How will configuration producers and the runtime enforce absence of secret material? This proposal specifies
-  the required content, not an approved enforcement mechanism.
+- How will externally managed configuration producers integrate the shared schema validation, and how will
+  secret material placed inside otherwise allowed text fields be controlled? The planned runtime and CI checks
+  do not establish the safety of all externally supplied content.
 
 ### Related requirements
 
@@ -44,10 +45,26 @@ credentials or secret key material. Server-only secret resolution must remain ou
 
 ### Verification plan
 
-Review the tenant configuration contract and producers for secret-bearing fields. Once an enforcement mechanism
-is chosen, exercise it with representative secret-bearing configurations and inspect diagnostic output and the
-separate secret-resolution boundary. Schema review and benign fixtures alone do not establish absence of secrets
-in arbitrary configuration or all deployed tenant files.
+Use Copilot PR review as an initial semantic check, backed by repository review instructions recording these
+practices: tenant configuration must not introduce secret-bearing fields; a `Config.secret` field in the tenant
+configuration contract must be flagged; secrets required by authentication must remain in a separate server-only
+provider; and diagnostic JSON must remain the complete permitted tenant configuration. Inspect field meaning,
+types, data flow, and nested structures, not just suspicious names. `Config.secret` in a separate server-only
+secret provider is not itself a violation. Copilot feedback is advisory review evidence, not proof of compliance
+or a substitute for deterministic checks. Adding these review instructions is planned work, not completed setup.
+
+Automate fixture and runtime configuration validation with Effect Schema using explicit permitted fields and
+rejection of unexpected fields at relevant nested boundaries. Use Vitest with `@effect/vitest` to exercise the real
+loader with allowed configurations and forbidden secret-bearing fields, including nested cases. Supply synthetic
+secrets through the separate authentication secret provider and assert that they never appear in the diagnostic
+response. These checks support criteria 1 and 2; compare full diagnostic JSON with independently parsed permitted
+configuration to support criterion 3 and the diagnostic contract.
+
+Repository JSON files are fixtures; real tenant configuration is managed outside this repository. Apply the same
+contract validation when real files are provisioned or loaded. CI demonstrates validator behavior and fixture
+conformance, not the safety of every deployed configuration file. Schema enforcement excludes unsupported fields;
+it cannot detect every secret pasted into an allowed text field. Record this limitation rather than claiming that
+field-name checks, benign fixtures, or a clean Copilot review establish absence of all secret content.
 
 ### Verification evidence
 

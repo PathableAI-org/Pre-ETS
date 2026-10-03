@@ -44,9 +44,28 @@ None.
 
 ### Verification plan
 
-Exercise every deployed production ingress with the diagnostic route on a valid tenant host plus other routes
-and methods under `/_test/*`. Observe blocking and ingress/application evidence that requests do not reach the
-frontend. Application-only tests and configuration review alone cannot establish executed ingress enforcement.
+Use Copilot PR review as an initial check against repository review instructions: production ingress must block
+all `/_test/*` routes and methods before forwarding, rule ordering must not permit a bypass, and application-level
+environment gating must not replace ingress protection. These instructions are planned work. Copilot review is
+advisory and does not establish deployed enforcement.
+
+Before deployment, use HashiCorp Sentinel to check Terraform plans for the required blocking rules on every
+production frontend ingress, including their precedence and coverage of all methods and paths under `/_test/*`.
+Test the policy with compliant and deliberately noncompliant plans, including missing rules and bypassing rule
+order. A passing policy establishes the checked plan's compliance, not runtime traffic behavior.
+
+After deployment, run a dedicated Playwright API verification suite against every deployed production ingress.
+Exercise `GET /_test/tenant-config` on a valid tenant host plus other routes and methods under `/_test/*`. Assert
+the ingress's blocking response and absence of diagnostic configuration, supporting criteria 1 through 3. Correlate
+probe requests with ingress evidence showing rejection before forwarding; a 404 alone could originate from the
+application and cannot establish blocking. Include a permitted application request as a control so a generally
+unreachable ingress cannot make the blocking checks pass.
+
+The deployment process must run the Sentinel gate before applying infrastructure and mark deployment successful
+only after the post-deployment ingress suite passes. Record policy and deployed-test results separately with their
+revision, environment, exercised entry points, and limitations. Finite probes cover the exercised cases; policy
+checks support broader route coverage. Neither application-only tests nor configuration review alone establish
+executed production ingress enforcement. Tools and deployment gates described here are planned, not implemented.
 
 ### Verification evidence
 
