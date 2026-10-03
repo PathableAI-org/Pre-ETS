@@ -36,6 +36,10 @@ Links below are relative to the copied area document. Repeat the requirement sec
 
 <Unresolved decisions and source conflicts, or None.>
 
+### Implementation dependencies
+
+<Optional unresolved planning decisions or prerequisite obligations that gate affected delivery work.>
+
 ### Related requirements
 
 <Optional links to dependencies, replaced requirements, or replacements. Required replacement links for superseded entries.>

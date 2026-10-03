@@ -35,9 +35,9 @@ Review the requirements register for these conventions:
 - Prefer automated verification where suitable. Check that policy/configuration checks and deployed behavior
   tests establish their respective claims. A blocked-looking HTTP response alone does not prove ingress rejected
   a request before forwarding. Fixture checks do not prove all externally managed configuration is safe.
-- Tenant configuration excludes secret-bearing fields under the proposed security invariant. Flag changes that
+- Tenant configuration excludes secret-bearing fields under the accepted security invariant. Flag changes that
   undermine this promise, such as proposing `Config.secret` in the exposed tenant configuration contract, while
-  respecting its proposed lifecycle. A separate server-only secret provider is compatible with the proposal.
+  respecting recorded approval and delivery dependencies. A separate server-only secret provider is compatible with the invariant.
   Inspect field meaning and data flow, not names alone; full permitted diagnostic JSON is an approved constraint.
 - Explicit open questions and unimplemented/unverified obligations are legitimate gaps. Missing optional delivery
   or design references are not defects. Do not invent policy, execution results, or stronger approval.

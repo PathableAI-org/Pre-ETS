@@ -22,6 +22,13 @@ Separate explicitly approved design constraints from behavioral promises rather 
 Check selectors, prerequisites in each mode, failure outcomes, and the intended classes behind broad claims such
 as “all requests.” Ask about material gaps instead of importing policy from incidental implementation behavior.
 
+Check that acceptance criteria explicitly qualify modes and that failure categories reflect their meaning rather
+than sharing an outcome accidentally. Inspect dependency lifecycles: record a decision or delivery gate when an
+accepted obligation relies on a proposed prerequisite; never infer approval. Record unresolved failure policy as
+an implementation-planning dependency. Keep lifecycle, linked delivery state, and accepted execution evidence
+separate; do not mirror the latest CI status into verification. Follow the guide's distinction between requirements
+changes and governance changes without introducing RTM tooling or automatic publication.
+
 Create or extend a coherent area document and link new areas from the register index. Express the consumer,
 conditions, observable outcome, rationale, sources, and acceptance criteria. Replace template placeholders;
 omit optional references when absent. Default new entries to `proposed` and `unverified`. Record acceptance
