@@ -20,6 +20,7 @@ import { setupSession, toTenantResolveResult } from "./lib/session/setup.ts"
 import { RedisSessionStore } from "./lib/session/store.ts"
 import {
   cookieAttributes,
+  generateSessionId,
   getSessionConfig,
   serializeSessionContext,
   SESSION_CONTEXT_HEADER,
@@ -34,13 +35,23 @@ import {
 import { createEnvTenantOperations } from "./lib/tenant/index.ts"
 
 const CACHE_CONTROL = "private, no-store"
+const DUMMY_TENANT_ID = "springfield"
 const LOGIN_UNAVAILABLE_PATH = "/login-unavailable"
 
 let store: RedisSessionStore | undefined
 let oidcStore: RedisOidcTransactionStore | undefined
 let operations: ReturnType<typeof createEnvTenantOperations> | undefined
 
+/**
+ * When `PRE_ETS_DUMMY_PROXY=1`, skip OIDC/Redis and forward a synthetic anonymous
+ * springfield session so home SSR can load during the tenant/session refactor.
+ * Leave unset in CI so capability BDD still exercises real proxy behavior.
+ */
 export async function proxy(request: NextRequest): Promise<NextResponse> {
+  if (process.env.PRE_ETS_DUMMY_PROXY === "1") {
+    return dummyAnonymousProxy(request)
+  }
+
   const requestHeaders = new Headers(request.headers)
   stripReservedHeaders(requestHeaders)
 
@@ -99,6 +110,19 @@ function clearOidcCookie(response: NextResponse): void {
     sameSite: attributes.sameSite,
     secure: attributes.secure
   })
+}
+
+function dummyAnonymousProxy(request: NextRequest): NextResponse {
+  const requestHeaders = new Headers(request.headers)
+  stripReservedHeaders(requestHeaders)
+
+  const context: SessionContext = {
+    expiresAt: Math.floor(Date.now() / 1000) + 86_400,
+    sessionId: generateSessionId(),
+    tenantId: DUMMY_TENANT_ID
+  }
+
+  return readyResponse(requestHeaders, context, "local-static", undefined)
 }
 
 function extendedForbiddenResponse(): NextResponse {

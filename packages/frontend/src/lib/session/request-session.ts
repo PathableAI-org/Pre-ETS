@@ -44,15 +44,16 @@ export async function resolveRequestSession(
   }
 ): Promise<RequestSession> {
   const context = parseRequestSessionContext(rawHeader)
-  const store = deps.store ?? deps.createStore?.() ?? deps.defaultStore()
-  const guardDeps: GuardAuthenticatedAccessDependencies = deps.nowSeconds === undefined
-    ? { store }
-    : { nowSeconds: deps.nowSeconds, store }
 
   if (context.userId === undefined) {
     const tenantConfig = await getCurrentTenantConfig(context.tenantId)
     return { context, tenantConfig }
   }
+
+  const store = deps.store ?? deps.createStore?.() ?? deps.defaultStore()
+  const guardDeps: GuardAuthenticatedAccessDependencies = deps.nowSeconds === undefined
+    ? { store }
+    : { nowSeconds: deps.nowSeconds, store }
 
   const result = await guardAuthenticatedAccess(
     {
