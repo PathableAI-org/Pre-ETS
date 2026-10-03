@@ -8,11 +8,15 @@
 ## Goal
 
 Deliver tenant-dependent frontend behavior with the intended configuration, approved failure outcomes, safe full
-configuration diagnostics, and independently enforced production ingress protection.
+configuration diagnostics at the application boundary.
 
 ## Requirements in scope
 
-All active criteria are selected; no active criterion is silently deferred.
+All active tenant and security criteria are selected. Cloud infrastructure delivery is deferred because work on it
+has not started. PREETS-INFRA-001 remains accepted but is outside this delivery effort; no ingress implementation,
+Sentinel gate, deployed ingress suite, or infrastructure review instructions are proposed here. Production exposure
+of diagnostics still depends on that separate future infrastructure work; this plan covers direct application
+behavior, including production application mode, rather than a production deployment.
 
 | Accepted requirement                                                        | Selected ACs |
 | --------------------------------------------------------------------------- | ------------ |
@@ -21,7 +25,6 @@ All active criteria are selected; no active criterion is silently deferred.
 | [PREETS-TENANT-005](../requirements/tenant-resolution.md#preets-tenant-005) | 1–5          |
 | [PREETS-TENANT-006](../requirements/tenant-resolution.md#preets-tenant-006) | 1–6          |
 | [PREETS-SECURITY-001](../requirements/security.md#preets-security-001)      | 1–3          |
-| [PREETS-INFRA-001](../requirements/infrastructure.md#preets-infra-001)      | 1–3          |
 
 TENANT-001/002 are superseded history, not delivery scope. No proposed requirement is promoted to accepted work.
 
@@ -59,11 +62,10 @@ APIs and resolve relevant guidance drift without changing approved requirements.
 | -- | ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | B1 | TENANT-004 AC5, configured membership in S1, affected S2/S3/S4 failures | Resolve directory/unreadable/corrupt and host-mode missing-file policy; establish how unknown aliases differ from configured tenants with unavailable files. No registry or HTTP outcome is invented here. |
 | B2 | SECURITY-001 AC1–2, S4 external provisioning                            | Identify external configuration producers and how they apply shared validation and control secrets placed in allowed text. Repository fixtures cannot establish universal content safety.                  |
-| B3 | INFRA-001 AC1–3, S5                                                     | Identify every production ingress, Terraform ownership, deployment integration, and accessible rejection-before-forwarding evidence. Do not assume infrastructure exists in this repository.               |
 
 B1 requires a linked requirements decision before affected paths are implemented. S3 may deliver approved independent
-paths first; that would be partial delivery, not closure of all selected criteria. B2/B3 remain explicit shipping and
-verification gaps. Maintainer adoption of this plan does not resolve them.
+paths first; that would be partial delivery, not closure of all selected criteria. B2 remains an external-producer safety and
+verification gap. Maintainer adoption of this plan does not resolve them.
 
 ## Delivery slices and proposed issues
 
@@ -200,7 +202,7 @@ Redaction DTOs, environment gating, production ingress rules, and claims that va
 
 #### Dependencies
 
-S1/S2/S3 for complete route behavior; B1 gates affected failures. Implement and verify the security contract before shipping disclosure. S5 ingress verification is an independent production shipping gate. B2 identifies external-producer integration still needed.
+S1/S2/S3 for complete route behavior; B1 gates affected failures. Implement and verify the security contract before shipping disclosure. Production deployment is outside this effort; future ingress protection remains required before production exposure. B2 identifies external-producer integration still needed.
 
 #### Completion evidence
 
@@ -210,40 +212,6 @@ Vitest with @effect/vitest exercises the real loader with permitted and forbidde
 
 Tenant resolution pilot, slice S4. Publication must link the committed plan revision; this new draft has no published URL yet.
 
-### S5 — Block diagnostic traffic before every production ingress forwards it
-
-**Proposed issue title:** Block diagnostic traffic before every production ingress forwards it
-
-**Delivery references:** Not published
-
-#### Outcome
-
-Every production ingress blocks the entire /_test/* prefix before forwarding and discloses no configuration.
-
-#### Requirements
-
-- [PREETS-INFRA-001](https://github.com/PathableAI-org/Pre-ETS/blob/31e476c89efbe356c6b59fb75e4ead06d63667ca/docs/requirements/infrastructure.md#preets-infra-001) AC 1–3
-
-#### In scope
-
-Inventory actual ingress owners and entry points; implement rules and scoped infrastructure Copilot guidance; add the selected Sentinel Terraform-plan gate and dedicated post-deployment Playwright API suite. Deployment succeeds only after that suite passes.
-
-#### Out of scope
-
-Replacing ingress controls with application gating; treating advisory review or plan compliance as deployed enforcement.
-
-#### Dependencies
-
-B3 blocks concrete infrastructure design until deployment ownership and all ingresses are identified. S4 must be available for a meaningful permitted diagnostic control at the application boundary; ingress rule/policy work can proceed in parallel. Production disclosure ships only after ingress verification.
-
-#### Completion evidence
-
-Sentinel compliant/noncompliant plan cases include missing rules and bypassing order. Post-deployment probes cover the diagnostic GET and other paths/methods for each ingress, correlate rejection-before-forwarding evidence, assert no disclosure, and include a reachable permitted application control. Record policy and deployed results separately. Implementation must be merged and its executed evidence recorded with revision, scope, and limitations. Issue closure does not update requirement verification.
-
-#### Delivery plan
-
-Tenant resolution pilot, slice S5. Publication must link the committed plan revision; this new draft has no published URL yet.
-
 ## Cross-cutting concerns and proposed parent
 
 **Proposed parent title:** Deliver the accepted tenant resolution and diagnostic requirements
@@ -251,7 +219,7 @@ Tenant resolution pilot, slice S5. Publication must link the committed plan revi
 ### Outcome
 
 Coordinate delivery of the selected tenant configuration, request integration, failure behavior, safe diagnostic,
-and production ingress outcomes.
+and diagnostic application outcomes.
 
 ### Requirements
 
@@ -260,30 +228,28 @@ and production ingress outcomes.
 - [PREETS-TENANT-005](https://github.com/PathableAI-org/Pre-ETS/blob/31e476c89efbe356c6b59fb75e4ead06d63667ca/docs/requirements/tenant-resolution.md#preets-tenant-005) AC 1–5
 - [PREETS-TENANT-006](https://github.com/PathableAI-org/Pre-ETS/blob/31e476c89efbe356c6b59fb75e4ead06d63667ca/docs/requirements/tenant-resolution.md#preets-tenant-006) AC 1–6
 - [PREETS-SECURITY-001](https://github.com/PathableAI-org/Pre-ETS/blob/31e476c89efbe356c6b59fb75e4ead06d63667ca/docs/requirements/security.md#preets-security-001) AC 1–3
-- [PREETS-INFRA-001](https://github.com/PathableAI-org/Pre-ETS/blob/31e476c89efbe356c6b59fb75e4ead06d63667ca/docs/requirements/infrastructure.md#preets-infra-001) AC 1–3
 
 ### In scope
 
-Contain proposed children S1–S5 and coordinate decisions B1–B3, compatibility with auth/session consumers, fixture/harness
-adaptation, production review guidance, and deployment sequencing. No production rollout proceeds with unsafe diagnostic
-content or unverified ingress protection.
+Contain proposed children S1–S4 and coordinate decisions B1–B2, compatibility with auth/session consumers, fixture/harness
+adaptation, and production configuration review guidance. Verify direct application behavior; cloud infrastructure
+and production rollout belong to a later effort.
 
 ### Out of scope
 
 Projects automation, RTM generation, requirement approval by issue closure, historical Spec Kit synchronization, and
-unrelated session/domain changes.
+cloud infrastructure, production rollout, and unrelated session/domain changes.
 
 ### Dependencies
 
-Containment: S1–S5 are proposed children. Blocking: S2 integrates S1; S3 integrates S1/S2 with affected paths gated by B1;
-S4 integrates S1/S2/S3 and verifies security before disclosure; S5 infrastructure work can proceed alongside application
-work after B3 is resolved. Production shipping requires S4 security evidence and S5 deployed ingress evidence.
-No dependency cycle is introduced: S4 application verification can run directly before production exposure.
+Containment: S1–S4 are proposed children. Blocking: S2 integrates S1; S3 integrates S1/S2 with affected paths gated by B1;
+S4 integrates S1/S2/S3 and verifies security before disclosure. Direct application verification does not require a
+production ingress deployment. This effort does not satisfy the separate production ingress obligation.
 
 ### Completion evidence
 
 Actual child issue/PR completion references, reviewed criterion coverage, resolved or explicitly approved remaining scope,
-and separate application/configuration, Sentinel-plan, and deployed-ingress execution records. Completion does not
+and application/configuration execution records. Completion does not
 automatically mark requirements verified. The register's evidence workflow assesses those results separately.
 
 ### Delivery plan
@@ -296,44 +262,41 @@ relationships with actual issue references. No publication is authorized by this
 All evidence below is planned. Rows describing partial work retain explicit blockers; no criterion has existing
 reviewed execution evidence in this plan.
 
-| Requirement         | AC | Disposition and slices       | Planned evidence and remaining conditions                                                         |
-| ------------------- | -- | ---------------------------- | ------------------------------------------------------------------------------------------------- |
-| PREETS-TENANT-003   | 1  | Planned S1/S2/S4             | Two tenants and interleaved HTTP selection; B1 affects configured membership                      |
-| PREETS-TENANT-003   | 2  | Planned S2/S4                | Authenticated, consuming-auth, and diagnostic context before behavior                             |
-| PREETS-TENANT-003   | 3  | Planned S1/S2/S4             | Static hosts select one alias without BASE_HOSTNAME                                               |
-| PREETS-TENANT-003   | 4  | Planned S2                   | Configuration-consuming frontend outcomes plus independent-request controls                       |
-| PREETS-TENANT-004   | 1  | Planned S1/S2/S4             | Interleaved parsed values and consuming frontend behavior                                         |
-| PREETS-TENANT-004   | 2  | Planned S1                   | Required directory in both modes; invalid-directory response policy blocked B1                    |
-| PREETS-TENANT-004   | 3  | Planned S1/S4                | Usable static file and independently parsed comparison                                            |
-| PREETS-TENANT-004   | 4  | Planned S3/S4                | Actual missing-static-file HTTP 500, no fallback                                                  |
-| PREETS-TENANT-004   | 5  | Blocked B1; S3               | Public failure classification plus decided HTTP policy; unknown/configured distinction unresolved |
-| PREETS-TENANT-005   | 1  | Planned S3                   | Pattern mismatch actual HTTP 404                                                                  |
-| PREETS-TENANT-005   | 2  | Blocked B1; S3               | Unknown alias HTTP 404 after membership distinction is decided                                    |
-| PREETS-TENANT-005   | 3  | Partial plan S3; B1          | No fallback for both categories; unknown-alias case blocked                                       |
-| PREETS-TENANT-005   | 4  | Partial plan S3; B1          | Browser ordinary not-found comparison for both categories                                         |
-| PREETS-TENANT-005   | 5  | Planned S1/S3/S4             | Static success for varied hosts and missing-file 500                                              |
-| PREETS-TENANT-006   | 1  | Planned S4                   | Complete JSON equals independently parsed expected file                                           |
-| PREETS-TENANT-006   | 2  | Partial plan S4; B1          | Interleaved normal-context responses; configured membership unresolved                            |
-| PREETS-TENANT-006   | 3  | Planned S4                   | Static complete configuration for varied hosts                                                    |
-| PREETS-TENANT-006   | 4  | Partial plan S3/S4; B1       | 404/500 actual statuses; unknown alias distinction blocked                                        |
-| PREETS-TENANT-006   | 5  | Planned S4; shipping gate S5 | Direct production-mode application response; ingress independently verified                       |
-| PREETS-TENANT-006   | 6  | Partial plan S4; B1          | No-store on success/404/500; affected failure cases blocked                                       |
-| PREETS-SECURITY-001 | 1  | Partial plan S4; B2          | Nested forbidden-field rejection; external producer/content controls unresolved                   |
-| PREETS-SECURITY-001 | 2  | Planned S4; B2               | Separate provider synthetic secrets absent from diagnostic JSON; external safety limits           |
-| PREETS-SECURITY-001 | 3  | Planned S4                   | Full permitted JSON comparison; no redaction DTO                                                  |
-| PREETS-INFRA-001    | 1  | Blocked B3; S5               | Every ingress GET blocking with rejection correlation                                             |
-| PREETS-INFRA-001    | 2  | Blocked B3; S5               | Sentinel route/method/order policy and deployed probes                                            |
-| PREETS-INFRA-001    | 3  | Blocked B3; S5               | No disclosure; reachable permitted control and rejection-before-forwarding evidence               |
+| Requirement         | AC | Disposition and slices | Planned evidence and remaining conditions                                                         |
+| ------------------- | -- | ---------------------- | ------------------------------------------------------------------------------------------------- |
+| PREETS-TENANT-003   | 1  | Planned S1/S2/S4       | Two tenants and interleaved HTTP selection; B1 affects configured membership                      |
+| PREETS-TENANT-003   | 2  | Planned S2/S4          | Authenticated, consuming-auth, and diagnostic context before behavior                             |
+| PREETS-TENANT-003   | 3  | Planned S1/S2/S4       | Static hosts select one alias without BASE_HOSTNAME                                               |
+| PREETS-TENANT-003   | 4  | Planned S2             | Configuration-consuming frontend outcomes plus independent-request controls                       |
+| PREETS-TENANT-004   | 1  | Planned S1/S2/S4       | Interleaved parsed values and consuming frontend behavior                                         |
+| PREETS-TENANT-004   | 2  | Planned S1             | Required directory in both modes; invalid-directory response policy blocked B1                    |
+| PREETS-TENANT-004   | 3  | Planned S1/S4          | Usable static file and independently parsed comparison                                            |
+| PREETS-TENANT-004   | 4  | Planned S3/S4          | Actual missing-static-file HTTP 500, no fallback                                                  |
+| PREETS-TENANT-004   | 5  | Blocked B1; S3         | Public failure classification plus decided HTTP policy; unknown/configured distinction unresolved |
+| PREETS-TENANT-005   | 1  | Planned S3             | Pattern mismatch actual HTTP 404                                                                  |
+| PREETS-TENANT-005   | 2  | Blocked B1; S3         | Unknown alias HTTP 404 after membership distinction is decided                                    |
+| PREETS-TENANT-005   | 3  | Partial plan S3; B1    | No fallback for both categories; unknown-alias case blocked                                       |
+| PREETS-TENANT-005   | 4  | Partial plan S3; B1    | Browser ordinary not-found comparison for both categories                                         |
+| PREETS-TENANT-005   | 5  | Planned S1/S3/S4       | Static success for varied hosts and missing-file 500                                              |
+| PREETS-TENANT-006   | 1  | Planned S4             | Complete JSON equals independently parsed expected file                                           |
+| PREETS-TENANT-006   | 2  | Partial plan S4; B1    | Interleaved normal-context responses; configured membership unresolved                            |
+| PREETS-TENANT-006   | 3  | Planned S4             | Static complete configuration for varied hosts                                                    |
+| PREETS-TENANT-006   | 4  | Partial plan S3/S4; B1 | 404/500 actual statuses; unknown alias distinction blocked                                        |
+| PREETS-TENANT-006   | 5  | Planned S4             | Direct production-mode application response; production ingress outside this effort               |
+| PREETS-TENANT-006   | 6  | Partial plan S4; B1    | No-store on success/404/500; affected failure cases blocked                                       |
+| PREETS-SECURITY-001 | 1  | Partial plan S4; B2    | Nested forbidden-field rejection; external producer/content controls unresolved                   |
+| PREETS-SECURITY-001 | 2  | Planned S4; B2         | Separate provider synthetic secrets absent from diagnostic JSON; external safety limits           |
+| PREETS-SECURITY-001 | 3  | Planned S4             | Full permitted JSON comparison; no redaction DTO                                                  |
 
 ## Review and planning gaps
 
 Applied delivery-review against the source requirements and issue template on 2026-10-03. The coverage review accounts
-for all 26 selected criteria. Review corrections distinguish parent containment from blocking, separate direct application
+for all 23 selected criteria. Review corrections distinguish parent containment from blocking, separate direct application
 verification from production shipping, retain partial failure coverage, and avoid treating existing service/schema code
 as evidence. No confirmed planning defect remains within this local review's scope.
 
-Open decisions B1–B3 remain; the plan is not implementation-ready for those paths. Proposed production configuration
-and infrastructure review instructions are S4/S5 delivery work, not implemented workflow guidance. There is no separate
+Open decisions B1–B2 remain; the plan is not implementation-ready for those paths. Proposed production configuration
+review instructions are S4 delivery work, not implemented workflow guidance. Infrastructure work is deferred. There is no separate
 verification issue because the shared diagnostic/fixture infrastructure has a concrete S4 outcome and remaining evidence
 belongs to each responsible slice.
 
