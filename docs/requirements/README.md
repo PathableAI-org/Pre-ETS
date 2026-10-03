@@ -6,8 +6,10 @@ repository pull requests.
 
 ## Register
 
-No requirements have been registered yet. The [area template](templates/area.md) contains placeholders only;
-it is not an approved product contract. Existing specifications have not been migrated into this register.
+- [Tenant resolution](tenant-resolution.md)
+
+The [area template](templates/area.md) contains placeholders only; it is not an approved product contract.
+Existing specifications have not been migrated wholesale into this register.
 
 As areas are added, list links to their documents here. Group related requirements in one Markdown file per
 coherent product area, such as `session-management.md`, rather than creating a file for every requirement.
