@@ -3,8 +3,17 @@
 ## PREETS-TENANT-001
 
 **Title:** Resolve the request tenant from its host
-**Lifecycle:** accepted
+**Lifecycle:** superseded
 **Verification:** unverified
+
+### Replacement decision
+
+Maintainer approval on 2026-10-03 splits this obligation and narrows request scope to tenant-dependent frontend
+requests, including all authenticated requests. The original content below is retained as history; its “all
+requests” scope is no longer the active promise.
+
+Replaced by [PREETS-TENANT-003](#preets-tenant-003), [PREETS-TENANT-004](#preets-tenant-004), and
+[PREETS-TENANT-005](#preets-tenant-005).
 
 ### Statement
 
@@ -127,8 +136,16 @@ evidence only; existing implementation and test artifacts have not been assessed
 ## PREETS-TENANT-002
 
 **Title:** Expose parsed tenant configuration for verification with production ingress protection
-**Lifecycle:** accepted
+**Lifecycle:** superseded
 **Verification:** unverified
+
+### Replacement decision
+
+Maintainer approval on 2026-10-03 separates application diagnostics from production ingress protection.
+The original content below is retained as history.
+
+Replaced by [PREETS-TENANT-006](#preets-tenant-006) and
+[PREETS-INFRA-001](infrastructure.md#preets-infra-001).
 
 ### Statement
 
@@ -206,3 +223,250 @@ required by PREETS-TENANT-001; a diagnostic configuration response alone does no
 
 No reviewed, executed evidence has been recorded. Application availability and production ingress enforcement
 remain unverified; planned verification does not establish either behavior.
+
+## PREETS-TENANT-003
+
+**Title:** Select the tenant for tenant-dependent frontend requests
+**Classification:** Functional Requirement
+**Owner / responsible boundary:** Frontend request tenant context
+**Lifecycle:** accepted
+**Verification:** unverified
+
+### Statement
+
+Every tenant-dependent frontend request must select exactly one configured tenant before tenant-dependent behavior
+executes. This includes all authenticated requests, authentication flows that consume tenant configuration, and
+`GET /_test/tenant-config`. Assets, framework requests, and health checks require tenant resolution only when their
+behavior depends on tenant context.
+
+In host mode, selection follows the request Host. In static mode, selection always uses the configured static alias
+regardless of Host. Successful selection must not substitute another tenant.
+
+### Rationale and sources
+
+Tenant-dependent consumers must receive the intended organization context. Host or static selection must not
+accidentally select another tenant.
+
+- Source: Functional Requirement.
+- Decision: Maintainer approval on 2026-10-03 authorizes this replacement, preserving the approved behavior from
+  2026-10-02 and 2026-10-03 except for the explicitly revised request scope and static selector clarification.
+
+### Acceptance criteria
+
+1. Requests for two configured tenant hosts select their respective tenants, including interleaved requests.
+2. Every authenticated request, tenant-configuration-consuming authentication flow, and diagnostic request uses the
+   selected tenant context before executing tenant-dependent behavior.
+3. In static mode with usable configuration, requests with known, unknown, or unresolvable hosts select the same
+   configured static alias; `BASE_HOSTNAME` is not required in this mode.
+4. Successful tenant-dependent behavior uses the selected tenant's configuration and never exhibits another tenant's
+   configuration. Tenant-independent assets, framework requests, and health checks do not require tenant resolution.
+
+### Design constraints
+
+- `TENANT_RESOLUTION=host` selects host mode; `BASE_HOSTNAME` is required only in this mode.
+- Host selection directly parses the literal `${alias}.${BASE_HOSTNAME}` pattern. No separate port or additional
+  hostname validation is required beyond this pattern and configured-tenant selection.
+- `TENANT_RESOLUTION=static` selects static mode. `TENANT_STATIC_ALIAS` is required in static mode and names the
+  selected tenant; the host does not change that alias.
+
+### Open questions
+
+None.
+
+### Related requirements
+
+- Replaces [PREETS-TENANT-001](#preets-tenant-001).
+- Depends on [PREETS-TENANT-004](#preets-tenant-004) and [PREETS-TENANT-005](#preets-tenant-005).
+
+### Verification plan
+
+Exercise the running frontend with two synthetic tenants having distinguishable configuration, including interleaved
+requests. Observe selected configuration through PREETS-TENANT-006 and its application through a configuration-consuming
+frontend interaction. Exercise representative authenticated requests, authentication flows consuming tenant configuration,
+and diagnostics to establish scope. Exercise a tenant-independent asset or health request without tenant context.
+
+At the configuration boundary, establish that host mode requires `BASE_HOSTNAME` and static mode requires
+`TENANT_STATIC_ALIAS`. Repeat static-mode requests for different hosts without `BASE_HOSTNAME`, comparing against
+the configured static alias.
+Diagnostic responses prove selected configuration, not user-facing application behavior; observe that behavior separately.
+
+### Verification evidence
+
+No reviewed, executed evidence has been recorded. This documentation change does not establish runtime behavior.
+
+## PREETS-TENANT-004
+
+**Title:** Retrieve the selected tenant configuration
+**Classification:** Functional Requirement
+**Owner / responsible boundary:** Frontend tenant configuration retrieval
+**Lifecycle:** accepted
+**Verification:** unverified
+
+### Statement
+
+A frontend consumer must receive the parsed configuration corresponding to its selected tenant. When static mode's
+selected configuration file does not exist, the request must receive HTTP 500 Internal Server Error without fallback
+configuration.
+
+### Rationale and sources
+
+Consumers need the configuration corresponding to the selected tenant. Missing static configuration is a system
+failure, not an unknown host, and must not silently substitute another file.
+
+- Source: Functional Requirement.
+- Decision: Maintainer approval on 2026-10-03 authorizes this replacement, preserving the approved behavior from
+  2026-10-02 and 2026-10-03 except for the explicitly revised request scope and static selector clarification.
+
+### Acceptance criteria
+
+1. For two selected aliases with distinct configuration files, consumers receive their corresponding parsed values,
+   including across interleaved requests, without substitution of another tenant's configuration.
+2. `TENANT_CONFIG_DIR` is required in every resolution mode and identifies a directory of `{alias}.json` tenant files.
+3. In static mode, an existing usable file for `TENANT_STATIC_ALIAS` supplies its parsed configuration.
+4. In static mode, a missing selected `{alias}.json` file produces an actual HTTP 500 response without fallback.
+
+### Design constraints
+
+- `TENANT_CONFIG_DIR` is always required and points to the tenant configuration directory.
+- The selected alias maps to `{TENANT_CONFIG_DIR}/{alias}.json`; consumers receive the parsed JSON configuration.
+- Static selection uses the existing `TENANT_STATIC_ALIAS` interface.
+
+### Open questions
+
+- What behavior applies to missing or invalid directory configuration, unreadable files, invalid JSON, or missing
+  configuration files in host mode? Missing selected files in static mode have the approved HTTP 500 outcome;
+  remaining configuration-failure cases are undecided.
+
+### Related requirements
+
+- Replaces [PREETS-TENANT-001](#preets-tenant-001).
+- Used by [PREETS-TENANT-003](#preets-tenant-003) and [PREETS-TENANT-006](#preets-tenant-006).
+- Proposed content constraint: [PREETS-SECURITY-001](security.md#preets-security-001).
+
+### Verification plan
+
+Use distinguishable synthetic `{alias}.json` files in a real configured directory and compare running-application
+responses with independently parsed expected files. Observe a configuration-consuming frontend interaction as well.
+Establish the directory prerequisite in both modes at the configuration boundary. Exercise static mode with a usable
+selected file and with that file absent; observe HTTP 500 for the latter. An error message alone does not prove status.
+
+### Verification evidence
+
+No reviewed, executed evidence has been recorded. This documentation change does not establish runtime behavior.
+
+## PREETS-TENANT-005
+
+**Title:** Treat invalid host-based tenants as not found
+**Classification:** Functional Requirement
+**Owner / responsible boundary:** Frontend HTTP and browser boundaries
+**Lifecycle:** accepted
+**Verification:** unverified
+
+### Statement
+
+In host mode, a tenant-dependent request whose host cannot yield an alias or whose alias is unknown must receive
+HTTP 404 Not Found without fallback tenant context or configuration. Invalid-tenant navigation must appear like
+ordinary navigation to a page that does not exist. These host-based rejection rules do not apply in static mode.
+
+### Rationale and sources
+
+Invalid tenant navigation must look like an ordinary missing page and must not expose another tenant through fallback.
+
+- Source: Functional Requirement.
+- Decision: Maintainer approval on 2026-10-03 authorizes this replacement, preserving the approved behavior from
+  2026-10-02 and 2026-10-03 except for the explicitly revised request scope and static selector clarification.
+
+### Acceptance criteria
+
+1. A host outside the configured `${alias}.${BASE_HOSTNAME}` pattern receives HTTP 404 for tenant-dependent requests.
+2. A matching host whose alias is unknown receives HTTP 404 without substituting a configured tenant.
+3. Both failures provide no successful tenant context or fallback configuration.
+4. Browser navigation for either failure presents the application's ordinary missing-page experience rather than
+   an access-denied or tenant-resolution diagnostic page.
+5. Static mode does not reject a request because of its host; a missing static configuration file instead follows
+   PREETS-TENANT-004's HTTP 500 rule.
+
+### Open questions
+
+None.
+
+### Related requirements
+
+- Replaces [PREETS-TENANT-001](#preets-tenant-001).
+- Host selection: [PREETS-TENANT-003](#preets-tenant-003).
+- Configuration failures: [PREETS-TENANT-004](#preets-tenant-004).
+
+### Verification plan
+
+Exercise both failure categories through the running application's HTTP boundary and observe actual HTTP 404
+statuses. In a browser, compare invalid-tenant navigation with ordinary missing-page navigation on a valid tenant.
+Use at least two configured tenants so any fallback can be detected. Repeat those hosts in static mode with usable
+configuration to establish the exemption. No separate port-validation claim is introduced.
+
+### Verification evidence
+
+No reviewed, executed evidence has been recorded. This documentation change does not establish runtime behavior.
+
+## PREETS-TENANT-006
+
+**Title:** Expose parsed tenant configuration for verification
+**Classification:** Functional Requirement
+**Owner / responsible boundary:** Frontend diagnostic HTTP interface
+**Lifecycle:** accepted
+**Verification:** unverified
+
+### Statement
+
+The test runner must obtain the parsed configuration for the effective request tenant as JSON through
+`GET /_test/tenant-config`. The endpoint must use normal application tenant context, including static selection,
+and remain available directly at the application boundary in every environment, including production.
+
+### Rationale and sources
+
+The test runner needs direct configuration evidence from normal request resolution without requiring telemetry.
+An independent comparison with the expected file can detect wrong-tenant configuration selection.
+
+- Source: Functional Requirement.
+- Decision: Maintainer approval on 2026-10-03 authorizes this replacement, preserving the approved behavior from
+  2026-10-02 and 2026-10-03 except for the explicitly revised request scope and static selector clarification.
+
+### Acceptance criteria
+
+1. Successful `GET /_test/tenant-config` responses contain the complete parsed configuration selected by normal
+   request resolution, equal to the independently parsed expected `{alias}.json` file in `TENANT_CONFIG_DIR`.
+2. Requests for two configured tenant hosts return their respective configurations rather than a separate lookup
+   or fixture echo; interleaved requests do not substitute another tenant's configuration.
+3. With a usable static file, the endpoint returns `TENANT_STATIC_ALIAS`'s configuration regardless of Host.
+4. Unknown or unresolvable hosts in host mode receive HTTP 404; a missing static file receives HTTP 500.
+5. Direct application access under production configuration retains the endpoint; environment gating does not
+   disable it. Production ingress protection is a separate obligation.
+
+### Design constraints
+
+- The route is `GET /_test/tenant-config`, and its response is the full parsed tenant configuration as JSON.
+
+### Open questions
+
+None.
+
+### Related requirements
+
+- Replaces the diagnostic obligation in [PREETS-TENANT-002](#preets-tenant-002).
+- Depends on [PREETS-TENANT-003](#preets-tenant-003), [PREETS-TENANT-004](#preets-tenant-004), and
+  [PREETS-TENANT-005](#preets-tenant-005).
+- Production access restriction: [PREETS-INFRA-001](infrastructure.md#preets-infra-001).
+- Proposed content constraint: [PREETS-SECURITY-001](security.md#preets-security-001).
+
+### Verification plan
+
+Call the endpoint against a running frontend for two tenants, interleaved requests, both host failure categories,
+and static mode with present and missing files. Independently read and parse the expected file; compare complete
+parsed values rather than whitespace or object-key order. Do not derive expected values from the response or the
+application's selection implementation. Repeat direct application access under production configuration.
+
+This evidence establishes selected configuration and retrieval. It does not establish frontend user behavior or
+production ingress blocking, which have their own boundaries and verification plans.
+
+### Verification evidence
+
+No reviewed, executed evidence has been recorded. This documentation change does not establish runtime behavior.

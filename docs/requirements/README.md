@@ -7,6 +7,8 @@ repository pull requests.
 ## Register
 
 - [Tenant resolution](tenant-resolution.md)
+- [Infrastructure](infrastructure.md)
+- [Security](security.md)
 
 The [area template](templates/area.md) contains placeholders only; it is not an approved product contract.
 Existing specifications have not been migrated wholesale into this register.
