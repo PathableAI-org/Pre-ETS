@@ -6,8 +6,12 @@ repository pull requests.
 
 ## Register
 
-No requirements have been registered yet. The [area template](templates/area.md) contains placeholders only;
-it is not an approved product contract. Existing specifications have not been migrated into this register.
+- [Tenant resolution](tenant-resolution.md)
+- [Infrastructure](infrastructure.md)
+- [Security](security.md)
+
+The [area template](templates/area.md) contains placeholders only; it is not an approved product contract.
+Existing specifications have not been migrated wholesale into this register.
 
 As areas are added, list links to their documents here. Group related requirements in one Markdown file per
 coherent product area, such as `session-management.md`, rather than creating a file for every requirement.
@@ -31,6 +35,28 @@ Use relative Markdown links for repository sources and full URLs for external so
 Identify the relevant source section, decision, test title, or scenario rather than linking only to a large file.
 If a source cannot be accessed, preserve its attribution and describe the limitation; access is not a prerequisite
 for drafting a proposal from supplied material. Keep credentials and sensitive client data out of the register.
+
+## Obligation boundaries and classification
+
+Consider separate IDs when obligations can change independently or have different owners, failure modes, or
+verification boundaries. Keep closely related promises together when splitting would obscure their meaning;
+there is no required number of requirements per feature.
+
+Use **Classification** to identify the nature of the obligation, such as Functional Requirement, Security
+Requirement, or Regulatory Requirement. Classification is distinct from **Source**, which records the supplied
+basis or attribution. Preserve source labels supplied by the maintainer; a classification is not evidence of
+approval or a regulatory citation. Add detailed attribution when supplied, without inventing references.
+
+An optional **Owner / responsible boundary** identifies who or what must deliver the outcome. An optional
+**Design constraints** section records explicitly approved implementation choices separately from observable
+behavior. These constraints are valid obligations; do not discard them merely because they prescribe an
+interface, storage layout, or technique. Distinguish them from incidental implementation behavior.
+
+Check selectors, prerequisites per mode, and failure outcomes. Qualify broad claims such as “all requests” with
+the intended request classes; do not silently narrow an approved scope. Keep unresolved outcomes explicit.
+
+A requirement may contain a **Verification plan** describing future evidence and its responsible boundary.
+Keep that plan separate from **Verification evidence**, which records reviewed execution and limitations.
 
 ## Lifecycle and verification
 
@@ -89,3 +115,21 @@ Repository-local skills support this workflow:
 The skills live in [.agents/skills](../../.agents/skills). This workflow does not require active Spec Kit state,
 change its commands or artifacts, or automatically synchronize feature specs. It adds no GitHub writes,
 automatic commits, or external account requirements.
+
+## Delivery and process changes
+
+Keep three dimensions separate: lifecycle is the reviewed decision in this register; implementation is tracked by
+linked delivery issues and PRs; verification records accepted execution evidence and its scope. The verification
+field is not a manually mirrored summary of the latest CI run. A future RTM may derive current evidence status
+from declarative evidence contracts and revision-specific CI/deployment results; no contract schema or generator
+is introduced here. Prefer learning from one complete delivery cycle before expanding this framework.
+
+When reviewing criteria, check mode qualifiers and distinguish superficially similar failures by their meaning
+and responsible boundary. Accepted obligations relying on proposed prerequisites need an explicit decision or
+implementation gate; do not silently promote those prerequisites. Record unresolved failure policies as planning
+dependencies for affected implementation work. A chosen verification technology is planned infrastructure unless
+its integration and execution are evidenced; respect explicitly selected tools without assuming they are installed.
+
+For future work, use requirements PRs for product/system obligations and governance PRs for guide, template, skill,
+and validation changes. Keep necessary cross-links, but avoid changing review standards incidentally with a
+functional change. The current bootstrap PR intentionally includes both, in focused commits.

@@ -15,6 +15,19 @@ and attributable sources support the obligation; and whether its acceptance crit
 meaningful violation. Identify conflicting sources, unresolved product decisions, and accidental implementation
 constraints. Treat inaccessible sources as an assessment limitation, not proof that attribution is invalid.
 
+Assess whether independent obligations with different owners, failure modes, or evidence boundaries need distinct
+IDs without demanding fragmentation. Check classification separately from source attribution and verify that
+approved design constraints are identified as such. Distinguish accidental implementation constraints from
+explicit maintainer choices; review feedback must not silently override approved intent. Check selectors,
+mode-specific prerequisites and failure outcomes, and the request classes covered by broad quantifiers.
+
+Check that acceptance criteria explicitly qualify modes and that failure categories reflect their meaning rather
+than sharing an outcome accidentally. Inspect dependency lifecycles: record a decision or delivery gate when an
+accepted obligation relies on a proposed prerequisite; never infer approval. Record unresolved failure policy as
+an implementation-planning dependency. Keep lifecycle, linked delivery state, and accepted execution evidence
+separate; do not mirror the latest CI status into verification. Follow the guide's distinction between requirements
+changes and governance changes without introducing RTM tooling or automatic publication.
+
 Check IDs, lifecycle and decision references, retirement history, and replacement links against the guide.
 Acceptance and verification are independent. A closed issue or present implementation does not demonstrate
 approval or satisfaction. Missing optional delivery/design references are not inherently defects.
