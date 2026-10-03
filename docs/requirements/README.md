@@ -133,3 +133,7 @@ its integration and execution are evidenced; respect explicitly selected tools w
 For future work, use requirements PRs for product/system obligations and governance PRs for guide, template, skill,
 and validation changes. Keep necessary cross-links, but avoid changing review standards incidentally with a
 functional change. The current bootstrap PR intentionally includes both, in focused commits.
+
+Use the [delivery planning workflow](../delivery/README.md) to propose coherent work for accepted criteria.
+Plans link to requirements; published issue/PR URLs belong in delivery references when available. Plan approval,
+issue closure, and PR merge do not change requirement lifecycle or establish verification evidence.

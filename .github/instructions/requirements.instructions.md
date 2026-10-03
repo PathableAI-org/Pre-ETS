@@ -38,9 +38,15 @@ Review the requirements register for these conventions:
 - Tenant configuration excludes secret-bearing fields under the accepted security invariant. Flag changes that
   undermine this promise, such as proposing `Config.secret` in the exposed tenant configuration contract, while
   respecting recorded approval and delivery dependencies. A separate server-only secret provider is compatible with the invariant.
+  Non-secret lookup keys in tenant files are approved. Distinguish those keys from resolved secret values or provider
+  credentials. Concrete provider integration is deferred to cloud infrastructure work.
   Inspect field meaning and data flow, not names alone; full permitted diagnostic JSON is an approved constraint.
 - Explicit open questions and unimplemented/unverified obligations are legitimate gaps. Missing optional delivery
   or design references are not defects. Do not invent policy, execution results, or stronger approval.
 
 Check relative links and requirement dependencies. Report actionable defects with the requirement ID, location,
 consequence, and suggested correction; distinguish them from unresolved decisions and evidence limitations.
+
+Delivery plans under `docs/delivery/` describe proposed work and criterion coverage. Follow their cross-links without
+treating decomposition approval, issue closure, or PR merge as requirement acceptance or verification. Actual issue/PR
+URLs may be added to delivery references later; a draft plan need not contain published references.

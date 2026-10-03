@@ -368,7 +368,11 @@ regenerable composition cache out of version control.
 
 The [requirements register](docs/requirements/README.md) provides area templates, stable requirement IDs,
 lifecycle and verification conventions, and the repository-local `requirements-author` and `requirements-review`
-skills. It starts empty and works independently of Spec Kit; existing feature specifications have not been migrated.
+skills. It works independently of Spec Kit; existing feature specifications have not been migrated wholesale.
+
+The [delivery planning workflow](docs/delivery/README.md) turns accepted criteria into reviewed issue proposals
+using `delivery-plan`, `delivery-review`, and a delivery issue template. The tenant pilot remains a draft;
+planning does not publish issues or establish verification.
 
 ## Testing practices
 

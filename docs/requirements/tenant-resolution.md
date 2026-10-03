@@ -309,9 +309,11 @@ A frontend consumer must receive the parsed configuration corresponding to its s
 selected configuration file does not exist, the request must receive HTTP 500 Internal Server Error without fallback
 configuration.
 
-A host that cannot identify a configured tenant is a tenant-resolution failure. A configured tenant whose
-configuration is missing, unreadable, or corrupt has an application configuration failure; that failure must not
-be classified as an unknown tenant solely to reuse tenant-resolution HTTP 404 handling.
+Missing TENANT_CONFIG_DIR configuration, a nonexistent directory, a path that is not a directory, or an unreadable
+directory produces HTTP 500 in either mode. When the directory is usable, a missing host-mode tenant file, or an
+unreadable or malformed selected tenant file in either mode, is treated like a tenant not found: ordinary HTTP 404
+without fallback. A missing static-mode selected file retains HTTP 500. Malformed includes invalid JSON or configuration
+that fails the permitted schema. No separate configured-tenant registry is required to distinguish file failures.
 
 ### Rationale and sources
 
@@ -321,16 +323,22 @@ failure, not an unknown host, and must not silently substitute another file.
 - Source: Functional Requirement.
 - Decision: Maintainer approval on 2026-10-03 authorizes this replacement, preserving the approved behavior from
   2026-10-02 and 2026-10-03 except for the explicitly revised request scope and static selector clarification.
+- Decision: Maintainer direction on 2026-10-03 resolves B1 and replaces the earlier known-configuration-failure
+  distinction with the directory/file outcomes below. The maintainer explicitly preserves static missing-file 500,
+  approves unreadable/malformed file 404 in both modes, and directory configuration/access failures 500 in both modes.
 
 ### Acceptance criteria
 
 1. For two selected aliases with distinct configuration files, consumers receive their corresponding parsed values,
    including across interleaved requests, without substitution of another tenant's configuration.
 2. `TENANT_CONFIG_DIR` is required in every resolution mode and identifies a directory of `{alias}.json` tenant files.
+   Missing configuration, a nonexistent directory, a non-directory path, or an unreadable directory produces actual
+   HTTP 500 without fallback, in both modes.
 3. In static mode, an existing usable file for `TENANT_STATIC_ALIAS` supplies its parsed configuration.
 4. In static mode, a missing selected `{alias}.json` file produces an actual HTTP 500 response without fallback.
-5. A configured tenant's unavailable or corrupt configuration is classified as an application configuration
-   failure, not an unknown-tenant resolution failure. Its undecided response policy remains a planning dependency.
+5. With a usable directory, a missing host-mode file or an unreadable/malformed selected file in either mode
+   produces ordinary HTTP 404 with no fallback, as for a tenant not found. A missing static-mode file follows AC4.
+   Invalid JSON and schema-invalid configuration are malformed files; directory failures follow AC2 instead.
 
 ### Design constraints
 
@@ -340,17 +348,12 @@ failure, not an unknown host, and must not silently substitute another file.
 
 ### Open questions
 
-- What behavior applies to missing or invalid directory configuration, unreadable files, invalid JSON, or missing
-  configuration files in host mode? Missing selected files in static mode have the approved HTTP 500 outcome;
-  remaining configuration-failure cases are undecided. A missing host-mode file may represent an unknown alias
-  or unavailable configuration for a configured tenant; planning must establish how that distinction is known.
+None for the directory/file response policies resolved here.
 
 ### Implementation dependencies
 
-Resolve the open configuration-failure policies before implementing the affected failure paths. Planning must
-explain how an unknown alias is distinguished from a configured tenant with unavailable configuration, particularly
-when alias-named files are the configuration source. This document does not invent a tenant registry or assign
-undecided HTTP outcomes. Track the decisions in linked delivery work when that work is created.
+Implement the approved directory/file distinction at the responsible boundary. No separate configured-tenant
+membership source is needed for these outcomes. Preserve the non-secret configuration dependency below.
 
 ### Related requirements
 
@@ -364,8 +367,10 @@ Use distinguishable synthetic `{alias}.json` files in a real configured director
 responses with independently parsed expected files. Observe a configuration-consuming frontend interaction as well.
 Establish the directory prerequisite in both modes at the configuration boundary. Exercise static mode with a usable
 selected file and with that file absent; observe HTTP 500 for the latter. An error message alone does not prove status.
-After planning resolves the failure policies, exercise unavailable/corrupt configuration for a known tenant
-and an unknown alias separately; assert their distinct failure categories at the responsible application boundary.
+Exercise missing directory settings, nonexistent directories, non-directory paths, and unreadable directories in
+both modes and observe HTTP 500. With a usable directory, exercise missing host files and unreadable, invalid-JSON,
+and schema-invalid files in both modes; observe ordinary HTTP 404 without fallback. Keep static missing-file 500
+separate. Directory access failure must not be mistaken for a tenant-file not-found outcome.
 
 ### Verification evidence
 
@@ -400,8 +405,8 @@ Invalid tenant navigation must look like an ordinary missing page and must not e
 3. Both failures provide no successful tenant context or fallback configuration.
 4. Browser navigation for either failure presents the application's ordinary missing-page experience rather than
    an access-denied or tenant-resolution diagnostic page.
-5. Static mode does not reject a request because of its host; a missing static configuration file instead follows
-   PREETS-TENANT-004's HTTP 500 rule.
+5. Static mode does not reject a request because of its host. Directory failures and a missing static file follow
+   PREETS-TENANT-004's HTTP 500 rules; unreadable/malformed selected files follow its ordinary HTTP 404 rule.
 
 ### Open questions
 
@@ -459,7 +464,9 @@ An independent comparison with the expected file can detect wrong-tenant configu
    configurations rather than a separate lookup
    or fixture echo; interleaved requests do not substitute another tenant's configuration.
 3. With a usable static file, the endpoint returns `TENANT_STATIC_ALIAS`'s configuration regardless of Host.
-4. Unknown or unresolvable hosts in host mode receive HTTP 404; a missing static file receives HTTP 500.
+4. Unknown or unresolvable hosts and missing tenant files in host mode receive HTTP 404. Unreadable/malformed
+   selected files in either mode receive HTTP 404; directory configuration/access failures in either mode and a
+   missing static file receive HTTP 500, following PREETS-TENANT-004.
 5. Direct application access under production configuration retains the endpoint; environment gating does not
    disable it. Production ingress protection is a separate obligation.
 6. Diagnostic responses include `Cache-Control: no-store`, including HTTP 404 and HTTP 500 responses from this route.
@@ -476,7 +483,7 @@ None.
 
 Implement and verify PREETS-SECURITY-001's non-secret configuration contract before shipping full diagnostic
 configuration disclosure. Verify production ingress protection independently; it does not replace safe content.
-Resolve applicable configuration-failure policies in PREETS-TENANT-004 before implementing those paths.
+Apply the directory/file failure policies approved in PREETS-TENANT-004; these response decisions are resolved.
 
 ### Related requirements
 
@@ -489,7 +496,8 @@ Resolve applicable configuration-failure policies in PREETS-TENANT-004 before im
 ### Verification plan
 
 Call the endpoint against a running frontend for two tenants, interleaved requests, both host failure categories,
-and static mode with present and missing files. Independently read and parse the expected file; compare complete
+and static mode with present and missing files. Exercise unreadable/malformed selected files and directory
+configuration/access failures in both modes using PREETS-TENANT-004’s approved outcomes. Independently read and parse the expected file; compare complete
 parsed values rather than whitespace or object-key order. Do not derive expected values from the response or the
 application's selection implementation. Assert `Cache-Control: no-store` on successful and failed diagnostic
 responses. Repeat direct application access under production configuration.
