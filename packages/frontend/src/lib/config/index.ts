@@ -40,6 +40,9 @@ const validateEnvWithTenantConfig = <T extends RawEnvironmentWithTenantConfig>(
 }
 
 export const ServerConfig = Config.all({
+  baseHostname: Config.String("BASE_HOSTNAME").pipe(
+    Config.withDefault("localhost")
+  ),
   env: Config.Literals(["development", "production", "test"], "NODE_ENV").pipe(
     Config.withDefault("development")
   ),
@@ -47,3 +50,5 @@ export const ServerConfig = Config.all({
 }).pipe(
   Config.flatMap(validateEnvWithTenantConfig)
 )
+
+export type ServerConfig = Config.Success<Types.Simplify<typeof ServerConfig>>

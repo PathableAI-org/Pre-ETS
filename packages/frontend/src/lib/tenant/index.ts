@@ -76,3 +76,4 @@ export function getCurrentTenantConfig(tenant: string): Promise<TenantConfig> {
 }
 
 export * from "./schema.ts"
+export { TenantConfigService } from "./service.ts"
