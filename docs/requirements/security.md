@@ -88,6 +88,14 @@ conformance, not the safety of every deployed configuration file. Schema enforce
 it cannot detect every secret pasted into an allowed text field. Record this limitation rather than claiming that
 field-name checks, benign fixtures, or a clean Copilot review establish absence of all secret content.
 
+### Delivery references
+
+- [Tenant delivery parent #115](https://github.com/PathableAI-org/Pre-ETS/issues/115): coordinates the selected criteria.
+- [S4 — Expose safe tenant configuration through the normal diagnostic context #119](https://github.com/PathableAI-org/Pre-ETS/issues/119): AC 1–3.
+
+Published work is tracked in the [tenant delivery plan](../delivery/tenant-resolution.md). These links do not
+change requirement lifecycle or establish executed verification evidence.
+
 ### Verification evidence
 
 No reviewed, executed evidence has been recorded. This documentation change does not establish runtime behavior.
