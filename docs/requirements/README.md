@@ -9,6 +9,7 @@ repository pull requests.
 - [Tenant resolution](tenant-resolution.md)
 - [Infrastructure](infrastructure.md)
 - [Security](security.md)
+- [Authentication and session management](session-management.md)
 
 The [area template](templates/area.md) contains placeholders only; it is not an approved product contract.
 Existing specifications have not been migrated wholesale into this register.
