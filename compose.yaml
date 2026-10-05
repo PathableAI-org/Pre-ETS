@@ -39,7 +39,7 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-pre_ets}
       POSTGRES_USER: ${POSTGRES_USER:-pre_ets}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local-postgres-password}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
       interval: 2s
@@ -58,7 +58,7 @@ services:
     environment:
       FLYWAY_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-pre_ets}
       FLYWAY_USER: ${POSTGRES_USER:-pre_ets}
-      FLYWAY_PASSWORD: ${POSTGRES_PASSWORD:-local-postgres-password}
+      FLYWAY_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
       FLYWAY_LOCATIONS: filesystem:/flyway/migrations
       FLYWAY_CONNECT_RETRIES: "60"
       FLYWAY_CLEAN_DISABLED: "true"

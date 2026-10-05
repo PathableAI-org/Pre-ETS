@@ -11,9 +11,9 @@ dummy tables. Keep this separate from the planned Consumer service-log schema an
 
 ## Developer Scenario
 
-A developer clones the repository, accepts or overrides local-only environment values, starts Postgres through
-Docker Compose, and explicitly runs Flyway. The same repository files reproduce the migrated database without
-sharing a running database or installing Postgres and Flyway directly on the host.
+A developer clones the repository, generates machine-specific local passwords, starts Postgres through Docker
+Compose, and explicitly runs Flyway. The same repository files reproduce the migrated database without sharing a
+running database, password, or host-installed Postgres and Flyway tools.
 
 ## Requirements
 

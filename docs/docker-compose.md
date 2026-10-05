@@ -33,11 +33,18 @@ Apps on the host reach Redis, Keycloak, and Postgres at `127.0.0.1` (or
 `localhost`). Do not put the Next.js or Effect processes in the same Compose
 file.
 
-Copy `.env.example` to a gitignored root `.env` before running the full stack
-(`Copy-Item .env.example .env` in PowerShell). The example values are synthetic
-and machine-local; do not reuse them in another environment. Postgres uses the
-same local defaults when its variables are absent so adding it does not break
-existing Redis/Keycloak-only commands.
+Copy `.env.example` to a gitignored root `.env` before running Compose
+(`Copy-Item .env.example .env` in PowerShell). The usernames and database name
+are synthetic, but both password fields are intentionally blank. Run the
+following command twice and assign a different result to
+`KC_BOOTSTRAP_ADMIN_PASSWORD` and `POSTGRES_PASSWORD`:
+
+```sh
+node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"
+```
+
+Compose fails fast when either password is blank. The generated credentials are
+machine-local; do not reuse them in another environment.
 
 On Windows and macOS, Docker Desktop runs Linux containers in its managed Linux
 environment. Start Docker Desktop before using these commands. The published
@@ -120,11 +127,11 @@ Postgres uses the pinned `postgres:18.6` image, publishes only on
 18 stores its versioned data directory beneath `/var/lib/postgresql`, so the
 named volume mounts at that path.
 
-Override `POSTGRES_DB`, `POSTGRES_USER`, and `POSTGRES_PASSWORD` in the root
-`.env` when the machine-local defaults are unsuitable. The host connection uses
+Set the required `POSTGRES_PASSWORD` in the root `.env`; override the default
+`POSTGRES_DB` and `POSTGRES_USER` there when needed. The host connection uses
 those values with `127.0.0.1:5432`; Flyway connects inside Compose with the
-service hostname `postgres`. Choose overrides before the first Postgres startup:
-the official image uses these values only when initializing an empty data
+service hostname `postgres`. Choose all three values before the first Postgres
+startup: the official image uses them only when initializing an empty data
 directory. To change them afterward, alter the existing database roles or reset
 the disposable local volume with `docker compose down --volumes` and initialize
 it again.
@@ -162,7 +169,8 @@ docker compose exec postgres psql -U pre_ets -d pre_ets -c "SELECT version, desc
 ```
 
 These commands use the synthetic `.env.example` user and database. Substitute
-your local values if you changed them.
+your local values if you changed them; the generated password stays in `.env`
+and is supplied to the containers by Compose.
 
 Running `migrate` again is safe: Flyway reports that the schema is current and
 does not reapply versioned migrations. Do not edit a migration after it has been

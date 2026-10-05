@@ -1,7 +1,14 @@
 # Quickstart: Local Postgres Migrations
 
 Create the gitignored root `.env` with `cp .env.example .env` on POSIX systems or
-`Copy-Item .env.example .env` in PowerShell. Then start Postgres and run Flyway:
+`Copy-Item .env.example .env` in PowerShell. Run the following command twice and
+assign a different result to each blank password field:
+
+```sh
+node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"
+```
+
+Then start Postgres and run Flyway:
 
 ```sh
 docker compose config --quiet

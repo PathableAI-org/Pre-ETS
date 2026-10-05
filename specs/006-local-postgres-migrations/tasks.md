@@ -3,7 +3,7 @@
 **Input**: `spec.md`, `plan.md`, `research.md`, and `quickstart.md`.
 
 - [x] T001 Add pinned Postgres and profiled Flyway services to `compose.yaml`.
-- [x] T002 Add root `.env.example` with synthetic local Compose values.
+- [x] T002 Add root `.env.example` with synthetic identifiers and blank required password fields.
 - [x] T003 Add ordered dummy SQL under `packages/backend/migrations`.
 - [x] T004 Document migration ownership and immutability in `packages/backend/migrations/README.md`.
 - [x] T005 Update `README.md` and `docs/docker-compose.md` with the executable local workflow.

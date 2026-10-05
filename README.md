@@ -27,17 +27,23 @@ All packages are private; the npm scope identifies ownership, not publication.
 ### Local external services
 
 Docker Compose provides Redis, Keycloak, and Postgres while the application
-processes stay on the host. Copy the local-only Compose credentials before
-starting a service:
+processes stay on the host. Copy the local environment template before starting
+a service:
 
 ```sh
 cp .env.example .env
 ```
 
-In PowerShell, use `Copy-Item .env.example .env`. Postgres has matching
-machine-local defaults so existing Redis/Keycloak-only commands continue to
-work without the new variables; the `.env` file is where developers override
-them.
+In PowerShell, use `Copy-Item .env.example .env`. Generate two different
+machine-specific passwords by running this command twice, then put one value in
+`KC_BOOTSTRAP_ADMIN_PASSWORD` and the other in `POSTGRES_PASSWORD`:
+
+```sh
+node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"
+```
+
+Compose fails fast when either password is blank. Do not reuse these local
+credentials in another environment.
 
 To start Postgres and apply the backend's synthetic migration demonstration:
 
@@ -56,12 +62,10 @@ for inspection, persistence, and reset commands.
 Start Redis and local Keycloak before exercising session setup or OIDC login
 initiation. Apps stay on the host; Compose publishes loopback only. Keycloak
 imports the tracked realm at `docker/keycloak/pre-ets-realm.json` on first boot.
-Set `KC_BOOTSTRAP_ADMIN_USERNAME` and `KC_BOOTSTRAP_ADMIN_PASSWORD` in the shell
-or a gitignored root `.env` (Compose fails if either is unset):
+Set `KC_BOOTSTRAP_ADMIN_USERNAME` and a generated
+`KC_BOOTSTRAP_ADMIN_PASSWORD` in the gitignored root `.env` as described above:
 
 ```sh
-export KC_BOOTSTRAP_ADMIN_USERNAME=admin
-export KC_BOOTSTRAP_ADMIN_PASSWORD=admin
 docker compose up -d --wait redis keycloak
 docker compose exec redis redis-cli ping
 curl -sS -o /dev/null -w '%{http_code}\n' \

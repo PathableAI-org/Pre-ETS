@@ -81,9 +81,9 @@ No reviewed, executed evidence has been recorded. This documentation change does
 
 ### Statement
 
-A developer must be able to use repository-owned Docker Compose configuration and local-only defaults or overrides
-to start a machine-local Postgres database and explicitly apply the backend's ordered SQL migrations with Flyway.
-Repeating the migration command must not reapply successful versioned migrations.
+A developer must be able to use repository-owned Docker Compose configuration and developer-generated local
+passwords to start a machine-local Postgres database and explicitly apply the backend's ordered SQL migrations with
+Flyway. Repeating the migration command must not reapply successful versioned migrations.
 
 ### Rationale and sources
 
@@ -95,7 +95,8 @@ database or requiring host-installed Postgres and Flyway tools.
 
 ### Acceptance criteria
 
-1. A developer with Docker Compose and local environment values can start healthy Postgres from the repository.
+1. A developer with Docker Compose and generated, nonempty local passwords can start healthy Postgres from the
+   repository; blank passwords fail before a service starts.
 2. Postgres publishes only on the loopback interface and retains data across ordinary container recreation.
 3. A developer can use the repository Flyway service to inspect, apply, and validate the ordered backend SQL files.
 4. A second migration run reports the schema as current without reapplying successful migrations.
@@ -116,12 +117,13 @@ domain schema require separate decisions.
 
 ### Verification plan
 
-Render the Compose model and confirm the Postgres host binding, local defaults and overrides, health check, named
-volume, Flyway dependency, read-only migration mount, and disabled `clean` behavior. Start Postgres from an empty
-volume and capture its healthy status. Run Flyway `info`, `migrate`, and `validate`; query the dummy table and
-`flyway_schema_history`; run `migrate` again and confirm no migration is reapplied. Recreate the Postgres container
-without deleting the volume and confirm the table and history remain. Finally, delete the disposable local volume,
-repeat the setup, and confirm the same schema is reconstructed.
+Render the Compose model with each password missing in turn and confirm it fails before service startup. Supply two
+generated passwords and confirm the Postgres host binding, health check, named volume, Flyway dependency, read-only
+migration mount, and disabled `clean` behavior. Start Postgres from an empty volume and capture its healthy status.
+Run Flyway `info`, `migrate`, and `validate`; query the dummy table and `flyway_schema_history`; run `migrate` again
+and confirm no migration is reapplied. Recreate the Postgres container without deleting the volume and confirm the
+table and history remain. Finally, delete the disposable local volume, repeat the setup, and confirm the same schema
+is reconstructed.
 
 This evidence establishes the exercised local Docker environment only. It does not establish deployment behavior,
 production durability, application persistence, or approval of the domain schema.
