@@ -24,7 +24,34 @@ frontend production output into `.next`. After a production build,
 prints a greeting and exits.
 All packages are private; the npm scope identifies ownership, not publication.
 
-### Local Redis, Keycloak, and session setup
+### Local external services
+
+Docker Compose provides Redis, Keycloak, and Postgres while the application
+processes stay on the host. Copy the local-only Compose credentials before
+starting a service:
+
+```sh
+cp .env.example .env
+```
+
+In PowerShell, use `Copy-Item .env.example .env`. Postgres has matching
+machine-local defaults so existing Redis/Keycloak-only commands continue to
+work without the new variables; the `.env` file is where developers override
+them.
+
+To start Postgres and apply the backend's synthetic migration demonstration:
+
+```sh
+docker compose up -d --wait postgres
+docker compose --profile tools run --rm flyway migrate
+docker compose --profile tools run --rm flyway validate
+```
+
+The Compose file and migrations are the shared setup; the local database is not
+exposed as a public URL. See [Docker Compose for local development](docs/docker-compose.md)
+for inspection, persistence, and reset commands.
+
+#### Redis, Keycloak, and session setup
 
 Start Redis and local Keycloak before exercising session setup or OIDC login
 initiation. Apps stay on the host; Compose publishes loopback only. Keycloak
