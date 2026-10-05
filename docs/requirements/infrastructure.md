@@ -90,9 +90,6 @@ Repeating the migration command must not reapply successful versioned migrations
 The shared Compose and migration files make local database setup repeatable without sharing a running developer
 database or requiring host-installed Postgres and Flyway tools.
 
-- Source: Jake Shilling and Frank Buono planning discussion supplied for this work: keep the first increment local,
-  add the database to the existing Compose file, and prove migration execution with dummy SQL before designing the
-  production schema.
 - External references: [Docker Compose](https://docs.docker.com/compose/) and
   [Flyway migrations](https://www.baeldung.com/database-migrations-with-flyway).
 
