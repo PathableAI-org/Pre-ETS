@@ -256,11 +256,12 @@ Application consumers must be able to store arbitrary session-associated values 
 Session correctness must survive request routing between instances.
 
 - Source: Maintainer-supplied discovery summary (2026-10-05), “Session storage and horizontal scaling.”
+- Source clarification: Maintainer direction on 2026-10-05 authorizes cross-instance application-value retrieval, addressing the [Copilot review comment](https://github.com/PathableAI-org/Pre-ETS/pull/112#discussion_r4184264204).
 - Decision: Pending product review of this proposal.
 
 ### Acceptance criteria
 
-1. Session-associated application values can be stored and retrieved during the session lifetime.
+1. A session-associated application value stored through one application instance can be retrieved with the same value through another instance during the session lifetime, without affinity to the writing instance.
 2. A session established on one instance is recognized with the same user and tenant state on another instance.
 3. An activity update or expiration enforced by one instance is honored by another; requests need not return to the previous instance.
 
@@ -270,7 +271,7 @@ Supported value representation, capacity, transient retention, and consistency g
 
 ### Verification plan
 
-Store-contract integration checks round-trip representative supported values; multi-instance application integration routes authentication, renewal, and protected access across instances. Same-process or test-owned maps do not establish horizontal consistency.
+Store-contract integration checks round-trip representative supported values; multi-instance application integration writes session-associated values through one instance and retrieves them through another, comparing with independently supplied expected values. It also routes authentication, renewal, and protected access across instances. Same-process or test-owned maps do not establish horizontal consistency.
 
 ### Verification evidence
 
@@ -292,6 +293,7 @@ A user making an SSR protected-page request with an expired application session 
 Expiration should be understandable and must not silently send an unattended browser through login.
 
 - Source: Maintainer-supplied discovery summary (2026-10-05), “Authentication and protected resources; Server-authoritative idle timeout.”
+- Source clarification: Maintainer direction on 2026-10-05 authorizes accessible expiration recovery, addressing the [Copilot review comment](https://github.com/PathableAI-org/Pre-ETS/pull/112#discussion_r4184264246).
 - Decision: Pending product review of this proposal.
 
 ### Acceptance criteria
@@ -299,6 +301,7 @@ Expiration should be understandable and must not silently send an unattended bro
 1. An expired-session SSR page request redirects to the session-expired page without automatically initiating OIDC.
 2. The page is accessible unauthenticated, explains that the previous session expired, and provides an explicit authenticate-again action.
 3. Protected content is not returned in the expired-session response.
+4. Keyboard and assistive-technology users can perceive the expiration explanation, locate the authenticate-again action, and activate it with visible focus and appropriate focus movement.
 
 ### Open questions
 
@@ -306,7 +309,7 @@ How long and by what contract a prior expiration remains distinguishable from a 
 
 ### Verification plan
 
-HTTP checks observe redirect and protected-content denial at and after expiry; browser Gherkin follows the redirect, reads the explanation, and activates recovery. Include expired references whose transient state has been removed once recognition semantics are decided.
+HTTP checks observe redirect and protected-content denial at and after expiry; browser Gherkin follows the redirect, establishes the accessible explanation and recovery action, and completes keyboard recovery with visible focus and appropriate focus movement. Include assistive-technology observations of the explanation and action; semantic markup alone does not establish the complete experience. Include expired references whose transient state has been removed once recognition semantics are decided.
 
 ### Verification evidence
 
@@ -404,6 +407,7 @@ Reading a roster in one tab must remain compatible with working in a participant
 
 - Source: Maintainer-supplied discovery summary (2026-10-05), “Multi-tab behavior.”
 - Source clarification: Maintainer review direction on 2026-10-05 requires all tabs to share the session, new tabs to join an existing session, and logout to apply across tabs. Session requirements depend on resolved tenant identity rather than the resolution mechanism.
+- Source clarification: Maintainer direction on 2026-10-05 authorizes isolation between sessions and resolved tenants, addressing the [Copilot review comment](https://github.com/PathableAI-org/Pre-ETS/pull/112#discussion_r4184264108).
 - Decision: Pending product review of this proposal.
 
 ### Acceptance criteria
@@ -413,14 +417,15 @@ Reading a roster in one tab must remain compatible with working in a participant
 3. Qualifying activity in one tab renews authoritative expiration and prevents another inactive tab from independently expiring the still-active session.
 4. Warning and expired states propagate across tabs as required by PREETS-SESSION-011 and PREETS-SESSION-012.
 5. Logging out in any tab ends authenticated access for the shared session and logs out every tab sharing it; no other tab can continue protected use under the logged-out session.
+6. Activity, continuation, warnings, expiration, and logout affect only the associated session. They must not renew, warn, expire, or log out a different session, including sessions for another resolved tenant or in another browser context.
 
 ### Open questions
 
-Synchronization timing and suspended/resumed tab behavior need design; unrelated sessions or tenants must not influence each other.
+Synchronization timing and suspended/resumed tab behavior need design. Session isolation is required by AC6 and is not an unresolved policy.
 
 ### Verification plan
 
-Multi-page browser Gherkin opens a new tab after authentication and establishes that it joins the existing session, drives activity in one tab past another tab’s former deadline, and observes usable protected content in both. Log out in one tab and observe logout and denial of protected use in every other tab, backed by HTTP evidence that the shared session no longer authorizes access. Include separate-browser-context and distinct-resolved-tenant isolation. Adapter tests alone cannot establish browser synchronization.
+Multi-page browser Gherkin opens a new tab after authentication and establishes that it joins the existing session, drives activity in one tab past another tab’s former deadline, and observes usable protected content in both. Log out in one tab and observe logout and denial of protected use in every other tab, backed by HTTP evidence that the shared session no longer authorizes access. Run separate-browser-context and distinct-resolved-tenant sessions with independently observed deadlines and authentication state; exercise activity, continuation, warning, expiration, and logout in one session and establish that the others are unaffected. Adapter tests alone cannot establish browser synchronization.
 
 ### Verification evidence
 
@@ -442,6 +447,7 @@ Users must receive a blocking warning modal across open session-sharing tabs at 
 A person reading without interacting needs an opportunity to keep working.
 
 - Source: Maintainer-supplied discovery summary (2026-10-05), “Pre-expiration warning.”
+- Source clarification: Maintainer direction on 2026-10-05 authorizes accessible blocking warning behavior, addressing the [Copilot review comment](https://github.com/PathableAI-org/Pre-ETS/pull/112#discussion_r4184264296).
 - Decision: Pending product review of this proposal.
 
 ### Acceptance criteria
@@ -450,6 +456,7 @@ A person reading without interacting needs an opportunity to keep working.
 2. At the warning threshold, all open tabs sharing the session display the blocking warning.
 3. Activating Continue or Keep working before expiration constitutes qualifying activity, renews the authoritative deadline, and dismisses warnings across the other tabs.
 4. A continuation reaching the server at or after expiration cannot restore the expired session.
+5. Assistive-technology users receive an announcement of the warning and can perceive its explanation and Continue action. Focus moves into the warning when it opens; keyboard users can activate Continue with visible focus. While the warning is blocking, focus and interaction cannot reach background application content. After successful continuation, focus returns to an appropriate application control.
 
 ### Open questions
 
@@ -457,7 +464,7 @@ Threshold representation, minimum lead time, default/omission behavior, and warn
 
 ### Verification plan
 
-Configuration-boundary validation checks warning-before-expiry. Browser Gherkin uses controllable time, keyboard-accessible modal interaction, cross-tab dismissal, and authoritative renewal; integrated boundary checks cover late continuation races.
+Configuration-boundary validation checks warning-before-expiry. Browser Gherkin uses controllable time to establish focus movement into the warning, visible focus, keyboard continuation, blocked background interaction, appropriate focus restoration, cross-tab dismissal, and authoritative renewal. Supplement browser assertions with assistive-technology observations of warning announcement and accessible explanation/action. Integrated boundary checks cover late continuation races.
 
 ### Verification evidence
 
@@ -479,6 +486,7 @@ When inactivity reaches expiration, users’ open application tabs sharing the s
 Server rejection alone cannot protect sensitive information already rendered, including PHI.
 
 - Source: Maintainer-supplied discovery summary (2026-10-05), “Browser behavior after expiration.”
+- Source clarification: Maintainer direction on 2026-10-05 authorizes accessible expiration recovery, addressing the [Copilot review comment](https://github.com/PathableAI-org/Pre-ETS/pull/112#discussion_r4184264246).
 - Decision: Pending product review of this proposal.
 
 ### Acceptance criteria
@@ -487,14 +495,15 @@ Server rejection alone cannot protect sensitive information already rendered, in
 2. The blocking expiration modal explains expiration and offers explicit authentication again; protected information cannot be exposed by dismissing or bypassing the modal.
 3. Expired state propagates across session-sharing tabs.
 4. The modal and PREETS-SESSION-007’s page convey equivalent expiration meaning and recovery actions.
+5. Assistive-technology users receive an announcement of expiration and can perceive its explanation and authenticate-again action. Focus moves into the modal; keyboard users can activate reauthentication with visible focus. Protected background information is unavailable to keyboard interaction and assistive-technology reading or navigation while the expired state remains.
 
 ### Open questions
 
-Define acceptable synchronization latency and suspended/resumed tab protection; ensure keyboard and assistive-technology paths cannot expose obscured information.
+Define acceptable synchronization latency and suspended/resumed tab protection. Keyboard and assistive-technology protection is required by AC5.
 
 ### Verification plan
 
-Browser Gherkin observes actual rendered-content concealment, blocking behavior, keyboard/focus and accessible content, multiple tabs, and explicit recovery with controllable time. Server-only denial or modal-string assertions cannot establish concealment.
+Browser Gherkin observes actual rendered-content concealment, blocking behavior, focus movement and visible focus, keyboard recovery, multiple tabs, and explicit recovery with controllable time. Assistive-technology observations establish expiration announcement, explanation/action availability, and inability to read or navigate protected background information. Server-only denial or modal-string assertions cannot establish concealment.
 
 ### Verification evidence
 
