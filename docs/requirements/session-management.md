@@ -212,7 +212,7 @@ No reviewed, executed evidence has been recorded. Planned verification does not 
 
 ### Statement
 
-For every protected request using an authenticated session, the application must independently resolve the request tenant and grant access only when it equals the session tenant; a mismatch must yield a 403 Forbidden page.
+For every protected request using an authenticated session, the application must compare the tenant returned by independent request tenant resolution with the session tenant and grant access only when they are equal; a mismatch must yield a 403 Forbidden page. This contract applies to the result of tenant resolution regardless of how that result is obtained.
 
 ### Rationale and sources
 
@@ -225,7 +225,8 @@ A Tenant A session must not grant access to Tenant B or reinterpret Tenant B as 
 
 1. Matching request and session tenants permit tenant-binding validation to succeed, subject to other access checks.
 2. Different request and session tenants forbid access and expose a 403 Forbidden page.
-3. A valid session does not bypass request tenant resolution or substitute the session tenant for the incoming request tenant.
+3. A valid session does not bypass request tenant resolution or substitute the session tenant for the tenant returned by that resolution.
+4. Tenant/session comparison depends on the resolved tenant identity, without imposing a tenant resolution mode or mechanism.
 
 ### Open questions
 
@@ -369,7 +370,7 @@ Activity should reflect use of the application rather than incidental events.
 
 ### Acceptance criteria
 
-1. Control activation, keyboard interaction, text entry, and touch interaction can renew a still-valid session.
+1. Intentional control activation, keyboard interaction with application controls, text entry, and touch interaction with application controls must count as qualifying activity and, when communicated to the server before expiration, renew the still-valid session.
 2. Raw pointer movement alone never renews the idle deadline.
 3. Automatic polling or background traffic unrelated to qualifying activity never renews the idle deadline.
 4. Qualifying activity communicated after expiration does not revive authenticated access.
@@ -388,27 +389,30 @@ No reviewed, executed evidence has been recorded. Planned verification does not 
 
 ## PREETS-SESSION-010
 
-**Title:** Session-wide multi-tab idle state
+**Title:** Shared session, idle state, and logout across tabs
 **Classification:** Functional Requirement
 **Lifecycle:** proposed
 **Verification:** unverified
 
 ### Statement
 
-Users sharing an application session across tabs in the same browser context must share idle state; qualifying activity in any tab must extend the session and synchronize relevant timeout state across those tabs.
+All application tabs for the same resolved tenant within the same browser context must share one application session and its idle state. A newly opened tab must join the existing session when one exists. Qualifying activity in any tab must extend the session and synchronize relevant timeout state across all tabs; logging out in any tab must log out all tabs sharing that session.
 
 ### Rationale and sources
 
 Reading a roster in one tab must remain compatible with working in a participant tab.
 
 - Source: Maintainer-supplied discovery summary (2026-10-05), “Multi-tab behavior.”
+- Source clarification: Maintainer review direction on 2026-10-05 requires all tabs to share the session, new tabs to join an existing session, and logout to apply across tabs. Session requirements depend on resolved tenant identity rather than the resolution mechanism.
 - Decision: Pending product review of this proposal.
 
 ### Acceptance criteria
 
-1. Concurrent tabs sharing a session use a common idle state.
-2. Qualifying activity in one tab renews authoritative expiration and prevents another inactive tab from independently expiring the still-active session.
-3. Warning and expired states propagate across tabs as required by PREETS-SESSION-011 and PREETS-SESSION-012.
+1. All concurrent application tabs for the same resolved tenant in the same browser context use the same application session and common idle state.
+2. Opening a new application tab when a session already exists joins that session rather than establishing an independent session.
+3. Qualifying activity in one tab renews authoritative expiration and prevents another inactive tab from independently expiring the still-active session.
+4. Warning and expired states propagate across tabs as required by PREETS-SESSION-011 and PREETS-SESSION-012.
+5. Logging out in any tab ends authenticated access for the shared session and logs out every tab sharing it; no other tab can continue protected use under the logged-out session.
 
 ### Open questions
 
@@ -416,7 +420,7 @@ Synchronization timing and suspended/resumed tab behavior need design; unrelated
 
 ### Verification plan
 
-Multi-page browser Gherkin drives activity in one tab past another tab’s former deadline and observes usable protected content in both; include separate-session/tenant isolation. Adapter tests alone cannot establish browser synchronization.
+Multi-page browser Gherkin opens a new tab after authentication and establishes that it joins the existing session, drives activity in one tab past another tab’s former deadline, and observes usable protected content in both. Log out in one tab and observe logout and denial of protected use in every other tab, backed by HTTP evidence that the shared session no longer authorizes access. Include separate-browser-context and distinct-resolved-tenant isolation. Adapter tests alone cannot establish browser synchronization.
 
 ### Verification evidence
 
