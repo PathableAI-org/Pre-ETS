@@ -1,10 +1,14 @@
 # Delivery plan: Tenant resolution pilot
 
-**Status:** draft
+**Status:** issued
 **Planning date:** 2026-10-03
 **Source revision:** [31e476c](https://github.com/PathableAI-org/Pre-ETS/commit/31e476c89efbe356c6b59fb75e4ead06d63667ca)
 **Requirement decision revision:** [4eb0fa5](https://github.com/PathableAI-org/Pre-ETS/commit/4eb0fa5)
-**Approval:** Pending maintainer adoption of decomposition
+**Approval:** [PR #108](https://github.com/PathableAI-org/Pre-ETS/pull/108), merged into `main` at
+[f80179c](https://github.com/PathableAI-org/Pre-ETS/commit/f80179cbd4faf17ec286f67378db289234310177),
+approves the parent and S1–S4 decomposition. Status normalized 2026-10-05 under the maintainer's direction that
+merge into `main` is the review governance; the subsequent instruction to mark this plan reviewed is retained
+as approval history. Documented deferrals and evidence limitations remain in effect.
 
 ## Goal
 
@@ -77,14 +81,14 @@ These decisions resolve policy gates without approving this delivery decompositi
 
 Issue bodies below use the delivery issue template. Requirement links are pinned to the decision revision;
 implementation observations retain their original source revision. They are
-proposals without GitHub issue numbers. Planned evidence is part of each slice; shared fixtures/harness adaptation
+approved proposals with actual GitHub issue mappings below. Planned evidence is part of each slice; shared fixtures/harness adaptation
 belongs to S4 rather than a separate blanket testing issue.
 
 ### S1 — Select and retrieve the intended tenant configuration
 
 **Proposed issue title:** Select and retrieve the intended tenant configuration
 
-**Delivery references:** Not published
+**Delivery references:** https://github.com/PathableAI-org/Pre-ETS/issues/116
 
 #### Outcome
 
@@ -113,13 +117,13 @@ Public-service and configuration-boundary scenarios with two distinguishable ten
 
 #### Delivery plan
 
-Tenant resolution pilot, slice S1. Publication must link the committed plan revision; this new draft has no published URL yet.
+Tenant resolution pilot, slice S1. Published issues link the approved committed plan revision `f80179cbd4faf17ec286f67378db289234310177`.
 
 ### S2 — Establish tenant context before tenant-dependent frontend behavior
 
 **Proposed issue title:** Establish tenant context before tenant-dependent frontend behavior
 
-**Delivery references:** Not published
+**Delivery references:** https://github.com/PathableAI-org/Pre-ETS/issues/117
 
 #### Outcome
 
@@ -147,13 +151,13 @@ Running HTTP/authentication and configuration-consuming frontend observations wi
 
 #### Delivery plan
 
-Tenant resolution pilot, slice S2. Publication must link the committed plan revision; this new draft has no published URL yet.
+Tenant resolution pilot, slice S2. Published issues link the approved committed plan revision `f80179cbd4faf17ec286f67378db289234310177`.
 
 ### S3 — Return the approved tenant failure outcomes
 
 **Proposed issue title:** Return the approved tenant failure outcomes
 
-**Delivery references:** Not published
+**Delivery references:** https://github.com/PathableAI-org/Pre-ETS/issues/118
 
 #### Outcome
 
@@ -182,13 +186,13 @@ Actual HTTP 404/500 status and no fallback; browser comparison with ordinary mis
 
 #### Delivery plan
 
-Tenant resolution pilot, slice S3. Publication must link the committed plan revision; this new draft has no published URL yet.
+Tenant resolution pilot, slice S3. Published issues link the approved committed plan revision `f80179cbd4faf17ec286f67378db289234310177`.
 
 ### S4 — Expose safe tenant configuration through the normal diagnostic context
 
 **Proposed issue title:** Expose safe tenant configuration through the normal diagnostic context
 
-**Delivery references:** Not published
+**Delivery references:** https://github.com/PathableAI-org/Pre-ETS/issues/119
 
 #### Outcome
 
@@ -217,11 +221,13 @@ Vitest with @effect/vitest exercises the real loader with permitted and forbidde
 
 #### Delivery plan
 
-Tenant resolution pilot, slice S4. Publication must link the committed plan revision; this new draft has no published URL yet.
+Tenant resolution pilot, slice S4. Published issues link the approved committed plan revision `f80179cbd4faf17ec286f67378db289234310177`.
 
 ## Cross-cutting concerns and proposed parent
 
 **Proposed parent title:** Deliver the accepted tenant resolution and diagnostic requirements
+
+**Delivery references:** https://github.com/PathableAI-org/Pre-ETS/issues/115
 
 ### Outcome
 
@@ -261,8 +267,7 @@ automatically mark requirements verified. The register's evidence workflow asses
 
 ### Delivery plan
 
-This document is the parent proposal. Before issue publication, link its committed revision and replace proposed
-relationships with actual issue references. No publication is authorized by this pilot.
+This document records the approved parent and slices. Publication was authorized by the maintainer on 2026-10-05; actual issue references and verified relationships are recorded below.
 
 ## Coverage review
 
@@ -308,5 +313,33 @@ verification issue because the shared diagnostic/fixture infrastructure has a co
 belongs to each responsible slice.
 
 Duplicate inspection covers open repository issues only. Runtime behavior, closed delivery history, external producers,
-and deployed infrastructure were not verified. Maintainer approval and issue publication are pending. Every requirement
+and deployed infrastructure were not verified. Maintainer approval is recorded above; issue publication and native relationships are verified below. Every requirement
 remains at its recorded lifecycle and verification value.
+
+## Publication record
+
+**Approved publication revision:** [f80179cbd4faf17ec286f67378db289234310177](https://github.com/PathableAI-org/Pre-ETS/blob/f80179cbd4faf17ec286f67378db289234310177/docs/delivery/tenant-resolution.md)
+**Inspection date:** 2026-10-05
+**Approval:** [Merged PR #108](https://github.com/PathableAI-org/Pre-ETS/pull/108)
+
+Publication inspected all six existing repository issues, open and closed, on 2026-10-05 before creation;
+no duplicate tenant delivery issue was found. Current `main` tenant/security requirements match the approved
+criteria. External producers, runtime behavior, and deployed infrastructure remain outside this inspection.
+
+| Identity | Issue URL                                            | Observed state |
+| -------- | ---------------------------------------------------- | -------------- |
+| parent   | https://github.com/PathableAI-org/Pre-ETS/issues/115 | open           |
+| S1       | https://github.com/PathableAI-org/Pre-ETS/issues/116 | open           |
+| S2       | https://github.com/PathableAI-org/Pre-ETS/issues/117 | open           |
+| S3       | https://github.com/PathableAI-org/Pre-ETS/issues/118 | open           |
+| S4       | https://github.com/PathableAI-org/Pre-ETS/issues/119 | open           |
+
+**Verified native relationships:** parent contains S1; parent contains S2; parent contains S3; parent contains S4; S2 blocked by S1; S3 blocked by S1; S3 blocked by S2; S4 blocked by S1; S4 blocked by S2; S4 blocked by S3.
+
+**Outstanding native relationships:** None.
+
+**Last confirmed action:** Verified S4 body and links
+
+**Failed or indeterminate action:** None
+
+**Approved deferrals:** Cloud infrastructure/production ingress and concrete secrets-provider integration remain outside this effort. No adopted parent or slice is deferred or left unissued.

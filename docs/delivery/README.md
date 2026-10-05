@@ -27,7 +27,8 @@ with a shorter lifetime; retain completed plans as historical context, not new o
    GitHub issue bodies. Keep parent containment separate from blocking dependencies. Use a parent for a substantial
    coordinated effort; smaller efforts can propose standalone issues. Do not invent issue numbers or relationships.
 8. Review coverage, outcomes, scope, dependencies, duplication, and evidence boundaries. Record findings and
-   unresolved decisions. Maintainer approval adopts the decomposition; agent review does not approve it.
+   unresolved decisions. Merge into `main` through a PR approves the merged decomposition; the PR is the review
+   governance. Record the merged PR and revision as approval. Agent review alone does not approve it.
 
 ## Plan states
 
@@ -39,6 +40,8 @@ with a shorter lifetime; retain completed plans as historical context, not new o
 | `completed` | Attributable issue/PR completion references for adopted work; unresolved or withdrawn scope explained. |
 
 A reviewed plan may include explicit blocked or deferred work, but must have no unexplained coverage gaps.
+Plans merged into `main` are reviewed even when their committed status or approval text has not yet been updated.
+Normalize those records when publishing. Later local scope changes are not approved by the earlier merge.
 Approval of a decomposition does not settle an unresolved product policy. Later publication must preserve the gates.
 When revising an adopted plan, retain issue links and approval history, identify changed scope, and return the changed
 proposal to `draft` pending renewed approval. Existing published work remains linked.
@@ -51,10 +54,20 @@ issue/PR URLs to requirement delivery references; drafting a plan does not fabri
 
 - `$delivery-plan Plan delivery for <requirement IDs>` creates or updates a draft plan.
 - `$delivery-review Review docs/delivery/<effort>.md` reports findings without editing by default.
+- `$delivery-issues Publish docs/delivery/<effort>.md` publishes a reviewed, maintainer-approved plan, creates native
+  parent/child and explicit blocking relationships, and records verified issue URLs. It can resume partial publication.
 
 The repository-local skills live in [.agents/skills](../../.agents/skills). Planning permits read-only issue inspection
 when available; it does not require external access or imply GitHub writes. These skills do not change requirements,
-implement code/tests, commit automatically, or publish issues. No active Spec Kit state, synchronization, Projects
+implement code/tests or commit automatically. `delivery-plan` and `delivery-review` do not publish issues.
+`delivery-issues` requires an explicit publishing request in addition to decomposition approval. A verified merge
+into `main` supplies that approval; stale draft metadata does not block it. It verifies the remotely accessible
+approved plan revision and reconciles open and
+closed issues by plan/slice identity before writing. Partial publication retains URLs and `reviewed` status; `issued`
+requires complete verified publication or explicitly approved unissued/deferred work, including required native
+relationships. Publication records remain local until separately committed and pushed.
+
+No active Spec Kit state, synchronization, Projects
 automation, RTM generator, or new runtime tool is required. Historical specifications do not override accepted register
 decisions. Read architecture for ownership and implementation context, not to demand synchronization of old specs.
 
