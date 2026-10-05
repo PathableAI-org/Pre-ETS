@@ -137,7 +137,7 @@ unnecessary for MVP. Custom attribute names — hurts vendor tools and MCP queri
 ## 5. Minimal HTTP surface
 
 **Decision**: Introduce a minimal Effect HTTP server (platform-node) listening on
-**`127.0.0.1:8080`** (overridable via documented config) with:
+**`BACKEND_LISTEN_ADDR`** (default **`127.0.0.1:8080`**) with:
 
 | Route               | Status | Purpose                          |
 | ------------------- | ------ | -------------------------------- |

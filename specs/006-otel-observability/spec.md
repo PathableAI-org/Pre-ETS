@@ -1,10 +1,14 @@
 # Feature Specification: OpenTelemetry Observability Stack
 
+**Identity**: Feature directory `specs/006-otel-observability`; git branch
+`007-otel-observability`. Spec Kit directory numbers and git branch numbers are
+independent — do not rename either to force a match.
+
 **Feature Branch**: `007-otel-observability`
 
 **Created**: 2026-10-05
 
-**Status**: Draft
+**Status**: Ready
 
 **Input**: User description: "We need to setup an observability stack based around opentelemetry. This needs to work both in local development and deployed environments. Locally, it should be optional so that it can be used when a developer works on features that need it, but not if they don't. This needs to work with both the nextjs framework and effect. The local development stack should be based around grafana in the docker compose and we should add to our documentation instructions on how to use an mcp server to also connect agents to the local grafana stack. The goal is to ultimately be as vendor agnostic as possible."
 
@@ -27,7 +31,7 @@ From [critique-20261005-194125.md](./critiques/critique-20261005-194125.md):
 - **P8**: Fallback trigger — if native `OtlpTracer` is inadequate after install verification, use `@effect/opentelemetry` + OTLP HTTP exporter within this feature (documented contingency).
 - **E8**: Pin local image `grafana/otel-lgtm:0.35.0`.
 - **E10**: Note AGENTS Effect pin drift (rc.113 vs package.json **4.0.1**); verify against package.json; do not rewrite AGENTS.md in this feature.
-- **P3 / P6 / P7 / X3**: Exercise surface locked — backend listen `127.0.0.1:8080`; success `GET /health` → 200; intentional error `GET /health/error` → 500.
+- **P3 / P6 / P7 / X3**: Exercise surface locked — backend listen `BACKEND_LISTEN_ADDR` (default `127.0.0.1:8080`); success `GET /health` → 200; intentional error `GET /health/error` → 500.
 - **P4 / E5**: MCP docs MUST include the verified local Grafana auth path for the pinned image (anonymous Admin enabled by default; `admin`/`admin` basic auth as alternate).
 - **E9**: Production alerting / SLOs are out of scope for this increment.
 
@@ -91,17 +95,18 @@ An operator configures deployed environments with an OTLP endpoint appropriate t
 
 ### User Story 4 - Agent access to local Grafana via MCP (Priority: P3)
 
-A developer using AI coding agents wants those agents to query or inspect local Grafana for backend traces. Documentation describes how to connect an MCP server to the local Grafana instance, including the **verified** local auth path for the pinned `otel-lgtm` image.
+A developer using AI coding agents wants those agents to query or inspect local Grafana for backend traces. Documentation describes how to connect an MCP server to the local Grafana instance, including the **verified** local auth path for the pinned `otel-lgtm` image. Acceptance for this story requires **live** MCP evidence against local Grafana (SC-006)—not docs prose alone.
 
 **Why this priority**: Improves agent-assisted diagnosis once the local stack exists; not required to emit or manually view spans.
 
-**Independent Test**: Follow the documented MCP setup (including verified auth) against a running local Grafana stack; confirm an agent (or MCP client) can connect and perform at least one documented read/query against local trace data.
+**Independent Test**: Follow the documented MCP setup (including verified auth) against a running local Grafana stack; confirm an agent (or MCP client) can connect and perform at least one documented read/query against local trace data on the first attempt. Record that live result as merge-blocking acceptance evidence.
 
 **Acceptance Scenarios**:
 
 1. **Given** the local Grafana observability stack is running, **When** a developer follows the project documentation for the Grafana MCP server (including the verified auth path), **Then** they can configure an MCP client to connect to that local Grafana instance.
-2. **Given** that MCP connection is configured, **When** the developer asks an agent to inspect a recent backend request span (within documented capabilities), **Then** the agent can retrieve useful trace context via the MCP server.
+2. **Given** that MCP connection is configured, **When** the developer asks an agent to inspect a recent backend request span (within documented capabilities), **Then** the agent can retrieve useful trace context via the MCP server on the first attempt (SC-006).
 3. **Given** the local Grafana stack is not running, **When** a developer reads the MCP documentation, **Then** the docs state the prerequisite clearly and do not imply MCP works without the optional stack.
+4. **Given** CI cannot run a live MCP client against local Grafana, **When** the PR is prepared for merge, **Then** a documented human verification checklist for the live MCP read MUST be completed and attached as acceptance evidence before merge (docs-only notes are not a substitute).
 
 ### Edge Cases
 
@@ -131,7 +136,7 @@ A developer using AI coding agents wants those agents to query or inspect local 
 - **FR-011**: Project documentation MUST include instructions for connecting an MCP server to the local Grafana stack for AI agent use, including prerequisites, the verified local auth path, configuration, and example agent workflows focused on traces.
 - **FR-012**: Design and documentation MUST remain vendor-agnostic for deployed backends: OpenTelemetry/OTLP is the interchange standard; no single commercial observability SaaS is required to complete this feature.
 - **FR-013**: Local observability docs MUST state that this increment provides traces (request spans) only, list the expected semantic attributes, and show how to find a known backend request span end to end.
-- **FR-014**: This increment MUST provide a minimal demo HTTP surface for span verification: `GET /health` (success) and `GET /health/error` (intentional error status), listening on `127.0.0.1:8080` locally unless overridden by documented config.
+- **FR-014**: This increment MUST provide a minimal demo HTTP surface for span verification: `GET /health` (success) and `GET /health/error` (intentional error status), listening on the address from `BACKEND_LISTEN_ADDR` (default `127.0.0.1:8080`).
 
 ### Key Entities
 
@@ -151,7 +156,7 @@ A developer using AI coding agents wants those agents to query or inspect local 
 - **SC-003**: With observability enabled, 100% of the verification set produce an exportable request-scoped OpenTelemetry span (no silent total drop for those paths). Verification set: (1) `GET /health` expecting status 200; (2) `GET /health/error` expecting status 500.
 - **SC-004**: Switching the OTLP destination from the local stack to a second OTLP-compatible endpoint requires configuration changes only (no application instrumentation rewrite) and is verified by spans arriving at the second endpoint.
 - **SC-005**: When the local collector/stack is stopped while the backend still attempts export, core backend workflows remain available (no hard dependency); export failure is observable in diagnostics.
-- **SC-006**: A developer following the MCP documentation (including the verified local Grafana auth path) can connect an MCP client to the local Grafana instance and complete at least one documented read/query against local trace data on the first attempt.
+- **SC-006**: A developer following the MCP documentation (including the verified local Grafana auth path) can connect an MCP client to the local Grafana instance and complete at least one documented read/query against local trace data on the first attempt. Evidence MUST be a successful live MCP read against local Grafana (or a completed human verification checklist recording that live result before merge if CI cannot run MCP). Docs-only recording of commands without a live success is not acceptance evidence.
 - **SC-007**: Review of sample exported spans from the verification plan shows no secrets, raw session tokens/cookies, or protected personal/health data in attributes or bodies. Unit tests include at least one negative fixture that rejects prohibited attributes (e.g. Authorization).
 - **SC-008**: For each verification request, the request span includes the documented minimum set of semantic attributes needed to identify the operation and outcome.
 
@@ -172,3 +177,4 @@ A developer using AI coding agents wants those agents to query or inspect local 
 - Local sampling default is **100%** (dev-friendly; no intentional drop filters in this increment). Exact production sampling is deferred.
 - Existing structured logging practices are unchanged by this increment; this slice does not require log–trace correlation.
 - Demo/health routes exist solely to exercise spans until domain HTTP APIs land; they are not a product API commitment beyond FR-014.
+- **Backend listen address**: `BACKEND_LISTEN_ADDR` defaults to `127.0.0.1:8080`. Override only via that env var; document it in `.env.example` and operator docs.

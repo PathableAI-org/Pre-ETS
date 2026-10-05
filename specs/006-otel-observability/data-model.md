@@ -77,7 +77,7 @@ Not an application entity; operator-facing infrastructure only.
 | `GET /health`       | 200    | Success request for SC-002 / SC-003  |
 | `GET /health/error` | 500    | Intentional error request for SC-003 |
 
-Local listen default: `127.0.0.1:8080`.
+Local listen: `BACKEND_LISTEN_ADDR` (default `127.0.0.1:8080`).
 
 ## Relationships
 

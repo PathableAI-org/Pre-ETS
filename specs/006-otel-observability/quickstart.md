@@ -10,7 +10,8 @@ Contracts: [otlp-export.md](./contracts/otlp-export.md),
 [request-span-attributes.md](./contracts/request-span-attributes.md),
 [grafana-mcp.md](./contracts/grafana-mcp.md).
 
-**Locked locals**: backend `http://127.0.0.1:8080`; Grafana UI
+**Locked locals**: backend `BACKEND_LISTEN_ADDR` default
+`http://127.0.0.1:8080`; Grafana UI
 `http://127.0.0.1:3300`; OTLP HTTP `http://127.0.0.1:4318`; image
 `grafana/otel-lgtm:0.35.0`.
 
@@ -94,15 +95,20 @@ observability profile, then repeat `GET /health`.
 Expect: backend still serves the request; no hard crash solely due to export
 failure.
 
-## 5. Deployed-style endpoint switch (config only)
+## 5. Deployed-style endpoint switch (config only) — SC-004
 
-Point `OTEL_EXPORTER_OTLP_ENDPOINT` at a second OTLP/HTTP collector (or a second
-local listener). Restart backend. Repeat `GET /health`.
+Point `OTEL_EXPORTER_OTLP_ENDPOINT` at a **second** OTLP/HTTP collector (or a
+second local listener on a different port). Restart backend. Repeat
+`GET /health`.
+
+**Done requires live proof**: confirm the request span **arrives at the second
+endpoint** (e.g. listener received the OTLP/HTTP payload, or the second
+collector UI shows the span). A docs note alone does not satisfy SC-004.
 
 Expect: spans arrive at the new endpoint without code changes
 ([otlp-export.md](./contracts/otlp-export.md)).
 
-## 6. MCP against local Grafana
+## 6. MCP against local Grafana (SC-006 — live evidence required)
 
 Follow `docs/observability.md` (added in implementation) to run `mcp-grafana`
 with:
@@ -112,8 +118,13 @@ with:
   token only if anonymous was disabled
 
 Expect: MCP client connects and completes one documented read (datasource list
-or recent Tempo search for `pre-ets-backend` / `/health`) per
-[grafana-mcp.md](./contracts/grafana-mcp.md).
+or recent Tempo search for `pre-ets-backend` / `/health`) on the **first
+attempt** per [grafana-mcp.md](./contracts/grafana-mcp.md).
+
+**Acceptance evidence**: Record the successful live MCP read (commands + outcome).
+If CI cannot run MCP, complete the human verification checklist from T024 /
+`docs/observability.md` before merge — docs-only command lists without a live
+success are not SC-006 evidence.
 
 ## Rollback
 

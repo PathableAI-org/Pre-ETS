@@ -1,5 +1,9 @@
 # Implementation Plan: OpenTelemetry Observability Stack
 
+**Identity**: Feature directory `specs/006-otel-observability`; git branch
+`007-otel-observability` (Spec Kit directory numbering is independent of the
+branch number — do not rename either).
+
 **Branch**: `007-otel-observability` | **Date**: 2026-10-05 | **Spec**: [spec.md](./spec.md)
 
 **Input**: Feature specification from `specs/006-otel-observability/spec.md`.
@@ -46,7 +50,7 @@ later via BDD hooks.
 **Target Platform**: Host-run Effect backend (local + deployed). Optional Compose
 services on loopback only. Grafana UI published on host **3300** (map container
 3000) to avoid colliding with the Next.js app. Backend demo listen:
-**`127.0.0.1:8080`**.
+**`BACKEND_LISTEN_ADDR`** default **`127.0.0.1:8080`**.
 
 **Project Type**: Backend instrumentation + local ops Compose/docs. Frontend
 workspace unchanged this increment.
@@ -157,7 +161,7 @@ OTEL env consumption. See precedence in
 
 | Note                   | Detail                                                                                                                                                                                                                                        |
 | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Minimal HTTP surface   | Backend is currently a stub; `GET /health` + `GET /health/error` on `127.0.0.1:8080` satisfy “span around a request” without waiting on the full domain API.                                                                                  |
+| Minimal HTTP surface   | Backend is currently a stub; `GET /health` + `GET /health/error` on `BACKEND_LISTEN_ADDR` (default `127.0.0.1:8080`) satisfy “span around a request” without waiting on the full domain API.                                                  |
 | `effect/observability` | Explicitly authorized above; verify `OtlpTracer` against installed Effect **4.0.1** declarations during implementation. APIs are `@stability unstable`.                                                                                       |
 | Fallback trigger (P8)  | If after `pnpm install` native `OtlpTracer` is missing, broken, or inadequate for OTLP/HTTP export of request spans, fall back within this feature to `@effect/opentelemetry` + OTLP HTTP exporter. Document the switch in research if taken. |
 | Grafana image pin      | Compose MUST use `grafana/otel-lgtm:0.35.0` (prefer digest pin at implement time if available). Do not ship `:latest`.                                                                                                                        |

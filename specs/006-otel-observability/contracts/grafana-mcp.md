@@ -32,6 +32,11 @@ Upstream image defaults (documented by grafana/docker-otel-lgtm):
 Project docs (`docs/observability.md`) MUST copy this verified path so SC-006
 (“first attempt”) is executable—not “preferred if available.”
 
+**SC-006 evidence**: Acceptance requires a successful **live** MCP read against
+local Grafana on the first attempt. If CI cannot run MCP, a documented human
+verification checklist MUST be completed before merge. Docs-only command lists
+without a live success are not acceptance evidence.
+
 ## Preconditions
 
 1. `docker compose --profile observability up -d --wait` (or equivalent) succeeded
