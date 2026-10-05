@@ -55,3 +55,4 @@ minimumReleaseAgeExclude:
   - "@dprint/win32-arm64@0.59.0"
   - "@dprint/win32-x64@0.59.0"
   - dprint@0.59.0
+  - "@cucumber/cucumber@13.3.0"
