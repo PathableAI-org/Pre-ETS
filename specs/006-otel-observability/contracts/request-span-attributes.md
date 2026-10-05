@@ -12,6 +12,16 @@
 | `http.route`                | `/health` or `/api/items/:id` | Route template when available |
 | `http.response.status_code` | `200`                         | Final status code             |
 
+## Demo verification set (SC-003)
+
+| Request                                  | Expected status | Expected `http.route` |
+| ---------------------------------------- | --------------- | --------------------- |
+| `GET http://127.0.0.1:8080/health`       | 200             | `/health`             |
+| `GET http://127.0.0.1:8080/health/error` | 500             | `/health/error`       |
+
+Each MUST produce an exportable request-scoped span with all three required
+attributes.
+
 ## Prohibited attributes / payloads
 
 MUST NOT appear on spans:
@@ -28,5 +38,9 @@ MUST NOT appear on spans:
 
 ## Verification
 
-Given a known exercise route, a trace search by `service.name` and route/method
-MUST locate a span containing all three required attributes.
+Given the demo routes above, a trace search by `service.name` (`pre-ets-backend`)
+and route/method MUST locate a span containing all three required attributes.
+
+Unit tests for the attribute allow-list helper MUST include at least one
+**negative fixture** that rejects a prohibited attribute (e.g. Authorization).
+Manual/sample span review (SC-007) remains required in addition to unit tests.

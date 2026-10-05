@@ -36,4 +36,4 @@
   - Success criteria avoid runtime/framework internals (no SDK package names, no specific Grafana datasource wiring, no commercial SaaS requirement).
   - Spec directory is `specs/006-otel-observability`; git branch from `before_specify` is `007-otel-observability` (numbering independent per Spec Kit).
 - Clarification 2026-10-05: traces-only backend request spans; all four platform stories retained; semantic attributes = method + route + status (planning default). Plan artifacts generated.
-- Ready for `/speckit-tasks` (optional critique/commit hooks available).
+- Critique remediations 2026-10-05 (`critiques/critique-20261005-194125.md`): all Must-Address / Recommendation / Question items applied in spec/plan/design docs. Ready for `/speckit-tasks`.

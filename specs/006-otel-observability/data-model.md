@@ -17,6 +17,7 @@ enabled.
 | `http.response.status_code` | Required once response status is known; integer                                 |
 | Timing                      | Start at request accept; end when response completes (success or failure)       |
 | Parent                      | Root for this increment (no frontend parent propagation yet)                    |
+| Sampling (local)            | 100% sampled; no intentional drop filters in this increment                     |
 
 ### Validation / safety
 
@@ -26,6 +27,8 @@ enabled.
   segments when both are available.
 - Missing optional enrichment attributes do not invalidate the span if the three
   required attributes above are present.
+- Allow-list helper unit tests MUST include a negative fixture (e.g. reject
+  Authorization attribute).
 
 ## Observability Configuration
 
@@ -37,14 +40,17 @@ Process-level settings resolved at backend boot.
 | `otlpEndpoint`  | URL string | Required when enabled; base OTLP HTTP endpoint (no path or with collector base) |
 | `serviceName`   | string     | Default `pre-ets-backend`                                                       |
 | `otlpHeaders`   | map        | Optional; for deployed auth only                                                |
+| `sdkDisabled`   | boolean    | From `OTEL_SDK_DISABLED`; when true, do not export even if traces enabled       |
 
 ### State
 
-| State                              | Behavior                                                                                                               |
-| ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| Disabled                           | No OTLP tracer layer; requests succeed; no export                                                                      |
-| Enabled + valid endpoint           | Tracer layer installed; best-effort export                                                                             |
-| Enabled + invalid/missing endpoint | Clear config diagnostic; documented fail-soft for local (run without export) unless planning later tightens production |
+| State                              | Behavior                                                                                                                         |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| Disabled                           | No OTLP tracer layer; requests succeed; no export                                                                                |
+| Enabled + valid endpoint           | Tracer layer installed (with `HttpClient` + `OtlpSerialization`); best-effort export                                             |
+| Enabled + invalid/missing endpoint | Clear config diagnostic. **Local/dev**: run without export (fail-soft). **Production** (`NODE_ENV=production`): refuse-to-start. |
+| Enabled + `OTEL_SDK_DISABLED=true` | Do not export; process starts (same as disabled export path)                                                                     |
+| Collector unreachable after start  | Best-effort; request handling continues                                                                                          |
 
 ## OTLP Export Target
 
@@ -58,11 +64,20 @@ Process-level settings resolved at backend boot.
 
 Compose-managed optional profile `observability`:
 
-| Component   | Role                                                            |
-| ----------- | --------------------------------------------------------------- |
-| `otel-lgtm` | Receives OTLP; stores traces (Tempo); Grafana UI for inspection |
+| Component                  | Role                                                            |
+| -------------------------- | --------------------------------------------------------------- |
+| `grafana/otel-lgtm:0.35.0` | Receives OTLP; stores traces (Tempo); Grafana UI for inspection |
 
 Not an application entity; operator-facing infrastructure only.
+
+## Demo HTTP Surface
+
+| Route               | Status | Role in verification                 |
+| ------------------- | ------ | ------------------------------------ |
+| `GET /health`       | 200    | Success request for SC-002 / SC-003  |
+| `GET /health/error` | 500    | Intentional error request for SC-003 |
+
+Local listen default: `127.0.0.1:8080`.
 
 ## Relationships
 
@@ -70,4 +85,5 @@ Not an application entity; operator-facing infrastructure only.
 Observability Configuration ──enables──▶ Request Span emission
 Request Span ──exported via──▶ OTLP Export Target
 OTLP Export Target (local) ──received by──▶ Local Observability Stack
+Demo HTTP Surface ──exercises──▶ Request Span
 ```
