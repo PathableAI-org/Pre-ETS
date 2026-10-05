@@ -23,9 +23,9 @@ minimumReleaseAgeExclude:
   - "@typescript-eslint/visitor-keys@8.70.1"
   - typescript-eslint@8.70.1
   - "@dprint/json@0.25.0 || 0.25.1"
-  - "@effect/platform-node-shared@4.0.0-rc.118"
-  - "@effect/platform-node@4.0.0-rc.118"
-  - effect@4.0.0-rc.118
+  - "@effect/platform-node-shared@4.0.0-rc.118 || 4.0.1"
+  - "@effect/platform-node@4.0.0-rc.118 || 4.0.1"
+  - effect@4.0.0-rc.118 || 4.0.1
   - "@effect/vitest@4.0.0-rc.118"
   - "@next/env@16.3.8"
   - "@next/eslint-plugin-next@16.3.8"
