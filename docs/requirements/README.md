@@ -10,6 +10,7 @@ repository pull requests.
 - [Infrastructure](infrastructure.md)
 - [Security](security.md)
 - [Authentication and session management](session-management.md)
+- [On-site job-coaching service records](on-site-job-coaching.md)
 
 The [area template](templates/area.md) contains placeholders only; it is not an approved product contract.
 Existing specifications have not been migrated wholesale into this register.
