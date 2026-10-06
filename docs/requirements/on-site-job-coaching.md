@@ -14,7 +14,7 @@ The current product decisions supplied in the handoff are the basis for the prop
 user and start time when starting a record; capture end time on an explicit action; permit time correction;
 keep visit narratives optional; make the created record durable; allow subsequent updates without submission
 or approval; limit this slice to the user's own records; and retain deleted records with immediate undo.
-These are product directions, not findings that CVR has validated or already accepted register obligations.
+These are product directions, not findings that the source provider has validated or already accepted register obligations.
 
 The adoption strategy is incremental. An organization should not need to replace its participant-management
 processes to adopt service recording. Participant management and integration with the authoritative participant
@@ -58,10 +58,9 @@ billing, supervisor/team visibility, and a general trash/recovery interface are 
   obligation was registered there. GitHub remains authoritative for product requirements and implementation
   state. This source review establishes no delivery or behavioral verification claim.
 
-The planned CRV discovery engagement did not proceed and client SMEs are currently unavailable, according to
+The planned client discovery engagement did not proceed and client SMEs are currently unavailable, according to
 the handoff. Supplied forms and industry experience inform hypotheses; neither substitutes for independent
-validation. The sources name the organization **Center for Vocational Rehabilitation (CVR)**; the handoff
-uses **CRV**. This document preserves that attribution without treating the spelling difference as a second client.
+validation.
 **Project Reference Links.txt** was named but not supplied with an accessible location. Drive search did not
 locate it; its contents were not reviewed. The form and linked research above were accessed directly.
 Industry facts, product obligations, implementation choices, and technical guidance remain distinct.
@@ -76,7 +75,7 @@ Industry facts, product obligations, implementation choices, and technical guida
   without requiring participant-management replacement? Decide the minimal association interaction before delivery.
 - What supervisor/team access is needed? No role hierarchy, team membership, or organizational sharing policy
   is inferred. Any future visibility needs separate discovery and authorization decisions.
-- Which forms and fields are current and mandatory for CVR? What approvals/signatures apply to later reports?
+- Which forms and fields are current and mandatory for the source provider? What approvals/signatures apply to later reports?
   Optional narratives and absence of submission gates are current slice decisions, not claims about compliance
   with every paper-reporting obligation.
 - How should time correction handle dates, time zones, overnight visits, invalid ordering, and concurrent changes?
@@ -194,7 +193,7 @@ These fields preserve familiar visit-log meaning without adding unsupported mand
 
 ### Open questions
 
-CVR mandatory-field expectations remain unvalidated; optionality is the supplied product decision for this slice. Content limits and failure outcomes need design before delivery.
+The source provider’s mandatory-field expectations remain unvalidated; optionality is the supplied product decision for this slice. Content limits and failure outcomes need design before delivery.
 
 ### Verification evidence
 
