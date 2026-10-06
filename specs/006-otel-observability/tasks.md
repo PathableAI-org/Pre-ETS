@@ -75,7 +75,10 @@ register helper. **No request demo routes or Compose profile until this phase co
 - [ ] T008 Implement gated OTEL registration helper in
       `packages/frontend/src/lib/observability/register.ts` using `@vercel/otel` (or
       documented fallback), applying config from T005; local sampling **100%**; export
-      best-effort after valid start; **do not** install Effect `OtlpTracer`
+      best-effort after valid start; **do not** install Effect `OtlpTracer`. **MUST wire
+      T007 allow/deny into the actual register/export (or SpanProcessor) boundary** so
+      automatic Next request spans cannot bypass filtering—helper-only unit tests do not
+      satisfy FR-009 / SC-007
 
 **Checkpoint**: Config + attributes + register helper are unit-tested and importable;
 `instrumentation.ts` still only boots Effect runtime until US1.
@@ -105,6 +108,11 @@ method, route, and status facts at the collector (or later Grafana in US2).
       register/helper path used by `instrumentation.ts`: production refuse-to-start vs
       local fail-soft when enabled+invalid endpoint, including clear diagnostic behavior
       (must not be satisfied by T004 parser tests alone)
+- [ ] T010a [US1] Add failing producer-boundary tests (same file or
+      `packages/frontend/tests/unit/observability-span-sanitization.test.ts`) that capture an
+      **emitted** span (test SpanProcessor / exporter fixture—not the isolated T006/T007
+      helper alone) and assert required method/route/status facts are present and prohibited
+      attributes (e.g. Authorization) are absent after the register/export pipeline runs
 
 ### Implementation for User Story 1
 
@@ -118,7 +126,7 @@ method, route, and status facts at the collector (or later Grafana in US2).
 - [ ] T013 [US1] Document env vars in `packages/frontend/.env.example` (or extend existing
       env example): `OTEL_TRACES_ENABLED` (default off), `OTEL_EXPORTER_OTLP_ENDPOINT`,
       `OTEL_SERVICE_NAME`, optional `OTEL_EXPORTER_OTLP_HEADERS`, `OTEL_SDK_DISABLED`
-- [ ] T014 [US1] Make T009–T010 pass; run
+- [ ] T014 [US1] Make T009–T010–T010a pass; run
       `pnpm --filter @pathableai/pre-ets-frontend test:unit` and fix regressions
 - [ ] T015 [US1] Manually smoke (or script) disabled-by-default start + enabled export
       against a temporary OTLP listener or US2 stack; confirm SC-003 verification set
@@ -144,7 +152,10 @@ docs explain opt-in/opt-out with service-targeted stop.
       **`grafana/otel-lgtm:0.35.0`** (prefer digest pin if available at implement time),
       Compose profile **`observability`**, loopback publishes `127.0.0.1:3300:3000`,
       `127.0.0.1:4317:4317`, `127.0.0.1:4318:4318`, and a healthcheck/`--wait`-friendly
-      readiness so default `docker compose up` without the profile does **not** start it
+      readiness so default `docker compose up` without the profile does **not** start it.
+      Set anonymous org role to **Viewer** for least-privilege MCP reads (e.g.
+      `GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer`); do not leave anonymous Admin as the default
+      MCP path (see `contracts/grafana-mcp.md`)
 - [ ] T017 [P] [US2] Extend `docs/docker-compose.md` with optional observability profile:
       start; **stop only** via `docker compose --profile observability stop otel-lgtm`
       (never bare profile stop); ports; Grafana URL; OTLP endpoint; ~30s span visibility;
@@ -152,7 +163,7 @@ docs explain opt-in/opt-out with service-targeted stop.
 - [ ] T018 [US2] Verify end-to-end with US1 Next server: opt-in stack → enable
       `OTEL_TRACES_ENABLED` + endpoint → `GET /api/health` → locate span in Grafana
       Explore/Tempo; stop `otel-lgtm` while Redis/Keycloak remain; confirm best-effort when
-      collector down (SC-005)
+      collector down **and** that export failure is visible in diagnostics (SC-005)
 
 **Checkpoint**: Optional local Grafana works for viewing Next request spans.
 
@@ -202,12 +213,14 @@ connects and completes one documented read (datasource list or Tempo search for
 
 - [ ] T022 [US4] **Depends on T020**. Add MCP section to existing `docs/observability.md`
       (and align `contracts/grafana-mcp.md`): prerequisites (profile running);
-      `GRAFANA_URL=http://127.0.0.1:3300`; verified auth for `0.35.0` (anonymous Admin
-      default; `admin`/`admin` alternate; service account preferred when anonymous
-      disabled); example **`uvx mcp-grafana==2.0.0`** / Cursor MCP config (no unversioned
-      package); one concrete agent read/query example; explicit “does not work without
-      optional stack”; include a **human verification checklist** for the live MCP read
-      (commands + expected outcome) used when CI cannot run MCP
+      `GRAFANA_URL=http://127.0.0.1:3300`; verified auth for `0.35.0` — **primary**
+      anonymous org role **Viewer** (Compose override; least privilege for MCP reads) or a
+      read-only service account token; `admin`/`admin` and anonymous **Admin** only as
+      explicit troubleshooting fallbacks (not the documented MCP default); example
+      **`uvx mcp-grafana==2.0.0`** / Cursor MCP config (no unversioned package); one concrete
+      agent read/query example; explicit “does not work without optional stack”; include a
+      **human verification checklist** for the live MCP read (commands + expected outcome)
+      used when CI cannot run MCP
 - [ ] T023 [US4] **SC-006 acceptance evidence (mandatory live MCP)**: Against a running
       local Grafana stack, connect an MCP client per docs (pinned version) and complete at
       least one documented read/query against local trace data on the **first attempt**.
@@ -235,8 +248,11 @@ connects and completes one documented read (datasource list or Tempo search for
       `pnpm build`, `pnpm lint`, `pnpm format:check`, and `pnpm check:unused`
 - [ ] T027 Execute `specs/006-otel-observability/quickstart.md` sections 0–6 and confirm
       SC-001–SC-008 evidence for the PR. **SC-004 Done**: second OTLP/HTTP endpoint
-      actually received the span **with configured headers**. **SC-006 Done**: live MCP
+      actually received the span **with configured headers**. **SC-005 Done**: request
+      still served **and** export failure visible in diagnostics. **SC-006 Done**: live MCP
       first-attempt read evidence (or completed human checklist from T023 before merge).
+      **SC-007 Done**: producer-boundary sanitization tests green (T010a). Leave `otel-lgtm`
+      running through quickstart sections 2–3 before any collector stop.
       Environment-specific skips allowed only when the checklist still records live
       verification elsewhere.
 
@@ -270,8 +286,8 @@ connects and completes one documented read (datasource list or Tempo search for
 
 - T001–T002 in parallel during Setup; T003 after install
 - T004–T005 sequential; T006 then T007 (T007 depends on T006 — **not** marked `[P]`);
-  T008 after T005
-- T009–T010 parallel after Foundational
+  T008 after T005 **and** T007 (wires attribute filtering into register/export boundary)
+- T009–T010 parallel after Foundational; T010a after T008 (producer-boundary sanitization)
 - T016–T017 parallel once ports locked; T018 after US1 + T016
 - T019 parallel with T020; T021 after T020 (and US1 export); T022 after T020 (not parallel
   with first create of `docs/observability.md`); T025 after T020

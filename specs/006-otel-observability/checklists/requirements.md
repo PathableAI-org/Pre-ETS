@@ -36,5 +36,7 @@
   - Success criteria avoid runtime/framework internals (no SDK package names, no specific Grafana datasource wiring, no commercial SaaS requirement).
   - Spec directory is `specs/006-otel-observability`; git branch from `before_specify` is `007-otel-observability` (numbering independent per Spec Kit).
 - Clarification 2026-10-05: traces-only request spans; all four platform stories retained; semantic attributes = method + route + status (planning default). Plan artifacts generated.
+- Stakeholder pivot: Next.js server-side only (not Effect backend; not browser).
+- Copilot PR review (open threads): wire attribute filtering at export/register boundary (T008 + T010a); MCP anonymous **Viewer** least privilege; keep otel-lgtm running through quickstart §2–3; SC-005 requires diagnostic evidence.
 - Critique remediations 2026-10-05 (`critiques/critique-20261005-194125.md`): Must-Address / Recommendation / Question items applied in spec/plan/design docs.
 - **Scope correction 2026-10-05 (post Copilot review)**: Instrument the **Next.js Node server** (`@pathableai/pre-ets-frontend` on `:3000`), not `@pathableai/pre-ets-backend` on `:8080`. Backend package remains out of scope. Effect-native OTLP exporter deferred. Copilot findings (port conflict, build-before-start, service-targeted Compose stop, task sequencing, host-boundary tests, OTLP headers proof, pinned MCP version, root quality gates, Effect pin contradiction) addressed in the retargeted artifacts.

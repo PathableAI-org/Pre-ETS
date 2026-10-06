@@ -168,7 +168,7 @@ register `@vercel/otel` unless opted in. When enabled, honor
 | Risk                                                                                  | Mitigation                                                                                                                                          |
 | ------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Next OTEL attribute names may use `http.method` / `http.status_code` vs newer semconv | Acceptance contract accepts Next default root span attributes that identify method, route, and status; map names in the attribute contract / tests. |
-| MCP auth brittle vs image defaults                                                    | Docs pin verified path for `0.35.0`: anonymous Admin (image default) or `admin`/`admin`.                                                            |
+| MCP auth brittle vs image defaults                                                    | Compose overrides anonymous org role to **Viewer**; Admin/`admin` only as troubleshooting fallback.                                                 |
 | Custom enable flag vs OTEL docs                                                       | Precedence table in OTLP contract; justify `OTEL_TRACES_ENABLED` as default-off register gate.                                                      |
 | Production refuse-to-start hard to prove with Next early listen                       | Host-boundary tests assert policy decision / exit behavior at register path (not “port never binds”); quickstart documents expected diagnostic.     |
 

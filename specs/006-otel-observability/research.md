@@ -171,23 +171,23 @@ endpoint-only checks.
 to **`mcp-grafana==2.0.0`** via `uvx` (or an equivalent pinned container image)
 with `GRAFANA_URL=http://127.0.0.1:3300`.
 
-**Verified local auth for `grafana/otel-lgtm:0.35.0`** (from upstream image
-defaults):
+**Verified local auth for `grafana/otel-lgtm:0.35.0`** (least privilege for MCP):
 
-1. **Primary (image default)**: Grafana anonymous auth enabled with org role
-   **Admin** (`GF_AUTH_ANONYMOUS_ENABLED` defaults true in the image). MCP may
-   connect without a service-account token for local-only use.
-2. **Alternate**: Built-in user `admin` / password `admin` (Grafana default
-   documented by upstream LGTM).
-3. **Preferred when anonymous is disabled**: Grafana service account token
-   (`GRAFANA_SERVICE_ACCOUNT_TOKEN` / MCP equivalent).
+1. **Primary (MCP default)**: Anonymous auth with org role **Viewer** via Compose
+   override (`GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer`). Upstream image may default to
+   Admin — this feature overrides to Viewer for read-only MCP.
+2. **Preferred when anonymous is disabled**: Read-only Grafana service account
+   token (`GRAFANA_SERVICE_ACCOUNT_TOKEN` / MCP equivalent).
+3. **Troubleshooting only**: Built-in `admin` / `admin`, or anonymous Admin if
+   deliberately re-enabled — not the documented MCP primary path.
 
 Document prerequisites: observability profile running; MCP useless without it.
-SC-006 depends on documenting this verified path **and** the pinned version
-(not “preferred if available” / unversioned `uvx`).
+SC-006 depends on documenting this verified least-privilege path **and** the
+pinned version (not “preferred if available” / unversioned `uvx`).
 
 **Rationale**: Matches the “MCP to local Grafana” requirement with a
-reproducible auth and package story for the pinned image.
+reproducible auth and package story for the pinned image, without granting MCP
+clients Admin/mutation capabilities by default.
 
 **Alternatives considered**: Unversioned `uvx mcp-grafana` — rejected (tool
 drift). Tempo-only MCP — narrower. Committing MCP binary into the repo —

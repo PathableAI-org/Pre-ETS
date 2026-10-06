@@ -48,21 +48,19 @@ Verify:
 
 - Image: `grafana/otel-lgtm:0.35.0`
 - Service name: `otel-lgtm`
-- Grafana UI: `http://127.0.0.1:3300` (anonymous Admin by default, or `admin`/`admin`)
+- Grafana UI: `http://127.0.0.1:3300` (anonymous **Viewer** by default for this
+  feature; `admin`/`admin` or Admin only as troubleshooting fallback — see
+  [grafana-mcp.md](./contracts/grafana-mcp.md))
 - OTLP HTTP: `http://127.0.0.1:4318`
 
-Stop **only** the observability service without tearing down Redis/Keycloak:
-
-```sh
-docker compose --profile observability stop otel-lgtm
-```
-
-Do **not** run bare `docker compose --profile observability stop` (that can stop
-other project services).
+**Leave `otel-lgtm` running through sections 2–3** (export traffic and inspect
+spans in Grafana). Do **not** stop the collector here. Cleanup stop commands
+belong in section 4 (SC-005) and Rollback.
 
 ## 2. Enable Next traces and exercise the verification set
 
-Reuse a prior frontend build when possible, then start with traces enabled:
+Reuse a prior frontend build when possible, then start with traces enabled
+(collector from section 1 must still be running):
 
 ```sh
 pnpm --filter @pathableai/pre-ets-frontend build
@@ -90,6 +88,8 @@ Expect: `500`.
 
 ## 3. Find the request spans in Grafana
 
+With `otel-lgtm` still running from section 1:
+
 1. Open `http://127.0.0.1:3300` → Explore → Tempo (or Trace Drilldown).
 2. Search for service `pre-ets-frontend` and routes `/api/health` and
    `/api/health/error`.
@@ -99,14 +99,27 @@ Expect: `500`.
 
 Allow up to ~30 seconds for batch export visibility.
 
-## 4. Best-effort when collector is down
+## 4. Best-effort when collector is down (SC-005)
 
-With traces still enabled and a **valid** endpoint configured, stop only the
-observability service (`docker compose --profile observability stop otel-lgtm`),
-then repeat `GET /api/health`.
+With traces still enabled and a **valid** endpoint configured, **now** stop only
+the observability service:
 
-Expect: Next still serves the request; no hard crash solely due to export
-failure.
+```sh
+docker compose --profile observability stop otel-lgtm
+```
+
+Do **not** run bare `docker compose --profile observability stop` (that can stop
+other project services).
+
+Then repeat `GET /api/health`.
+
+Expect (both required for SC-005):
+
+1. Next still serves the request; no hard crash solely due to export failure.
+2. Export failure is **visible in diagnostics** (structured log / diagnostic
+   channel documented in `docs/observability.md` — record what you observed).
+   Availability alone without a diagnostic observation does **not** satisfy
+   SC-005.
 
 ## 5. Deployed-style endpoint switch (config only) — SC-004
 
@@ -136,6 +149,12 @@ Expect: spans arrive at the new endpoint with headers, without code changes
 
 ## 6. MCP against local Grafana (SC-006 — live evidence required)
 
+Ensure the observability profile is running again if you stopped it in section 4:
+
+```sh
+docker compose --profile observability up -d --wait
+```
+
 Follow `docs/observability.md` (added in implementation) to run the **pinned**
 MCP package:
 
@@ -146,19 +165,25 @@ uvx mcp-grafana==2.0.0
 with:
 
 - `GRAFANA_URL=http://127.0.0.1:3300`
-- Auth: anonymous Admin (image default) **or** `admin`/`admin`; service account
-  token only if anonymous was disabled
+- Auth: anonymous **Viewer** (Compose default for this feature) **or** a
+  read-only service account token; `admin`/`admin` / anonymous Admin only as
+  troubleshooting fallback
 
 Expect: MCP client connects and completes one documented read (datasource list
 or recent Tempo search for `pre-ets-frontend` / `/api/health`) on the **first
 attempt** per [grafana-mcp.md](./contracts/grafana-mcp.md).
 
 **Acceptance evidence**: Record the successful live MCP read (commands + outcome).
-If CI cannot run MCP, complete the human verification checklist from T024 /
+If CI cannot run MCP, complete the human verification checklist from T022 /
 `docs/observability.md` before merge — docs-only command lists without a live
 success are not SC-006 evidence.
 
 ## Rollback
 
-Unset `OTEL_TRACES_ENABLED` / omit endpoint; stop only `otel-lgtm` via the
-profile+service command above. Default Redis/Keycloak Compose usage is unchanged.
+Unset `OTEL_TRACES_ENABLED` / omit endpoint; stop only `otel-lgtm`:
+
+```sh
+docker compose --profile observability stop otel-lgtm
+```
+
+Default Redis/Keycloak Compose usage is unchanged.

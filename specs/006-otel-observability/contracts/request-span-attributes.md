@@ -48,6 +48,8 @@ Given the demo routes above, a trace search by `service.name`
 (`pre-ets-frontend`) and route/method MUST locate a span containing all three
 required facts.
 
-Unit tests for the attribute allow-list helper MUST include at least one
-**negative fixture** that rejects a prohibited attribute (e.g. Authorization).
-Manual/sample span review (SC-007) remains required in addition to unit tests.
+Unit tests for attribute filtering MUST include:
+
+1. At least one **negative fixture** that rejects a prohibited attribute (e.g. Authorization) on the helper.
+2. At least one **producer-boundary** test that captures an **emitted** span after the register/export pipeline and asserts prohibited attributes are absent (helper-only tests do not satisfy FR-009 / SC-007).
+   Manual/sample span review (SC-007) remains required in addition to unit tests.
