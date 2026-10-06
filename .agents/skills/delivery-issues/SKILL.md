@@ -1,6 +1,6 @@
 ---
 name: delivery-issues
-description: Publish an approved Pre-ETS delivery plan as GitHub issues with native relationships, recover partial publication, and record verified issue URLs in the plan. Independent of Spec Kit.
+description: Publish approved Pre-ETS delivery plans or explicitly authorized revisions as GitHub issues with native relationships and recoverable publication records. Independent of Spec Kit.
 ---
 
 # Delivery issues
@@ -21,7 +21,8 @@ proposal is on remote `main` and record its merged PR and revision as approval; 
 approval text in that merged revision does not block publication. Normalize those local records to `reviewed`.
 For plans not merged into `main`, require `reviewed` status and recorded maintainer approval of the current
 decomposition. In either case require completed coverage without unexplained gaps. Resume partial publication;
-inspect issued plans and repair publication only when requested. Reject unapproved local draft changes; a prior
+inspect issued plans and repair publication only when requested. For an expressly authorized pending-PR revision,
+use the exception below. Otherwise reject unapproved local draft changes; a prior
 merge does not approve later scope changes. Do not adopt or redesign the decomposition.
 
 Resolve the GitHub repository and hostname from the Git remote. Verify the target matches it before every write;
@@ -37,6 +38,21 @@ Discover available GitHub tools or `gh` capabilities for issue reads/writes, nat
 relationships before publication. Verify authentication/access using read-only operations; do not probe by creating
 issues. If required capability is known to be unavailable, report it before creating anything. Later relationship
 failure leaves publication incomplete. Do not silently substitute body links for required native relationships.
+
+## Explicitly authorized revisions
+
+A maintainer may explicitly authorize revising an issued decomposition and its GitHub issues during a pending PR.
+For that request, use the committed, remotely accessible revision of the requested proposal rather than requiring
+it already on main. Record the authorization, changed scope, previous approval/publication history, and pending PR
+review; keep the revised plan draft until renewed approval. This exception requires express authorization for the
+revision and external writes; ordinary publication still follows the prerequisites above. Do not infer it from a
+planning request or from approval of an earlier decomposition.
+
+Reconcile stable plan/slice identities and reuse mapped issues; add only newly adopted increments. Preserve unrelated
+content and relationships. Within the explicitly authorized revision, compare old and proposed blocking edges,
+remove only obsolete plan-owned edges, and add the new prerequisites after verifying endpoint identities. Read back
+bodies, containment, and blocking edges. Record verified publication separately from decomposition approval; a
+fully synchronized pending proposal remains draft. Preserve successes and recovery records on failures as below.
 
 ## Prepare and reconcile
 
@@ -83,7 +99,7 @@ separate from the approved dependency definitions and requirement verification e
 Once endpoints exist, add and verify native parent/sub-issue relationships and explicit prerequisite blocking
 relationships. Include readable actual URL links in parent and child bodies, clearly distinguishing containment
 from dependencies and shipping gates. Inspect existing relationships before adding them; do not replace an unrelated
-parent or remove relationships without separate authorization. Read back issue bodies and native relationships
+parent or remove relationships without explicit authorization covering their revision. Read back issue bodies and native relationships
 to confirm the intended result; successful creation alone is insufficient.
 
 On timeout or an ambiguous write result, inspect the issue identity or relationship state before retrying. Never
@@ -92,7 +108,7 @@ On a confirmed failure, retain all successes and stop all further external write
 local recovery records may continue. Reruns reconcile them
 before creating missing work. No rollback, issue closure, or duplicate creation is authorized.
 
-Keep status `reviewed` during partial publication, recording outstanding issues/relationships and failure details.
+For ordinary approved publication, keep status `reviewed` during partial publication, recording outstanding issues/relationships and failure details.
 Move to `issued` only when every adopted item has a verified issue URL or explicit maintainer-approved unissued/
 deferred disposition, all required native relationships and body links are verified, and coverage is still complete.
 An already issued plan with discovered publication gaps must report them and record an incomplete publication

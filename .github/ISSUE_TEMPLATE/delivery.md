@@ -27,7 +27,10 @@ Use actual issue URLs when available; do not invent numbers. Distinguish start d
 
 ## Completion evidence
 
-<!-- Implementation/review outputs and planned execution at the responsible boundary, with limitations.
+<!-- Name the observable increment and evidence available at this step, retained/extended tests and harness,
+incomplete requirement claims, and the replacement step for temporary response fields. Intermediate observations
+must exercise real behavior; not every issue completes the overall requirement verification plan.
+Implementation/review outputs and planned execution at the responsible boundary, with limitations.
 Issue closure does not establish requirement verification. -->
 
 ## Delivery plan

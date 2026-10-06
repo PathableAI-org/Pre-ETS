@@ -30,6 +30,18 @@ with a shorter lifetime; retain completed plans as historical context, not new o
    unresolved decisions. Merge into `main` through a PR approves the merged decomposition; the PR is the review
    governance. Record the merged PR and revision as approval. Agent review alone does not approve it.
 
+## Sequence around useful evidence
+
+Identify planned observation boundaries before decomposing work. Bring an endpoint, harness, or other enabling
+observation forward when later behavior needs it. Each slice records its observable increment, evidence available
+then, tests/harness carried forward, and incomplete claims. Prefer smaller increments where they avoid disposable
+verification work; narrower public-service evidence remains useful when it supports a distinct claim.
+
+Intermediate diagnostic responses can expose real mode or file selection while those behaviors are built. Name
+the step that replaces those temporary fields with the final response contract. Extend the same scenarios and
+fixtures toward final verification; do not treat an intermediate response as requirement satisfaction. Preserve
+security prerequisites before disclosure and separate mergeable increments from final shipping readiness.
+
 ## Plan states
 
 | Status      | Required record                                                                                        |
@@ -45,6 +57,11 @@ Normalize those records when publishing. Later local scope changes are not appro
 Approval of a decomposition does not settle an unresolved product policy. Later publication must preserve the gates.
 When revising an adopted plan, retain issue links and approval history, identify changed scope, and return the changed
 proposal to `draft` pending renewed approval. Existing published work remains linked.
+
+An explicit maintainer request may authorize revising existing issues and relationships during the PR for a
+changed decomposition. Pin those bodies to the remotely accessible proposal revision, preserve prior publication
+history, and record the authorization and pending review. The revised plan remains `draft` even when GitHub is
+fully synchronized; ordinary publication still requires reviewed decomposition and publication authorization.
 
 Issue closure, PR merge, and plan completion do not approve or verify a requirement. Execution evidence is recorded
 through the requirements workflow after assessment of its scope. A future publication operation may add actual
