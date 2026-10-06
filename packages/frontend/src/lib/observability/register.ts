@@ -1,5 +1,6 @@
 import type { Configuration } from "@vercel/otel"
 
+import { diag, DiagConsoleLogger, DiagLogLevel } from "@opentelemetry/api"
 import { registerOTel } from "@vercel/otel"
 
 import { AttributeSanitizingSpanProcessor, attributesFromHeadersSafe } from "./attributes.ts"
@@ -114,6 +115,9 @@ export function registerObservability(
 
   // Prefer HTTP/protobuf for local otel-lgtm on 4318 when unset.
   process.env.OTEL_EXPORTER_OTLP_PROTOCOL ??= "http/protobuf"
+
+  // Surface OTLP export failures on stderr (SC-005) without logging header values.
+  diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.ERROR)
 
   logDiagnostic(formatObservabilityDiagnostic(decision))
   registerOTelFn(buildVercelOtelConfiguration(decision))

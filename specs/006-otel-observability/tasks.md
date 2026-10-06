@@ -129,7 +129,7 @@ method, route, and status facts at the collector (or later Grafana in US2).
       `OTEL_SERVICE_NAME`, optional `OTEL_EXPORTER_OTLP_HEADERS`, `OTEL_SDK_DISABLED`
 - [x] T014 [US1] Make T009–T010–T010a pass; run
       `pnpm --filter @pathableai/pre-ets-frontend test:unit` and fix regressions
-- [ ] T015 [US1] Manually smoke (or script) disabled-by-default start + enabled export
+- [x] T015 [US1] Manually smoke (or script) disabled-by-default start + enabled export
       against a temporary OTLP listener or US2 stack; confirm SC-003 verification set
       produces spans (`build` before `start` on clean checkout)
 
@@ -161,7 +161,7 @@ docs explain opt-in/opt-out with service-targeted stop.
       start; **stop only** via `docker compose --profile observability stop otel-lgtm`
       (never bare profile stop); ports; Grafana URL; OTLP endpoint; ~30s span visibility;
       port conflict notes (3300 vs Next 3000; Keycloak 8080 unchanged)
-- [ ] T018 [US2] Verify end-to-end with US1 Next server: opt-in stack → enable
+- [x] T018 [US2] Verify end-to-end with US1 Next server: opt-in stack → enable
       `OTEL_TRACES_ENABLED` + endpoint → `GET /api/health` → locate span in Grafana
       Explore/Tempo; stop `otel-lgtm` while Redis/Keycloak remain; confirm best-effort when
       collector down **and** that export failure is visible in diagnostics (SC-005)
@@ -191,7 +191,7 @@ invalid config refuses start.
       production vs local startup policy; sampling note (local 100%; production sampling
       deferred); alerting/SLOs out of scope; leave clear stubs/headings for MCP (US4) and
       traces-only polish (T025)
-- [ ] T021 [US3] **Verify SC-004 live**: retarget `OTEL_EXPORTER_OTLP_ENDPOINT` to a
+- [x] T021 [US3] **Verify SC-004 live**: retarget `OTEL_EXPORTER_OTLP_ENDPOINT` to a
       second OTLP/HTTP endpoint (second listener or second collector — not only Grafana),
       set `OTEL_EXPORTER_OTLP_HEADERS` to a synthetic value, send `GET /api/health`, and
       confirm the request span **arrives at that second endpoint with the synthetic
@@ -222,7 +222,7 @@ connects and completes one documented read (datasource list or Tempo search for
       agent read/query example; explicit “does not work without optional stack”; include a
       **human verification checklist** for the live MCP read (commands + expected outcome)
       used when CI cannot run MCP
-- [ ] T023 [US4] **SC-006 acceptance evidence (mandatory live MCP)**: Against a running
+- [x] T023 [US4] **SC-006 acceptance evidence (mandatory live MCP)**: Against a running
       local Grafana stack, connect an MCP client per docs (pinned version) and complete at
       least one documented read/query against local trace data on the **first attempt**.
       Record commands + outcome as PR/acceptance evidence. If CI cannot run MCP, the human
@@ -244,10 +244,10 @@ connects and completes one documented read (datasource list or Tempo search for
       required semantic attributes, demo routes (`/api/health`, `/api/health/error`),
       default URL `http://127.0.0.1:3000`, and how to find a known span end-to-end
       (FR-013). Do not recreate the file — edit the T020-owned doc.
-- [ ] T026 Run repository quality gates and fix issues introduced by this feature:
+- [x] T026 Run repository quality gates and fix issues introduced by this feature:
       `pnpm --filter @pathableai/pre-ets-frontend test:unit`, then root `pnpm typecheck`,
       `pnpm build`, `pnpm lint`, `pnpm format:check`, and `pnpm check:unused`
-- [ ] T027 Execute `specs/006-otel-observability/quickstart.md` sections 0–6 and confirm
+- [x] T027 Execute `specs/006-otel-observability/quickstart.md` sections 0–6 and confirm
       SC-001–SC-008 evidence for the PR. **SC-004 Done**: second OTLP/HTTP endpoint
       actually received the span **with configured headers**. **SC-005 Done**: request
       still served **and** export failure visible in diagnostics. **SC-006 Done**: live MCP

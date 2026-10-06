@@ -47,8 +47,13 @@ Diagnostics never print `OTEL_EXPORTER_OTLP_HEADERS` values.
 ### Startup policy after valid start
 
 If the collector is unreachable after a valid start, export is best-effort:
-request handling continues. Expect export failure to appear in process
-diagnostics / OpenTelemetry exporter logs (stderr), not as a hard crash.
+request handling continues. Expect:
+
+1. HTTP requests (e.g. `GET /api/health`) to keep returning successfully.
+2. Export failure to appear on stderr via OpenTelemetry diagnostics at
+   `ERROR` level (enabled when traces register) and/or the
+   `[observability]` boot line — never as a hard crash, and never with
+   `OTEL_EXPORTER_OTLP_HEADERS` values.
 
 ## Required span attributes
 
@@ -161,12 +166,15 @@ are troubleshooting fallbacks only — not the documented MCP default.
 
 ### Concrete agent read
 
-With the stack running and at least one exported span:
+With the stack running and at least one exported span, call one of:
 
-1. List datasources, or
-2. Search Tempo for service `pre-ets-frontend` / route `/api/health`.
+1. `check_datasources_health` / datasource list tools, or
+2. Tempo search for service `pre-ets-frontend` / route `/api/health`.
 
-Exact tool names follow mcp-grafana **2.0.0**.
+Exact tool names follow mcp-grafana **2.0.0**. Verified live with
+`GRAFANA_URL=http://127.0.0.1:3300 uvx mcp-grafana==2.0.0` (stdio JSON-RPC):
+`initialize` → `tools/list` → `tools/call` `check_datasources_health` returned
+healthy Loki/Prometheus/Pyroscope/Tempo on first attempt.
 
 ### Human verification checklist (SC-006)
 
