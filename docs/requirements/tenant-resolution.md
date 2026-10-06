@@ -291,6 +291,15 @@ At the configuration boundary, establish that host mode requires `BASE_HOSTNAME`
 the configured static alias.
 Diagnostic responses prove selected configuration, not user-facing application behavior; observe that behavior separately.
 
+### Delivery references
+
+- [Tenant delivery parent #115](https://github.com/PathableAI-org/Pre-ETS/issues/115): coordinates the selected criteria.
+- [S1 — Load and expose the selected non-secret tenant configuration #116](https://github.com/PathableAI-org/Pre-ETS/issues/116): AC 1, 3.
+- [S2 — Establish tenant context before remaining tenant-dependent frontend behavior #117](https://github.com/PathableAI-org/Pre-ETS/issues/117): AC 2, 4.
+
+Published work is tracked in the [tenant delivery plan](../delivery/tenant-resolution.md). These links do not
+change requirement lifecycle or establish executed verification evidence.
+
 ### Verification evidence
 
 No reviewed, executed evidence has been recorded. This documentation change does not establish runtime behavior.
@@ -372,6 +381,15 @@ both modes and observe HTTP 500. With a usable directory, exercise missing host 
 and schema-invalid files in both modes; observe ordinary HTTP 404 without fallback. Keep static missing-file 500
 separate. Directory access failure must not be mistaken for a tenant-file not-found outcome.
 
+### Delivery references
+
+- [Tenant delivery parent #115](https://github.com/PathableAI-org/Pre-ETS/issues/115): coordinates the selected criteria.
+- [S1 — Load and expose the selected non-secret tenant configuration #116](https://github.com/PathableAI-org/Pre-ETS/issues/116): AC 1–3.
+- [S3 — Complete approved tenant HTTP and browser failure outcomes #118](https://github.com/PathableAI-org/Pre-ETS/issues/118): AC 2, 4, 5.
+
+Published work is tracked in the [tenant delivery plan](../delivery/tenant-resolution.md). These links do not
+change requirement lifecycle or establish executed verification evidence.
+
 ### Verification evidence
 
 No reviewed, executed evidence has been recorded. This documentation change does not establish runtime behavior.
@@ -424,6 +442,14 @@ Exercise both failure categories through the running application's HTTP boundary
 statuses. In a browser, compare invalid-tenant navigation with ordinary missing-page navigation on a valid tenant.
 Use at least two configured tenants so any fallback can be detected. Repeat those hosts in static mode with usable
 configuration to establish the exemption. No separate port-validation claim is introduced.
+
+### Delivery references
+
+- [Tenant delivery parent #115](https://github.com/PathableAI-org/Pre-ETS/issues/115): coordinates the selected criteria.
+- [S3 — Complete approved tenant HTTP and browser failure outcomes #118](https://github.com/PathableAI-org/Pre-ETS/issues/118): AC 1–5.
+
+Published work is tracked in the [tenant delivery plan](../delivery/tenant-resolution.md). These links do not
+change requirement lifecycle or establish executed verification evidence.
 
 ### Verification evidence
 
@@ -504,6 +530,15 @@ responses. Repeat direct application access under production configuration.
 
 This evidence establishes selected configuration and retrieval. It does not establish frontend user behavior or
 production ingress blocking, which have their own boundaries and verification plans.
+
+### Delivery references
+
+- [Tenant delivery parent #115](https://github.com/PathableAI-org/Pre-ETS/issues/115): coordinates the selected criteria.
+- [S1 — Load and expose the selected non-secret tenant configuration #116](https://github.com/PathableAI-org/Pre-ETS/issues/116): AC 1–3, 5, and success portion of AC 6.
+- [S3 — Complete approved tenant HTTP and browser failure outcomes #118](https://github.com/PathableAI-org/Pre-ETS/issues/118): AC 4 and failed-response portion of AC 6.
+
+Published work is tracked in the [tenant delivery plan](../delivery/tenant-resolution.md). These links do not
+change requirement lifecycle or establish executed verification evidence.
 
 ### Verification evidence
 

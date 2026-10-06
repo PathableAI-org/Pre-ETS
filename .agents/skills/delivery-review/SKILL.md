@@ -19,6 +19,14 @@ valid links, and justified shared verification slices. Check dependency targets,
 prerequisites. Parent containment does not imply blocking. Verify existing issue links and inspect duplicates with
 read-only access when available; record incomplete access as a limitation, not proof of absence.
 
+Walk the proposed execution order using only observations available at each step. Flag evidence that depends on
+a later endpoint, harness, or integration; suggest moving that enabling work earlier or choosing a distinct useful
+boundary. Check each observable increment, retained tests/harness, incomplete claims, and the convergence to final
+verification. Temporary assertions may evolve, but disposable suites need justification. Check that intermediate
+responses exercise real configuration/request behavior, have an explicit replacement step, and do not claim final
+contract satisfaction. Security gates must precede disclosure. Do not require every slice to execute the entire
+requirement verification plan or duplicate evidence at every layer.
+
 Inspect implementation observations and any claimed evidence. Existing code, test links, planned tools, static
 checks, issue closure, and agent review do not establish runtime verification. Evidence must name its consumer,
 responsible boundary, covered conditions, execution reference, and limitations. Flag invented policy and approval;

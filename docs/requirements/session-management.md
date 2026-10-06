@@ -1,14 +1,14 @@
 # Authentication and session management
 
-These proposals derive from the maintainer-supplied **Session and Authentication Requirements — Discovery
-Summary**, provided on 2026-10-05. Each source attribution below names its relevant section. Drafting does
-not record lifecycle approval or behavioral verification.
+These accepted requirements derive from the maintainer-supplied **Session and Authentication Requirements — Discovery
+Summary**, provided on 2026-10-05. Each source attribution below names its relevant section. Maintainer approval on 2026-10-05 accepts PREETS-SESSION-001 through PREETS-SESSION-013.
+Acceptance does not establish implementation or behavioral verification; open policy and design questions remain delivery gates.
 
 ## Scope and source limitations
 
 The scope covers protected application access, tenant OIDC authentication, transient sessions, idle timeout,
 and browser protection. API/backend data-resource expiration responses, absolute maximum session lifetime,
-CI scheduling, and implementation mechanisms remain outside this proposal. Redis, browser messaging APIs,
+CI scheduling, and implementation mechanisms remain outside these requirements. Redis, browser messaging APIs,
 framework files, component reuse, and local Keycloak are context rather than required technologies.
 
 The handoff mentions **Project Reference Links.txt**, but supplies neither its contents nor an accessible
@@ -24,20 +24,20 @@ OIDC configuration follows [PREETS-SECURITY-001](security.md#preets-security-001
 non-secret integration settings and lookup keys only; credentials resolve separately on the server.
 Diagnostic access remains subject to [PREETS-TENANT-006](tenant-resolution.md#preets-tenant-006) and
 [PREETS-INFRA-001](infrastructure.md#preets-infra-001); whether that diagnostic resource is explicitly
-unauthenticated under the proposed default-authentication policy remains a product decision.
+unauthenticated under the accepted default-authentication policy remains a product decision.
 
 ## Relationship to current contracts
 
-The following are proposed changes, not descriptions of delivered behavior. Existing implementation notes
-remain intact pending product review and delivery planning:
+The following are accepted obligations, not descriptions of delivered behavior. Existing implementation notes
+remain intact pending delivery:
 
 - [Session state — Loading session state](../session-state.md#loading-session-state) treats a tenant mismatch
   as an empty session; PREETS-SESSION-005 instead forbids authenticated cross-tenant access.
 - [Session state — Idle clearance and recovery paths](../session-state.md#idle-clearance-and-recovery-paths)
-  starts generic OIDC on fresh document entry after inactivity; PREETS-SESSION-007 proposes an explicit
+  starts generic OIDC on fresh document entry after inactivity; PREETS-SESSION-007 requires an explicit
   session-expired page before reauthentication.
 - [Authentication — Login again after inactivity](../authentication.md#login-again-after-inactivity)
-  permits existing IdP SSO without a fresh challenge; PREETS-SESSION-013 proposes fresh authentication.
+  permits existing IdP SSO without a fresh challenge; PREETS-SESSION-013 requires fresh authentication.
 - [Multi-tenancy — Idle timeout policy](../multi-tenancy.md#idle-timeout-policy) records a default and policy
   snapshot at authentication. This handoff does not decide defaults or live policy-change behavior.
 - [Session state](../session-state.md) describes an existing absolute lifetime. This proposal neither adopts
@@ -46,7 +46,7 @@ remain intact pending product review and delivery planning:
 ## Verification approach
 
 Plans below identify evidence for individual claims at their responsible boundaries. No behavioral suite
-was executed or reviewed to establish these proposals. Follow [Testing as evidence](../engineering/testing/README.md)
+was executed or reviewed to establish these requirements. Follow [Testing as evidence](../engineering/testing/README.md)
 and [Property-based testing](../engineering/testing/property-based-testing.md).
 
 Use durable Gherkin scenarios for behavior whose change warrants a product conversation, with Playwright
@@ -64,7 +64,7 @@ will be decided from actual suite costs in later engineering planning.
 
 **Title:** Authentication required by default
 **Classification:** Functional Requirement
-**Lifecycle:** proposed
+**Lifecycle:** accepted
 **Verification:** unverified
 
 ### Statement
@@ -76,7 +76,7 @@ Users must authenticate before accessing any protected application page or resou
 A default protection boundary prevents accidental public exposure.
 
 - Source: Maintainer-supplied discovery summary (2026-10-05), “Authentication and protected resources.”
-- Decision: Pending product review of this proposal.
+- Decision: Maintainer approval on 2026-10-05 ("mark these requirements as approved") accepts this requirement and its acceptance criteria. Open policy and design questions remain delivery gates; verification remains unverified.
 
 ### Acceptance criteria
 
@@ -100,7 +100,7 @@ No reviewed, executed evidence has been recorded. Planned verification does not 
 
 **Title:** Tenant-configured OIDC authentication
 **Classification:** Functional Requirement
-**Lifecycle:** proposed
+**Lifecycle:** accepted
 **Verification:** unverified
 
 ### Statement
@@ -112,7 +112,7 @@ Users must authenticate through the OIDC identity provider configured for the re
 The tenant identity provider owns authentication mechanisms.
 
 - Source: Maintainer-supplied discovery summary (2026-10-05), “Authentication and protected resources.”
-- Decision: Pending product review of this proposal.
+- Decision: Maintainer approval on 2026-10-05 ("mark these requirements as approved") accepts this requirement and its acceptance criteria. Open policy and design questions remain delivery gates; verification remains unverified.
 
 ### Acceptance criteria
 
@@ -136,7 +136,7 @@ No reviewed, executed evidence has been recorded. Planned verification does not 
 
 **Title:** Authenticated session identity
 **Classification:** Functional Requirement
-**Lifecycle:** proposed
+**Lifecycle:** accepted
 **Verification:** unverified
 
 ### Statement
@@ -148,7 +148,7 @@ A successfully authenticated user must receive an application session associated
 Subsequent access depends on a trustworthy identity and tenant binding.
 
 - Source: Maintainer-supplied discovery summary (2026-10-05), “Authentication and protected resources.”
-- Decision: Pending product review of this proposal.
+- Decision: Maintainer approval on 2026-10-05 ("mark these requirements as approved") accepts this requirement and its acceptance criteria. Open policy and design questions remain delivery gates; verification remains unverified.
 
 ### Acceptance criteria
 
@@ -172,7 +172,7 @@ No reviewed, executed evidence has been recorded. Planned verification does not 
 
 **Title:** Automatic login for missing sessions
 **Classification:** Functional Requirement
-**Lifecycle:** proposed
+**Lifecycle:** accepted
 **Verification:** unverified
 
 ### Statement
@@ -184,7 +184,7 @@ A user requesting a protected page with no application session must automaticall
 First access should not require finding a separate login control.
 
 - Source: Maintainer-supplied discovery summary (2026-10-05), “Authentication and protected resources.”
-- Decision: Pending product review of this proposal.
+- Decision: Maintainer approval on 2026-10-05 ("mark these requirements as approved") accepts this requirement and its acceptance criteria. Open policy and design questions remain delivery gates; verification remains unverified.
 
 ### Acceptance criteria
 
@@ -207,7 +207,7 @@ No reviewed, executed evidence has been recorded. Planned verification does not 
 
 **Title:** Independent request tenant and session binding
 **Classification:** Functional Requirement
-**Lifecycle:** proposed
+**Lifecycle:** accepted
 **Verification:** unverified
 
 ### Statement
@@ -219,7 +219,7 @@ For every protected request using an authenticated session, the application must
 A Tenant A session must not grant access to Tenant B or reinterpret Tenant B as Tenant A.
 
 - Source: Maintainer-supplied discovery summary (2026-10-05), “Tenant/session binding.”
-- Decision: Pending product review of this proposal.
+- Decision: Maintainer approval on 2026-10-05 ("mark these requirements as approved") accepts this requirement and its acceptance criteria. Open policy and design questions remain delivery gates; verification remains unverified.
 
 ### Acceptance criteria
 
@@ -244,7 +244,7 @@ No reviewed, executed evidence has been recorded. Planned verification does not 
 
 **Title:** Shared transient session storage
 **Classification:** Functional Requirement
-**Lifecycle:** proposed
+**Lifecycle:** accepted
 **Verification:** unverified
 
 ### Statement
@@ -257,7 +257,7 @@ Session correctness must survive request routing between instances.
 
 - Source: Maintainer-supplied discovery summary (2026-10-05), “Session storage and horizontal scaling.”
 - Source clarification: Maintainer direction on 2026-10-05 authorizes cross-instance application-value retrieval, addressing the [Copilot review comment](https://github.com/PathableAI-org/Pre-ETS/pull/112#discussion_r4184264204).
-- Decision: Pending product review of this proposal.
+- Decision: Maintainer approval on 2026-10-05 ("mark these requirements as approved") accepts this requirement and its acceptance criteria. Open policy and design questions remain delivery gates; verification remains unverified.
 
 ### Acceptance criteria
 
@@ -281,7 +281,7 @@ No reviewed, executed evidence has been recorded. Planned verification does not 
 
 **Title:** Explicit expired-session page
 **Classification:** Functional Requirement
-**Lifecycle:** proposed
+**Lifecycle:** accepted
 **Verification:** unverified
 
 ### Statement
@@ -294,7 +294,7 @@ Expiration should be understandable and must not silently send an unattended bro
 
 - Source: Maintainer-supplied discovery summary (2026-10-05), “Authentication and protected resources; Server-authoritative idle timeout.”
 - Source clarification: Maintainer direction on 2026-10-05 authorizes accessible expiration recovery, addressing the [Copilot review comment](https://github.com/PathableAI-org/Pre-ETS/pull/112#discussion_r4184264246).
-- Decision: Pending product review of this proposal.
+- Decision: Maintainer approval on 2026-10-05 ("mark these requirements as approved") accepts this requirement and its acceptance criteria. Open policy and design questions remain delivery gates; verification remains unverified.
 
 ### Acceptance criteria
 
@@ -319,7 +319,7 @@ No reviewed, executed evidence has been recorded. Planned verification does not 
 
 **Title:** Server-authoritative tenant idle timeout
 **Classification:** Functional Requirement
-**Lifecycle:** proposed
+**Lifecycle:** accepted
 **Verification:** unverified
 
 ### Statement
@@ -331,7 +331,7 @@ Authenticated users must be subject to the tenant’s configured whole-minute id
 A browser cannot grant access after the authoritative deadline.
 
 - Source: Maintainer-supplied discovery summary (2026-10-05), “Server-authoritative idle timeout.”
-- Decision: Pending product review of this proposal.
+- Decision: Maintainer approval on 2026-10-05 ("mark these requirements as approved") accepts this requirement and its acceptance criteria. Open policy and design questions remain delivery gates; verification remains unverified.
 
 ### Acceptance criteria
 
@@ -357,7 +357,7 @@ No reviewed, executed evidence has been recorded. Planned verification does not 
 
 **Title:** Qualifying browser activity
 **Classification:** Functional Requirement
-**Lifecycle:** proposed
+**Lifecycle:** accepted
 **Verification:** unverified
 
 ### Statement
@@ -369,7 +369,7 @@ Users’ intentional interaction with application controls must count as activit
 Activity should reflect use of the application rather than incidental events.
 
 - Source: Maintainer-supplied discovery summary (2026-10-05), “Browser-side inactivity protection.”
-- Decision: Pending product review of this proposal.
+- Decision: Maintainer approval on 2026-10-05 ("mark these requirements as approved") accepts this requirement and its acceptance criteria. Open policy and design questions remain delivery gates; verification remains unverified.
 
 ### Acceptance criteria
 
@@ -394,7 +394,7 @@ No reviewed, executed evidence has been recorded. Planned verification does not 
 
 **Title:** Shared session, idle state, and logout across tabs
 **Classification:** Functional Requirement
-**Lifecycle:** proposed
+**Lifecycle:** accepted
 **Verification:** unverified
 
 ### Statement
@@ -408,7 +408,7 @@ Reading a roster in one tab must remain compatible with working in a participant
 - Source: Maintainer-supplied discovery summary (2026-10-05), “Multi-tab behavior.”
 - Source clarification: Maintainer review direction on 2026-10-05 requires all tabs to share the session, new tabs to join an existing session, and logout to apply across tabs. Session requirements depend on resolved tenant identity rather than the resolution mechanism.
 - Source clarification: Maintainer direction on 2026-10-05 authorizes isolation between sessions and resolved tenants, addressing the [Copilot review comment](https://github.com/PathableAI-org/Pre-ETS/pull/112#discussion_r4184264108).
-- Decision: Pending product review of this proposal.
+- Decision: Maintainer approval on 2026-10-05 ("mark these requirements as approved") accepts this requirement and its acceptance criteria. Open policy and design questions remain delivery gates; verification remains unverified.
 
 ### Acceptance criteria
 
@@ -435,7 +435,7 @@ No reviewed, executed evidence has been recorded. Planned verification does not 
 
 **Title:** Configurable shared pre-expiration warning
 **Classification:** Functional Requirement
-**Lifecycle:** proposed
+**Lifecycle:** accepted
 **Verification:** unverified
 
 ### Statement
@@ -448,7 +448,7 @@ A person reading without interacting needs an opportunity to keep working.
 
 - Source: Maintainer-supplied discovery summary (2026-10-05), “Pre-expiration warning.”
 - Source clarification: Maintainer direction on 2026-10-05 authorizes accessible blocking warning behavior, addressing the [Copilot review comment](https://github.com/PathableAI-org/Pre-ETS/pull/112#discussion_r4184264296).
-- Decision: Pending product review of this proposal.
+- Decision: Maintainer approval on 2026-10-05 ("mark these requirements as approved") accepts this requirement and its acceptance criteria. Open policy and design questions remain delivery gates; verification remains unverified.
 
 ### Acceptance criteria
 
@@ -474,7 +474,7 @@ No reviewed, executed evidence has been recorded. Planned verification does not 
 
 **Title:** Protected content obscured after expiration
 **Classification:** Functional Requirement
-**Lifecycle:** proposed
+**Lifecycle:** accepted
 **Verification:** unverified
 
 ### Statement
@@ -487,7 +487,7 @@ Server rejection alone cannot protect sensitive information already rendered, in
 
 - Source: Maintainer-supplied discovery summary (2026-10-05), “Browser behavior after expiration.”
 - Source clarification: Maintainer direction on 2026-10-05 authorizes accessible expiration recovery, addressing the [Copilot review comment](https://github.com/PathableAI-org/Pre-ETS/pull/112#discussion_r4184264246).
-- Decision: Pending product review of this proposal.
+- Decision: Maintainer approval on 2026-10-05 ("mark these requirements as approved") accepts this requirement and its acceptance criteria. Open policy and design questions remain delivery gates; verification remains unverified.
 
 ### Acceptance criteria
 
@@ -513,7 +513,7 @@ No reviewed, executed evidence has been recorded. Planned verification does not 
 
 **Title:** New session and fresh OIDC authentication after expiry
 **Classification:** Functional Requirement
-**Lifecycle:** proposed
+**Lifecycle:** accepted
 **Verification:** unverified
 
 ### Statement
@@ -525,7 +525,7 @@ Users choosing authentication again after expiration must complete a fresh authe
 Existing SSO alone provides weak evidence that the authorized user returned to an unattended workstation.
 
 - Source: Maintainer-supplied discovery summary (2026-10-05), “Reauthentication after expiration.”
-- Decision: Pending product review of this proposal.
+- Decision: Maintainer approval on 2026-10-05 ("mark these requirements as approved") accepts this requirement and its acceptance criteria. Open policy and design questions remain delivery gates; verification remains unverified.
 
 ### Acceptance criteria
 
@@ -537,7 +537,7 @@ Existing SSO alone provides weak evidence that the authorized user returned to a
 
 ### Open questions
 
-Define OIDC request/response freshness semantics, clock tolerance, broker/provider support, and failure behavior before acceptance; do not infer freshness from a new application session identifier.
+Define OIDC request/response freshness semantics, clock tolerance, broker/provider support, and failure behavior before implementation; do not infer freshness from a new application session identifier.
 
 ### Verification plan
 

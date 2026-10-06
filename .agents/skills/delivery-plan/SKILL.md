@@ -18,6 +18,14 @@ Use read-only GitHub access when available; report unavailable access or incompl
 remaining work but does not establish requirement satisfaction or verification. Record revision and inspection limits.
 Respect workspace routing when inspecting Effect design. Do not demand historical Spec Kit synchronization.
 
+Before decomposing work, identify the observations and harnesses needed by planned verification. Order enabling
+observability before behavior that relies on it; prefer small independently testable increments when they avoid
+throwaway tests. For each slice name the observable increment, evidence available at completion, tests/harness
+carried forward, and requirement conditions still incomplete. Tests may establish a narrower public-service claim;
+not every slice must complete the overall requirement verification plan. Temporary responses must observe real
+application behavior, have a named replacement step, and must not be presented as the final contract. Preserve
+security prerequisites and distinguish intermediate mergeability from final shipping readiness.
+
 Create or update a draft plan under docs/delivery and index it in the guide. Preserve existing issue links and approval
 history. Group work into outcomes with local slice IDs, exact criterion coverage, included/excluded conditions, real
 sequencing dependencies, shipping gates, and issue-ready proposals. Use the issue template and source-pinned full URLs
