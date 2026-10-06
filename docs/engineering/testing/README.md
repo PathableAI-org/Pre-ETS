@@ -97,9 +97,9 @@ This is a hierarchy of semantic claims, not a required test pyramid. Avoid repea
 matrix at the framework boundary or duplicating a service property against private helpers without a distinct reason.
 
 For new module-contract scenarios, prefer Vitest and Effect Layers. Use BDD to describe externally meaningful
-application behavior and use Playwright when actual browser interaction is required. Existing Cucumber application,
-HTTP, and browser suites remain valid execution boundaries; these recommendations do not migrate them or imply
-that every Gherkin scenario runs through a browser. Stable cross-feature invariants can also justify E2E workflows.
+application behavior observed through the running application (HTTP today; Playwright when actual browser
+interaction is required). Package Vitest unit tests and real-Keycloak `e2e/` remain separate from Cucumber.
+Stable cross-feature invariants can also justify E2E workflows.
 
 ## Existing suites and execution references
 
@@ -108,15 +108,14 @@ Run commands from the repository root. Use the linked guides for infrastructure,
 | Suite                        | Entry point                                            | Evidence and execution reference                                                                                                                                                                                                 |
 | ---------------------------- | ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Frontend Vitest              | `pnpm --filter @pathableai/pre-ets-frontend test:unit` | [Workspace script](../../../packages/frontend/package.json), [configuration](../../../packages/frontend/vitest.config.ts), and [tests](../../../packages/frontend/tests/unit); inspect each test's doubles and real dependencies |
-| Cucumber application         | `pnpm test:bdd:application`                            | Production application functions; some scenarios use Redis                                                                                                                                                                       |
-| Cucumber HTTP                | `pnpm test:bdd:http`                                   | Actual HTTP responses, partitioned by production/development execution                                                                                                                                                           |
-| Cucumber browser             | `pnpm test:bdd:browser`                                | Browser interactions; seeded authentication is not proof of a completed login                                                                                                                                                    |
+| Requirements BDD (HTTP)      | `pnpm test:bdd`                                        | Actual HTTP responses from an owned Next process; scenarios under [`tests/bdd/requirements/`](../../../tests/bdd/requirements/)                                                                                                  |
 | Playwright real-Keycloak E2E | `pnpm test:e2e`                                        | Real login and recovery journeys; [E2E setup and limits](../../../e2e/README.md)                                                                                                                                                 |
 
-[Capability commands and evidence](../../../features/README.md) is the authoritative Cucumber execution guide.
+[Requirements BDD commands](../../../features/README.md) is the authoritative Cucumber execution guide.
 Its dry-run command validates discovery, not runtime behavior. [Step guidance](../../../tests/bdd/steps/README.md)
-explains boundary ownership; the [traceability ledger](../../../features/TRACEABILITY.md) records surviving evidence
-and gaps. The backend currently has no dedicated test script; do not imply a frontend test validates backend behavior.
+explains HTTP-only ownership; the [historical migration ledger](../../../features/TRACEABILITY.md) records retired
+Spec Kit dispositions and is not an active runner. The backend currently has no dedicated test script; do not imply a
+frontend test validates backend behavior.
 
 For Effect behavior, follow [Effect development guidance](../effect-guidance.md): deterministic test Layers can
 isolate dependencies, but a simulated adapter does not establish the real adapter's semantics.

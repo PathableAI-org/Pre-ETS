@@ -19,11 +19,8 @@
     "effect-solutions": "node node_modules/effect-solutions/bin.js",
     "test:e2e": "playwright test --config e2e/playwright.config.ts",
     "test:e2e:ui": "playwright test --config e2e/playwright.config.ts --ui",
-    "test:bdd": "node tests/bdd/run.mjs all",
-    "test:bdd:dry": "node tests/bdd/run.mjs dry",
-    "test:bdd:application": "node tests/bdd/run.mjs application",
-    "test:bdd:http": "node tests/bdd/run.mjs http",
-    "test:bdd:browser": "node tests/bdd/run.mjs browser",
+    "test:bdd": "cucumber-js --config cucumber.mjs",
+    "test:bdd:dry": "cucumber-js --config cucumber.mjs --dry-run",
     "test:bdd:checks": "node --test tests/bdd/checks/*.test.*"
   },
   "dependencies": {
