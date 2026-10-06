@@ -23,6 +23,16 @@ honor standard OTEL env including `OTEL_SDK_DISABLED`, endpoint, headers, and
 service name (see [contracts/otlp-export.md](./contracts/otlp-export.md)
 precedence). Do **not** treat endpoint presence alone as enablement.
 
+**Install verification (Next 16.3.8, 2026-10-06)**: Confirmed
+`packages/frontend/node_modules/next/dist/docs/01-app/02-guides/open-telemetry.md`
+documents `registerOTel` from `@vercel/otel` (installed **2.1.3**) with peers
+`@opentelemetry/sdk-logs`, `@opentelemetry/api-logs`, and
+`@opentelemetry/instrumentation`. Configuration accepts `spanProcessors`
+(including `"auto"` plus a custom sanitizing processor) and relies on standard
+`OTEL_EXPORTER_OTLP_*` env for OTLP/HTTP. **No fallback to manual `NodeSDK`
+required** for this increment; registration path remains `@vercel/otel` only
+(still no Effect OTLP exporter).
+
 **Fallback**: If `@vercel/otel` cannot meet OTLP/HTTP export needs after
 install verification, fall back within this feature to Next’s manual
 `NodeSDK` + `@opentelemetry/exporter-trace-otlp-http` pattern from the same

@@ -124,9 +124,32 @@ Expect (both required for SC-005):
 ## 5. Deployed-style endpoint switch (config only) — SC-004
 
 Point `OTEL_EXPORTER_OTLP_ENDPOINT` at a **second** OTLP/HTTP collector (or a
-second local listener on a different port). Set a synthetic header, for example:
+second local listener on a different port). One verified local approach:
 
 ```sh
+# Terminal A — temporary OTLP/HTTP listener that prints headers + body size
+node --input-type=module <<'EOF'
+import http from "node:http"
+const server = http.createServer((req, res) => {
+  const chunks = []
+  req.on("data", (c) => chunks.push(c))
+  req.on("end", () => {
+    console.log(JSON.stringify({
+      method: req.method,
+      url: req.url,
+      authorization: req.headers.authorization ?? null,
+      contentLength: Buffer.concat(chunks).length
+    }))
+    res.writeHead(200)
+    res.end()
+  })
+})
+server.listen(14318, "127.0.0.1", () => console.log("listening :14318"))
+EOF
+```
+
+```sh
+# Terminal B — Next with second endpoint + synthetic header
 OTEL_TRACES_ENABLED=true \
 OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:14318 \
 OTEL_EXPORTER_OTLP_HEADERS='Authorization=Bearer sc004-test-token' \
@@ -134,11 +157,13 @@ OTEL_SERVICE_NAME=pre-ets-frontend \
 pnpm --filter @pathableai/pre-ets-frontend start
 ```
 
-Restart Next. Repeat `GET /api/health`.
+Repeat `GET /api/health`. Operator docs:
+[docs/observability.md](../../docs/observability.md).
 
 **Done requires live proof**:
 
-1. Confirm the request span **arrives at the second endpoint**.
+1. Confirm the request span **arrives at the second endpoint** (listener logs a
+   POST to `/v1/traces` with non-zero body).
 2. Confirm the second listener received the synthetic
    `Authorization=Bearer sc004-test-token` header (or equivalent configured
    header). A docs note or endpoint-only receipt without header assertion does
