@@ -109,7 +109,7 @@ ingress protection remain outside this effort.
 
 **Proposed issue title:** Establish the tenant diagnostic HTTP observation boundary
 
-**Delivery references:** Not yet published.
+**Delivery references:** https://github.com/PathableAI-org/Pre-ETS/issues/125
 
 #### Outcome
 
@@ -147,7 +147,7 @@ Tenant resolution pilot, slice S5. Revised proposal pending PR review; prior PR 
 
 **Proposed issue title:** Observe the effective tenant resolution mode
 
-**Delivery references:** Not yet published.
+**Delivery references:** https://github.com/PathableAI-org/Pre-ETS/issues/126
 
 #### Outcome
 
@@ -168,7 +168,7 @@ File selection/loading, secret disclosure, and final configuration response.
 
 #### Dependencies
 
-S5
+[S5 #125](https://github.com/PathableAI-org/Pre-ETS/issues/125)
 
 #### Completion evidence
 
@@ -186,7 +186,7 @@ Tenant resolution pilot, slice S6. Revised proposal pending PR review; prior PR 
 
 **Proposed issue title:** Observe the selected tenant configuration file
 
-**Delivery references:** Not yet published.
+**Delivery references:** https://github.com/PathableAI-org/Pre-ETS/issues/127
 
 #### Outcome
 
@@ -208,7 +208,7 @@ Full file disclosure, HTTP failure matrix, and integration into remaining fronte
 
 #### Dependencies
 
-S6
+[S6 #126](https://github.com/PathableAI-org/Pre-ETS/issues/126)
 
 #### Completion evidence
 
@@ -287,7 +287,7 @@ Remaining frontend/auth consumer integration, final failure matrix, production d
 
 #### Dependencies
 
-S7, S4
+[S7 #127](https://github.com/PathableAI-org/Pre-ETS/issues/127); [S4 #119](https://github.com/PathableAI-org/Pre-ETS/issues/119)
 
 #### Completion evidence
 
@@ -325,7 +325,7 @@ Separate diagnostic lookup, unrelated authentication policy, and final browser f
 
 #### Dependencies
 
-S1
+[S1 #116](https://github.com/PathableAI-org/Pre-ETS/issues/116)
 
 #### Completion evidence
 
@@ -365,7 +365,7 @@ Configured-tenant membership registry, unrelated auth policy, and infrastructure
 
 #### Dependencies
 
-S1, S2
+[S1 #116](https://github.com/PathableAI-org/Pre-ETS/issues/116); [S2 #117](https://github.com/PathableAI-org/Pre-ETS/issues/117)
 
 #### Completion evidence
 
@@ -440,9 +440,52 @@ cloud ingress/concrete provider integration remain deferred. Current proposal aw
 ## Current revision publication
 
 **Authorization:** Maintainer implementation request, 2026-10-06, explicitly includes live issue and edge revisions.
-**Proposal revision:** Pending commit and push.
-**Publication assessment:** Pending reconciliation; proposal remains draft pending PR review.
-**Outstanding actions:** Create S5–S7; revise existing mapped bodies; verify containment and replace obsolete blocking edges.
+**Proposal revision:** [2f63a9846f52330c0385c3a26651d17967e5678a](https://github.com/PathableAI-org/Pre-ETS/blob/2f63a9846f52330c0385c3a26651d17967e5678a/docs/delivery/tenant-resolution.md)
+**Inspection date:** 2026-10-06
+**Publication assessment:** All eight bodies, seven native containment edges, and seven blocking edges verified. Revised proposal remains draft pending PR review.
+
+| Identity | Issue URL                                            | Observed state |
+| -------- | ---------------------------------------------------- | -------------- |
+| S4       | https://github.com/PathableAI-org/Pre-ETS/issues/119 | open           |
+| S3       | https://github.com/PathableAI-org/Pre-ETS/issues/118 | open           |
+| S2       | https://github.com/PathableAI-org/Pre-ETS/issues/117 | open           |
+| S1       | https://github.com/PathableAI-org/Pre-ETS/issues/116 | open           |
+| parent   | https://github.com/PathableAI-org/Pre-ETS/issues/115 | open           |
+| S5       | https://github.com/PathableAI-org/Pre-ETS/issues/125 | open           |
+| S6       | https://github.com/PathableAI-org/Pre-ETS/issues/126 | open           |
+| S7       | https://github.com/PathableAI-org/Pre-ETS/issues/127 | open           |
+
+**Confirmed actions:**
+
+- Created S5 https://github.com/PathableAI-org/Pre-ETS/issues/125
+- Created S6 https://github.com/PathableAI-org/Pre-ETS/issues/126
+- Created S7 https://github.com/PathableAI-org/Pre-ETS/issues/127
+- Updated S5 body and links
+- Updated S6 body and links
+- Updated S7 body and links
+- Updated S4 body and links
+- Updated S1 body and links
+- Updated S2 body and links
+- Updated S3 body and links
+- Updated parent body and child links
+- Removed obsolete S4 blocked by S1
+- Removed obsolete S4 blocked by S2
+- Removed obsolete S4 blocked by S3
+- Added parent containment for S5
+- Added parent containment for S6
+- Added parent containment for S7
+- Added S6 blocked by S5
+- Added S7 blocked by S6
+- Added S1 blocked by S7
+- Added S1 blocked by S4
+- Read back all eight issue bodies/states, seven containment edges, and seven blocking edges
+
+**Verified native containment:** Parent #115 contains S1–S7.
+
+**Verified native blocking relationships:** S6 blocked by S5; S7 blocked by S6; S1 blocked by S7; S1 blocked by S4; S2 blocked by S1; S3 blocked by S1; S3 blocked by S2.
+
+**Outstanding actions:** None for GitHub synchronization; renewed decomposition review remains pending.
+**Failed or indeterminate action:** None.
 
 ## Original publication history
 
