@@ -107,7 +107,8 @@ method, route, and status facts at the collector (or later Grafana in US2).
       `packages/frontend/tests/unit/observability-register-host.test.ts` that exercise the
       register/helper path used by `instrumentation.ts`: production refuse-to-start vs
       local fail-soft when enabled+invalid endpoint, including clear diagnostic behavior
-      (must not be satisfied by T004 parser tests alone)
+      that never exposes `OTEL_EXPORTER_OTLP_HEADERS` values (must not be satisfied by
+      T004 parser tests alone)
 - [ ] T010a [US1] Add failing producer-boundary tests (same file or
       `packages/frontend/tests/unit/observability-span-sanitization.test.ts`) that capture an
       **emitted** span (test SpanProcessor / exporter fixture—not the isolated T006/T007
