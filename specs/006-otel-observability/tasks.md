@@ -7,14 +7,16 @@ independent — do not rename either to force a match.
 **Input**: `specs/006-otel-observability/spec.md`, `plan.md`, `research.md`, `data-model.md`,
 `contracts/` (`otlp-export.md`, `request-span-attributes.md`, `grafana-mcp.md`), and
 `quickstart.md`.
-**Organization**: Setup (Vitest + dirs + Effect verify) → Foundational (config + OTLP Layer) →
-US1 backend request spans (P1 MVP) → US2 optional Grafana Compose (P1) → US3 deployed OTLP
+**Organization**: Setup (deps + dirs) → Foundational (config + OTEL register helpers) →
+US1 Next request spans (P1 MVP) → US2 optional Grafana Compose (P1) → US3 deployed OTLP
 docs/policy (P2) → US4 Grafana MCP docs (P3) → Polish (docs cross-links + quickstart).
 **Tests**: Required by plan Testing section, SC-007 (negative Authorization fixture), and
-Principle V. Use plain **Vitest** on `@pathableai/pre-ets-backend` (`test:unit`); **not**
-`@effect/vitest` unless a later need appears. Write failing unit cases before implementation
-where marked.
+Principle V. Use existing frontend **Vitest** (`test:unit`). Write failing unit cases
+before implementation where marked. Include **host-boundary** coverage for production
+refuse-to-start (not config-parser-only).
 **Branch**: `007-otel-observability` (feature dir `specs/006-otel-observability`).
+**Scope**: `@pathableai/pre-ets-frontend` / Next Node server only. Do **not** change
+`packages/backend`.
 
 ## Format: `[ID] [P?] [Story] Description`
 
@@ -26,184 +28,192 @@ where marked.
 
 ## Phase 1: Setup (Shared Infrastructure)
 
-**Purpose**: Backend test runner, source layout stubs, and Effect OTLP API verification before
-instrumentation.
+**Purpose**: Frontend OTEL dependency and source layout stubs before instrumentation.
 
-- [ ] T001 [P] Add `vitest` (align version with frontend where practical) as a
-      `packages/backend` **devDependency**; add `"test:unit": "vitest run --config vitest.config.ts"`
-      to `packages/backend/package.json`; run `pnpm install` from repo root so the lockfile updates
-- [ ] T002 [P] Create `packages/backend/vitest.config.ts` (Node environment; include
-      `tests/**/*.test.ts`; ESM-compatible with the workspace TypeScript settings)
-- [ ] T003 [P] Create directories `packages/backend/src/http/`,
-      `packages/backend/src/observability/`, and `packages/backend/tests/` (add placeholder
-      `.gitkeep` only if required by empty-dir policy; prefer real modules in later tasks)
-- [ ] T004 Verify installed Effect **4.0.1** exports `OtlpTracer` from `effect/observability`
-      (not `effect/unstable/observability`); if missing/inadequate, document fallback to
-      `@effect/opentelemetry` + OTLP HTTP in `specs/006-otel-observability/research.md` and use
-      that path for subsequent tasks (plan Complexity Tracking P8)
+- [ ] T001 [P] Add `@vercel/otel` (and documented peer OpenTelemetry packages from the
+      Next **16.3.8** OpenTelemetry guide) as dependencies of
+      `packages/frontend/package.json`; run `pnpm install` from repo root so the lockfile
+      updates
+- [ ] T002 [P] Create directories `packages/frontend/src/lib/observability/` and
+      `packages/frontend/src/app/api/health/` (and `packages/frontend/src/app/api/health/error/`
+      when implementing the error route); add placeholder `.gitkeep` only if required by
+      empty-dir policy; prefer real modules in later tasks
+- [ ] T003 Confirm Next OpenTelemetry guide path for installed Next **16.3.8**
+      (`@vercel/otel` register API). If `@vercel/otel` is inadequate after install, document
+      fallback to manual `NodeSDK` + OTLP HTTP in
+      `specs/006-otel-observability/research.md` and use that single registration path for
+      subsequent tasks (no Effect `OtlpTracer` exporter)
 
-**Checkpoint**: Backend can run Vitest; Effect OTLP import path is confirmed.
+**Checkpoint**: Frontend has OTEL deps; registration API path is confirmed.
 
 ---
 
 ## Phase 2: Foundational (Blocking Prerequisites)
 
-**Purpose**: Observability configuration, attribute safety helpers, and OTLP tracer Layer
-factory. **No request spans or Compose profile until this phase completes.**
+**Purpose**: Observability configuration, attribute safety helpers, and gated OTEL
+register helper. **No request demo routes or Compose profile until this phase completes.**
 
-- [ ] T005 Write failing unit tests in
-      `packages/backend/tests/observability-config.test.ts` covering precedence from
+- [ ] T004 Write failing unit tests in
+      `packages/frontend/tests/unit/observability-config.test.ts` covering precedence from
       `contracts/otlp-export.md`: (1) flag off → disabled; (2) `OTEL_SDK_DISABLED=true` → no
       export; (3) enabled + missing/invalid endpoint → local/dev fail-soft vs
-      `NODE_ENV=production` refuse-to-start; (4) enabled + valid endpoint → enabled with
-      traces URL `{base}/v1/traces`; default `serviceName` `pre-ets-backend`;
-      `OTEL_TRACES_ENABLED` only `true`/`1` (case-insensitive) enables
-- [ ] T006 Implement observability config parsing in
-      `packages/backend/src/observability/config.ts` (env → typed config; dual startup policy;
-      endpoint normalization) until T005 passes
-- [ ] T007 [P] Write failing unit tests in
-      `packages/backend/tests/request-span-attributes.test.ts` for required attributes
-      `http.request.method`, `http.route`, `http.response.status_code` (from
-      `contracts/request-span-attributes.md` / data-model) and a **negative** fixture that rejects
-      prohibited attributes (e.g. Authorization / cookie / token keys) per SC-007
-- [ ] T008 [P] Implement attribute helpers in
-      `packages/backend/src/observability/attributes.ts` (build/allow-list required attrs; deny
-      secrets) until T007 passes
-- [ ] T009 Implement OTLP tracer Layer wiring in
-      `packages/backend/src/observability/tracing.ts` using `OtlpTracer` from
-      `effect/observability`, requiring process-host provision of `HttpClient.HttpClient` and
-      `OtlpSerialization`; gate Layer install on config from T006; local sampling **100%**;
-      export best-effort after valid start
+      `NODE_ENV=production` refuse-to-start **decision**; (4) enabled + valid endpoint →
+      enabled with traces URL `{base}/v1/traces`; default `serviceName` `pre-ets-frontend`;
+      `OTEL_TRACES_ENABLED` only `true`/`1` (case-insensitive) enables; headers parse from
+      `OTEL_EXPORTER_OTLP_HEADERS`
+- [ ] T005 Implement observability config parsing in
+      `packages/frontend/src/lib/observability/config.ts` (env → typed config; dual startup
+      policy; endpoint normalization; headers) until T004 passes
+- [ ] T006 Write failing unit tests in
+      `packages/frontend/tests/unit/request-span-attributes.test.ts` for required method /
+      route / status facts (from `contracts/request-span-attributes.md` / data-model) and a
+      **negative** fixture that rejects prohibited attributes (e.g. Authorization / cookie /
+      token keys) per SC-007
+- [ ] T007 Implement attribute helpers in
+      `packages/frontend/src/lib/observability/attributes.ts` (build/allow-list required
+      attrs; deny secrets) until T006 passes
+- [ ] T008 Implement gated OTEL registration helper in
+      `packages/frontend/src/lib/observability/register.ts` using `@vercel/otel` (or
+      documented fallback), applying config from T005; local sampling **100%**; export
+      best-effort after valid start; **do not** install Effect `OtlpTracer`
 
-**Checkpoint**: Config + attributes + tracer Layer are unit-tested and importable; HTTP host
-still stub until US1.
+**Checkpoint**: Config + attributes + register helper are unit-tested and importable;
+`instrumentation.ts` still only boots Effect runtime until US1.
 
 ---
 
-## Phase 3: User Story 1 — Backend request spans with clear attributes (Priority: P1) 🎯 MVP
+## Phase 3: User Story 1 — Next request spans with clear attributes (Priority: P1) 🎯 MVP
 
-**Goal**: Effect backend listens on `BACKEND_LISTEN_ADDR` (default
-`127.0.0.1:8080`), serves `GET /health` (200) and
-`GET /health/error` (500), and when traces are enabled exports a request-scoped span with the
-required semantic attributes via OTLP.
+**Goal**: Next serves `GET /api/health` (200) and `GET /api/health/error` (500) on
+`http://127.0.0.1:3000`, and when traces are enabled exports a request-scoped span with
+the required semantic attributes via OTLP.
 
 **Independent Test**: Enable traces with a valid OTLP endpoint; `curl`
-`http://127.0.0.1:8080/health` and `/health/error`; confirm request spans with method, route,
-and status attributes at the collector (or later Grafana in US2).
+`http://127.0.0.1:3000/api/health` and `/api/health/error`; confirm request spans with
+method, route, and status facts at the collector (or later Grafana in US2).
 
 ### Tests for User Story 1
 
 > Write these FIRST; ensure they FAIL before wiring.
 
-- [ ] T010 [P] [US1] Add failing unit/integration-style Vitest coverage in
-      `packages/backend/tests/http-health.test.ts` (or adjacent) asserting `/health` → 200 and
-      `/health/error` → 500 behavior of the demo surface once implemented (use Effect test
-      Layers / request helpers appropriate to platform-node; no real collector required)
-- [ ] T011 [P] [US1] Add failing tests in
-      `packages/backend/tests/request-span-emission.test.ts` that, with a test/noop or
-      capturing tracer Layer, assert a request span is created for `/health` and `/health/error`
-      including `http.request.method`, `http.route`, and `http.response.status_code`
+- [ ] T009 [P] [US1] Add failing unit tests in
+      `packages/frontend/tests/unit/api-health.test.ts` asserting `/api/health` → 200 and
+      `/api/health/error` → 500 behavior of the demo Route Handlers once implemented (no
+      real collector required)
+- [ ] T010 [P] [US1] Add failing host-boundary tests in
+      `packages/frontend/tests/unit/observability-register-host.test.ts` that exercise the
+      register/helper path used by `instrumentation.ts`: production refuse-to-start vs
+      local fail-soft when enabled+invalid endpoint, including clear diagnostic behavior
+      (must not be satisfied by T004 parser tests alone)
 
 ### Implementation for User Story 1
 
-- [ ] T012 [US1] Implement demo HTTP routes in `packages/backend/src/http/routes.ts` (or
-      equivalent): `GET /health` → 200; `GET /health/error` → 500; wrap handlers with
-      `Effect.withSpan` / `Effect.fn` and set attributes via T008 helpers
-- [ ] T013 [US1] Replace stub in `packages/backend/src/index.ts` with process host that: binds
-      `BACKEND_LISTEN_ADDR` (default `127.0.0.1:8080`); composes HTTP server + optional
-      tracer Layer from T009; provides `HttpClient` + `OtlpSerialization` when enabled; applies
-      startup policy from T006; keeps import-safe modules (no side-effect boot on library import)
-- [ ] T014 [US1] Add `packages/backend/.env.example` documenting `OTEL_TRACES_ENABLED` (default
-      off), `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_SERVICE_NAME`, optional
-      `OTEL_EXPORTER_OTLP_HEADERS`, `OTEL_SDK_DISABLED`, and `BACKEND_LISTEN_ADDR` (default
-      `127.0.0.1:8080`) for the demo surface
-- [ ] T015 [US1] Make T010–T011 pass; run
-      `pnpm --filter @pathableai/pre-ets-backend test:unit` and fix regressions
-- [ ] T016 [US1] Manually smoke (or script) disabled-by-default start + enabled export against a
-      temporary OTLP listener or US2 stack; confirm SC-003 verification set produces spans
+- [ ] T011 [US1] Implement demo Route Handlers:
+      `packages/frontend/src/app/api/health/route.ts` (`GET` → 200) and
+      `packages/frontend/src/app/api/health/error/route.ts` (`GET` → 500)
+- [ ] T012 [US1] Update `packages/frontend/src/instrumentation.ts` so Node runtime
+      `register()`: applies observability config / startup policy from T005–T008; registers
+      OTEL when enabled+valid; keeps existing Effect runtime import; skips OTEL during
+      production build phase as needed; keeps modules import-safe where required by tests
+- [ ] T013 [US1] Document env vars in `packages/frontend/.env.example` (or extend existing
+      env example): `OTEL_TRACES_ENABLED` (default off), `OTEL_EXPORTER_OTLP_ENDPOINT`,
+      `OTEL_SERVICE_NAME`, optional `OTEL_EXPORTER_OTLP_HEADERS`, `OTEL_SDK_DISABLED`
+- [ ] T014 [US1] Make T009–T010 pass; run
+      `pnpm --filter @pathableai/pre-ets-frontend test:unit` and fix regressions
+- [ ] T015 [US1] Manually smoke (or script) disabled-by-default start + enabled export
+      against a temporary OTLP listener or US2 stack; confirm SC-003 verification set
+      produces spans (`build` before `start` on clean checkout)
 
-**Checkpoint**: MVP — backend emits request spans with required attributes; traces off by
+**Checkpoint**: MVP — Next emits request spans with required attributes; traces off by
 default.
 
 ---
 
 ## Phase 4: User Story 2 — Optional local Grafana stack (Priority: P1)
 
-**Goal**: Compose profile `observability` runs pinned `grafana/otel-lgtm:0.35.0` on loopback
-ports 3300/4317/4318; default Compose path unchanged; docs explain opt-in/opt-out.
+**Goal**: Compose profile `observability` runs pinned `grafana/otel-lgtm:0.35.0` as
+service `otel-lgtm` on loopback ports 3300/4317/4318; default Compose path unchanged;
+docs explain opt-in/opt-out with service-targeted stop.
 
 **Independent Test**: `docker compose up -d --wait redis keycloak` has no LGTM; then
-`docker compose --profile observability up -d --wait`; point backend at
-`http://127.0.0.1:4318`; `GET /health`; find span in Grafana at `http://127.0.0.1:3300`
-within ~30s.
+`docker compose --profile observability up -d --wait`; point Next at
+`http://127.0.0.1:4318`; `GET /api/health`; find span in Grafana at
+`http://127.0.0.1:3300` within ~30s.
 
-- [ ] T017 [P] [US2] Add `otel-lgtm` (or equivalently named) service to root `compose.yaml`
-      using image **`grafana/otel-lgtm:0.35.0`** (prefer digest pin if available at implement
-      time), Compose profile **`observability`**, loopback publishes `127.0.0.1:3300:3000`,
-      `127.0.0.1:4317:4317`, `127.0.0.1:4318:4318`, and a healthcheck/`--wait`-friendly readiness
-      so default `docker compose up` without the profile does **not** start it
-- [ ] T018 [P] [US2] Extend `docs/docker-compose.md` with optional observability profile:
-      start/stop without tearing down Redis/Keycloak; ports; Grafana URL; OTLP endpoint; ~30s
-      span visibility; port conflict notes (3300 vs Next 3000; 4318)
-- [ ] T019 [US2] Verify end-to-end with US1 backend: opt-in stack → enable
-      `OTEL_TRACES_ENABLED` + endpoint → `GET /health` → locate span in Grafana Explore/Tempo;
-      stop observability profile while Redis/Keycloak remain; confirm best-effort when collector
-      down (SC-005)
+- [ ] T016 [P] [US2] Add `otel-lgtm` service to root `compose.yaml` using image
+      **`grafana/otel-lgtm:0.35.0`** (prefer digest pin if available at implement time),
+      Compose profile **`observability`**, loopback publishes `127.0.0.1:3300:3000`,
+      `127.0.0.1:4317:4317`, `127.0.0.1:4318:4318`, and a healthcheck/`--wait`-friendly
+      readiness so default `docker compose up` without the profile does **not** start it
+- [ ] T017 [P] [US2] Extend `docs/docker-compose.md` with optional observability profile:
+      start; **stop only** via `docker compose --profile observability stop otel-lgtm`
+      (never bare profile stop); ports; Grafana URL; OTLP endpoint; ~30s span visibility;
+      port conflict notes (3300 vs Next 3000; Keycloak 8080 unchanged)
+- [ ] T018 [US2] Verify end-to-end with US1 Next server: opt-in stack → enable
+      `OTEL_TRACES_ENABLED` + endpoint → `GET /api/health` → locate span in Grafana
+      Explore/Tempo; stop `otel-lgtm` while Redis/Keycloak remain; confirm best-effort when
+      collector down (SC-005)
 
-**Checkpoint**: Optional local Grafana works for viewing backend request spans.
+**Checkpoint**: Optional local Grafana works for viewing Next request spans.
 
 ---
 
 ## Phase 5: User Story 3 — Deployed OTLP export without vendor lock-in (Priority: P2)
 
-**Goal**: Same instrumentation; operators configure any OTLP-compatible endpoint; production
-refuse-to-start on enabled+invalid config documented and tested.
+**Goal**: Same instrumentation; operators configure any OTLP-compatible endpoint +
+headers; production refuse-to-start on enabled+invalid config documented and tested at
+the host boundary.
 
-**Independent Test**: Point `OTEL_EXPORTER_OTLP_ENDPOINT` at a second OTLP/HTTP target; spans
-arrive without code changes; production-mode invalid config refuses start.
+**Independent Test**: Point `OTEL_EXPORTER_OTLP_ENDPOINT` at a second OTLP/HTTP target
+with a synthetic header; span arrives **and** header is asserted; production-mode
+invalid config refuses start.
 
-- [ ] T020 [P] [US3] Extend unit coverage in
-      `packages/backend/tests/observability-config.test.ts` (or
-      `packages/backend/tests/startup-policy.test.ts`) asserting production refuse-to-start vs
-      local fail-soft diagnostics for enabled+invalid endpoint (lock table in plan/spec)
-- [ ] T021 [US3] **Create** `docs/observability.md` (sole creator of this file) documenting
-      deployed configuration: vendor-agnostic OTLP/HTTP; env vars and precedence
-      (`contracts/otlp-export.md`); headers for auth; no mandated SaaS; production vs local
-      startup policy; sampling note (local 100%; production sampling deferred); alerting/SLOs
-      out of scope (E9); leave clear stubs/headings for MCP (US4) and traces-only polish (T026)
-- [ ] T022 [US3] **Verify SC-004 live**: retarget `OTEL_EXPORTER_OTLP_ENDPOINT` to a second
-      OTLP/HTTP endpoint (second listener or second collector — not only Grafana), send
-      `GET /health`, and confirm the request span **arrives at that second endpoint**; then
-      document the verified switch steps in `specs/006-otel-observability/quickstart.md`
-      section 5 and `docs/observability.md`. Done requires the live second-endpoint proof, not
-      a docs note alone.
+- [ ] T019 [P] [US3] Extend host-boundary coverage in
+      `packages/frontend/tests/unit/observability-register-host.test.ts` (or adjacent) so
+      production refuse-to-start vs local fail-soft diagnostics remain locked to the
+      register path used by `instrumentation.ts` (complements T004/T010; do not rely on
+      parser-only evidence)
+- [ ] T020 [US3] **Create** `docs/observability.md` (sole creator of this file)
+      documenting deployed configuration: vendor-agnostic OTLP/HTTP; env vars and
+      precedence (`contracts/otlp-export.md`); **headers for auth**; no mandated SaaS;
+      production vs local startup policy; sampling note (local 100%; production sampling
+      deferred); alerting/SLOs out of scope; leave clear stubs/headings for MCP (US4) and
+      traces-only polish (T025)
+- [ ] T021 [US3] **Verify SC-004 live**: retarget `OTEL_EXPORTER_OTLP_ENDPOINT` to a
+      second OTLP/HTTP endpoint (second listener or second collector — not only Grafana),
+      set `OTEL_EXPORTER_OTLP_HEADERS` to a synthetic value, send `GET /api/health`, and
+      confirm the request span **arrives at that second endpoint with the synthetic
+      header present**; then document the verified switch steps in
+      `specs/006-otel-observability/quickstart.md` section 5 and `docs/observability.md`.
+      Done requires the live second-endpoint **and** header proof, not a docs note alone.
 
-**Checkpoint**: Deployed export path is documented and startup policy verified in tests.
+**Checkpoint**: Deployed export path is documented; startup policy and headers verified.
 
 ---
 
 ## Phase 6: User Story 4 — Grafana MCP for agents (Priority: P3)
 
-**Goal**: Docs enable connecting `mcp-grafana` to local Grafana (`127.0.0.1:3300`) with the
-verified auth path for `otel-lgtm:0.35.0`.
+**Goal**: Docs enable connecting **`mcp-grafana==2.0.0`** to local Grafana
+(`127.0.0.1:3300`) with the verified auth path for `otel-lgtm:0.35.0`.
 
-**Independent Test**: Follow docs against running observability profile; MCP client connects and
-completes one documented read (datasource list or Tempo search for `pre-ets-backend`) on the
-first attempt. Live success is required for SC-006.
+**Independent Test**: Follow docs against running observability profile; MCP client
+connects and completes one documented read (datasource list or Tempo search for
+`pre-ets-frontend`) on the first attempt. Live success is required for SC-006.
 
-- [ ] T023 [US4] **Depends on T021**. Add MCP section to existing `docs/observability.md` (and
-      align `contracts/grafana-mcp.md`): prerequisites (profile running); `GRAFANA_URL=
-      http://127.0.0.1:3300`; verified auth for `0.35.0` (anonymous Admin default;
-      `admin`/`admin` alternate; service account preferred when anonymous disabled); example
-      `uvx mcp-grafana` / Cursor MCP config; one concrete agent read/query example; explicit
-      “does not work without optional stack”; include a **human verification checklist** for the
-      live MCP read (commands + expected outcome) used when CI cannot run MCP
-- [ ] T024 [US4] **SC-006 acceptance evidence (mandatory live MCP)**: Against a running local
-      Grafana stack, connect an MCP client per docs and complete at least one documented
-      read/query against local trace data on the **first attempt**. Record commands + outcome as
-      PR/acceptance evidence. If CI cannot run MCP, the human verification checklist from T023
-      **MUST** be completed by a human before merge (docs-only command lists without a live
-      success are **not** a substitute for SC-006).
+- [ ] T022 [US4] **Depends on T020**. Add MCP section to existing `docs/observability.md`
+      (and align `contracts/grafana-mcp.md`): prerequisites (profile running);
+      `GRAFANA_URL=http://127.0.0.1:3300`; verified auth for `0.35.0` (anonymous Admin
+      default; `admin`/`admin` alternate; service account preferred when anonymous
+      disabled); example **`uvx mcp-grafana==2.0.0`** / Cursor MCP config (no unversioned
+      package); one concrete agent read/query example; explicit “does not work without
+      optional stack”; include a **human verification checklist** for the live MCP read
+      (commands + expected outcome) used when CI cannot run MCP
+- [ ] T023 [US4] **SC-006 acceptance evidence (mandatory live MCP)**: Against a running
+      local Grafana stack, connect an MCP client per docs (pinned version) and complete at
+      least one documented read/query against local trace data on the **first attempt**.
+      Record commands + outcome as PR/acceptance evidence. If CI cannot run MCP, the human
+      verification checklist from T022 **MUST** be completed by a human before merge
+      (docs-only command lists without a live success are **not** a substitute for SC-006).
 
 **Checkpoint**: MCP docs satisfy FR-011 / SC-006.
 
@@ -213,23 +223,22 @@ first attempt. Live success is required for SC-006.
 
 **Purpose**: Cross-links, README pointer, quality gates, quickstart pass.
 
-- [ ] T025 [P] Add a brief pointer in root `README.md` to `docs/observability.md` / Compose
-      observability profile (keep README short; details stay in docs)
-- [ ] T026 [US4/Polish] **Depends on T021** (and preferably T023 for MCP section presence).
-      Ensure `docs/observability.md` states traces-only scope, required semantic attributes,
-      demo routes (`/health`, `/health/error`), `BACKEND_LISTEN_ADDR` default, and how to find
-      a known span end-to-end (FR-013). Do not recreate the file — edit the T021-owned doc.
-- [ ] T027 Run `pnpm --filter @pathableai/pre-ets-backend test:unit`,
-      `pnpm --filter @pathableai/pre-ets-backend typecheck`,
-      `pnpm --filter @pathableai/pre-ets-backend lint`, and fix issues introduced by this feature
-- [ ] T028 Execute `specs/006-otel-observability/quickstart.md` sections 0–6 and confirm
-      SC-001–SC-008 evidence for the PR. **SC-004 Done**: second OTLP/HTTP endpoint actually
-      received the span (not docs-only). **SC-006 Done**: live MCP first-attempt read evidence
-      (or completed human checklist from T024 before merge). Environment-specific skips allowed
-      only when the checklist still records live verification elsewhere.
-- [ ] T029 Do **not** rewrite `AGENTS.md` / `docs/engineering/effect-guidance.md` Effect pin
-      language in this feature (plan Risks: package.json **4.0.1** authoritative; AGENTS sync is
-      follow-up)—confirm PR description notes the drift
+- [ ] T024 [P] Add a brief pointer in root `README.md` to `docs/observability.md` /
+      Compose observability profile (keep README short; details stay in docs)
+- [ ] T025 [US4/Polish] **Depends on T020** (and preferably T022 for MCP section
+      presence). Ensure `docs/observability.md` states traces-only Next-server scope,
+      required semantic attributes, demo routes (`/api/health`, `/api/health/error`),
+      default URL `http://127.0.0.1:3000`, and how to find a known span end-to-end
+      (FR-013). Do not recreate the file — edit the T020-owned doc.
+- [ ] T026 Run repository quality gates and fix issues introduced by this feature:
+      `pnpm --filter @pathableai/pre-ets-frontend test:unit`, then root `pnpm typecheck`,
+      `pnpm build`, `pnpm lint`, `pnpm format:check`, and `pnpm check:unused`
+- [ ] T027 Execute `specs/006-otel-observability/quickstart.md` sections 0–6 and confirm
+      SC-001–SC-008 evidence for the PR. **SC-004 Done**: second OTLP/HTTP endpoint
+      actually received the span **with configured headers**. **SC-006 Done**: live MCP
+      first-attempt read evidence (or completed human checklist from T023 before merge).
+      Environment-specific skips allowed only when the checklist still records live
+      verification elsewhere.
 
 **Checkpoint**: Feature ready for review / `/speckit-implement`.
 
@@ -242,29 +251,30 @@ first attempt. Live success is required for SC-006.
 - **Setup (Phase 1)**: No dependencies — start immediately
 - **Foundational (Phase 2)**: Depends on Setup — **BLOCKS** all user stories
 - **US1 (Phase 3)**: Depends on Foundational — **MVP**
-- **US2 (Phase 4)**: Depends on Foundational; E2E verification (T019) depends on US1 export
-- **US3 (Phase 5)**: Depends on Foundational config/policy; T021 creates
-  `docs/observability.md`; T022 live SC-004 after US1 export works; docs parallel US2 after T006
-- **US4 (Phase 6)**: T023 depends on T021; live MCP smoke (T024) depends on US2 stack; docs
-  draft starts after T021 exists and T017 ports are known
-- **Polish (Phase 7)**: T026 depends on T021; full feature through US4 before T028
+- **US2 (Phase 4)**: Depends on Foundational; E2E verification (T018) depends on US1 export
+- **US3 (Phase 5)**: Depends on Foundational config/policy; T020 creates
+  `docs/observability.md`; T021 live SC-004 after US1 export works; docs parallel US2 after T005
+- **US4 (Phase 6)**: T022 depends on T020; live MCP smoke (T023) depends on US2 stack; docs
+  draft starts after T020 exists and T016 ports are known
+- **Polish (Phase 7)**: T025 depends on T020; full feature through US4 before T027
 
 ### User Story Dependencies
 
 - **US1 (P1)**: After Foundational — no dependency on US2–US4
 - **US2 (P1)**: Compose service independent of US1 code; span-in-Grafana proof needs US1
-- **US3 (P2)**: Uses same US1 instrumentation; primarily docs + startup-policy tests + live
-  SC-004 second-endpoint proof (T022)
-- **US4 (P3)**: Docs + MCP; T023 after T021; live verify (T024) needs US2
+- **US3 (P2)**: Uses same US1 instrumentation; primarily docs + host-boundary tests + live
+  SC-004 second-endpoint **and** header proof (T021)
+- **US4 (P3)**: Docs + MCP; T022 after T020; live verify (T023) needs US2
 
 ### Parallel Opportunities
 
-- T001–T003 in parallel during Setup
-- T005–T006 sequential; T007–T008 parallel with each other; T009 after T006
-- T010–T011 parallel after Foundational
-- T017–T018 parallel once ports locked; T019 after US1 + T017
-- T020 parallel with T021; T022 after T021 (and US1 export); T023 after T021 (not parallel with
-  first create of `docs/observability.md`); T026 after T021
+- T001–T002 in parallel during Setup; T003 after install
+- T004–T005 sequential; T006 then T007 (T007 depends on T006 — **not** marked `[P]`);
+  T008 after T005
+- T009–T010 parallel after Foundational
+- T016–T017 parallel once ports locked; T018 after US1 + T016
+- T019 parallel with T020; T021 after T020 (and US1 export); T022 after T020 (not parallel
+  with first create of `docs/observability.md`); T025 after T020
 
 ---
 
@@ -272,12 +282,12 @@ first attempt. Live success is required for SC-006.
 
 ```bash
 # After Foundational completes, launch US1 tests together:
-Task: "T010 failing http-health tests in packages/backend/tests/http-health.test.ts"
-Task: "T011 failing request-span-emission tests in packages/backend/tests/request-span-emission.test.ts"
+Task: "T009 failing api-health tests in packages/frontend/tests/unit/api-health.test.ts"
+Task: "T010 failing host-boundary tests in packages/frontend/tests/unit/observability-register-host.test.ts"
 
-# Then implement routes + process host (sequential):
-Task: "T012 demo routes in packages/backend/src/http/routes.ts"
-Task: "T013 process host in packages/backend/src/index.ts"
+# Then implement routes + instrumentation (sequential):
+Task: "T011 demo Route Handlers under packages/frontend/src/app/api/health/"
+Task: "T012 update packages/frontend/src/instrumentation.ts"
 ```
 
 ---
@@ -285,9 +295,9 @@ Task: "T013 process host in packages/backend/src/index.ts"
 ## Parallel Example: User Story 2
 
 ```bash
-Task: "T017 observability profile in compose.yaml"
-Task: "T018 docs in docs/docker-compose.md"
-# Then T019 E2E against US1 backend
+Task: "T016 observability profile in compose.yaml"
+Task: "T017 docs in docs/docker-compose.md"
+# Then T018 E2E against US1 Next server
 ```
 
 ---
@@ -307,7 +317,7 @@ Task: "T018 docs in docs/docker-compose.md"
 1. Setup + Foundational → ready for stories
 2. US1 → MVP spans
 3. US2 → local Grafana viewing
-4. US3 → deployed docs + production policy
+4. US3 → deployed docs + production policy + headers proof
 5. US4 → MCP agent path
 6. Polish → quickstart + quality gates
 
@@ -324,8 +334,9 @@ Task: "T018 docs in docs/docker-compose.md"
 ## Notes
 
 - [P] = different files, no incomplete dependencies
-- Import path is **`effect/observability`** (APIs `@stability unstable`); do not use
-  `effect/unstable/observability`
+- Registration path is **`@vercel/otel`** (or documented NodeSDK fallback); do **not**
+  add Effect `OtlpTracer` in this feature
 - Do not put Next.js or Effect app processes inside Compose
-- Traces only — no metrics/logs/frontend instrumentation in this feature
-- Commit after each task or logical group; run backend unit tests before pushing
+- Do not modify `packages/backend`
+- Traces only — no metrics/logs/RUM/backend-package instrumentation in this feature
+- Commit after each task or logical group; run frontend unit tests before pushing

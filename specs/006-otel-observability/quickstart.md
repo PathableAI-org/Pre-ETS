@@ -1,4 +1,4 @@
-# Quickstart: Validate Backend OTLP Traces + Local Grafana
+# Quickstart: Validate Next.js OTLP Traces + Local Grafana
 
 **Status**: Design for [spec.md](./spec.md). Run after implementation on branch
 `007-otel-observability`.
@@ -10,10 +10,10 @@ Contracts: [otlp-export.md](./contracts/otlp-export.md),
 [request-span-attributes.md](./contracts/request-span-attributes.md),
 [grafana-mcp.md](./contracts/grafana-mcp.md).
 
-**Locked locals**: backend `BACKEND_LISTEN_ADDR` default
-`http://127.0.0.1:8080`; Grafana UI
+**Locked locals**: Next URL base `http://127.0.0.1:3000`; Grafana UI
 `http://127.0.0.1:3300`; OTLP HTTP `http://127.0.0.1:4318`; image
-`grafana/otel-lgtm:0.35.0`.
+`grafana/otel-lgtm:0.35.0`; Compose service `otel-lgtm`; service name default
+`pre-ets-frontend`.
 
 ## 0. Default path stays clean
 
@@ -23,14 +23,20 @@ docker compose ps
 ```
 
 Expect: Redis and Keycloak only — **no** `otel-lgtm` / Grafana observability
-container unless the observability profile was requested.
+container unless the observability profile was requested. Keycloak remains on
+`127.0.0.1:8080` (do not bind the Next demo surface there).
+
+Build then start the Next server with traces **disabled** by default:
 
 ```sh
-pnpm --filter @pathableai/pre-ets-backend start
-# or the documented dev start once added
+pnpm --filter @pathableai/pre-ets-frontend build
+pnpm --filter @pathableai/pre-ets-frontend start
 ```
 
-Expect: backend starts with traces **disabled** by default on `127.0.0.1:8080`.
+For iterative local work, `pnpm --filter @pathableai/pre-ets-frontend dev` is
+acceptable instead of build+start.
+
+Expect: Next listens on `http://127.0.0.1:3000` with traces off by default.
 
 ## 1. Opt into local Grafana / OTLP
 
@@ -41,29 +47,35 @@ docker compose --profile observability up -d --wait
 Verify:
 
 - Image: `grafana/otel-lgtm:0.35.0`
+- Service name: `otel-lgtm`
 - Grafana UI: `http://127.0.0.1:3300` (anonymous Admin by default, or `admin`/`admin`)
 - OTLP HTTP: `http://127.0.0.1:4318`
 
-Stop observability without tearing down Redis/Keycloak:
+Stop **only** the observability service without tearing down Redis/Keycloak:
 
 ```sh
-docker compose --profile observability stop
-# or remove only the observability service per docs
+docker compose --profile observability stop otel-lgtm
 ```
 
-## 2. Enable backend traces and exercise the verification set
+Do **not** run bare `docker compose --profile observability stop` (that can stop
+other project services).
+
+## 2. Enable Next traces and exercise the verification set
+
+Reuse a prior frontend build when possible, then start with traces enabled:
 
 ```sh
+pnpm --filter @pathableai/pre-ets-frontend build
 OTEL_TRACES_ENABLED=true \
 OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318 \
-OTEL_SERVICE_NAME=pre-ets-backend \
-pnpm --filter @pathableai/pre-ets-backend start
+OTEL_SERVICE_NAME=pre-ets-frontend \
+pnpm --filter @pathableai/pre-ets-frontend start
 ```
 
 Success path (SC-002 / SC-003):
 
 ```sh
-curl -sS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8080/health
+curl -sS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3000/api/health
 ```
 
 Expect: `200`.
@@ -71,7 +83,7 @@ Expect: `200`.
 Intentional error path (SC-003):
 
 ```sh
-curl -sS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8080/health/error
+curl -sS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3000/api/health/error
 ```
 
 Expect: `500`.
@@ -79,38 +91,58 @@ Expect: `500`.
 ## 3. Find the request spans in Grafana
 
 1. Open `http://127.0.0.1:3300` → Explore → Tempo (or Trace Drilldown).
-2. Search for service `pre-ets-backend` and routes `/health` and `/health/error`.
-3. Open each request span and confirm attributes:
-   - `http.request.method` = `GET`
-   - `http.route` = `/health` or `/health/error`
-   - `http.response.status_code` = `200` or `500`
+2. Search for service `pre-ets-frontend` and routes `/api/health` and
+   `/api/health/error`.
+3. Open each request span and confirm method, route template, and status/outcome
+   are present (see [request-span-attributes.md](./contracts/request-span-attributes.md)
+   for accepted attribute key names).
 
-Allow up to ~30 seconds for batch export visibility (~5s Effect batch interval).
+Allow up to ~30 seconds for batch export visibility.
 
 ## 4. Best-effort when collector is down
 
-With traces still enabled and a **valid** endpoint configured, stop the
-observability profile, then repeat `GET /health`.
+With traces still enabled and a **valid** endpoint configured, stop only the
+observability service (`docker compose --profile observability stop otel-lgtm`),
+then repeat `GET /api/health`.
 
-Expect: backend still serves the request; no hard crash solely due to export
+Expect: Next still serves the request; no hard crash solely due to export
 failure.
 
 ## 5. Deployed-style endpoint switch (config only) — SC-004
 
 Point `OTEL_EXPORTER_OTLP_ENDPOINT` at a **second** OTLP/HTTP collector (or a
-second local listener on a different port). Restart backend. Repeat
-`GET /health`.
+second local listener on a different port). Set a synthetic header, for example:
 
-**Done requires live proof**: confirm the request span **arrives at the second
-endpoint** (e.g. listener received the OTLP/HTTP payload, or the second
-collector UI shows the span). A docs note alone does not satisfy SC-004.
+```sh
+OTEL_TRACES_ENABLED=true \
+OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:14318 \
+OTEL_EXPORTER_OTLP_HEADERS='Authorization=Bearer sc004-test-token' \
+OTEL_SERVICE_NAME=pre-ets-frontend \
+pnpm --filter @pathableai/pre-ets-frontend start
+```
 
-Expect: spans arrive at the new endpoint without code changes
+Restart Next. Repeat `GET /api/health`.
+
+**Done requires live proof**:
+
+1. Confirm the request span **arrives at the second endpoint**.
+2. Confirm the second listener received the synthetic
+   `Authorization=Bearer sc004-test-token` header (or equivalent configured
+   header). A docs note or endpoint-only receipt without header assertion does
+   **not** satisfy SC-004.
+
+Expect: spans arrive at the new endpoint with headers, without code changes
 ([otlp-export.md](./contracts/otlp-export.md)).
 
 ## 6. MCP against local Grafana (SC-006 — live evidence required)
 
-Follow `docs/observability.md` (added in implementation) to run `mcp-grafana`
+Follow `docs/observability.md` (added in implementation) to run the **pinned**
+MCP package:
+
+```sh
+uvx mcp-grafana==2.0.0
+```
+
 with:
 
 - `GRAFANA_URL=http://127.0.0.1:3300`
@@ -118,7 +150,7 @@ with:
   token only if anonymous was disabled
 
 Expect: MCP client connects and completes one documented read (datasource list
-or recent Tempo search for `pre-ets-backend` / `/health`) on the **first
+or recent Tempo search for `pre-ets-frontend` / `/api/health`) on the **first
 attempt** per [grafana-mcp.md](./contracts/grafana-mcp.md).
 
 **Acceptance evidence**: Record the successful live MCP read (commands + outcome).
@@ -128,5 +160,5 @@ success are not SC-006 evidence.
 
 ## Rollback
 
-Unset `OTEL_TRACES_ENABLED` / omit endpoint; stop the observability profile.
-Default Redis/Keycloak Compose usage is unchanged.
+Unset `OTEL_TRACES_ENABLED` / omit endpoint; stop only `otel-lgtm` via the
+profile+service command above. Default Redis/Keycloak Compose usage is unchanged.

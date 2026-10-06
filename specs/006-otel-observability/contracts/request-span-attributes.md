@@ -1,26 +1,31 @@
-# Contract: Backend Request Span Attributes
+# Contract: Next Request Span Attributes
 
 **Consumers**: Developers and agents inspecting traces in Grafana / OTLP backends.
 
-**Producer**: Effect backend HTTP request handling when traces are enabled.
+**Producer**: Next.js Node HTTP request handling when traces are enabled
+(`@vercel/otel` / Next automatic instrumentation).
 
 ## Required attributes (acceptance minimum)
 
-| Attribute                   | Example                       | Notes                         |
-| --------------------------- | ----------------------------- | ----------------------------- |
-| `http.request.method`       | `GET`                         | Verb for the request          |
-| `http.route`                | `/health` or `/api/items/:id` | Route template when available |
-| `http.response.status_code` | `200`                         | Final status code             |
+The request span MUST identify method, route/path template, and status/outcome.
+Next **16.3.8** may emit older or newer HTTP semantic-convention names; either
+form is acceptable if all three facts are present:
+
+| Fact             | Accepted attribute keys (any one per fact)            | Example       |
+| ---------------- | ----------------------------------------------------- | ------------- |
+| HTTP method      | `http.request.method` **or** `http.method`            | `GET`         |
+| Route template   | `http.route` **or** `next.route`                      | `/api/health` |
+| Status / outcome | `http.response.status_code` **or** `http.status_code` | `200`         |
 
 ## Demo verification set (SC-003)
 
-| Request                                  | Expected status | Expected `http.route` |
-| ---------------------------------------- | --------------- | --------------------- |
-| `GET http://127.0.0.1:8080/health`       | 200             | `/health`             |
-| `GET http://127.0.0.1:8080/health/error` | 500             | `/health/error`       |
+| Request                                      | Expected status | Expected route      |
+| -------------------------------------------- | --------------- | ------------------- |
+| `GET http://127.0.0.1:3000/api/health`       | 200             | `/api/health`       |
+| `GET http://127.0.0.1:3000/api/health/error` | 500             | `/api/health/error` |
 
 Each MUST produce an exportable request-scoped span with all three required
-attributes.
+facts.
 
 ## Prohibited attributes / payloads
 
@@ -33,13 +38,15 @@ MUST NOT appear on spans:
 
 ## Correlation (this increment)
 
-- Request span is a root span (no required inbound `traceparent` from frontend).
+- Request span is a root span (no required inbound `traceparent` from browser).
 - Cross-process propagation is explicitly out of scope.
+- Effect-native spans / second exporters are out of scope.
 
 ## Verification
 
-Given the demo routes above, a trace search by `service.name` (`pre-ets-backend`)
-and route/method MUST locate a span containing all three required attributes.
+Given the demo routes above, a trace search by `service.name`
+(`pre-ets-frontend`) and route/method MUST locate a span containing all three
+required facts.
 
 Unit tests for the attribute allow-list helper MUST include at least one
 **negative fixture** that rejects a prohibited attribute (e.g. Authorization).
