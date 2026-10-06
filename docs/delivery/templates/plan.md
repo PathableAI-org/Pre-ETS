@@ -43,6 +43,11 @@ Distinguish apparently present behavior from reviewed, executed evidence. Record
 
 **Dependencies:** <Slice IDs, actual existing issue URLs, or decision blocker IDs; distinguish shipping gates.>
 
+**Observable increment:** <What can be observed now, through which real boundary?>
+
+**Evidence progression:** <Available tests; harness/scenarios retained or extended; incomplete claims;
+replacement step for temporary responses and final shipping gates.>
+
 **Planned evidence:** <Consumer, meaningful violation, responsible boundary, expected observation, limitations.>
 
 **Proposed issue:** <Issue-ready title and body using the delivery issue template. No invented issue number.>
