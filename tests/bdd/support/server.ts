@@ -136,7 +136,6 @@ function siteEnv(world: AppWorld): NodeJS.ProcessEnv {
 function spawnFrontend(world: AppWorld): ChildProcess {
   return spawn(path.join(frontend, "node_modules/.bin/next"), [
     world.runtime === "production" ? "start" : "dev",
-    ...(world.runtime === "development" ? ["--webpack"] : []),
     "-H",
     "127.0.0.1",
     "-p",
