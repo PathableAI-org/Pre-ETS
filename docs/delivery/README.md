@@ -74,3 +74,4 @@ decisions. Read architecture for ownership and implementation context, not to de
 ## Plans
 
 - [Tenant resolution pilot](tenant-resolution.md)
+- [Authentication and session management draft](session-management.md)
