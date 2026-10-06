@@ -12,9 +12,6 @@ const nextConfig: NextConfig = {
       }
     ]
   },
-  rewrites() {
-    return [{ destination: "/api/tenant-config", source: "/_test/tenant-config" }]
-  },
   transpilePackages: ["@pathableai/react"]
 }
 
