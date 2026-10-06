@@ -43,8 +43,12 @@ following command twice and assign a different result to
 node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"
 ```
 
-Compose fails fast when either password is blank. The generated credentials are
-machine-local; do not reuse them in another environment.
+Compose resolves required variables for the entire model before selecting
+services. Both passwords must therefore be set for every Compose command,
+including commands that start only Redis and Keycloak. Compose fails fast when
+either password is blank. The generated credentials are machine-local; do not
+reuse them in another environment or pass the blank `.env.example` directly to
+`docker compose`.
 
 On Windows and macOS, Docker Desktop runs Linux containers in its managed Linux
 environment. Start Docker Desktop before using these commands. The published
@@ -62,6 +66,9 @@ key prefix). The Next.js app is the only client. The Effect API does not
 connect to it. Do not persist domain records or tenant configuration here.
 
 ### Start, verify, and stop
+
+These commands require the populated root `.env`, including both generated
+passwords, even though this service subset does not start Postgres.
 
 ```sh
 docker compose up -d --wait redis keycloak

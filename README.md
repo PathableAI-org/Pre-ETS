@@ -42,8 +42,11 @@ machine-specific passwords by running this command twice, then put one value in
 node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"
 ```
 
-Compose fails fast when either password is blank. Do not reuse these local
-credentials in another environment.
+Compose resolves required variables for the entire model, so both passwords
+must be set even when starting only Redis and Keycloak or another subset of
+services. It fails fast when either password is blank. Do not reuse these local
+credentials in another environment, and do not pass the blank `.env.example`
+directly to `docker compose`.
 
 To start Postgres and apply the backend's synthetic migration demonstration:
 
@@ -62,8 +65,11 @@ for inspection, persistence, and reset commands.
 Start Redis and local Keycloak before exercising session setup or OIDC login
 initiation. Apps stay on the host; Compose publishes loopback only. Keycloak
 imports the tracked realm at `docker/keycloak/pre-ets-realm.json` on first boot.
-Set `KC_BOOTSTRAP_ADMIN_USERNAME` and a generated
-`KC_BOOTSTRAP_ADMIN_PASSWORD` in the gitignored root `.env` as described above:
+Set `KC_BOOTSTRAP_ADMIN_USERNAME`, a generated
+`KC_BOOTSTRAP_ADMIN_PASSWORD`, and a generated `POSTGRES_PASSWORD` in the
+gitignored root `.env` as described above. The PostgreSQL password is required
+here because Compose validates the full model before starting this service
+subset:
 
 ```sh
 docker compose up -d --wait redis keycloak

@@ -8,7 +8,11 @@ assign a different result to each blank password field:
 node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"
 ```
 
-Then start Postgres and run Flyway:
+After saving both generated passwords in `.env`, validate the full Compose
+model, start Postgres, and run Flyway. Do not use `--env-file .env.example` for
+validation because the tracked template intentionally contains blank passwords.
+Compose validates the full model, so both passwords are required even when a
+command selects only some services.
 
 ```sh
 docker compose config --quiet
