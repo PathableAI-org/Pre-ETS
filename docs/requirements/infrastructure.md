@@ -70,3 +70,65 @@ executed production ingress enforcement. Tools and deployment gates described he
 ### Verification evidence
 
 No reviewed, executed evidence has been recorded. This documentation change does not establish runtime behavior.
+
+## PREETS-INFRA-002
+
+**Title:** Reproduce the local backend database and migration workflow
+**Classification:** Functional Requirement
+**Owner / responsible boundary:** Local development infrastructure and backend persistence
+**Lifecycle:** proposed
+**Verification:** unverified
+
+### Statement
+
+A developer must be able to use repository-owned Docker Compose configuration and developer-generated local
+passwords to start a machine-local Postgres database and explicitly apply the backend's ordered SQL migrations with
+Flyway. Repeating the migration command must not reapply successful versioned migrations.
+
+### Rationale and sources
+
+The shared Compose and migration files make local database setup repeatable without sharing a running developer
+database or requiring host-installed Postgres and Flyway tools.
+
+- External references: [Docker Compose](https://docs.docker.com/compose/) and
+  [Flyway migrations](https://www.baeldung.com/database-migrations-with-flyway).
+
+### Acceptance criteria
+
+1. A developer with Docker Compose and generated, nonempty local passwords can start healthy Postgres from the
+   repository; blank passwords fail before a service starts.
+2. Postgres publishes only on the loopback interface and retains data across ordinary container recreation.
+3. A developer can use the repository Flyway service to inspect, apply, and validate the ordered backend SQL files.
+4. A second migration run reports the schema as current without reapplying successful migrations.
+5. Removing the local Postgres volume and rerunning the documented commands reconstructs the migrated schema.
+6. Tracked examples and migrations contain no production credentials, client records, or PHI.
+
+### Design constraints
+
+- Application processes remain on the host; Compose supplies external services only.
+- Migration execution is explicit and does not run as a side effect of starting Postgres.
+- The proof-of-process schema is synthetic and does not establish the Consumer service-log domain model.
+- Deployment automation is a future increment.
+
+### Open questions
+
+None for the local proof of process. Production database topology, credentials, deployment automation, and the
+domain schema require separate decisions.
+
+### Verification plan
+
+Render the Compose model with each password missing in turn and confirm it fails before service startup. Supply two
+generated passwords and confirm the Postgres host binding, health check, named volume, Flyway dependency, read-only
+migration mount, and disabled `clean` behavior. Start Postgres from an empty volume and capture its healthy status.
+Run Flyway `info`, `migrate`, and `validate`; query the dummy table and `flyway_schema_history`; run `migrate` again
+and confirm no migration is reapplied. Recreate the Postgres container without deleting the volume and confirm the
+table and history remain. Finally, delete the disposable local volume, repeat the setup, and confirm the same schema
+is reconstructed.
+
+This evidence establishes the exercised local Docker environment only. It does not establish deployment behavior,
+production durability, application persistence, or approval of the domain schema.
+
+### Verification evidence
+
+No reviewed, executed evidence has been recorded. The implementation pull request should record command output,
+platform, revision, covered criteria, and limitations after executing the verification plan.

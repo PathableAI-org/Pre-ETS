@@ -4,9 +4,9 @@ This note records how local development runs **external** services. The Next.js
 app and the Effect API stay on the host (`pnpm` in each workspace). Compose
 does not run those processes.
 
-The current Compose file starts **Redis** (session store) and **Keycloak**
-(local OIDC broker). Postgres remains a planned local service for persistence
-work; it is not started by `compose.yaml` in this slice.
+The current Compose file provides **Redis** (session store), **Keycloak** (local
+OIDC broker), and **Postgres** (local persistence). A profiled **Flyway** service
+applies backend-owned SQL migrations only when a developer invokes it.
 
 Tenant resolution uses process environment settings (host association or
 static Display Name + OIDC). Session state uses Redis; see
@@ -16,23 +16,47 @@ static Display Name + OIDC). Session state uses Redis; see
 
 ## What Compose provides
 
-The root `compose.yaml` starts Redis and Keycloak on loopback only. The
-host-run frontend talks to both over the network:
+The root `compose.yaml` publishes external services on loopback only. Host-run
+applications connect to them over the network:
 
 - **Redis** — frontend session store and short-lived OIDC transaction keys
-  (official `redis:8.2.9`)
-- **Keycloak** — local OIDC broker (pinned `quay.io/keycloak/keycloak:26.7.4`,
+  (official `redis:8.10.2`)
+- **Keycloak** — local OIDC broker (pinned `quay.io/keycloak/keycloak:26.8.0`,
   `start-dev --import-realm`, tracked realm JSON under `docker/keycloak/`)
+- **Postgres** — local persistence service (official `postgres:18.6`)
+- **Flyway** — manual backend migration runner (`redgate/flyway:13.9.0`)
 
 Pin image tags. Do not use `latest`. Local ports and credentials are for a
 machine-local developer environment only; they are not production values.
 
-Apps on the host reach Redis and Keycloak at `127.0.0.1` (or `localhost`). Do
-not put the Next.js or Effect processes in the same Compose file.
+Apps on the host reach Redis, Keycloak, and Postgres at `127.0.0.1` (or
+`localhost`). Do not put the Next.js or Effect processes in the same Compose
+file.
+
+Copy `.env.example` to a gitignored root `.env` before running Compose
+(`Copy-Item .env.example .env` in PowerShell). The usernames and database name
+are synthetic, but both password fields are intentionally blank. Run the
+following command twice and assign a different result to
+`KC_BOOTSTRAP_ADMIN_PASSWORD` and `POSTGRES_PASSWORD`:
+
+```sh
+node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"
+```
+
+Compose resolves required variables for the entire model before selecting
+services. Both passwords must therefore be set for every Compose command,
+including commands that start only Redis and Keycloak. Compose fails fast when
+either password is blank. The generated credentials are machine-local; do not
+reuse them in another environment or pass the blank `.env.example` directly to
+`docker compose`.
+
+On Windows and macOS, Docker Desktop runs Linux containers in its managed Linux
+environment. Start Docker Desktop before using these commands. The published
+Flyway image is currently AMD64-only, so Apple Silicon uses Docker's emulation.
 
 ## Redis
 
-Use the official `redis` image with a pinned patch tag (`redis:8.2.9`). Publish
+Use the official `redis` image with a pinned patch tag (`redis:8.10.2`). Publish
 it on loopback only (`127.0.0.1:6379:6379`). Local development does not need a
 password.
 
@@ -42,6 +66,9 @@ key prefix). The Next.js app is the only client. The Effect API does not
 connect to it. Do not persist domain records or tenant configuration here.
 
 ### Start, verify, and stop
+
+These commands require the populated root `.env`, including both generated
+passwords, even though this service subset does not start Postgres.
 
 ```sh
 docker compose up -d --wait redis keycloak
@@ -62,7 +89,7 @@ credentials or mTLS.
 
 ## Keycloak
 
-Use the official image `quay.io/keycloak/keycloak:26.7.4` with
+Use the official image `quay.io/keycloak/keycloak:26.8.0` with
 `start-dev --import-realm`. That mode is one container, no TLS, and an embedded
 database. It is for local manual testing only.
 
@@ -100,11 +127,21 @@ This local broker stands in for Authentik or Keycloak in other environments.
 Do not add a second local identity stack (Better Auth, Auth.js, a mock that
 skips the browser login) for manual testing.
 
-## Planned: Postgres
+## Postgres and Flyway
 
-Use the official `postgres` image with a pinned major when persistence work
-adds it. Publish it on loopback and set a local user, password, and default
-database through environment variables.
+Postgres uses the pinned `postgres:18.6` image, publishes only on
+`127.0.0.1:5432`, and stores data in the `postgres_data` named volume. Postgres
+18 stores its versioned data directory beneath `/var/lib/postgresql`, so the
+named volume mounts at that path.
+
+Set the required `POSTGRES_PASSWORD` in the root `.env`; override the default
+`POSTGRES_DB` and `POSTGRES_USER` there when needed. The host connection uses
+those values with `127.0.0.1:5432`; Flyway connects inside Compose with the
+service hostname `postgres`. Choose all three values before the first Postgres
+startup: the official image uses them only when initializing an empty data
+directory. To change them afterward, alter the existing database roles or reset
+the disposable local volume with `docker compose down --volumes` and initialize
+it again.
 
 One Postgres **container** is enough. Keep ownership clear with separate
 databases (or schemas) in that instance:
@@ -115,8 +152,46 @@ databases (or schemas) in that instance:
 The Next.js app will be the only writer of durable tenant configuration. This
 increment does not persist tenant Display Name in Postgres. The Effect API is
 the only writer of domain data. They do not share tables. Neither uses
-Postgres as a session store. Postgres is **not** started by the current
-Compose file.
+Postgres as a session store.
+
+Flyway reads versioned SQL from `packages/backend/migrations`, which reflects
+backend ownership of domain persistence. The current `migration_demo` schema is
+synthetic and does not implement the planned Consumer service-log schema.
+Starting Postgres never runs Flyway automatically.
+
+### Start and migrate
+
+```sh
+docker compose up -d --wait postgres
+docker compose --profile tools run --rm flyway info
+docker compose --profile tools run --rm flyway migrate
+docker compose --profile tools run --rm flyway validate
+```
+
+Inspect the dummy table and Flyway history:
+
+```sh
+docker compose exec postgres psql -U pre_ets -d pre_ets -c "SELECT column_name, data_type FROM information_schema.columns WHERE table_schema = 'migration_demo' AND table_name = 'example_record' ORDER BY ordinal_position;"
+docker compose exec postgres psql -U pre_ets -d pre_ets -c "SELECT version, description, success FROM flyway_schema_history ORDER BY installed_rank;"
+```
+
+These commands use the synthetic `.env.example` user and database. Substitute
+your local values if you changed them; the generated password stays in `.env`
+and is supplied to the containers by Compose.
+
+Running `migrate` again is safe: Flyway reports that the schema is current and
+does not reapply versioned migrations. Do not edit a migration after it has been
+applied; add a new version instead.
+
+`docker compose down` removes containers but retains `postgres_data`. The
+following command also deletes the local database and is destructive:
+
+```sh
+docker compose down --volumes
+```
+
+Use volume deletion only to reset a local disposable environment. Flyway
+`clean` is disabled.
 
 ## Running the apps against Compose
 
