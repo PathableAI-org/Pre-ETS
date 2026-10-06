@@ -2,8 +2,8 @@
 
 **Consumers**: Developers and agents inspecting traces in Grafana / OTLP backends.
 
-**Producer**: Next.js Node HTTP request handling when traces are enabled
-(`@vercel/otel` / Next automatic instrumentation).
+**Producer**: Next.js Node HTTP demo handlers when traces are enabled
+(Effect `Effect.withSpan` via `ManagedRuntime` + `OtlpTracer`).
 
 ## Required attributes (acceptance minimum)
 

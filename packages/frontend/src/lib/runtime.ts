@@ -1,21 +1,37 @@
+import type { OtlpExporter } from "effect/observability"
+
 import { NodeServices } from "@effect/platform-node"
 import { type Config, ConfigProvider, Effect, Exit, Layer, Logger, ManagedRuntime } from "effect"
 
 import { ServerConfig } from "./config/index.ts"
+import { isNextProductionBuildPhase, resolveObservabilityLayer } from "./observability/register.ts"
 import { TenantConfigService } from "./tenant/service.ts"
 
-const appLayer = (config: Config.Success<typeof ServerConfig>) =>
+type ObservabilityLayer =
+  | Layer.Layer<never>
+  | Layer.Layer<OtlpExporter.Flusher>
+
+const appLayer = (
+  config: Config.Success<typeof ServerConfig>,
+  observabilityLayer: ObservabilityLayer
+) =>
   Layer.mergeAll(
     TenantConfigService.layer(config)
   ).pipe(
-    Layer.provide(NodeServices.layer)
+    Layer.provide(NodeServices.layer),
+    Layer.provideMerge(observabilityLayer)
   )
 
 const bootRuntime = Effect.gen(function*() {
   yield* Effect.logInfo("Loading server config")
   const config = yield* ServerConfig
   yield* Effect.logInfo("Loaded server config")
-  const runtime = ManagedRuntime.make(appLayer(config))
+
+  const observabilityLayer: ObservabilityLayer = isNextProductionBuildPhase()
+    ? Layer.empty
+    : resolveObservabilityLayer().layer
+
+  const runtime = ManagedRuntime.make(appLayer(config, observabilityLayer))
   const built = runtime.runSyncExit(Effect.void)
   if (Exit.isFailure(built)) {
     return yield* Effect.failCause(built.cause)

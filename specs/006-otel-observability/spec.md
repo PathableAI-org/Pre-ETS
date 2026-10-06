@@ -25,8 +25,8 @@ independent — do not rename either to force a match.
 Earlier drafts incorrectly targeted `@pathableai/pre-ets-backend` (Effect HTTP stub on
 `127.0.0.1:8080`). The intended process is the **Next.js server** that powers the
 frontend (`@pathableai/pre-ets-frontend`). The backend package remains a stub and is
-**out of scope** for this increment. Effect remains in-process on that Next host;
-a separate Effect-native OTLP tracer exporter is deferred to avoid dual export stacks.
+**out of scope** for this increment. Effect remains in-process on that Next host
+and owns OTLP export via `effect/observability` (`OtlpTracer`).
 
 ### Critique remediations 2026-10-05
 
@@ -41,9 +41,9 @@ retargeted to the Next server:
 - **E9**: Production alerting / SLOs are out of scope for this increment.
 
 Superseded by scope correction (no longer apply as written): backend Vitest authorization
-on `@pathableai/pre-ets-backend`, `BACKEND_LISTEN_ADDR` default `8080`, Effect
-`OtlpTracer` as the primary exporter, and AGENTS Effect-pin verification tasks for this
-feature.
+on `@pathableai/pre-ets-backend`, `BACKEND_LISTEN_ADDR` default `8080`, and AGENTS
+Effect-pin verification tasks for this feature. Effect `OtlpTracer` is now the authorized
+exporter on the Next ManagedRuntime.
 
 ## User Scenarios & Testing _(mandatory)_
 
@@ -51,9 +51,9 @@ feature.
 
 Metrics, logs, browser/RUM telemetry, `@pathableai/pre-ets-backend` instrumentation,
 cross-process trace propagation, production alerting/SLOs, hosted vendor selection, and
-Effect-native `OtlpTracer` Layer export are **out of scope**. This MVP delivers Next.js
-Node request spans over OTLP, optional local Grafana, deployed export config, and MCP
-docs for local Grafana (see **FR-008**).
+`@effect/opentelemetry` NodeSdk bridging are **out of scope**. This MVP delivers Next.js
+Node request spans over OTLP via Effect `OtlpTracer`, optional local Grafana, deployed
+export config, and MCP docs for local Grafana (see **FR-008**).
 
 ### User Story 1 - See a Next.js request span with clear attributes (Priority: P1)
 
@@ -173,8 +173,8 @@ first attempt. Record that live result as merge-blocking acceptance evidence.
 - **FR-005**: Documentation MUST explain how to opt into the local Grafana stack, point the Next server at it, verify a request span appears, and shut the stack down without disrupting unrelated local services.
 - **FR-006**: Deployed environments MUST be able to enable the same Next span instrumentation and export to an OTLP-compatible collector/backend via environment-specific configuration.
 - **FR-007**: Observability configuration MUST be environment-driven (enable/disable, endpoint, headers, and related export settings) and documented for local and deployed use.
-- **FR-008**: Metrics, logs, `@pathableai/pre-ets-backend` instrumentation, browser/RUM telemetry, cross-process trace propagation, and Effect-native OTLP tracer export are out of scope for this increment (deferred to later work).
-- **FR-009**: Span attributes MUST exclude secrets, credentials, raw session tokens/cookies, and protected personal or health data; only safe operational attributes and outcome classes are permitted. Filtering MUST apply at the OTEL register/export (or SpanProcessor) boundary so automatic request spans cannot bypass it.
+- **FR-008**: Metrics, logs, `@pathableai/pre-ets-backend` instrumentation, browser/RUM telemetry, cross-process trace propagation, and `@effect/opentelemetry` NodeSdk bridging are out of scope for this increment (deferred to later work).
+- **FR-009**: Span attributes MUST exclude secrets, credentials, raw session tokens/cookies, and protected personal or health data; only safe operational attributes and outcome classes are permitted. Filtering MUST apply at the Effect producer/annotate boundary (`buildRequestSpanAttributes` / `requestSpanAttributes`) so request spans cannot bypass it.
 - **FR-010**: Next startup and primary request handling MUST succeed when observability is disabled; export MUST be best-effort when enabled so collector outages do not become hard dependencies for local feature work. Enabled + invalid/missing endpoint MUST follow the locked startup policy (local/dev fail-soft; production refuse-to-start).
 - **FR-011**: Project documentation MUST include instructions for connecting a **version-pinned** MCP server to the local Grafana stack for AI agent use, including prerequisites, the verified local auth path, configuration, and example agent workflows focused on traces.
 - **FR-012**: Design and documentation MUST remain vendor-agnostic for deployed destinations: OpenTelemetry/OTLP is the interchange standard; no single commercial observability SaaS is required to complete this feature.
@@ -217,9 +217,9 @@ first attempt. Record that live result as merge-blocking acceptance evidence.
 - **Startup policy (locked)**: When `OTEL_TRACES_ENABLED` is true but the endpoint is missing/invalid — **local/dev** = fail-soft (clear diagnostic; run without export); **production** (`NODE_ENV=production`) = refuse-to-start with clear diagnostic. After a valid start, collector outages remain best-effort export (do not block requests).
 - Existing project docs (`docs/docker-compose.md` and related README paths) are the natural place to extend local observability and MCP setup instructions.
 - MCP guidance documents a Grafana-oriented MCP server suitable for local agent access to traces; for pinned `grafana/otel-lgtm:0.35.0`, verified MCP auth is anonymous **Viewer** (Compose override of the image’s Admin default) or a read-only service account token; `admin`/`admin` and anonymous Admin are troubleshooting fallbacks only. Invocation MUST use a pinned package/version (`mcp-grafana==2.0.0` via `uvx`, or equivalent pinned container).
-- Attribute allow/deny helpers MUST be applied at the OTEL register/export (or SpanProcessor) boundary so automatic Next request spans cannot bypass filtering (FR-009 / SC-007).
+- Attribute allow/deny helpers MUST be applied at the Effect producer/annotate boundary so request spans cannot bypass filtering (FR-009 / SC-007).
 - Local sampling default is **100%** (dev-friendly; no intentional drop filters in this increment). Exact production sampling is deferred.
 - Existing structured logging practices are unchanged by this increment; this slice does not require log–trace correlation.
 - Demo/health routes exist solely to exercise spans; they are not a product API commitment beyond FR-014.
 - **Next listen address**: Default local Next URL is `http://127.0.0.1:3000`. Do not bind a competing demo server on Keycloak’s `8080`.
-- Effect continues to boot in the same Next process (`instrumentation` → runtime). Effect-native OTLP tracer export is deferred so this increment uses a single OTEL registration path for Next request spans.
+- Effect boots in the same Next process (`instrumentation` → ManagedRuntime) and installs `OtlpTracer` when traces are enabled (single OTLP exporter).

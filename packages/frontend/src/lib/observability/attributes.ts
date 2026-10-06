@@ -1,5 +1,12 @@
-import type { Attributes, AttributeValue, Context } from "@opentelemetry/api"
-import type { ReadableSpan, Span, SpanProcessor } from "@opentelemetry/sdk-trace-base"
+export interface RequestSpanFacts {
+  readonly method: string
+  readonly route: string
+  readonly statusCode: number
+}
+
+export type SpanAttributes = Readonly<Record<string, SpanAttributeValue>>
+
+export type SpanAttributeValue = boolean | number | string
 
 export const METHOD_ATTRIBUTE_KEYS = ["http.request.method", "http.method"] as const
 export const ROUTE_ATTRIBUTE_KEYS = ["http.route", "next.route"] as const
@@ -23,51 +30,16 @@ const PROHIBITED_KEY_PATTERNS: readonly RegExp[] = [
   /bearer/i
 ]
 
-export interface RequestSpanFacts {
-  readonly method: string
-  readonly route: string
-  readonly statusCode: number
-}
-
-/**
- * SpanProcessor that strips prohibited attributes at the register/export boundary
- * so automatic Next request spans cannot bypass helper-only filtering.
- */
-export class AttributeSanitizingSpanProcessor implements SpanProcessor {
-  readonly #delegate: SpanProcessor | undefined
-
-  constructor(delegate?: SpanProcessor) {
-    this.#delegate = delegate
-  }
-
-  forceFlush(): Promise<void> {
-    return this.#delegate?.forceFlush() ?? Promise.resolve()
-  }
-
-  onEnd(span: ReadableSpan): void {
-    sanitizeReadableSpanAttributes(span)
-    this.#delegate?.onEnd(span)
-  }
-
-  onStart(span: Span, parentContext: Context): void {
-    this.#delegate?.onStart(span, parentContext)
-  }
-
-  shutdown(): Promise<void> {
-    return this.#delegate?.shutdown() ?? Promise.resolve()
-  }
-}
-
 /** Never promote sensitive request headers onto root span attributes. */
 export function attributesFromHeadersSafe(
   _headers?: unknown,
   _getter?: unknown
-): Attributes | undefined {
+): SpanAttributes | undefined {
   return undefined
 }
 
-export function buildRequestSpanAttributes(facts: RequestSpanFacts): Attributes {
-  const candidate: Attributes = {
+export function buildRequestSpanAttributes(facts: RequestSpanFacts): SpanAttributes {
+  const candidate: SpanAttributes = {
     "http.method": facts.method,
     "http.request.method": facts.method,
     "http.response.status_code": facts.statusCode,
@@ -78,7 +50,7 @@ export function buildRequestSpanAttributes(facts: RequestSpanFacts): Attributes 
   return sanitizeSpanAttributes(candidate)
 }
 
-export function hasRequiredRequestSpanFacts(attributes: Attributes): boolean {
+export function hasRequiredRequestSpanFacts(attributes: SpanAttributes): boolean {
   const method = firstPresent(attributes, METHOD_ATTRIBUTE_KEYS)
   const route = firstPresent(attributes, ROUTE_ATTRIBUTE_KEYS)
   const status = firstPresent(attributes, STATUS_ATTRIBUTE_KEYS)
@@ -90,23 +62,20 @@ export function isProhibitedAttributeKey(key: string): boolean {
 }
 
 export function rejectProhibitedAttributeCandidates(
-  candidates: Attributes
-): Attributes {
+  candidates: Readonly<Record<string, SpanAttributeValue | undefined>>
+): SpanAttributes {
   return sanitizeSpanAttributes(candidates)
 }
 
-export function sanitizeReadableSpanAttributes(span: ReadableSpan): void {
-  const attrs = span.attributes as Record<string, AttributeValue | undefined>
-  const kept = sanitizeSpanAttributes(attrs)
-  for (const key of Object.keys(attrs)) {
-    if (!(key in kept)) {
-      Reflect.deleteProperty(attrs, key)
-    }
-  }
-}
-
-export function sanitizeSpanAttributes(attributes: Attributes): Attributes {
-  const sanitized: Record<string, AttributeValue> = {}
+/**
+ * Strips prohibited keys at the producer boundary before Effect span annotation.
+ * HTTP request spans must call this (via `buildRequestSpanAttributes` /
+ * `annotateRequestSpan`) so attributes cannot bypass filtering.
+ */
+export function sanitizeSpanAttributes(
+  attributes: Readonly<Record<string, SpanAttributeValue | undefined>>
+): SpanAttributes {
+  const sanitized: Record<string, SpanAttributeValue> = {}
   for (const [key, value] of Object.entries(attributes)) {
     if (value === undefined) {
       continue
@@ -120,9 +89,9 @@ export function sanitizeSpanAttributes(attributes: Attributes): Attributes {
 }
 
 function firstPresent(
-  attributes: Attributes,
+  attributes: SpanAttributes,
   keys: readonly string[]
-): AttributeValue | undefined {
+): SpanAttributeValue | undefined {
   for (const key of keys) {
     const value = attributes[key]
     if (value !== undefined) {

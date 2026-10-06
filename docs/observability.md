@@ -4,10 +4,10 @@ Traces-only instrumentation for the **Next.js Node server**
 (`@pathableai/pre-ets-frontend`). Metrics, logs, browser/RUM, and
 `packages/backend` instrumentation are out of scope for this increment.
 
-Registration uses Next’s documented `@vercel/otel` path from
-`packages/frontend/src/instrumentation.ts` when `NEXT_RUNTIME === "nodejs"`.
-Effect continues to boot in the same `register()` hook; Effect `OtlpTracer` is
-**not** installed here.
+Export uses Effect v4 **`effect/observability`** (`OtlpTracer`) installed on the
+frontend `ManagedRuntime` when traces are enabled. Next’s
+`instrumentation.ts` `register()` boots that runtime on
+`NEXT_RUNTIME === "nodejs"`. There is a single OTLP exporter (no `@vercel/otel`).
 
 ## Demo surface
 
@@ -18,7 +18,8 @@ Default local URL base: **`http://127.0.0.1:3000`**.
 | `GET /api/health`       | 200    | Success request for span verification           |
 | `GET /api/health/error` | 500    | Intentional error request for span verification |
 
-These handlers bypass the session/OIDC proxy matcher (`/api/*` is outside it).
+These handlers run Effects with `Effect.withSpan` via the shared `ManagedRuntime`
+and bypass the session/OIDC proxy matcher (`/api/*` is outside it).
 
 ## Environment variables
 
@@ -35,12 +36,13 @@ See also `packages/frontend/.env.example` and
 
 ### Precedence (boot)
 
-1. Flag not `true`/`1` → no OTEL register; healthy start.
+1. Flag not `true`/`1` → no OTLP Layer; healthy start.
 2. `OTEL_SDK_DISABLED=true` → no export; healthy start.
 3. Enabled + missing/invalid endpoint:
    - **local/dev**: clear diagnostic on stderr; run **without** export (fail-soft).
    - **production** (`NODE_ENV=production`): clear diagnostic; **refuse-to-start**.
-4. Enabled + valid endpoint → register `@vercel/otel`; best-effort batch export.
+4. Enabled + valid endpoint → provide `OtlpTracer` Layer on `ManagedRuntime`;
+   best-effort batch export (OTLP/HTTP protobuf).
 
 Diagnostics never print `OTEL_EXPORTER_OTLP_HEADERS` values.
 
@@ -50,23 +52,23 @@ If the collector is unreachable after a valid start, export is best-effort:
 request handling continues. Expect:
 
 1. HTTP requests (e.g. `GET /api/health`) to keep returning successfully.
-2. Export failure to appear on stderr via OpenTelemetry diagnostics at
-   `ERROR` level (enabled when traces register) and/or the
-   `[observability]` boot line — never as a hard crash, and never with
-   `OTEL_EXPORTER_OTLP_HEADERS` values.
+2. Export failure to appear on stderr as
+   `[observability] OTLP export failed` (and/or the `[observability]` boot line)
+   — never as a hard crash, and never with `OTEL_EXPORTER_OTLP_HEADERS` values.
 
 ## Required span attributes
 
-Each request-scoped span must identify method, route template, and status
-(accepted key names from Next 16.3.8 / HTTP semconv):
+Each request-scoped Effect span must identify method, route template, and status
+(accepted key names):
 
 - Method: `http.request.method` or `http.method`
 - Route: `http.route` or `next.route`
 - Status: `http.response.status_code` or `http.status_code`
 
 Prohibited on spans: Authorization / bearer tokens, cookies, session ids, raw
-bodies, tenant secrets. Filtering is applied at the register/export
-`SpanProcessor` boundary (not only in unit helpers).
+bodies, tenant secrets. Filtering is applied at the producer/annotate boundary
+(`buildRequestSpanAttributes` / `requestSpanAttributes`) before attributes reach
+the Effect tracer.
 
 ## Local Grafana / OTLP
 
@@ -127,8 +129,8 @@ does not satisfy SC-004.
 
 ## Sampling
 
-Local sampling is **100%** (`always_on`). Production sampling policy is deferred.
-Alerting and SLOs are out of scope.
+Local sampling is **100%** (all Effect spans are sampled). Production sampling
+policy is deferred. Alerting and SLOs are out of scope.
 
 ## Grafana MCP for agents
 
@@ -194,6 +196,7 @@ Docs-only command lists without a live success are not SC-006 evidence.
 
 - Metrics and logs export
 - Browser/RUM and cross-process `traceparent` propagation
-- Effect-native `OtlpTracer` / second exporter
+- `@effect/opentelemetry` NodeSdk bridge / second exporter
 - Production sampling policies, alerting, and SLOs
 - Hosted vendor selection
+- `packages/backend` process instrumentation

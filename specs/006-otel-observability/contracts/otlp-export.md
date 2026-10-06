@@ -21,12 +21,12 @@ export?”):
 
 | Priority | Condition                                               | Result                                                                                                        |
 | -------- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| 1        | `OTEL_TRACES_ENABLED` not `true`/`1`                    | No OTEL register; process healthy; no export                                                                  |
+| 1        | `OTEL_TRACES_ENABLED` not `true`/`1`                    | No OtlpTracer Layer; process healthy; no export                                                               |
 | 2        | `OTEL_SDK_DISABLED=true`                                | No export (even if traces “enabled”); process healthy                                                         |
 | 3        | Enabled + missing/invalid `OTEL_EXPORTER_OTLP_ENDPOINT` | Clear diagnostic; **local/dev** fail-soft (no export); **production** (`NODE_ENV=production`) refuse-to-start |
-| 4        | Enabled + valid endpoint                                | Register `@vercel/otel`; batch export of ended sampled spans                                                  |
+| 4        | Enabled + valid endpoint                                | Provide Effect `OtlpTracer` Layer; batch export of ended sampled spans                                        |
 
-**Why `OTEL_TRACES_ENABLED` exists**: Default-off register so local workflows do
+**Why `OTEL_TRACES_ENABLED` exists**: Default-off Layer install so local workflows do
 not export merely because an OTEL endpoint env var is present from unrelated
 tooling. Standard OTEL vars (`OTEL_EXPORTER_OTLP_*`, `OTEL_SDK_DISABLED`,
 `OTEL_SERVICE_NAME`) still apply once enabled.

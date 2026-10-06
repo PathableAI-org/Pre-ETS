@@ -47,7 +47,7 @@ Process-level settings resolved at Next boot (`instrumentation.register`).
 | State                              | Behavior                                                                                                                         |
 | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
 | Disabled                           | No OTEL register; requests succeed; no export                                                                                    |
-| Enabled + valid endpoint           | `@vercel/otel` registered; best-effort export                                                                                    |
+| Enabled + valid endpoint           | Effect `OtlpTracer` Layer provided; best-effort export                                                                           |
 | Enabled + invalid/missing endpoint | Clear config diagnostic. **Local/dev**: run without export (fail-soft). **Production** (`NODE_ENV=production`): refuse-to-start. |
 | Enabled + `OTEL_SDK_DISABLED=true` | Do not export; process starts (same as disabled export path)                                                                     |
 | Collector unreachable after start  | Best-effort; request handling continues                                                                                          |
