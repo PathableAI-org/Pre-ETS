@@ -28,3 +28,10 @@ Then("the response header {string} is {string}", function(this: AppWorld, name: 
 Then("the response has no redirect", function(this: AppWorld) {
   assert.equal(this.response?.headers.location, undefined)
 })
+Then("the response JSON field {string} is {string}", function(this: AppWorld, field: string, expected: string) {
+  assert.ok(this.response, "expected an HTTP response")
+  const parsed: unknown = JSON.parse(this.response.body)
+  assert.equal(typeof parsed, "object")
+  assert.notEqual(parsed, null)
+  assert.equal((parsed as Record<string, unknown>)[field], expected)
+})
