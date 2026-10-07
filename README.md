@@ -89,7 +89,9 @@ node -e 'console.log(require("node:crypto").randomBytes(32).toString("base64url"
 Then `pnpm dev:frontend` and open `http://localhost:3000/` — expect Keycloak
 login (`demo` / `demo`). Issuer:
 `http://127.0.0.1:8080/realms/pre-ets`. See `docs/docker-compose.md`,
-`docs/session-state.md`, and `docs/authentication.md`.
+`docs/session-state.md`, and `docs/authentication.md`. Optional local
+OpenTelemetry + Grafana uses Compose profile `observability` (service
+`otel-lgtm`); see `docs/observability.md`.
 
 Stop with `docker compose down`. Never run `FLUSHALL` against shared Redis.
 After editing the realm JSON, recreate Keycloak

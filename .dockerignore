@@ -1,0 +1,32 @@
+# Dependencies and build outputs
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+.next/
+**/.next/
+coverage/
+.vitest/
+*.log
+*.tsbuildinfo
+
+# VCS and editor
+.git/
+.github/
+.vscode/
+.idea/
+.DS_Store
+
+# Local secrets and env
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+
+# Spec / agent / test caches (not needed in images)
+.cursor/
+.specify/
+specs/
+agent-transcripts/
