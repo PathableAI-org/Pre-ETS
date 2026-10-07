@@ -155,7 +155,7 @@ docker compose --profile observability up -d --wait
 - OTLP HTTP for Next: `http://127.0.0.1:4318`
 - Request spans from the Next demo routes are typically visible in Grafana
   Explore / Tempo within ~30 seconds of traffic when
-  `OTEL_TRACES_ENABLED=true` points at that endpoint.
+  `OTEL_EXPORTER_OTLP_ENDPOINT` points at that endpoint.
 
 Port notes: Grafana is on **3300** so it does not collide with Next on **3000**.
 Keycloak remains on **8080** (unchanged).

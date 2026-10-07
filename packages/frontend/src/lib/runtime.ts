@@ -1,15 +1,16 @@
-import type { OtelTracer } from "@effect/opentelemetry"
-
+import { OtelTracer, Resource } from "@effect/opentelemetry"
 import { NodeServices } from "@effect/platform-node"
-import { type Config, ConfigProvider, Effect, Exit, Layer, Logger, ManagedRuntime } from "effect"
+import { registerOTel } from "@vercel/otel"
+import { type Config, ConfigProvider, Effect, Exit, Layer, Logger, ManagedRuntime, Option } from "effect"
 
 import { ServerConfig } from "./config/index.ts"
-import { effectObservabilityBridgeLayer, isNextProductionBuildPhase } from "./observability/register.ts"
 import { TenantConfigService } from "./tenant/service.ts"
 
 type ObservabilityLayer =
   | Layer.Layer<never>
   | Layer.Layer<OtelTracer.OtelTracer>
+
+const nextProductionBuildPhase = "phase-production-build"
 
 const appLayer = (
   config: Config.Success<typeof ServerConfig>,
@@ -27,9 +28,22 @@ const bootRuntime = Effect.gen(function*() {
   const config = yield* ServerConfig
   yield* Effect.logInfo("Loaded server config")
 
-  const observabilityLayer: ObservabilityLayer = isNextProductionBuildPhase()
-    ? Layer.empty
-    : effectObservabilityBridgeLayer()
+  let observabilityLayer: ObservabilityLayer = Layer.empty
+  if (
+    process.env.NEXT_PHASE !== nextProductionBuildPhase
+    && Option.isSome(config.otel.exporterOtlpEndpoint)
+  ) {
+    const serviceName = config.otel.serviceName
+    yield* Effect.sync(() => {
+      registerOTel({
+        serviceName,
+        traceSampler: "always_on"
+      })
+    })
+    observabilityLayer = OtelTracer.layerGlobal.pipe(
+      Layer.provide(Resource.layer({ serviceName }))
+    )
+  }
 
   const runtime = ManagedRuntime.make(appLayer(config, observabilityLayer))
   const built = runtime.runSyncExit(Effect.void)
@@ -42,8 +56,6 @@ const bootRuntime = Effect.gen(function*() {
   Effect.tapCause((cause) => Effect.logError(cause)),
   Effect.provide(Logger.layer([Logger.consolePretty()]))
 )
-
-const nextProductionBuildPhase = "phase-production-build"
 
 const startServerRuntime = () => {
   const exit = Effect.runSyncExit(bootRuntime)

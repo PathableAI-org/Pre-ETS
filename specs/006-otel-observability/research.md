@@ -8,19 +8,17 @@ All Technical Context unknowns from planning are resolved below.
 
 **Decision**: Export traces with **`@vercel/otel`** registered from
 [`packages/frontend/src/instrumentation.ts`](../../packages/frontend/src/instrumentation.ts)
-when `OTEL_TRACES_ENABLED` is true and configuration is valid (single OTLP
-exporter; auto-instrumented HTTP request spans with standard semantic attributes).
+when `OTEL_EXPORTER_OTLP_ENDPOINT` is set and valid (single OTLP exporter;
+auto-instrumented HTTP request spans with standard semantic attributes).
 Bridge Effect via **`@effect/opentelemetry`** `OtelTracer.layerGlobal` on the
-frontend `ManagedRuntime` so `Effect.withSpan` creates logical children under the
-active OTEL context. Attribute sanitization uses
-`AttributeSanitizingSpanProcessor` at the register/export boundary. Do **not**
-install Effect `OtlpTracer` or a second OTLP exporter.
+frontend `ManagedRuntime` so `Effect.withSpan` can create logical children under
+the active OTEL context when used. Do **not** install Effect `OtlpTracer` or a
+second OTLP exporter. Do **not** configure header-to-attribute mapping for
+secrets.
 
-**Enable flag**: Keep **`OTEL_TRACES_ENABLED`** as an explicit default-off gate
-so the host does not call `registerOTel` unless opted in. When the flag is true,
-honor standard OTEL env including `OTEL_SDK_DISABLED`, endpoint, headers, and
-service name (see [contracts/otlp-export.md](./contracts/otlp-export.md)
-precedence). Do **not** treat endpoint presence alone as enablement.
+**Enablement**: Absent endpoint keeps traces off. When a valid endpoint is set,
+honor `OTEL_SDK_DISABLED`, headers, and service name (see
+[contracts/otlp-export.md](./contracts/otlp-export.md) precedence).
 
 **Install verification (Effect 4.0.1, 2026-10-06)**: Confirmed
 `@effect/opentelemetry` exports `OtelTracer.layerGlobal` (global provider bridge)
@@ -41,8 +39,9 @@ Next server, not `packages/backend`.
 - `@effect/opentelemetry` NodeSdk that starts its own exporter — rejected; would
   duplicate `@vercel/otel` export.
 - Vendor SDKs (Datadog, etc.) — rejects vendor-agnostic goal.
-- Always-on registration without `OTEL_TRACES_ENABLED` — weaker local
-  default-off story.
+- Custom `OTEL_TRACES_ENABLED` — rejected; standard endpoint presence is enough.
+- Custom attribute SpanProcessor — rejected; do not map sensitive headers.
+- Dedicated `/api/health` demo routes — rejected; any Next route verifies spans.
 - Instrumenting `@pathableai/pre-ets-backend` — rejected; wrong process; port
   `8080` conflicts with Keycloak.
 - Request-root spans in `proxy.ts` — rejected; matcher is only `/` and
@@ -89,21 +88,21 @@ independently.
 **Decision**: Environment-driven config resolved at Next process boot
 (`instrumentation.register` / observability config module):
 
-| Setting                       | Role                                                                  |
-| ----------------------------- | --------------------------------------------------------------------- |
-| `OTEL_TRACES_ENABLED`         | Explicit opt-in (`true` / `1`); default **off**; gates `registerOTel` |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | Base URL (e.g. `http://127.0.0.1:4318`); traces POST to `/v1/traces`  |
-| `OTEL_SERVICE_NAME`           | Resource `service.name` (default `pre-ets-frontend`)                  |
-| `OTEL_EXPORTER_OTLP_HEADERS`  | Optional; required for authenticated collectors (verified in SC-004)  |
-| `OTEL_SDK_DISABLED`           | When true, do not export even if traces enabled (standard OTEL)       |
+| Setting                       | Role                                                                 |
+| ----------------------------- | -------------------------------------------------------------------- |
+| _(endpoint)_                  | Set `OTEL_EXPORTER_OTLP_ENDPOINT` to enable; unset = off             |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | Base URL (e.g. `http://127.0.0.1:4318`); traces POST to `/v1/traces` |
+| `OTEL_SERVICE_NAME`           | Resource `service.name` (default `pre-ets-frontend`)                 |
+| `OTEL_EXPORTER_OTLP_HEADERS`  | Optional; required for authenticated collectors (verified in SC-004) |
+| `OTEL_SDK_DISABLED`           | When true, do not export even if traces enabled (standard OTEL)      |
 
 **Startup policy (locked)**:
 
-- Disabled or flag unset: do not call `registerOTel`; process serves requests.
-- Enabled + valid endpoint: `registerOTel` + Effect global Tracer bridge; best-effort export.
+- Endpoint unset: do not call `registerOTel`; process serves requests.
+- Valid endpoint: `registerOTel` + Effect global Tracer bridge; best-effort export.
 - Enabled + invalid/missing endpoint:
-  - **local/dev**: clear diagnostic; run **without** export (fail-soft).
-  - **production** (`NODE_ENV=production`): clear diagnostic; **refuse-to-start**.
+  - App gate is presence-only; no URL validate / fail-soft / refuse-to-start.
+  - SDK + operator env own endpoint correctness and `OTEL_SDK_DISABLED`.
 - Collector unreachable after valid start: best-effort; requests continue.
 
 **Rationale**: Aligns with common OTEL env names for vendor portability while
@@ -144,10 +143,9 @@ full HTTP semantic-convention sprawl or sensitive data.
 
 **Decision**: Add Next App Router Route Handlers:
 
-| Route                   | Status | Purpose                          |
-| ----------------------- | ------ | -------------------------------- |
-| `GET /api/health`       | 200    | Success path for SC-002 / SC-003 |
-| `GET /api/health/error` | 500    | Intentional error for SC-003     |
+| Route                                | Status | Purpose                          |
+| ------------------------------------ | ------ | -------------------------------- |
+| Any Next Node request (e.g. `GET /`) | _any_  | Success path for SC-002 / SC-003 |
 
 Default local URL base: **`http://127.0.0.1:3000`**. These paths are outside the
 frontend proxy matcher (`/` and `/auth/callback` only), so they bypass
@@ -159,10 +157,10 @@ verification deterministic and avoid Keycloak’s `8080`.
 
 ## 6. Deployed environments
 
-**Decision**: Same instrumentation; operators set `OTEL_TRACES_ENABLED` and
+**Decision**: Same instrumentation; operators set
 `OTEL_EXPORTER_OTLP_ENDPOINT` (plus `OTEL_EXPORTER_OTLP_HEADERS` if required) to
 any OTLP-compatible collector. No mandated SaaS. Document the pattern in
-`docs/observability.md`. Production uses refuse-to-start on enabled+invalid
+`docs/observability.md`. Presence-only gate; no app refuse-to-start on invalid
 config. **SC-004** requires live proof that configured headers are sent.
 **Alerting / SLOs are out of scope.**
 

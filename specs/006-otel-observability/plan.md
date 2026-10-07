@@ -13,15 +13,15 @@ branch number — do not rename either).
 Stand up vendor-neutral **OpenTelemetry trace export** for the **Next.js Node
 server** (`@pathableai/pre-ets-frontend`): auto-instrumented HTTP request spans
 (method, route/path template, status/outcome) exported over **OTLP/HTTP** via
-**`@vercel/otel`**, gated by **`OTEL_TRACES_ENABLED`**. Bridge Effect with
-**`@effect/opentelemetry`** `OtelTracer.layerGlobal` on the frontend
-`ManagedRuntime` so `Effect.withSpan` is used only at logical boundaries. Next
-`instrumentation.ts` registers OTEL then boots that runtime. Keep local
-observability **optional** via a Compose `observability` profile running
-**`grafana/otel-lgtm:0.35.0`**. Document deployed OTLP endpoint configuration
-(including headers) and how to connect a **version-pinned** Grafana MCP server
-to the local stack. Metrics, logs, and backend-package instrumentation stay out
-of this increment.
+**`@vercel/otel`**, enabled when **`OTEL_EXPORTER_OTLP_ENDPOINT`** is set.
+Bridge Effect with **`@effect/opentelemetry`** `OtelTracer.layerGlobal` on the
+frontend `ManagedRuntime` so `Effect.withSpan` can be used at logical
+boundaries. Next `instrumentation.ts` registers OTEL then boots that runtime.
+Keep local observability **optional** via a Compose `observability` profile
+running **`grafana/otel-lgtm:0.35.0`**. Document deployed OTLP endpoint
+configuration (including headers) and how to connect a **version-pinned**
+Grafana MCP server to the local stack. Metrics, logs, and backend-package
+instrumentation stay out of this increment.
 
 Research: [research.md](./research.md). Shapes: [data-model.md](./data-model.md).
 Contracts: [contracts/](./contracts/). Validation: [quickstart.md](./quickstart.md).
@@ -66,11 +66,9 @@ secrets/PHI/session tokens on spans; vendor-agnostic OTLP for deploy; do not put
 Next.js or Effect app processes inside Compose; single OTEL registration path
 (no dual Effect OTLP exporter).
 
-**Scale/Scope**: Minimal App Router demo surface:
-`GET /api/health` (200) and `GET /api/health/error` (500). Full product UI
-journeys are out of scope beyond FR-014. MCP is documentation + verified
-connection steps with pinned `mcp-grafana==2.0.0`, not a committed MCP binary
-in-repo.
+**Scale/Scope**: No dedicated demo routes; verify on any Next Node request.
+MCP is documentation + verified connection steps with pinned
+`mcp-grafana==2.0.0`, not a committed MCP binary in-repo.
 
 ## Constitution Check
 
@@ -122,9 +120,8 @@ packages/frontend/
 ├── src/
 │   ├── instrumentation.ts            # registerOTel then boot ManagedRuntime
 │   ├── lib/runtime.ts                # ManagedRuntime + Effect global Tracer bridge
-│   ├── lib/observability/            # config, register, attribute sanitizer, health Effects
-│   └── app/api/health/               # thin adapters → Runtime.runPromise
-└── tests/                            # config / attribute / disable / host-boundary tests
+│   └── lib/observability/            # config + register (@vercel/otel + Effect bridge)
+└── tests/                            # config / host-boundary tests
 ```
 
 **Structure Decision**: Frontend owns `@vercel/otel` registration, Effect bridge,
@@ -138,32 +135,30 @@ ManagedRuntime host path.
 
 ## Startup policy (this increment — locked)
 
-| Environment                        | `OTEL_TRACES_ENABLED` true + invalid/missing endpoint | After valid start, collector down |
-| ---------------------------------- | ----------------------------------------------------- | --------------------------------- |
-| Local / non-production             | Clear diagnostic; **run without export** (fail-soft)  | Best-effort; requests continue    |
-| Production (`NODE_ENV=production`) | Clear diagnostic; **refuse-to-start**                 | Best-effort; requests continue    |
-| Traces disabled / flag unset       | No `registerOTel`; healthy start                      | N/A                               |
+| Environment            | Endpoint set but invalid                              | After valid start, collector down |
+| ---------------------- | ----------------------------------------------------- | --------------------------------- |
+| Endpoint missing/blank | No `registerOTel`; healthy start                      | n/a                               |
+| Endpoint present       | `registerOTel` in ManagedRuntime boot + Effect bridge | Best-effort; requests continue    |
+| Endpoint unset         | No `registerOTel`; healthy start                      | N/A                               |
 
 ## Enablement scheme
 
-Keep explicit **`OTEL_TRACES_ENABLED`** (default off) so the process does not
-call `registerOTel` unless opted in. When enabled, honor
-`OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_HEADERS`,
-`OTEL_SERVICE_NAME`, and `OTEL_SDK_DISABLED` per
+Unset **`OTEL_EXPORTER_OTLP_ENDPOINT`** keeps traces off. When set, honor
+`OTEL_EXPORTER_OTLP_HEADERS`, `OTEL_SERVICE_NAME`, and `OTEL_SDK_DISABLED` per
 [contracts/otlp-export.md](./contracts/otlp-export.md).
 
 ## Complexity Tracking
 
 > No constitution violations requiring justification.
 
-| Note                 | Detail                                                                                                                                              |
-| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Minimal HTTP surface | `GET /api/health` + `GET /api/health/error` on Next `:3000` satisfy “span around a request” without session/OIDC (proxy matcher excludes `/api/*`). |
-| Vercel + Effect      | `@vercel/otel` owns HTTP + export; `@effect/opentelemetry` global bridge for logical `Effect.withSpan` children.                                    |
-| Single exporter      | No Effect `OtlpTracer` / second OTLP client.                                                                                                        |
-| Grafana image pin    | Compose MUST use `grafana/otel-lgtm:0.35.0` (prefer digest pin at implement time if available). Do not ship `:latest`.                              |
-| Grafana host port    | Publish Grafana on loopback **3300** (map container 3000) so Next keeps **3000**.                                                                   |
-| MCP pin              | Docs and tasks MUST use `uvx mcp-grafana==2.0.0` (or equivalent pinned container). Unversioned `uvx mcp-grafana` is not acceptable.                 |
+| Note              | Detail                                                                                                                              |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Any Next route    | Auto-instr covers any Node request; no dedicated demo health routes.                                                                |
+| Vercel + Effect   | `@vercel/otel` owns HTTP + export; `@effect/opentelemetry` global bridge for logical `Effect.withSpan` children.                    |
+| Single exporter   | No Effect `OtlpTracer` / second OTLP client.                                                                                        |
+| Grafana image pin | Compose MUST use `grafana/otel-lgtm:0.35.0` (prefer digest pin at implement time if available). Do not ship `:latest`.              |
+| Grafana host port | Publish Grafana on loopback **3300** (map container 3000) so Next keeps **3000**.                                                   |
+| MCP pin           | Docs and tasks MUST use `uvx mcp-grafana==2.0.0` (or equivalent pinned container). Unversioned `uvx mcp-grafana` is not acceptable. |
 
 ## Risks
 
@@ -171,7 +166,7 @@ call `registerOTel` unless opted in. When enabled, honor
 | ------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Next OTEL attribute names may use `http.method` / `http.status_code` vs newer semconv | Acceptance contract accepts Next default root span attributes that identify method, route, and status; map names in the attribute contract / tests.  |
 | MCP auth brittle vs image defaults                                                    | Compose overrides anonymous org role to **Viewer**; Admin/`admin` only as troubleshooting fallback.                                                  |
-| Custom enable flag vs OTEL docs                                                       | Precedence table in OTLP contract; justify `OTEL_TRACES_ENABLED` as default-off Layer gate.                                                          |
+| Endpoint enablement                                                                   | Precedence table in OTLP contract; unset endpoint = off.                                                                                             |
 | Production refuse-to-start hard to prove with Next early listen                       | Host-boundary tests assert policy decision / exit behavior at Layer resolve path (not “port never binds”); quickstart documents expected diagnostic. |
 
 ## Phase notes (before `/speckit-tasks`)

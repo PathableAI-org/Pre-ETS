@@ -1,8 +1,12 @@
 # Tasks: OpenTelemetry Observability Stack
 
 > **Path note (2026-10-06)**: Implementation uses `@vercel/otel` for HTTP + OTLP
-> export and `@effect/opentelemetry` `OtelTracer.layerGlobal` for Effect logical
-> spans. Do not add Effect `OtlpTracer` as a second exporter.
+> export (enabled by `OTEL_EXPORTER_OTLP_ENDPOINT`) and `@effect/opentelemetry`
+> `OtelTracer.layerGlobal` for Effect logical spans. No custom enable flag, no
+> attribute SpanProcessor, no `/api/health` demo routes. Do not add Effect
+> `OtlpTracer` as a second exporter.
+
+> **Path note (current):** OTEL fields live on `ServerConfig`; `registerOTel` runs in ManagedRuntime boot; presence-only enablement; no app URL validation / fail-soft / refuse-to-start; no dedicated observability unit tests.
 
 **Identity**: Feature directory `specs/006-otel-observability`; git branch
 `007-otel-observability`. Spec Kit directory numbers and git branch numbers are

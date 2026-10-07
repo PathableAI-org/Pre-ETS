@@ -1,4 +1,4 @@
-import { Config, type Types } from "effect"
+import { Config, Option, type Types } from "effect"
 
 import { type HostTenantConfig, TenantConfig } from "./tenant-config.ts"
 
@@ -8,6 +8,8 @@ export type {
   TenantConfig,
   StaticTenantConfig as TenantStaticConfig
 } from "./tenant-config.ts"
+
+export const DEFAULT_OTEL_SERVICE_NAME = "pre-ets-frontend"
 
 interface RawEnvironmentWithTenantConfig {
   readonly env: "development" | "production" | "test"
@@ -39,10 +41,28 @@ const validateEnvWithTenantConfig = <T extends RawEnvironmentWithTenantConfig>(
   return Config.succeed(config as Types.Simplify<WithValidatedTenant<T>>)
 }
 
+/** Blank/whitespace-only values count as absent (presence gate only). */
+const presentOtlpEndpoint = Config.String("OTEL_EXPORTER_OTLP_ENDPOINT").pipe(
+  Config.option,
+  Config.map((endpoint) => {
+    if (Option.isNone(endpoint)) {
+      return Option.none<string>()
+    }
+    const trimmed = endpoint.value.trim()
+    return trimmed === "" ? Option.none() : Option.some(trimmed)
+  })
+)
+
 export const ServerConfig = Config.all({
   env: Config.Literals(["development", "production", "test"], "NODE_ENV").pipe(
     Config.withDefault("development")
   ),
+  otel: Config.all({
+    exporterOtlpEndpoint: presentOtlpEndpoint,
+    serviceName: Config.String("OTEL_SERVICE_NAME").pipe(
+      Config.withDefault(DEFAULT_OTEL_SERVICE_NAME)
+    )
+  }),
   tenant: TenantConfig
 }).pipe(
   Config.flatMap(validateEnvWithTenantConfig)

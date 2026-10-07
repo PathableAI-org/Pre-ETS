@@ -64,38 +64,28 @@ Reuse a prior frontend build when possible, then start with traces enabled
 
 ```sh
 pnpm --filter @pathableai/pre-ets-frontend build
-OTEL_TRACES_ENABLED=true \
 OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318 \
 OTEL_SERVICE_NAME=pre-ets-frontend \
 pnpm --filter @pathableai/pre-ets-frontend start
 ```
 
-Success path (SC-002 / SC-003):
+Traffic (SC-002 / SC-003) — any Next Node request:
 
 ```sh
-curl -sS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3000/api/health
+curl -sS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3000/
 ```
 
-Expect: `200`.
-
-Intentional error path (SC-003):
-
-```sh
-curl -sS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3000/api/health/error
-```
-
-Expect: `500`.
+Redirect or auth challenge status codes are fine; the goal is an exported span.
 
 ## 3. Find the request spans in Grafana
 
 With `otel-lgtm` still running from section 1:
 
-1. Open `http://127.0.0.1:3300` → Explore → Tempo (or Trace Drilldown).
-2. Search for service `pre-ets-frontend` and routes `/api/health` and
-   `/api/health/error`.
-3. Open each request span and confirm method, route template, and status/outcome
-   are present (see [request-span-attributes.md](./contracts/request-span-attributes.md)
-   for accepted attribute key names).
+1. Open `http://127.0.0.1:3300` → Explore → Tempo (sign in as admin if Explore
+   is hidden for anonymous Viewer).
+2. Search for service `pre-ets-frontend`.
+3. Open a request span and confirm method / route / status when Next emits them
+   (see [request-span-attributes.md](./contracts/request-span-attributes.md)).
 
 Allow up to ~30 seconds for batch export visibility.
 
@@ -111,7 +101,7 @@ docker compose --profile observability stop otel-lgtm
 Do **not** run bare `docker compose --profile observability stop` (that can stop
 other project services).
 
-Then repeat `GET /api/health`.
+Then repeat `GET /` (or any Next route).
 
 Expect (both required for SC-005):
 
@@ -150,14 +140,13 @@ EOF
 
 ```sh
 # Terminal B — Next with second endpoint + synthetic header
-OTEL_TRACES_ENABLED=true \
 OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:14318 \
 OTEL_EXPORTER_OTLP_HEADERS='Authorization=Bearer sc004-test-token' \
 OTEL_SERVICE_NAME=pre-ets-frontend \
 pnpm --filter @pathableai/pre-ets-frontend start
 ```
 
-Repeat `GET /api/health`. Operator docs:
+Repeat `GET /`. Operator docs:
 [docs/observability.md](../../docs/observability.md).
 
 **Done requires live proof**:
@@ -195,7 +184,7 @@ with:
   troubleshooting fallback
 
 Expect: MCP client connects and completes one documented read (datasource list
-or recent Tempo search for `pre-ets-frontend` / `/api/health`) on the **first
+or recent Tempo search for `pre-ets-frontend` / `/`) on the **first
 attempt** per [grafana-mcp.md](./contracts/grafana-mcp.md).
 
 **Acceptance evidence**: Record the successful live MCP read (commands + outcome).
@@ -205,7 +194,7 @@ success are not SC-006 evidence.
 
 ## Rollback
 
-Unset `OTEL_TRACES_ENABLED` / omit endpoint; stop only `otel-lgtm`:
+Omit `OTEL_EXPORTER_OTLP_ENDPOINT` (or set `OTEL_SDK_DISABLED=true`); stop only `otel-lgtm`:
 
 ```sh
 docker compose --profile observability stop otel-lgtm

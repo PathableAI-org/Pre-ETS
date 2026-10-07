@@ -10,7 +10,7 @@ enabled.
 
 | Field            | Rule                                                                           |
 | ---------------- | ------------------------------------------------------------------------------ |
-| Name             | Next root span name (e.g. `GET /api/health` / framework default)               |
+| Name             | Next root span name (framework default for the request)                        |
 | Kind             | Server / internal per Next/OTel defaults for request handling                  |
 | HTTP method      | Required; via `http.request.method` and/or `http.method`                       |
 | Route template   | Required; via `http.route` and/or `next.route`                                 |
@@ -44,13 +44,14 @@ Process-level settings resolved at Next boot (`instrumentation.register`).
 
 ### State
 
-| State                              | Behavior                                                                                                                         |
-| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| Disabled                           | No OTEL register; requests succeed; no export                                                                                    |
-| Enabled + valid endpoint           | `@vercel/otel` registered + Effect global Tracer bridge; best-effort export                                                      |
-| Enabled + invalid/missing endpoint | Clear config diagnostic. **Local/dev**: run without export (fail-soft). **Production** (`NODE_ENV=production`): refuse-to-start. |
-| Enabled + `OTEL_SDK_DISABLED=true` | Do not export; process starts (same as disabled export path)                                                                     |
-| Collector unreachable after start  | Best-effort; request handling continues                                                                                          |
+| State                              | Behavior                                                                                 |
+| ---------------------------------- | ---------------------------------------------------------------------------------------- |
+| Disabled                           | No OTEL register; requests succeed; no export                                            |
+| Valid OTLP endpoint set            | `@vercel/otel` registered + Effect global Tracer bridge; best-effort export              |
+| Endpoint present (non-blank)       | `registerOTel` + Effect bridge during ManagedRuntime boot; SDK reads remaining OTEL env. |
+| Endpoint missing/blank             | No registration; process healthy.                                                        |
+| Enabled + `OTEL_SDK_DISABLED=true` | Do not export; process starts (same as disabled export path)                             |
+| Collector unreachable after start  | Best-effort; request handling continues                                                  |
 
 ## OTLP Export Target
 
@@ -74,10 +75,9 @@ application entity; operator-facing infrastructure only.
 
 ## Demo HTTP Surface
 
-| Route                   | Status | Role in verification                 |
-| ----------------------- | ------ | ------------------------------------ |
-| `GET /api/health`       | 200    | Success request for SC-002 / SC-003  |
-| `GET /api/health/error` | 500    | Intentional error request for SC-003 |
+| Route                 | Status | Role in verification        |
+| --------------------- | ------ | --------------------------- |
+| Any Next Node request | _any_  | Traffic for SC-002 / SC-003 |
 
 Local URL base: `http://127.0.0.1:3000`.
 
