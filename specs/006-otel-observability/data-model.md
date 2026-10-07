@@ -34,13 +34,13 @@ enabled.
 
 Process-level settings resolved at Next boot (`instrumentation.register`).
 
-| Field           | Type       | Rule                                                                            |
-| --------------- | ---------- | ------------------------------------------------------------------------------- |
-| `tracesEnabled` | boolean    | Default `false`; only `true`/`1` (case-insensitive) enable                      |
-| `otlpEndpoint`  | URL string | Required when enabled; base OTLP HTTP endpoint (no path or with collector base) |
-| `serviceName`   | string     | Default `pre-ets-frontend`                                                      |
-| `otlpHeaders`   | map        | Optional; for deployed auth; verified in SC-004                                 |
-| `sdkDisabled`   | boolean    | From `OTEL_SDK_DISABLED`; when true, do not export even if traces enabled       |
+| Field           | Type   | Rule                                                                                       |
+| --------------- | ------ | ------------------------------------------------------------------------------------------ |
+| _(none in app)_ | —      | No OTEL fields on `ServerConfig`; SDK reads env directly                                   |
+| `serviceName`   | string | Passed to `registerOTel` / Effect `Resource` (default `pre-ets-frontend`)                  |
+| `sdkDisabled`   | env    | `OTEL_SDK_DISABLED` — when set, `@vercel/otel` early-returns; required for quiet local off |
+| `otlpEndpoint`  | env    | `OTEL_EXPORTER_OTLP_ENDPOINT`; unset ⇒ SDK default `http://localhost:4318/v1/traces`       |
+| `otlpHeaders`   | env    | `OTEL_EXPORTER_OTLP_HEADERS`; optional; verified in SC-004                                 |
 
 ### State
 

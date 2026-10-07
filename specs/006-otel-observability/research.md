@@ -7,18 +7,19 @@ All Technical Context unknowns from planning are resolved below.
 ## 1. Next.js OTEL registration path
 
 **Decision**: Export traces with **`@vercel/otel`** registered from
-[`packages/frontend/src/instrumentation.ts`](../../packages/frontend/src/instrumentation.ts)
-when `OTEL_EXPORTER_OTLP_ENDPOINT` is set and valid (single OTLP exporter;
-auto-instrumented HTTP request spans with standard semantic attributes).
-Bridge Effect via **`@effect/opentelemetry`** `OtelTracer.layerGlobal` on the
-frontend `ManagedRuntime` so `Effect.withSpan` can create logical children under
-the active OTEL context when used. Do **not** install Effect `OtlpTracer` or a
-second OTLP exporter. Do **not** configure header-to-attribute mapping for
-secrets.
+ManagedRuntime boot (imported via
+[`packages/frontend/src/instrumentation.ts`](../../packages/frontend/src/instrumentation.ts))
+unconditionally (single OTLP exporter; auto-instrumented HTTP request spans with
+standard semantic attributes). Bridge Effect via **`@effect/opentelemetry`**
+`OtelTracer.layerGlobal` on the frontend `ManagedRuntime` so `Effect.withSpan`
+can create logical children under the active OTEL context when used. Do **not**
+install Effect `OtlpTracer` or a second OTLP exporter. Do **not** configure
+header-to-attribute mapping for secrets.
 
-**Enablement**: Absent endpoint keeps traces off. When a valid endpoint is set,
-honor `OTEL_SDK_DISABLED`, headers, and service name (see
-[contracts/otlp-export.md](./contracts/otlp-export.md) precedence).
+**Enablement**: Always `registerOTel`. Quiet local / off = `OTEL_SDK_DISABLED=true`
+(`@vercel/otel` early-return). Unset endpoint does **not** mean off — the SDK
+defaults to `http://localhost:4318/v1/traces`. Honor headers and service name when
+enabled (see [contracts/otlp-export.md](./contracts/otlp-export.md) precedence).
 
 **Install verification (Effect 4.0.1, 2026-10-06)**: Confirmed
 `@effect/opentelemetry` exports `OtelTracer.layerGlobal` (global provider bridge)
@@ -88,22 +89,20 @@ independently.
 **Decision**: Environment-driven config resolved at Next process boot
 (`instrumentation.register` / observability config module):
 
-| Setting                       | Role                                                                 |
-| ----------------------------- | -------------------------------------------------------------------- |
-| _(endpoint)_                  | Set `OTEL_EXPORTER_OTLP_ENDPOINT` to enable; unset = off             |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | Base URL (e.g. `http://127.0.0.1:4318`); traces POST to `/v1/traces` |
-| `OTEL_SERVICE_NAME`           | Resource `service.name` (default `pre-ets-frontend`)                 |
-| `OTEL_EXPORTER_OTLP_HEADERS`  | Optional; required for authenticated collectors (verified in SC-004) |
-| `OTEL_SDK_DISABLED`           | When true, do not export even if traces enabled (standard OTEL)      |
+| Setting                       | Role                                                                  |
+| ----------------------------- | --------------------------------------------------------------------- |
+| `OTEL_SDK_DISABLED`           | Kill switch; when set, `@vercel/otel` early-returns (quiet local off) |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | Base URL (e.g. `http://127.0.0.1:4318`); traces POST to `/v1/traces`  |
+| `OTEL_SERVICE_NAME`           | Resource `service.name` (default `pre-ets-frontend`)                  |
+| `OTEL_EXPORTER_OTLP_HEADERS`  | Optional; required for authenticated collectors (verified in SC-004)  |
 
 **Startup policy (locked)**:
 
-- Endpoint unset: do not call `registerOTel`; process serves requests.
-- Valid endpoint: `registerOTel` + Effect global Tracer bridge; best-effort export.
-- Enabled + invalid/missing endpoint:
-  - App always calls `registerOTel`; no URL validate / fail-soft / refuse-to-start.
-  - Quiet local = `OTEL_SDK_DISABLED`; SDK + operator env own endpoint correctness.
-- Collector unreachable after valid start: best-effort; requests continue.
+- Always call `registerOTel` + Effect global Tracer bridge at ManagedRuntime boot.
+- Off / quiet local: `OTEL_SDK_DISABLED=true` (not “omit endpoint”).
+- SDK enabled + unset endpoint: SDK default `http://localhost:4318/v1/traces`.
+- No app URL validate / fail-soft / refuse-to-start on endpoint shape.
+- Collector unreachable after start: best-effort; requests continue.
 
 **Rationale**: Aligns with common OTEL env names for vendor portability while
 keeping an explicit local opt-in flag. Dual startup policy removes Principle I
@@ -159,10 +158,10 @@ verification deterministic and avoid Keycloak’s `8080`.
 
 **Decision**: Same instrumentation; operators set
 `OTEL_EXPORTER_OTLP_ENDPOINT` (plus `OTEL_EXPORTER_OTLP_HEADERS` if required) to
-any OTLP-compatible collector. No mandated SaaS. Document the pattern in
-`docs/observability.md`. Presence-only gate; no app refuse-to-start on invalid
-config. **SC-004** requires live proof that configured headers are sent.
-**Alerting / SLOs are out of scope.**
+any OTLP-compatible collector, and use `OTEL_SDK_DISABLED=true` when export must
+stay off. No mandated SaaS. Document the pattern in `docs/observability.md`. No
+app refuse-to-start on invalid endpoint shape. **SC-004** requires live proof
+that configured headers are sent. **Alerting / SLOs are out of scope.**
 
 **Rationale**: Satisfies vendor-agnostic FR without provisioning a hosted vendor
 in this slice; closes the gap where header-dropping exporters could pass

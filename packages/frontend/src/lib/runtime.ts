@@ -39,7 +39,7 @@ const boot = () => {
 
   return Effect.gen(function*() {
     const config = yield* ServerConfig.pipe(
-      Effect.tap((config) => Effect.logDebug("Loaded server config", { config })),
+      Effect.tap(() => Effect.logDebug("Loaded server config")),
       Effect.tapError((error) => Effect.logError(error.message))
     )
 
@@ -75,6 +75,12 @@ const fakeBoot = new Proxy({} as Awaited<ReturnType<typeof boot>>, {
 
 export const Runtime = process.env.NEXT_PHASE === "phase-production-build" ?
   fakeBoot :
-  await boot().catch((_: unknown) => {
+  await boot().catch((error: unknown) => {
+    // LoggerLayer may not be available (e.g. invalid LOG_LEVEL). Use stderr and
+    // avoid dumping configuration payloads or the full rejection object.
+    const detail = error instanceof Error && error.message.trim() !== "" ?
+      error.message :
+      "startup failed before diagnostics were available"
+    console.error(`pre-ets-frontend: ManagedRuntime boot failed (${detail})`)
     process.exit(1)
   })

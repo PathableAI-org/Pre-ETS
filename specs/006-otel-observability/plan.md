@@ -13,7 +13,8 @@ branch number — do not rename either).
 Stand up vendor-neutral **OpenTelemetry trace export** for the **Next.js Node
 server** (`@pathableai/pre-ets-frontend`): auto-instrumented HTTP request spans
 (method, route/path template, status/outcome) exported over **OTLP/HTTP** via
-**`@vercel/otel`**, enabled when **`OTEL_EXPORTER_OTLP_ENDPOINT`** is set.
+**`@vercel/otel`** (always registered at ManagedRuntime boot; off via
+**`OTEL_SDK_DISABLED`**).
 Bridge Effect with **`@effect/opentelemetry`** `OtelTracer.layerGlobal` on the
 frontend `ManagedRuntime` so `Effect.withSpan` can be used at logical
 boundaries. Next `instrumentation.ts` registers OTEL then boots that runtime.
@@ -165,7 +166,7 @@ export off. When the SDK is enabled, honor `OTEL_EXPORTER_OTLP_ENDPOINT`,
 | ------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Next OTEL attribute names may use `http.method` / `http.status_code` vs newer semconv | Acceptance contract accepts Next default root span attributes that identify method, route, and status; map names in the attribute contract / tests.  |
 | MCP auth brittle vs image defaults                                                    | Compose overrides anonymous org role to **Viewer**; Admin/`admin` only as troubleshooting fallback.                                                  |
-| Endpoint enablement                                                                   | Precedence table in OTLP contract; unset endpoint = off.                                                                                             |
+| Endpoint enablement                                                                   | Precedence table in OTLP contract; off = `OTEL_SDK_DISABLED` (unset endpoint still defaults to localhost OTLP).                                      |
 | Production refuse-to-start hard to prove with Next early listen                       | Host-boundary tests assert policy decision / exit behavior at Layer resolve path (not “port never binds”); quickstart documents expected diagnostic. |
 
 ## Phase notes (before `/speckit-tasks`)

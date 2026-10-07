@@ -194,9 +194,15 @@ success are not SC-006 evidence.
 
 ## Rollback
 
-Omit `OTEL_EXPORTER_OTLP_ENDPOINT` (or set `OTEL_SDK_DISABLED=true`); stop only `otel-lgtm`:
+Registration is unconditional: omitting `OTEL_EXPORTER_OTLP_ENDPOINT` does **not**
+disable export (`@vercel/otel` falls back to `http://localhost:4318/v1/traces`).
+Set `OTEL_SDK_DISABLED=true`, restart Next, then stop only `otel-lgtm`:
 
 ```sh
+# In the Next process environment:
+# OTEL_SDK_DISABLED=true
+# then restart the Next server
+
 docker compose --profile observability stop otel-lgtm
 ```
 
