@@ -1,24 +1,15 @@
 import { OtelTracer, Resource } from "@effect/opentelemetry"
 import { NodeServices } from "@effect/platform-node"
 import { registerOTel } from "@vercel/otel"
-import { Config, ConfigProvider, Effect, Layer, Logger, ManagedRuntime, References } from "effect"
+import { ConfigProvider, Effect, Layer, ManagedRuntime } from "effect"
 
 import { ServerConfig } from "./config/index.ts"
+import { appLoggerLayer } from "./observability.ts"
 import { TenantConfigService } from "./tenant/service.ts"
 
 const OTEL_SERVICE_NAME = "pre-ets-frontend"
 
-const MinimumLogLevelLayer = Layer.effect(
-  References.MinimumLogLevel,
-  Config.LogLevel("LOG_LEVEL").pipe(
-    Config.withDefault("Info")
-  )
-)
-
-const LoggerLayer = Layer.mergeAll(
-  Logger.layer([Logger.consolePretty()]),
-  MinimumLogLevelLayer
-)
+const LoggerLayer = appLoggerLayer()
 
 const ObservabilityLayer = Layer.unwrap(
   Effect.sync(() => {
@@ -77,8 +68,8 @@ const fakeBoot = new Proxy({} as Awaited<ReturnType<typeof boot>>, {
 export const Runtime = process.env.NEXT_PHASE === "phase-production-build" ?
   fakeBoot :
   await boot().catch((error: unknown) => {
-    // LoggerLayer may not be available (e.g. invalid LOG_LEVEL). Use stderr and
-    // avoid dumping configuration payloads or the full rejection object.
+    // Prefer Effect diagnostics from appLoggerLayer; fall back to stderr when boot
+    // fails before any logger is available. Avoid dumping configuration payloads.
     const detail = error instanceof Error && error.message.trim() !== "" ?
       error.message :
       "startup failed before diagnostics were available"

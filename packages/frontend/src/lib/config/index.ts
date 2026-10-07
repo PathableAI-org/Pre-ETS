@@ -1,5 +1,6 @@
 import { Config, type Types } from "effect"
 
+import { AppEnv } from "./env.ts"
 import { type HostTenantConfig, TenantConfig } from "./tenant-config.ts"
 
 export type {
@@ -10,7 +11,7 @@ export type {
 } from "./tenant-config.ts"
 
 interface RawEnvironmentWithTenantConfig {
-  readonly env: "development" | "production" | "test"
+  readonly env: AppEnv
   readonly tenant: Config.Success<typeof TenantConfig>
 }
 
@@ -40,9 +41,7 @@ const validateEnvWithTenantConfig = <T extends RawEnvironmentWithTenantConfig>(
 }
 
 export const ServerConfig = Config.all({
-  env: Config.Literals(["development", "production", "test"], "NODE_ENV").pipe(
-    Config.withDefault("development")
-  ),
+  env: AppEnv,
   tenant: TenantConfig
 }).pipe(
   Config.flatMap(validateEnvWithTenantConfig)
