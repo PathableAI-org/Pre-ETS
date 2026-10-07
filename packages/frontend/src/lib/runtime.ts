@@ -67,12 +67,17 @@ const fakeBoot = new Proxy({} as Awaited<ReturnType<typeof boot>>, {
 
 export const Runtime = process.env.NEXT_PHASE === "phase-production-build" ?
   fakeBoot :
-  await boot().catch((error: unknown) => {
+  await boot().catch(async (error: unknown) => {
     // Prefer Effect diagnostics from appLoggerLayer; fall back to stderr when boot
     // fails before any logger is available. Avoid dumping configuration payloads.
     const detail = error instanceof Error && error.message.trim() !== "" ?
       error.message :
       "startup failed before diagnostics were available"
-    console.error(`pre-ets-frontend: ManagedRuntime boot failed (${detail})`)
+
+    await Effect.logError(`pre-ets-frontend: ManagedRuntime boot failed (${detail})`).pipe(
+      Effect.provide(LoggerLayer),
+      Effect.runPromise
+    )
+
     process.exit(1)
   })

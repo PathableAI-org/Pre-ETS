@@ -17,7 +17,26 @@ export default defineConfig([
   {
     extends: [eslint.configs.recommended, perfectionist.configs["recommended-natural"]],
     files: ["**/*.{js,mjs,cjs,ts,tsx}"],
-    languageOptions: { globals: globals.node }
+    languageOptions: { globals: globals.node },
+    rules: {
+      "no-console": "error"
+    }
+  },
+  {
+    files: [
+      "cucumber.mjs",
+      "eslint.config.js",
+      "lint-staged.config.js",
+      "packages/*/eslint.config.js",
+      "packages/*/lint-staged.config.js",
+      "scripts/**",
+      "tests/**",
+      "e2e/**",
+      "packages/*/tests/**"
+    ],
+    rules: {
+      "no-console": "off"
+    }
   },
   {
     extends: [
