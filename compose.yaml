@@ -29,3 +29,62 @@ services:
       timeout: 5s
       retries: 30
       start_period: 30s
+
+  postgres:
+    image: postgres:18.6
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-pre_ets}
+      POSTGRES_USER: ${POSTGRES_USER:-pre_ets}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+      start_period: 10s
+
+  flyway:
+    image: redgate/flyway:13.9.0
+    profiles: ["tools"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./packages/backend/migrations:/flyway/migrations:ro
+    environment:
+      FLYWAY_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-pre_ets}
+      FLYWAY_USER: ${POSTGRES_USER:-pre_ets}
+      FLYWAY_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+      FLYWAY_LOCATIONS: filesystem:/flyway/migrations
+      FLYWAY_CONNECT_RETRIES: "60"
+      FLYWAY_CLEAN_DISABLED: "true"
+      FLYWAY_VALIDATE_MIGRATION_NAMING: "true"
+
+  # Optional local OTLP + Grafana (Tempo). Opt-in only — default `docker compose up`
+  # for redis/keycloak does not start this service.
+  otel-lgtm:
+    image: grafana/otel-lgtm:0.35.0@sha256:2de1094c593c671cbfca878a28ffcd7e46ff5e32f2ce966c0cf33003f6cf4266
+    profiles: ["observability"]
+    ports:
+      - "127.0.0.1:3300:3000"
+      - "127.0.0.1:4317:4317"
+      - "127.0.0.1:4318:4318"
+    environment:
+      # Least privilege for local MCP reads (upstream may default anonymous to Admin).
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    healthcheck:
+      test: [
+        "CMD-SHELL",
+        "curl -fsS http://127.0.0.1:3000/api/health >/dev/null || wget -q -O /dev/null http://127.0.0.1:3000/api/health || exit 1",
+      ]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 40s
+
+volumes:
+  postgres_data:

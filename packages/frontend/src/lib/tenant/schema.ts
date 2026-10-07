@@ -17,8 +17,6 @@ export const TenantAlias = Schema.NonEmptyString.pipe(
 )
 export type TenantAlias = typeof TenantAlias.Type
 
-const OidcClientAuthBrand = "@pathableai/pre-ets-frontend/OidcClientAuth" as const
-export type OidcClientAuthBrand = typeof OidcClientAuthBrand
 export const OidcClientAuth = Schema.Literals([
   "confidential",
   "public"

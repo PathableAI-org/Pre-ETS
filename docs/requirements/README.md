@@ -35,6 +35,12 @@ This list is a navigation index, not a separate status or traceability matrix.
 
 Use relative Markdown links for repository sources and full URLs for external sources, issues, and PRs.
 Identify the relevant source section, decision, test title, or scenario rather than linking only to a large file.
+Public repository artifacts and GitHub titles/bodies must never name a specific partner or client, including
+organization names, abbreviations, identifying filenames, link labels, URLs, examples, and quotations. Use generic
+attribution such as “source provider” or “client-supplied form,” retaining non-identifying source titles, sections,
+dates, evidence limitations, and approval boundaries. If a source reference identifies a partner or client, keep
+that identifying reference outside the public repository and use a generic attribution with the access limitation;
+do not invent a sanitized URL or claim the source was unavailable when it was reviewed.
 If a source cannot be accessed, preserve its attribution and describe the limitation; access is not a prerequisite
 for drafting a proposal from supplied material. Keep credentials and sensitive client data out of the register.
 

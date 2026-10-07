@@ -19,11 +19,8 @@
     "effect-solutions": "node node_modules/effect-solutions/bin.js",
     "test:e2e": "playwright test --config e2e/playwright.config.ts",
     "test:e2e:ui": "playwright test --config e2e/playwright.config.ts --ui",
-    "test:bdd": "node tests/bdd/run.mjs all",
-    "test:bdd:dry": "node tests/bdd/run.mjs dry",
-    "test:bdd:application": "node tests/bdd/run.mjs application",
-    "test:bdd:http": "node tests/bdd/run.mjs http",
-    "test:bdd:browser": "node tests/bdd/run.mjs browser",
+    "test:bdd": "cucumber-js --config cucumber.mjs",
+    "test:bdd:dry": "cucumber-js --config cucumber.mjs --dry-run",
     "test:bdd:checks": "node --test tests/bdd/checks/*.test.*"
   },
   "dependencies": {
@@ -36,7 +33,7 @@
     "@dprint/json": "0.25.2",
     "@dprint/markdown": "0.26.0",
     "@dprint/typescript": "0.96.1",
-    "@effect/language-service": "0.87.3",
+    "@effect/language-service": "0.87.4",
     "@eslint/js": "10.0.1",
     "@playwright/test": "1.63.0",
     "@types/node": "24.19.1",
@@ -45,13 +42,13 @@
     "effect-solutions": "0.5.3",
     "eslint": "10.12.0",
     "eslint-plugin-perfectionist": "5.12.1",
-    "fallow": "3.31.0",
+    "fallow": "3.32.0",
     "globals": "17.13.0",
     "husky": "9.1.7",
     "lint-staged": "17.6.0",
     "playwright": "1.63.0",
     "typescript": "6.0.3",
-    "typescript-eslint": "8.71.0"
+    "typescript-eslint": "8.71.1"
   },
   "packageManager": "pnpm@12.9.1",
   "engines": {

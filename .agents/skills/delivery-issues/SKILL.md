@@ -5,6 +5,11 @@ description: Publish approved Pre-ETS delivery plans or explicitly authorized re
 
 # Delivery issues
 
+Follow the [requirements guide](../../../docs/requirements/README.md#author-a-requirement)’s public-source
+attribution rule: never name a specific partner or client in public repository artifacts or GitHub titles/bodies.
+Use generic attribution and check prose, examples, quotations, filenames, link labels, and URLs for identifying
+names or abbreviations. Preserve evidence meaning and approval boundaries without publishing the identity.
+
 Read the [delivery guide](../../../docs/delivery/README.md),
 [delivery issue template](../../../.github/ISSUE_TEMPLATE/delivery.md), and
 [requirements guide](../../../docs/requirements/README.md), then the requested plan and its source entries.

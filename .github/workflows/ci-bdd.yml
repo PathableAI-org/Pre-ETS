@@ -79,7 +79,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: bdd-discovery
-          path: reports/cucumber-discovery.json
+          path: reports/cucumber-bdd.json
           if-no-files-found: ignore
 
   bdd:
@@ -105,8 +105,6 @@ jobs:
           persist-credentials: false
       - name: Set up Node.js and install dependencies
         uses: ./.github/actions/setup-node-pnpm
-      - name: Install Playwright Chromium
-        run: pnpm exec playwright install --with-deps chromium
       - name: Configure session environment
         run: |
           echo "REDIS_URL=redis://127.0.0.1:6379" >> "$GITHUB_ENV"
@@ -117,10 +115,9 @@ jobs:
           echo "OIDC_TX_KEY_PREFIX=ci:bdd:oidc-tx:${{ github.run_id }}:" >> "$GITHUB_ENV"
       - name: Build frontend for production scenarios
         run: pnpm --filter @pathableai/pre-ets-frontend build
-      - name: Check discovery and presentation guards
+      - name: Run harness checks
         run: pnpm test:bdd:checks
-      - name: Run all capability partitions
-        # The runner continues independent partitions and returns failure if any failed.
+      - name: Run requirements BDD
         run: pnpm test:bdd
       - name: Preserve BDD reports and failure diagnostics
         if: always()
