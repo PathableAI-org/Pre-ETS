@@ -5,6 +5,11 @@ description: Create or update durable Pre-ETS requirements from supplied intent 
 
 # Requirements author
 
+Follow the [requirements guide](../../../docs/requirements/README.md#author-a-requirement)’s public-source
+attribution rule: never name a specific partner or client in public repository artifacts or GitHub titles/bodies.
+Use generic attribution and check prose, examples, quotations, filenames, link labels, and URLs for identifying
+names or abbreviations. Preserve evidence meaning and approval boundaries without publishing the identity.
+
 Read the [requirements guide](../../../docs/requirements/README.md) and
 [area template](../../../docs/requirements/templates/area.md). They own the format, ID allocation,
 lifecycle, and evidence conventions; do not duplicate a register in another artifact.
@@ -17,7 +22,7 @@ with explicitly recorded questions. Attribute inaccessible sources and report th
 
 Consider separate obligations when they can change independently or have different owners, failure modes, or
 verification boundaries; avoid fragmentation without a useful distinction. Record classification separately
-from source attribution according to the guide. Keep supplied source labels and approval boundaries intact.
+from source attribution according to the guide. Keep supplied source labels and approval boundaries intact, subject to the public-source attribution rule.
 Separate explicitly approved design constraints from behavioral promises rather than removing those constraints.
 Check selectors, prerequisites in each mode, failure outcomes, and the intended classes behind broad claims such
 as “all requests.” Ask about material gaps instead of importing policy from incidental implementation behavior.
