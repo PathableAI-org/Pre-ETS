@@ -5,6 +5,11 @@ description: Review Pre-ETS delivery plans and proposed issue decomposition agai
 
 # Delivery review
 
+Follow the [requirements guide](../../../docs/requirements/README.md#author-a-requirement)’s public-source
+attribution rule: never name a specific partner or client in public repository artifacts or GitHub titles/bodies.
+Use generic attribution and check prose, examples, quotations, filenames, link labels, and URLs for identifying
+names or abbreviations. Preserve evidence meaning and approval boundaries without publishing the identity.
+
 Read the [delivery guide](../../../docs/delivery/README.md), [plan template](../../../docs/delivery/templates/plan.md),
 [issue template](../../../.github/ISSUE_TEMPLATE/delivery.md), [requirements guide](../../../docs/requirements/README.md),
 and [Testing as evidence](../../../docs/engineering/testing/README.md). Review requested plans and their source entries.

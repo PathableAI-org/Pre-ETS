@@ -5,6 +5,11 @@ description: Review durable Pre-ETS requirements for clarity, sources, lifecycle
 
 # Requirements review
 
+Follow the [requirements guide](../../../docs/requirements/README.md#author-a-requirement)’s public-source
+attribution rule: never name a specific partner or client in public repository artifacts or GitHub titles/bodies.
+Use generic attribution and check prose, examples, quotations, filenames, link labels, and URLs for identifying
+names or abbreviations. Preserve evidence meaning and approval boundaries without publishing the identity.
+
 Read the [requirements guide](../../../docs/requirements/README.md) and
 [area template](../../../docs/requirements/templates/area.md). Review the requested area or entries;
 search the full register when checking ID uniqueness, semantic duplicates, or replacement relationships.
