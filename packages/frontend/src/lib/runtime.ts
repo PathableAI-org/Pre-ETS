@@ -8,7 +8,6 @@ import { TenantConfigService } from "./tenant/service.ts"
 
 const OTEL_SERVICE_NAME = "pre-ets-frontend"
 
-const ConfigProviderLayer = Layer.succeed(ConfigProvider.ConfigProvider, ConfigProvider.fromEnv())
 const MinimumLogLevelLayer = Layer.effect(
   References.MinimumLogLevel,
   Config.LogLevel("LOG_LEVEL").pipe(
@@ -19,8 +18,6 @@ const MinimumLogLevelLayer = Layer.effect(
 const LoggerLayer = Layer.mergeAll(
   Logger.layer([Logger.consolePretty()]),
   MinimumLogLevelLayer
-).pipe(
-  Layer.provide(ConfigProviderLayer)
 )
 
 const ObservabilityLayer = Layer.unwrap(
@@ -35,8 +32,12 @@ const ObservabilityLayer = Layer.unwrap(
   })
 )
 
-const boot = () =>
-  Effect.gen(function*() {
+const boot = () => {
+  // ConfigProvider.fromEnv() snapshots process.env at construction time. Build a
+  // fresh provider per boot so Vitest env stubs / TENANT_CONFIG_DIR resets apply.
+  const configProviderLayer = ConfigProvider.layer(ConfigProvider.fromEnv())
+
+  return Effect.gen(function*() {
     const config = yield* ServerConfig.pipe(
       Effect.tap((config) => Effect.logDebug("Loaded server config", { config })),
       Effect.tapError((error) => Effect.logError(error.message))
@@ -48,7 +49,8 @@ const boot = () =>
         LoggerLayer,
         ObservabilityLayer
       ).pipe(
-        Layer.provide(NodeServices.layer)
+        Layer.provide(NodeServices.layer),
+        Layer.provide(configProviderLayer)
       )
     )
 
@@ -58,8 +60,10 @@ const boot = () =>
     return runtime
   }).pipe(
     Effect.provide(LoggerLayer),
+    Effect.provide(configProviderLayer),
     Effect.runPromise
   )
+}
 
 const fakeBoot = new Proxy({} as Awaited<ReturnType<typeof boot>>, {
   get(_target, property) {

@@ -255,12 +255,13 @@ connects and completes one documented read (datasource list or Tempo search for
 - [x] T026 Run repository quality gates and fix issues introduced by this feature:
       `pnpm --filter @pathableai/pre-ets-frontend test:unit`, then root `pnpm typecheck`,
       `pnpm build`, `pnpm lint`, `pnpm format:check`, and `pnpm check:unused`
-- [x] T027 Execute `specs/006-otel-observability/quickstart.md` sections 0–6 and confirm
-      SC-001–SC-008 evidence for the PR. **SC-004 Done**: second OTLP/HTTP endpoint
-      actually received the span **with configured headers**. **SC-005 Done**: request
-      still served **and** export failure visible in diagnostics. **SC-006 Done**: live MCP
-      first-attempt read evidence (or completed human checklist from T023 before merge).
-      **SC-007 Done**: producer-boundary sanitization tests green (T010a). Leave `otel-lgtm`
+- [ ] T027 Execute `specs/006-otel-observability/quickstart.md` sections 0–6 and confirm
+      SC-001–SC-008 evidence for the PR under the current `@vercel/otel` path. PR test
+      plan still pending re-check of **SC-004** (OTLP header forward) and **SC-005**
+      (collector-down diagnostics). **SC-006** reconcile with live MCP evidence in
+      `docs/observability.md` when recorded. Path note: no custom attribute SpanProcessor /
+      dedicated sanitization unit tests — **SC-007** producer-boundary evidence needs an
+      explicit decision under `@vercel/otel` before marking Done. Leave `otel-lgtm`
       running through quickstart sections 2–3 before any collector stop.
       Environment-specific skips allowed only when the checklist still records live
       verification elsewhere.
