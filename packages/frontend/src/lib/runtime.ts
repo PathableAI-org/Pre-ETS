@@ -1,15 +1,15 @@
-import type { OtlpExporter } from "effect/observability"
+import type { OtelTracer } from "@effect/opentelemetry"
 
 import { NodeServices } from "@effect/platform-node"
 import { type Config, ConfigProvider, Effect, Exit, Layer, Logger, ManagedRuntime } from "effect"
 
 import { ServerConfig } from "./config/index.ts"
-import { isNextProductionBuildPhase, resolveObservabilityLayer } from "./observability/register.ts"
+import { effectObservabilityBridgeLayer, isNextProductionBuildPhase } from "./observability/register.ts"
 import { TenantConfigService } from "./tenant/service.ts"
 
 type ObservabilityLayer =
   | Layer.Layer<never>
-  | Layer.Layer<OtlpExporter.Flusher>
+  | Layer.Layer<OtelTracer.OtelTracer>
 
 const appLayer = (
   config: Config.Success<typeof ServerConfig>,
@@ -29,7 +29,7 @@ const bootRuntime = Effect.gen(function*() {
 
   const observabilityLayer: ObservabilityLayer = isNextProductionBuildPhase()
     ? Layer.empty
-    : resolveObservabilityLayer().layer
+    : effectObservabilityBridgeLayer()
 
   const runtime = ManagedRuntime.make(appLayer(config, observabilityLayer))
   const built = runtime.runSyncExit(Effect.void)

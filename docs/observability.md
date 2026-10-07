@@ -4,10 +4,13 @@ Traces-only instrumentation for the **Next.js Node server**
 (`@pathableai/pre-ets-frontend`). Metrics, logs, browser/RUM, and
 `packages/backend` instrumentation are out of scope for this increment.
 
-Export uses Effect v4 **`effect/observability`** (`OtlpTracer`) installed on the
-frontend `ManagedRuntime` when traces are enabled. Next’s
-`instrumentation.ts` `register()` boots that runtime on
-`NEXT_RUNTIME === "nodejs"`. There is a single OTLP exporter (no `@vercel/otel`).
+**HTTP + export**: `@vercel/otel` registered from Next `instrumentation.ts` when
+traces are enabled (single OTLP exporter; auto-instrumented request spans).
+
+**Effect bridge**: `@effect/opentelemetry` `OtelTracer.layerGlobal` on the
+frontend `ManagedRuntime` attaches Effect spans to that global provider — no
+second exporter. Use `Effect.withSpan` only at logical boundaries (children under
+the HTTP request span).
 
 ## Demo surface
 
@@ -18,8 +21,9 @@ Default local URL base: **`http://127.0.0.1:3000`**.
 | `GET /api/health`       | 200    | Success request for span verification           |
 | `GET /api/health/error` | 500    | Intentional error request for span verification |
 
-These handlers run Effects with `Effect.withSpan` via the shared `ManagedRuntime`
-and bypass the session/OIDC proxy matcher (`/api/*` is outside it).
+These handlers bypass the session/OIDC proxy matcher (`/api/*` is outside it).
+Request-root spans come from `@vercel/otel`. Handlers also emit a small Effect
+logical child (`health.check` / `health.error`) to verify the bridge.
 
 ## Environment variables
 
@@ -36,12 +40,12 @@ See also `packages/frontend/.env.example` and
 
 ### Precedence (boot)
 
-1. Flag not `true`/`1` → no OTLP Layer; healthy start.
+1. Flag not `true`/`1` → no `@vercel/otel` registration; healthy start.
 2. `OTEL_SDK_DISABLED=true` → no export; healthy start.
 3. Enabled + missing/invalid endpoint:
    - **local/dev**: clear diagnostic on stderr; run **without** export (fail-soft).
    - **production** (`NODE_ENV=production`): clear diagnostic; **refuse-to-start**.
-4. Enabled + valid endpoint → provide `OtlpTracer` Layer on `ManagedRuntime`;
+4. Enabled + valid endpoint → `registerOTel` + Effect global Tracer bridge;
    best-effort batch export (OTLP/HTTP protobuf).
 
 Diagnostics never print `OTEL_EXPORTER_OTLP_HEADERS` values.
@@ -52,23 +56,23 @@ If the collector is unreachable after a valid start, export is best-effort:
 request handling continues. Expect:
 
 1. HTTP requests (e.g. `GET /api/health`) to keep returning successfully.
-2. Export failure to appear on stderr as
-   `[observability] OTLP export failed` (and/or the `[observability]` boot line)
-   — never as a hard crash, and never with `OTEL_EXPORTER_OTLP_HEADERS` values.
+2. Export failure diagnostics from the OpenTelemetry / `@vercel/otel` exporter
+   on stderr (and/or the `[observability]` boot line) — never as a hard crash,
+   and never with `OTEL_EXPORTER_OTLP_HEADERS` values.
 
 ## Required span attributes
 
-Each request-scoped Effect span must identify method, route template, and status
-(accepted key names):
+Each **auto-instrumented HTTP request span** must identify method, route
+template, and status/outcome (accepted key names):
 
 - Method: `http.request.method` or `http.method`
 - Route: `http.route` or `next.route`
 - Status: `http.response.status_code` or `http.status_code`
 
 Prohibited on spans: Authorization / bearer tokens, cookies, session ids, raw
-bodies, tenant secrets. Filtering is applied at the producer/annotate boundary
-(`buildRequestSpanAttributes` / `requestSpanAttributes`) before attributes reach
-the Effect tracer.
+bodies, tenant secrets. Filtering is applied at the export boundary via
+`AttributeSanitizingSpanProcessor` (and `attributesFromHeadersSafe` so headers
+are never promoted onto root spans).
 
 ## Local Grafana / OTLP
 
@@ -78,16 +82,26 @@ Optional Compose profile — see [docker-compose.md](./docker-compose.md):
 docker compose --profile observability up -d --wait
 ```
 
+Keycloak health can fail `--wait` while `otel-lgtm` is still healthy; if needed:
+
+```sh
+docker compose --profile observability up -d otel-lgtm --wait
+```
+
 - Grafana UI: `http://127.0.0.1:3300` (anonymous **Viewer**)
 - OTLP HTTP: `http://127.0.0.1:4318`
 
-Enable Next and exercise the demo routes:
+**Explore requires Editor+.** Anonymous Viewer does not show Explore. Sign in as
+`admin` / `admin` (skip password change), then open Explore → Tempo. Or use
+Drilldown / dashboards where Viewer allows.
+
+Enable Next and exercise the demo routes (`.env.local` or shell):
 
 ```sh
 OTEL_TRACES_ENABLED=true \
 OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318 \
 OTEL_SERVICE_NAME=pre-ets-frontend \
-pnpm --filter @pathableai/pre-ets-frontend start
+pnpm --filter @pathableai/pre-ets-frontend dev
 ```
 
 ```sh
@@ -95,8 +109,12 @@ curl -sS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3000/api/health
 curl -sS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3000/api/health/error
 ```
 
-In Grafana → Explore → Tempo, search service `pre-ets-frontend` for routes
-`/api/health` and `/api/health/error`. Allow up to ~30s for batch export.
+In Grafana → Explore → Tempo (as admin), search service `pre-ets-frontend` for
+routes `/api/health` and `/api/health/error`. Expect an HTTP parent span (e.g.
+`GET /api/health`), Next’s `executing api route…` child, and Effect logical
+child `health.check` / `health.error` nested under the route span. Demo routes
+call `attachActiveOtelParent` so Effect continues the active OTEL context.
+Allow up to ~30s for batch export.
 
 Stop only the observability service:
 
@@ -129,7 +147,7 @@ does not satisfy SC-004.
 
 ## Sampling
 
-Local sampling is **100%** (all Effect spans are sampled). Production sampling
+Local sampling is **100%** (`traceSampler: "always_on"`). Production sampling
 policy is deferred. Alerting and SLOs are out of scope.
 
 ## Grafana MCP for agents
@@ -196,7 +214,7 @@ Docs-only command lists without a live success are not SC-006 evidence.
 
 - Metrics and logs export
 - Browser/RUM and cross-process `traceparent` propagation
-- `@effect/opentelemetry` NodeSdk bridge / second exporter
+- A second OTLP exporter alongside `@vercel/otel` (including Effect `OtlpTracer`)
 - Production sampling policies, alerting, and SLOs
 - Hosted vendor selection
 - `packages/backend` process instrumentation

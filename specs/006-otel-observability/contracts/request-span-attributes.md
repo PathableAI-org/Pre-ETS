@@ -2,14 +2,16 @@
 
 **Consumers**: Developers and agents inspecting traces in Grafana / OTLP backends.
 
-**Producer**: Next.js Node HTTP demo handlers when traces are enabled
-(Effect `Effect.withSpan` via `ManagedRuntime` + `OtlpTracer`).
+**Producer**: `@vercel/otel` auto-instrumented HTTP request spans on the Next.js
+Node server when traces are enabled. Effect `Effect.withSpan` may add **logical
+child** spans via `@effect/opentelemetry` global bridge; those children are not
+required to carry HTTP semantic attributes.
 
 ## Required attributes (acceptance minimum)
 
-The request span MUST identify method, route/path template, and status/outcome.
-Next **16.3.8** may emit older or newer HTTP semantic-convention names; either
-form is acceptable if all three facts are present:
+The **HTTP request span** MUST identify method, route/path template, and
+status/outcome. Next **16.3.8** may emit older or newer HTTP semantic-convention
+names; either form is acceptable if all three facts are present:
 
 | Fact             | Accepted attribute keys (any one per fact)            | Example       |
 | ---------------- | ----------------------------------------------------- | ------------- |
@@ -24,8 +26,9 @@ form is acceptable if all three facts are present:
 | `GET http://127.0.0.1:3000/api/health`       | 200             | `/api/health`       |
 | `GET http://127.0.0.1:3000/api/health/error` | 500             | `/api/health/error` |
 
-Each MUST produce an exportable request-scoped span with all three required
-facts.
+Each MUST produce an exportable request-scoped HTTP span with all three required
+facts. Demo handlers also emit Effect logical children (`health.check` /
+`health.error`) to verify the bridge.
 
 ## Prohibited attributes / payloads
 
@@ -36,11 +39,16 @@ MUST NOT appear on spans:
 - Raw request/response bodies containing user or health data
 - Tenant secrets or credentials from configuration
 
+Filtering is applied at the register/export boundary
+(`AttributeSanitizingSpanProcessor` + `attributesFromHeadersSafe`).
+
 ## Correlation (this increment)
 
-- Request span is a root span (no required inbound `traceparent` from browser).
+- HTTP request span is a root span (no required inbound `traceparent` from browser).
+- Effect logical spans nest under the active OTEL request context when the bridge
+  is installed.
 - Cross-process propagation is explicitly out of scope.
-- Effect-native spans / second exporters are out of scope.
+- A second OTLP exporter (including Effect `OtlpTracer`) is out of scope.
 
 ## Verification
 
@@ -51,5 +59,7 @@ required facts.
 Unit tests for attribute filtering MUST include:
 
 1. At least one **negative fixture** that rejects a prohibited attribute (e.g. Authorization) on the helper.
-2. At least one **producer-boundary** test that captures an **emitted** span after the register/export pipeline and asserts prohibited attributes are absent (helper-only tests do not satisfy FR-009 / SC-007).
+2. At least one **producer-boundary** test that captures configuration of the
+   sanitizing SpanProcessor on the `@vercel/otel` register path (helper-only
+   tests do not satisfy FR-009 / SC-007).
    Manual/sample span review (SC-007) remains required in addition to unit tests.

@@ -1,5 +1,9 @@
 # Tasks: OpenTelemetry Observability Stack
 
+> **Path note (2026-10-06)**: Implementation uses `@vercel/otel` for HTTP + OTLP
+> export and `@effect/opentelemetry` `OtelTracer.layerGlobal` for Effect logical
+> spans. Do not add Effect `OtlpTracer` as a second exporter.
+
 **Identity**: Feature directory `specs/006-otel-observability`; git branch
 `007-otel-observability`. Spec Kit directory numbers and git branch numbers are
 independent — do not rename either to force a match.

@@ -4,7 +4,7 @@
 `grafana/otel-lgtm:0.35.0` or deployed).
 
 **Producer**: `@pathableai/pre-ets-frontend` (Next Node runtime) when traces are
-enabled.
+enabled — `@vercel/otel` is the sole OTLP exporter.
 
 ## Transport
 
@@ -21,15 +21,15 @@ export?”):
 
 | Priority | Condition                                               | Result                                                                                                        |
 | -------- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| 1        | `OTEL_TRACES_ENABLED` not `true`/`1`                    | No OtlpTracer Layer; process healthy; no export                                                               |
+| 1        | `OTEL_TRACES_ENABLED` not `true`/`1`                    | No `registerOTel`; process healthy; no export                                                                 |
 | 2        | `OTEL_SDK_DISABLED=true`                                | No export (even if traces “enabled”); process healthy                                                         |
 | 3        | Enabled + missing/invalid `OTEL_EXPORTER_OTLP_ENDPOINT` | Clear diagnostic; **local/dev** fail-soft (no export); **production** (`NODE_ENV=production`) refuse-to-start |
-| 4        | Enabled + valid endpoint                                | Provide Effect `OtlpTracer` Layer; batch export of ended sampled spans                                        |
+| 4        | Enabled + valid endpoint                                | `registerOTel` + Effect global Tracer bridge; batch export of ended sampled spans                             |
 
-**Why `OTEL_TRACES_ENABLED` exists**: Default-off Layer install so local workflows do
-not export merely because an OTEL endpoint env var is present from unrelated
-tooling. Standard OTEL vars (`OTEL_EXPORTER_OTLP_*`, `OTEL_SDK_DISABLED`,
-`OTEL_SERVICE_NAME`) still apply once enabled.
+**Why `OTEL_TRACES_ENABLED` exists**: Default-off SDK registration so local
+workflows do not export merely because an OTEL endpoint env var is present from
+unrelated tooling. Standard OTEL vars (`OTEL_EXPORTER_OTLP_*`,
+`OTEL_SDK_DISABLED`, `OTEL_SERVICE_NAME`) still apply once enabled.
 
 ## Runtime export failure
 

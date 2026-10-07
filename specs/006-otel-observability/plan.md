@@ -11,15 +11,17 @@ branch number — do not rename either).
 ## Summary
 
 Stand up vendor-neutral **OpenTelemetry trace export** for the **Next.js Node
-server** (`@pathableai/pre-ets-frontend`): a request-scoped Effect span with
-method, route/path template, and status/outcome attributes, exported over
-**OTLP/HTTP** via Effect v4 **`effect/observability`** (`OtlpTracer`) on the
-frontend `ManagedRuntime`, gated by **`OTEL_TRACES_ENABLED`**. Next
-`instrumentation.ts` boots that runtime. Keep local observability **optional**
-via a Compose `observability` profile running **`grafana/otel-lgtm:0.35.0`**.
-Document deployed OTLP endpoint configuration (including headers) and how to
-connect a **version-pinned** Grafana MCP server to the local stack. Metrics,
-logs, and backend-package instrumentation stay out of this increment.
+server** (`@pathableai/pre-ets-frontend`): auto-instrumented HTTP request spans
+(method, route/path template, status/outcome) exported over **OTLP/HTTP** via
+**`@vercel/otel`**, gated by **`OTEL_TRACES_ENABLED`**. Bridge Effect with
+**`@effect/opentelemetry`** `OtelTracer.layerGlobal` on the frontend
+`ManagedRuntime` so `Effect.withSpan` is used only at logical boundaries. Next
+`instrumentation.ts` registers OTEL then boots that runtime. Keep local
+observability **optional** via a Compose `observability` profile running
+**`grafana/otel-lgtm:0.35.0`**. Document deployed OTLP endpoint configuration
+(including headers) and how to connect a **version-pinned** Grafana MCP server
+to the local stack. Metrics, logs, and backend-package instrumentation stay out
+of this increment.
 
 Research: [research.md](./research.md). Shapes: [data-model.md](./data-model.md).
 Contracts: [contracts/](./contracts/). Validation: [quickstart.md](./quickstart.md).
@@ -30,10 +32,10 @@ Contracts: [contracts/](./contracts/). Validation: [quickstart.md](./quickstart.
 `packageManager`. Frontend workspace `@pathableai/pre-ets-frontend` (Next.js
 **16.3.8**).
 
-**Primary Dependencies**: Effect **4.0.1** `effect/observability` (`OtlpTracer`,
-`OtlpSerialization.layerProtobuf`) and `effect/http` (`FetchHttpClient`). Single
-OTLP exporter — no `@vercel/otel`. Compose: pinned **`grafana/otel-lgtm:0.35.0`**
-for local OTLP + Grafana.
+**Primary Dependencies**: `@vercel/otel` (Next auto-instrumentation + OTLP
+export); `@effect/opentelemetry` **4.0.1** global Tracer bridge; Effect
+**4.0.1** ManagedRuntime. Single OTLP exporter — no Effect `OtlpTracer`. Compose:
+pinned **`grafana/otel-lgtm:0.35.0`** for local OTLP + Grafana.
 
 **Storage**: Ephemeral local trace/metric/log stores inside `otel-lgtm` (dev only).
 No product Postgres/Redis changes. No durable app-owned telemetry store.
@@ -74,19 +76,19 @@ in-repo.
 
 _GATE: Evaluated before Phase 0 and re-evaluated after Phase 1._
 
-| Principle                            | Pre-research                                                                | Post-design                                                                                                |
-| ------------------------------------ | --------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| I. Evidence-grounded specification   | Pass: spec clarifies traces-only Next server MVP + platform stories         | Pass: research records Effect `OtlpTracer`, otel-lgtm pin, attribute set, MCP auth+version, startup policy |
-| II. Ownership and authoritative data | Pass: frontend-owned instrumentation; no domain persistence change          | Pass: all Next OTel wiring in `packages/frontend`; Compose/docs at repo root                               |
-| III. Tenant isolation                | Pass: no tenant resolution change; forbid cross-tenant/PII attributes       | Pass: attribute contract denylists secrets/ids; demo routes bypass session                                 |
-| IV. Accessible SSR UI                | N/A: demo Route Handlers only; no product UI change                         | N/A                                                                                                        |
-| V. Meaningful behavioral tests       | Pass: verify request span + attributes + optional stack; not framework-only | Pass: quickstart + Vitest unit/host-boundary tests; manual Grafana/MCP checks                              |
-| VI. Simplicity and quality           | Pass: one Compose profile + one OTEL registration path                      | Pass: single Effect `OtlpTracer` exporter; single pinned LGTM image                                        |
+| Principle                            | Pre-research                                                                | Post-design                                                                                                                  |
+| ------------------------------------ | --------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| I. Evidence-grounded specification   | Pass: spec clarifies traces-only Next server MVP + platform stories         | Pass: research records `@vercel/otel` + Effect global bridge, otel-lgtm pin, attribute set, MCP auth+version, startup policy |
+| II. Ownership and authoritative data | Pass: frontend-owned instrumentation; no domain persistence change          | Pass: all Next OTel wiring in `packages/frontend`; Compose/docs at repo root                                                 |
+| III. Tenant isolation                | Pass: no tenant resolution change; forbid cross-tenant/PII attributes       | Pass: attribute contract denylists secrets/ids; demo routes bypass session                                                   |
+| IV. Accessible SSR UI                | N/A: demo Route Handlers only; no product UI change                         | N/A                                                                                                                          |
+| V. Meaningful behavioral tests       | Pass: verify request span + attributes + optional stack; not framework-only | Pass: quickstart + Vitest unit/host-boundary tests; manual Grafana/MCP checks                                                |
+| VI. Simplicity and quality           | Pass: one Compose profile + one OTEL registration path                      | Pass: single `@vercel/otel` exporter + Effect bridge; single pinned LGTM image                                               |
 
-**Authorization note**: This plan authorizes Effect **`effect/observability`**
-(`OtlpTracer`, `@stability unstable`) on the frontend `ManagedRuntime`, booted
-from `packages/frontend/src/instrumentation.ts` when traces are enabled. Do not
-install `@vercel/otel` or a second OTLP exporter.
+**Authorization note**: This plan authorizes **`@vercel/otel`** as the HTTP +
+OTLP export owner and **`@effect/opentelemetry`** `OtelTracer.layerGlobal`
+(`@stability unstable`) on the frontend `ManagedRuntime`. Do not install Effect
+`OtlpTracer` or a second OTLP exporter.
 
 **Post-design result**: Gates pass. No constitution exception required (Compose
 remains external services; apps stay on host; no ownership boundary crossed into
@@ -116,23 +118,23 @@ compose.yaml                          # observability profile + grafana/otel-lgt
 docs/docker-compose.md                # optional Grafana / OTLP local guide
 docs/observability.md                 # NEW: local + deployed OTLP + MCP
 packages/frontend/
-├── package.json                      # effect 4.0.1 (includes effect/observability)
+├── package.json                      # @vercel/otel + @effect/opentelemetry + effect 4.0.1
 ├── src/
-│   ├── instrumentation.ts            # boot ManagedRuntime (OtlpTracer when enabled)
-│   ├── lib/runtime.ts                # ManagedRuntime + observability Layer
-│   ├── lib/observability/            # config, OtlpTracer Layer, attribute helpers, health Effects
+│   ├── instrumentation.ts            # registerOTel then boot ManagedRuntime
+│   ├── lib/runtime.ts                # ManagedRuntime + Effect global Tracer bridge
+│   ├── lib/observability/            # config, register, attribute sanitizer, health Effects
 │   └── app/api/health/               # thin adapters → Runtime.runPromise
 └── tests/                            # config / attribute / disable / host-boundary tests
 ```
 
-**Structure Decision**: Frontend owns Effect OTLP export and the demo HTTP
-surface. Root Compose + docs own the optional local Grafana/OTLP stack and MCP
-instructions. Backend unchanged.
+**Structure Decision**: Frontend owns `@vercel/otel` registration, Effect bridge,
+and the demo HTTP surface. Root Compose + docs own the optional local
+Grafana/OTLP stack and MCP instructions. Backend unchanged.
 
-**Process-host requirements**: When traces are enabled, runtime boot MUST apply
-the locked startup policy before providing `OtlpTracer`. Config helpers MUST
-remain import-safe for unit tests; Layer installation stays in the ManagedRuntime
-host path.
+**Process-host requirements**: When traces are enabled, instrumentation MUST
+apply the locked startup policy before `registerOTel`. Config helpers MUST
+remain import-safe for unit tests; Effect bridge Layer install stays in the
+ManagedRuntime host path.
 
 ## Startup policy (this increment — locked)
 
@@ -140,16 +142,15 @@ host path.
 | ---------------------------------- | ----------------------------------------------------- | --------------------------------- |
 | Local / non-production             | Clear diagnostic; **run without export** (fail-soft)  | Best-effort; requests continue    |
 | Production (`NODE_ENV=production`) | Clear diagnostic; **refuse-to-start**                 | Best-effort; requests continue    |
-| Traces disabled / flag unset       | No OTLP Layer; healthy start                          | N/A                               |
+| Traces disabled / flag unset       | No `registerOTel`; healthy start                      | N/A                               |
 
 ## Enablement scheme
 
 Keep explicit **`OTEL_TRACES_ENABLED`** (default off) so the process does not
-install `OtlpTracer` unless opted in. When enabled, honor
+call `registerOTel` unless opted in. When enabled, honor
 `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_HEADERS`,
 `OTEL_SERVICE_NAME`, and `OTEL_SDK_DISABLED` per
-[contracts/otlp-export.md](./contracts/otlp-export.md). Do **not** use
-`OtlpTracer.layerFromConfig` alone (it ignores `OTEL_TRACES_ENABLED`).
+[contracts/otlp-export.md](./contracts/otlp-export.md).
 
 ## Complexity Tracking
 
@@ -158,8 +159,8 @@ install `OtlpTracer` unless opted in. When enabled, honor
 | Note                 | Detail                                                                                                                                              |
 | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Minimal HTTP surface | `GET /api/health` + `GET /api/health/error` on Next `:3000` satisfy “span around a request” without session/OIDC (proxy matcher excludes `/api/*`). |
-| Effect OtlpTracer    | Explicitly authorized `effect/observability` (`@stability unstable`) on ManagedRuntime; protobuf serialization for LGTM `:4318`.                    |
-| Single exporter      | No `@vercel/otel` / second OTLP client. Demo routes emit Effect spans via `Effect.withSpan`.                                                        |
+| Vercel + Effect      | `@vercel/otel` owns HTTP + export; `@effect/opentelemetry` global bridge for logical `Effect.withSpan` children.                                    |
+| Single exporter      | No Effect `OtlpTracer` / second OTLP client.                                                                                                        |
 | Grafana image pin    | Compose MUST use `grafana/otel-lgtm:0.35.0` (prefer digest pin at implement time if available). Do not ship `:latest`.                              |
 | Grafana host port    | Publish Grafana on loopback **3300** (map container 3000) so Next keeps **3000**.                                                                   |
 | MCP pin              | Docs and tasks MUST use `uvx mcp-grafana==2.0.0` (or equivalent pinned container). Unversioned `uvx mcp-grafana` is not acceptable.                 |
@@ -176,5 +177,5 @@ install `OtlpTracer` unless opted in. When enabled, honor
 ## Phase notes (before `/speckit-tasks`)
 
 1. Contracts and quickstart lock ports, routes, auth, headers proof, and verification set.
-2. Implementation tasks MUST wire Effect `OtlpTracer`, host-boundary tests, and docs under `docs/observability.md` / `docs/docker-compose.md`.
+2. Implementation tasks MUST wire `@vercel/otel` + Effect global bridge, host-boundary tests, and docs under `docs/observability.md` / `docs/docker-compose.md`.
 3. Do not change `packages/backend` or rewrite AGENTS.md Effect pin language in this feature.

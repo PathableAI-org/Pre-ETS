@@ -6,42 +6,47 @@ All Technical Context unknowns from planning are resolved below.
 
 ## 1. Next.js OTEL registration path
 
-**Decision**: Export traces with Effect v4 **`effect/observability`**
-(`OtlpTracer.layer`) provided on the frontend `ManagedRuntime`, booted from
+**Decision**: Export traces with **`@vercel/otel`** registered from
 [`packages/frontend/src/instrumentation.ts`](../../packages/frontend/src/instrumentation.ts)
-when `OTEL_TRACES_ENABLED` is true and configuration is valid. Demo Route
-Handlers emit request spans via `Effect.withSpan` + sanitized attributes
-(method, route, status). Use `OtlpSerialization.layerProtobuf` and
-`FetchHttpClient` for OTLP/HTTP export. Do **not** install `@vercel/otel` or a
-second exporter.
+when `OTEL_TRACES_ENABLED` is true and configuration is valid (single OTLP
+exporter; auto-instrumented HTTP request spans with standard semantic attributes).
+Bridge Effect via **`@effect/opentelemetry`** `OtelTracer.layerGlobal` on the
+frontend `ManagedRuntime` so `Effect.withSpan` creates logical children under the
+active OTEL context. Attribute sanitization uses
+`AttributeSanitizingSpanProcessor` at the register/export boundary. Do **not**
+install Effect `OtlpTracer` or a second OTLP exporter.
 
 **Enable flag**: Keep **`OTEL_TRACES_ENABLED`** as an explicit default-off gate
-so the host does not install `OtlpTracer` unless opted in. When the flag is true,
+so the host does not call `registerOTel` unless opted in. When the flag is true,
 honor standard OTEL env including `OTEL_SDK_DISABLED`, endpoint, headers, and
 service name (see [contracts/otlp-export.md](./contracts/otlp-export.md)
-precedence). Do **not** treat endpoint presence alone as enablement. Do **not**
-rely on `OtlpTracer.layerFromConfig` alone (it keys off endpoint +
-`OTEL_TRACES_EXPORTER=otlp`, not `OTEL_TRACES_ENABLED`).
+precedence). Do **not** treat endpoint presence alone as enablement.
 
 **Install verification (Effect 4.0.1, 2026-10-06)**: Confirmed
-`effect/observability` exports `OtlpTracer`, `OtlpSerialization`, and related
-modules; Effect package AGENTS.md recommends these Otlp modules for new projects
-(`@effect/opentelemetry` NodeSdk only when bridging an existing OTEL SDK).
+`@effect/opentelemetry` exports `OtelTracer.layerGlobal` (global provider bridge)
+and `Resource.layer`. Effect package AGENTS.md: use `effect/observability` Otlp
+modules for Effect-only export, or `@effect/opentelemetry` when integrating with
+an **existing** OpenTelemetry setup — this path uses the latter because
+`@vercel/otel` owns the SDK.
 
-**Rationale**: Matches vendor-agnostic OTLP, follows Effect v4 conventions on the
-existing ManagedRuntime host, and keeps a single exporter. Aligns with the scope
-that the instrumented process is the Next server, not `packages/backend`.
+**Rationale**: Automatic Next request spans avoid hand-rolled HTTP semantics on
+every handler; Effect spans stay at logical boundaries; single exporter;
+vendor-agnostic OTLP. Aligns with the scope that the instrumented process is the
+Next server, not `packages/backend`.
 
 **Alternatives considered**:
 
-- `@vercel/otel` as primary exporter — superseded by Effect-native OTLP.
-- `@effect/opentelemetry` NodeSdk bridge — not needed without an existing OTEL
-  SDK provider.
+- Effect-only `OtlpTracer` — rejected for this increment: forces fake request
+  spans via `Effect.withSpan` instead of framework auto-instrumentation.
+- `@effect/opentelemetry` NodeSdk that starts its own exporter — rejected; would
+  duplicate `@vercel/otel` export.
 - Vendor SDKs (Datadog, etc.) — rejects vendor-agnostic goal.
-- Always-on `OtlpTracer` without `OTEL_TRACES_ENABLED` — weaker local
+- Always-on registration without `OTEL_TRACES_ENABLED` — weaker local
   default-off story.
 - Instrumenting `@pathableai/pre-ets-backend` — rejected; wrong process; port
   `8080` conflicts with Keycloak.
+- Request-root spans in `proxy.ts` — rejected; matcher is only `/` and
+  `/auth/callback`; passthrough ends before route handlers.
 
 ## 2. Local Grafana / OTLP stack
 
@@ -84,18 +89,18 @@ independently.
 **Decision**: Environment-driven config resolved at Next process boot
 (`instrumentation.register` / observability config module):
 
-| Setting                       | Role                                                                       |
-| ----------------------------- | -------------------------------------------------------------------------- |
-| `OTEL_TRACES_ENABLED`         | Explicit opt-in (`true` / `1`); default **off**; controls OtlpTracer Layer |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | Base URL (e.g. `http://127.0.0.1:4318`); traces POST to `/v1/traces`       |
-| `OTEL_SERVICE_NAME`           | Resource `service.name` (default `pre-ets-frontend`)                       |
-| `OTEL_EXPORTER_OTLP_HEADERS`  | Optional; required for authenticated collectors (verified in SC-004)       |
-| `OTEL_SDK_DISABLED`           | When true, do not export even if traces enabled (standard OTEL)            |
+| Setting                       | Role                                                                  |
+| ----------------------------- | --------------------------------------------------------------------- |
+| `OTEL_TRACES_ENABLED`         | Explicit opt-in (`true` / `1`); default **off**; gates `registerOTel` |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | Base URL (e.g. `http://127.0.0.1:4318`); traces POST to `/v1/traces`  |
+| `OTEL_SERVICE_NAME`           | Resource `service.name` (default `pre-ets-frontend`)                  |
+| `OTEL_EXPORTER_OTLP_HEADERS`  | Optional; required for authenticated collectors (verified in SC-004)  |
+| `OTEL_SDK_DISABLED`           | When true, do not export even if traces enabled (standard OTEL)       |
 
 **Startup policy (locked)**:
 
-- Disabled or flag unset: do not install OtlpTracer; process serves requests.
-- Enabled + valid endpoint: provide `OtlpTracer` Layer; best-effort export.
+- Disabled or flag unset: do not call `registerOTel`; process serves requests.
+- Enabled + valid endpoint: `registerOTel` + Effect global Tracer bridge; best-effort export.
 - Enabled + invalid/missing endpoint:
   - **local/dev**: clear diagnostic; run **without** export (fail-soft).
   - **production** (`NODE_ENV=production`): clear diagnostic; **refuse-to-start**.
@@ -208,10 +213,9 @@ unnecessary complexity.
 ## 9. Deferred (explicit)
 
 - `@pathableai/pre-ets-backend` instrumentation
-- `@effect/opentelemetry` NodeSdk bridge / second exporter
+- A second OTLP exporter alongside `@vercel/otel` (including Effect `OtlpTracer`)
 - Metrics and logs export
 - Browser/RUM telemetry and cross-process propagation
 - Production sampling policies and **alerting / SLOs**
 - Choosing a specific hosted observability vendor
-- Syncing AGENTS.md / effect-guidance Effect pin text (out of band; not required
-  for this feature because Effect OTel APIs are not the export path)
+- Syncing AGENTS.md / effect-guidance Effect pin text (out of band)

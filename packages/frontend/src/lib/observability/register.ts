@@ -1,7 +1,10 @@
-import { Effect, Layer } from "effect"
-import { FetchHttpClient, HttpClient } from "effect/http"
-import { type OtlpExporter, OtlpSerialization, OtlpTracer } from "effect/observability"
+import type { Configuration } from "@vercel/otel"
 
+import { OtelTracer, Resource } from "@effect/opentelemetry"
+import { registerOTel } from "@vercel/otel"
+import { Layer } from "effect"
+
+import { AttributeSanitizingSpanProcessor, attributesFromHeadersSafe } from "./attributes.ts"
 import {
   type ObservabilityConfigDecision,
   type ObservabilityEnabledConfig,
@@ -13,36 +16,47 @@ export interface ObservabilityRegisterDeps {
   readonly env?: ObservabilityEnv
   readonly logDiagnostic?: (message: string) => void
   readonly refuseToStart?: (reason: string) => never
+  readonly registerOTelFn?: (options: Configuration) => void
 }
 
 export type ObservabilityRegisterResult =
-  | {
-    readonly config: ObservabilityEnabledConfig
-    readonly layer: Layer.Layer<OtlpExporter.Flusher>
-    readonly status: "registered"
-  }
-  | { readonly layer: Layer.Layer<never>; readonly reason: string; readonly status: "fail-soft" }
-  | { readonly layer: Layer.Layer<never>; readonly status: "disabled" }
-  | { readonly layer: Layer.Layer<never>; readonly status: "sdk-disabled" }
+  | { readonly config: ObservabilityEnabledConfig; readonly status: "registered" }
+  | { readonly reason: string; readonly status: "fail-soft" }
+  | { readonly reason: string; readonly status: "refuse-to-start" }
+  | { readonly status: "disabled" }
+  | { readonly status: "sdk-disabled" }
 
 const DEFAULT_DIAGNOSTIC_PREFIX = "[observability]"
 
 /**
- * Builds the Effect OTLP tracing Layer for an enabled config decision.
- * Attribute sanitization happens at annotate/producer boundary (see attributes.ts).
+ * Builds the @vercel/otel configuration used by the instrumentation host path.
+ * Attribute sanitization is wired into spanProcessors so export cannot bypass it.
  */
-export function buildOtlpTracingLayer(
+export function buildVercelOtelConfiguration(
   config: ObservabilityEnabledConfig
-): Layer.Layer<OtlpExporter.Flusher> {
-  return OtlpTracer.layer({
-    headers: config.otlpHeaders,
-    resource: {
-      serviceName: config.serviceName
-    },
-    url: config.tracesUrl
-  }).pipe(
-    Layer.provide(OtlpSerialization.layerProtobuf),
-    Layer.provide(otlpExportHttpClientLayer())
+): Configuration {
+  return {
+    attributesFromHeaders: attributesFromHeadersSafe,
+    serviceName: config.serviceName,
+    spanProcessors: [new AttributeSanitizingSpanProcessor(), "auto"],
+    traceSampler: "always_on"
+  }
+}
+
+/**
+ * Effect tracer Layer that attaches to the global OpenTelemetry provider
+ * installed by `@vercel/otel`. Does not start a second OTLP exporter.
+ */
+export function effectObservabilityBridgeLayer(
+  env: ObservabilityEnv = process.env
+): Layer.Layer<never> | Layer.Layer<OtelTracer.OtelTracer> {
+  const decision = resolveObservabilityConfig(env)
+  if (decision.kind !== "enabled") {
+    return Layer.empty
+  }
+
+  return OtelTracer.layerGlobal.pipe(
+    Layer.provide(Resource.layer({ serviceName: decision.serviceName }))
   )
 }
 
@@ -53,7 +67,7 @@ export function formatObservabilityDiagnostic(
     case "disabled":
       return `${DEFAULT_DIAGNOSTIC_PREFIX} traces disabled (OTEL_TRACES_ENABLED not true/1)`
     case "enabled":
-      return `${DEFAULT_DIAGNOSTIC_PREFIX} registering Effect OtlpTracer export to ${decision.tracesUrl}`
+      return `${DEFAULT_DIAGNOSTIC_PREFIX} registering @vercel/otel export to ${decision.tracesUrl}`
     case "fail-soft":
       return `${DEFAULT_DIAGNOSTIC_PREFIX} enabled but invalid config (${decision.reason}); continuing without export`
     case "refuse-to-start":
@@ -69,43 +83,61 @@ export function isNextProductionBuildPhase(env: ObservabilityEnv = process.env):
 }
 
 /**
- * Applies observability startup policy and returns an Effect Layer.
- * Safe to call from the frontend ManagedRuntime boot path on the Node runtime only.
+ * Applies observability startup policy and registers @vercel/otel when enabled.
+ * Safe to call from Next instrumentation `register()` on the Node runtime only.
  */
-export function resolveObservabilityLayer(
+export function registerObservability(
   deps: ObservabilityRegisterDeps = {}
 ): ObservabilityRegisterResult {
   const env = deps.env ?? process.env
   const logDiagnostic = deps.logDiagnostic ?? defaultLogDiagnostic
+  const registerOTelFn = deps.registerOTelFn ?? registerOTel
   const refuseToStart = deps.refuseToStart ?? defaultRefuseToStart
 
   const decision = resolveObservabilityConfig(env)
 
   if (decision.kind === "disabled") {
-    return { layer: Layer.empty, status: "disabled" }
+    return { status: "disabled" }
   }
 
   if (decision.kind === "sdk-disabled") {
     logDiagnostic(formatObservabilityDiagnostic(decision))
-    return { layer: Layer.empty, status: "sdk-disabled" }
+    return { status: "sdk-disabled" }
   }
 
   if (decision.kind === "fail-soft") {
     logDiagnostic(formatObservabilityDiagnostic(decision))
-    return { layer: Layer.empty, reason: decision.reason, status: "fail-soft" }
+    return { reason: decision.reason, status: "fail-soft" }
   }
 
   if (decision.kind === "refuse-to-start") {
-    logDiagnostic(formatObservabilityDiagnostic(decision))
+    const message = formatObservabilityDiagnostic(decision)
+    logDiagnostic(message)
     return refuseToStart(decision.reason)
   }
 
-  logDiagnostic(formatObservabilityDiagnostic(decision))
-  return {
-    config: decision,
-    layer: buildOtlpTracingLayer(decision),
-    status: "registered"
+  // Apply endpoint/headers to process env so @vercel/otel's auto OTLP exporter
+  // picks them up. Never log header values.
+  process.env.OTEL_EXPORTER_OTLP_ENDPOINT = decision.otlpEndpoint
+  process.env.OTEL_SERVICE_NAME = decision.serviceName
+  if (Object.keys(decision.otlpHeaders).length > 0) {
+    const existing = env.OTEL_EXPORTER_OTLP_HEADERS
+    if (existing !== undefined && existing.trim() !== "") {
+      process.env.OTEL_EXPORTER_OTLP_HEADERS = existing
+    } else {
+      process.env.OTEL_EXPORTER_OTLP_HEADERS = Object.entries(decision.otlpHeaders)
+        .map(([key, value]) => `${key}=${value}`)
+        .join(",")
+    }
   }
+
+  // Prefer HTTP/protobuf for local otel-lgtm on 4318 when unset.
+  process.env.OTEL_EXPORTER_OTLP_PROTOCOL ??= "http/protobuf"
+
+  logDiagnostic(formatObservabilityDiagnostic(decision))
+  registerOTelFn(buildVercelOtelConfiguration(decision))
+
+  return { config: decision, status: "registered" }
 }
 
 function defaultLogDiagnostic(message: string): void {
@@ -116,26 +148,4 @@ function defaultRefuseToStart(reason: string): never {
   const error = new Error(formatObservabilityDiagnostic({ kind: "refuse-to-start", reason }))
   error.name = "ObservabilityConfigurationError"
   throw error
-}
-
-/**
- * HttpClient used by OtlpTracer. Logs a fixed stderr line on export failure (SC-005)
- * without printing header values or request bodies.
- */
-function otlpExportHttpClientLayer(): Layer.Layer<HttpClient.HttpClient> {
-  return Layer.effect(
-    HttpClient.HttpClient,
-    Effect.gen(function*() {
-      const client = yield* HttpClient.HttpClient
-      return client.pipe(
-        HttpClient.tapError(() =>
-          Effect.sync(() => {
-            console.error(`${DEFAULT_DIAGNOSTIC_PREFIX} OTLP export failed`)
-          })
-        )
-      )
-    })
-  ).pipe(
-    Layer.provide(FetchHttpClient.layer)
-  )
 }
