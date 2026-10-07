@@ -44,14 +44,12 @@ Process-level settings resolved at Next boot (`instrumentation.register`).
 
 ### State
 
-| State                              | Behavior                                                                                 |
-| ---------------------------------- | ---------------------------------------------------------------------------------------- |
-| Disabled                           | No OTEL register; requests succeed; no export                                            |
-| Valid OTLP endpoint set            | `@vercel/otel` registered + Effect global Tracer bridge; best-effort export              |
-| Endpoint present (non-blank)       | `registerOTel` + Effect bridge during ManagedRuntime boot; SDK reads remaining OTEL env. |
-| Endpoint missing/blank             | No registration; process healthy.                                                        |
-| Enabled + `OTEL_SDK_DISABLED=true` | Do not export; process starts (same as disabled export path)                             |
-| Collector unreachable after start  | Best-effort; request handling continues                                                  |
+| State                             | Behavior                                                |
+| --------------------------------- | ------------------------------------------------------- |
+| ManagedRuntime boot               | Always `registerOTel` + Effect global Tracer bridge     |
+| `OTEL_SDK_DISABLED` set           | `@vercel/otel` early-return; no export; process healthy |
+| SDK enabled                       | SDK reads endpoint/headers/protocol; best-effort export |
+| Collector unreachable after start | Best-effort; request handling continues                 |
 
 ## OTLP Export Target
 

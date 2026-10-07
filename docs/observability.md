@@ -5,52 +5,54 @@ Traces-only instrumentation for the **Next.js Node server**
 `packages/backend` instrumentation are out of scope for this increment.
 
 **HTTP + export**: During ManagedRuntime boot (loaded from Next
-`instrumentation.ts`), `registerOTel` runs when `OTEL_EXPORTER_OTLP_ENDPOINT` is
-present and non-blank. `@vercel/otel` is the sole OTLP exporter and auto-instruments
-request spans on any Next Node route. Endpoint shape, headers, protocol, and
-`OTEL_SDK_DISABLED` are left to the process environment and the OpenTelemetry SDK.
+`instrumentation.ts`), the app **always** calls `registerOTel` and installs the
+Effect global Tracer bridge. `@vercel/otel` is the sole OTLP exporter and
+auto-instruments request spans on any Next Node route. Endpoint, headers,
+protocol, and `OTEL_SDK_DISABLED` are left to the process environment /
+`@vercel/otel`.
 
-**Effect bridge**: When the endpoint is present, `@effect/opentelemetry`
-`OtelTracer.layerGlobal` is installed on the frontend `ManagedRuntime` so Effect
-spans share that global provider — no second exporter. Use `Effect.withSpan` only
-at logical boundaries when needed.
+**Effect bridge**: `@effect/opentelemetry` `OtelTracer.layerGlobal` is always
+installed on the frontend `ManagedRuntime` so Effect spans share the global
+provider — no second exporter. Use `Effect.withSpan` only at logical boundaries
+when needed.
 
 ## Verification
 
 Default local URL base: **`http://127.0.0.1:3000`**.
 
-Any Next Node request produces an auto-instrumented HTTP span. For a quick check,
-hit the app root (redirect/401 is fine) or any other route and search Tempo for
-service `pre-ets-frontend`.
+Any Next Node request produces an auto-instrumented HTTP span when the SDK is
+not disabled. For a quick check, hit the app root (redirect/401 is fine) or any
+other route and search Tempo for service `pre-ets-frontend`.
 
 ## Environment variables
 
-OTEL fields are part of frontend `ServerConfig` (`packages/frontend/src/lib/config/index.ts`).
+Standard OTEL env vars (not part of `ServerConfig`). App code does not validate them.
 
-| Variable                      | Role                                                                                    |
-| ----------------------------- | --------------------------------------------------------------------------------------- |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | Set (non-blank) to enable `registerOTel` + Effect bridge (e.g. `http://127.0.0.1:4318`) |
-| `OTEL_SERVICE_NAME`           | Resource `service.name` (default `pre-ets-frontend`)                                    |
-| `OTEL_EXPORTER_OTLP_HEADERS`  | Optional SDK-read headers for authenticated collectors                                  |
-| `OTEL_SDK_DISABLED`           | Standard OTEL kill switch (honored by the SDK)                                          |
+| Variable                      | Role                                                                                     |
+| ----------------------------- | ---------------------------------------------------------------------------------------- |
+| `OTEL_SDK_DISABLED`           | **Off switch** — set `true` so `@vercel/otel` does not start exporters/instrumentation   |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP base URL when the SDK is enabled (e.g. `http://127.0.0.1:4318`)                     |
+| `OTEL_SERVICE_NAME`           | Resource `service.name` (app passes `pre-ets-frontend`; SDK may honor this env when set) |
+| `OTEL_EXPORTER_OTLP_HEADERS`  | Optional SDK-read headers for authenticated collectors                                   |
 
-Unset/blank endpoint keeps traces off (no `registerOTel`). See
-`packages/frontend/.env.example` and
+Quiet local without a collector: set `OTEL_SDK_DISABLED=true`.
+
+If the SDK is enabled and no endpoint is set, `@vercel/otel` defaults export to
+`http://localhost:4318/v1/traces`. See `packages/frontend/.env.example` and
 `specs/006-otel-observability/contracts/otlp-export.md`.
 
 ### Precedence (boot)
 
-1. Endpoint missing/blank → no `registerOTel`; healthy start.
-2. Endpoint present → `registerOTel` + Effect global Tracer bridge during ManagedRuntime boot.
-   The SDK applies `OTEL_SDK_DISABLED`, headers, and exporter settings from the environment.
-   App code does not validate or normalize the endpoint URL.
+1. ManagedRuntime boot always calls `registerOTel` + installs `OtelTracer.layerGlobal`.
+2. If `OTEL_SDK_DISABLED` is set (non-empty), `@vercel/otel` returns immediately — no export.
+3. Otherwise the SDK applies endpoint / headers / protocol from the environment.
 
 ### Startup policy after a successful boot
 
-If the collector is unreachable after start, export is best-effort: request handling
-continues. Expect export failure diagnostics from the OpenTelemetry / `@vercel/otel`
-exporter on stderr — never as a hard crash, and never with header values printed by
-app code.
+If the collector is unreachable after start (SDK enabled), export is best-effort:
+request handling continues. Expect export failure diagnostics from the
+OpenTelemetry / `@vercel/otel` exporter on stderr — never as a hard crash, and
+never with header values printed by app code.
 
 ## Required span attributes
 
@@ -79,11 +81,18 @@ docker compose --profile observability up -d otel-lgtm --wait
 **Explore requires Editor+.** Anonymous Viewer does not show Explore. Sign in as
 `admin` / `admin` (skip password change), then open Explore → Tempo.
 
-Enable Next (`.env.local` or shell):
+Enable export (`.env.local` or shell) — leave `OTEL_SDK_DISABLED` unset:
 
 ```sh
 OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318 \
 OTEL_SERVICE_NAME=pre-ets-frontend \
+pnpm --filter @pathableai/pre-ets-frontend dev
+```
+
+Quiet local (no collector):
+
+```sh
+OTEL_SDK_DISABLED=true \
 pnpm --filter @pathableai/pre-ets-frontend dev
 ```
 
@@ -104,7 +113,8 @@ docker compose --profile observability stop otel-lgtm
 
 Same instrumentation. Point `OTEL_EXPORTER_OTLP_ENDPOINT` (and optional
 `OTEL_EXPORTER_OTLP_HEADERS`) at any OTLP/HTTP-compatible collector. No SaaS is
-mandated. Trust the environment and SDK for endpoint correctness.
+mandated. Trust the environment and SDK for endpoint correctness. Use
+`OTEL_SDK_DISABLED` only when export must stay off.
 
 ### Second-endpoint / headers switch (SC-004)
 
@@ -175,7 +185,7 @@ Use when CI cannot run MCP. Complete before merge:
 
 1. `docker compose --profile observability up -d otel-lgtm --wait` succeeds; Grafana opens
    at `http://127.0.0.1:3300`.
-2. Next exports at least one span (any route with endpoint set).
+2. Next exports at least one span (any route with SDK enabled / not `OTEL_SDK_DISABLED`).
 3. Start MCP: `GRAFANA_URL=http://127.0.0.1:3300 uvx mcp-grafana==2.0.0`.
 4. From an MCP client, complete one read (list datasources **or** Tempo search
    for `pre-ets-frontend`) on the **first attempt**.

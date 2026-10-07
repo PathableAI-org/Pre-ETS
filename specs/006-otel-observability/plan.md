@@ -128,23 +128,22 @@ packages/frontend/
 and the demo HTTP surface. Root Compose + docs own the optional local
 Grafana/OTLP stack and MCP instructions. Backend unchanged.
 
-**Process-host requirements**: When traces are enabled, instrumentation MUST
-apply the locked startup policy before `registerOTel`. Config helpers MUST
-remain import-safe for unit tests; Effect bridge Layer install stays in the
-ManagedRuntime host path.
+**Process-host requirements**: ManagedRuntime boot always calls `registerOTel`
+and installs the Effect global Tracer bridge. Quiet local uses
+`OTEL_SDK_DISABLED` (honored by `@vercel/otel`).
 
 ## Startup policy (this increment — locked)
 
-| Environment            | Endpoint set but invalid                              | After valid start, collector down |
-| ---------------------- | ----------------------------------------------------- | --------------------------------- |
-| Endpoint missing/blank | No `registerOTel`; healthy start                      | n/a                               |
-| Endpoint present       | `registerOTel` in ManagedRuntime boot + Effect bridge | Best-effort; requests continue    |
-| Endpoint unset         | No `registerOTel`; healthy start                      | N/A                               |
+| Condition               | Boot behavior                              | After start, collector down    |
+| ----------------------- | ------------------------------------------ | ------------------------------ |
+| `OTEL_SDK_DISABLED` set | `@vercel/otel` early-return; healthy start | n/a                            |
+| SDK enabled             | Always `registerOTel` + Effect bridge      | Best-effort; requests continue |
 
 ## Enablement scheme
 
-Unset **`OTEL_EXPORTER_OTLP_ENDPOINT`** keeps traces off. When set, honor
-`OTEL_EXPORTER_OTLP_HEADERS`, `OTEL_SERVICE_NAME`, and `OTEL_SDK_DISABLED` per
+Always register at ManagedRuntime boot. Use **`OTEL_SDK_DISABLED=true`** to keep
+export off. When the SDK is enabled, honor `OTEL_EXPORTER_OTLP_ENDPOINT`,
+`OTEL_EXPORTER_OTLP_HEADERS`, and `OTEL_SERVICE_NAME` per
 [contracts/otlp-export.md](./contracts/otlp-export.md).
 
 ## Complexity Tracking

@@ -39,7 +39,7 @@ Next server, not `packages/backend`.
 - `@effect/opentelemetry` NodeSdk that starts its own exporter — rejected; would
   duplicate `@vercel/otel` export.
 - Vendor SDKs (Datadog, etc.) — rejects vendor-agnostic goal.
-- Custom `OTEL_TRACES_ENABLED` — rejected; standard endpoint presence is enough.
+- Custom `OTEL_TRACES_ENABLED` / app endpoint presence gate — rejected; always `registerOTel`, use `OTEL_SDK_DISABLED` for off.
 - Custom attribute SpanProcessor — rejected; do not map sensitive headers.
 - Dedicated `/api/health` demo routes — rejected; any Next route verifies spans.
 - Instrumenting `@pathableai/pre-ets-backend` — rejected; wrong process; port
@@ -101,8 +101,8 @@ independently.
 - Endpoint unset: do not call `registerOTel`; process serves requests.
 - Valid endpoint: `registerOTel` + Effect global Tracer bridge; best-effort export.
 - Enabled + invalid/missing endpoint:
-  - App gate is presence-only; no URL validate / fail-soft / refuse-to-start.
-  - SDK + operator env own endpoint correctness and `OTEL_SDK_DISABLED`.
+  - App always calls `registerOTel`; no URL validate / fail-soft / refuse-to-start.
+  - Quiet local = `OTEL_SDK_DISABLED`; SDK + operator env own endpoint correctness.
 - Collector unreachable after valid start: best-effort; requests continue.
 
 **Rationale**: Aligns with common OTEL env names for vendor portability while

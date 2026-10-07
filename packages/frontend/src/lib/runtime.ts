@@ -1,82 +1,76 @@
 import { OtelTracer, Resource } from "@effect/opentelemetry"
 import { NodeServices } from "@effect/platform-node"
 import { registerOTel } from "@vercel/otel"
-import { type Config, ConfigProvider, Effect, Exit, Layer, Logger, ManagedRuntime, Option } from "effect"
+import { Config, ConfigProvider, Effect, Layer, Logger, ManagedRuntime, References } from "effect"
 
 import { ServerConfig } from "./config/index.ts"
 import { TenantConfigService } from "./tenant/service.ts"
 
-type ObservabilityLayer =
-  | Layer.Layer<never>
-  | Layer.Layer<OtelTracer.OtelTracer>
+const OTEL_SERVICE_NAME = "pre-ets-frontend"
 
-const nextProductionBuildPhase = "phase-production-build"
-
-const appLayer = (
-  config: Config.Success<typeof ServerConfig>,
-  observabilityLayer: ObservabilityLayer
-) =>
-  Layer.mergeAll(
-    TenantConfigService.layer(config)
-  ).pipe(
-    Layer.provide(NodeServices.layer),
-    Layer.provideMerge(observabilityLayer)
+const ConfigProviderLayer = Layer.succeed(ConfigProvider.ConfigProvider, ConfigProvider.fromEnv())
+const MinimumLogLevelLayer = Layer.effect(
+  References.MinimumLogLevel,
+  Config.LogLevel("LOG_LEVEL").pipe(
+    Config.withDefault("Info")
   )
-
-const bootRuntime = Effect.gen(function*() {
-  yield* Effect.logInfo("Loading server config")
-  const config = yield* ServerConfig
-  yield* Effect.logInfo("Loaded server config")
-
-  let observabilityLayer: ObservabilityLayer = Layer.empty
-  if (
-    process.env.NEXT_PHASE !== nextProductionBuildPhase
-    && Option.isSome(config.otel.exporterOtlpEndpoint)
-  ) {
-    const serviceName = config.otel.serviceName
-    yield* Effect.sync(() => {
-      registerOTel({
-        serviceName,
-        traceSampler: "always_on"
-      })
-    })
-    observabilityLayer = OtelTracer.layerGlobal.pipe(
-      Layer.provide(Resource.layer({ serviceName }))
-    )
-  }
-
-  const runtime = ManagedRuntime.make(appLayer(config, observabilityLayer))
-  const built = runtime.runSyncExit(Effect.void)
-  if (Exit.isFailure(built)) {
-    return yield* Effect.failCause(built.cause)
-  }
-  return runtime
-}).pipe(
-  Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv())),
-  Effect.tapCause((cause) => Effect.logError(cause)),
-  Effect.provide(Logger.layer([Logger.consolePretty()]))
 )
 
-const startServerRuntime = () => {
-  const exit = Effect.runSyncExit(bootRuntime)
-  if (Exit.isFailure(exit)) {
-    process.exit(1)
-  }
-  return exit.value
-}
+const LoggerLayer = Layer.mergeAll(
+  Logger.layer([Logger.consolePretty()]),
+  MinimumLogLevelLayer
+).pipe(
+  Layer.provide(ConfigProviderLayer)
+)
 
-type ServerRuntime = ReturnType<typeof startServerRuntime>
+const ObservabilityLayer = Layer.unwrap(
+  Effect.sync(() => {
+    registerOTel({
+      serviceName: OTEL_SERVICE_NAME,
+      traceSampler: "always_on"
+    })
+    return OtelTracer.layerGlobal.pipe(
+      Layer.provide(Resource.layer({ serviceName: OTEL_SERVICE_NAME }))
+    )
+  })
+)
 
-const unavailableDuringNextBuild: ServerRuntime = new Proxy({} as ServerRuntime, {
+const boot = () =>
+  Effect.gen(function*() {
+    const config = yield* ServerConfig.pipe(
+      Effect.tap((config) => Effect.logDebug("Loaded server config", { config })),
+      Effect.tapError((error) => Effect.logError(error.message))
+    )
+
+    const runtime = ManagedRuntime.make(
+      Layer.mergeAll(
+        TenantConfigService.layer(config),
+        LoggerLayer,
+        ObservabilityLayer
+      ).pipe(
+        Layer.provide(NodeServices.layer)
+      )
+    )
+
+    // Running this effect also makes sure that the layers get resolved
+    runtime.runSync(Effect.logDebug("Runtime started"))
+
+    return runtime
+  }).pipe(
+    Effect.provide(LoggerLayer),
+    Effect.runPromise
+  )
+
+const fakeBoot = new Proxy({} as Awaited<ReturnType<typeof boot>>, {
   get(_target, property) {
     throw new Error(
-      `Server runtime (${String(property)}) is not loaded during the Next.js production build.`
+      `Server runtime (${String(property)}) is not available in the build environment`
     )
   }
 })
 
-// Next loads this module while collecting page data. NEXT_PHASE is set before those
-// workers start, and a missing tenant directory must not stop the build.
-export const Runtime = process.env.NEXT_PHASE === nextProductionBuildPhase
-  ? unavailableDuringNextBuild
-  : startServerRuntime()
+export const Runtime = process.env.NEXT_PHASE === "phase-production-build" ?
+  fakeBoot :
+  await boot().catch((_: unknown) => {
+    process.exit(1)
+  })

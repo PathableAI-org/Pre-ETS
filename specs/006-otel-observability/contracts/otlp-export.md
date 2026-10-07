@@ -3,9 +3,9 @@
 **Consumers**: Next.js Node process; any OTLP-compatible collector (local
 `grafana/otel-lgtm:0.35.0` or deployed).
 
-**Producer**: `@pathableai/pre-ets-frontend` (Next Node runtime) when
-`OTEL_EXPORTER_OTLP_ENDPOINT` is present — `@vercel/otel` is the sole OTLP exporter.
-Registration runs inside ManagedRuntime boot (via Next `instrumentation.ts` import).
+**Producer**: `@pathableai/pre-ets-frontend` (Next Node runtime) —
+`@vercel/otel` is the sole OTLP exporter. Registration always runs inside
+ManagedRuntime boot (via Next `instrumentation.ts` import).
 
 ## Transport
 
@@ -17,18 +17,20 @@ Registration runs inside ManagedRuntime boot (via Next `instrumentation.ts` impo
 
 ## Enablement & precedence
 
-App-owned gate (presence only). Endpoint URL shape is not validated by app code.
+App always calls `registerOTel` + installs the Effect global Tracer bridge.
+Off/on is owned by the SDK env, not `ServerConfig`.
 
-| Priority | Condition                                   | Result                                                                  |
-| -------- | ------------------------------------------- | ----------------------------------------------------------------------- |
-| 1        | `OTEL_EXPORTER_OTLP_ENDPOINT` missing/blank | No `registerOTel`; process healthy; no export                           |
-| 2        | Endpoint present (non-blank)                | `registerOTel` + Effect global Tracer bridge during ManagedRuntime boot |
+| Priority | Condition                           | Result                                                                      |
+| -------- | ----------------------------------- | --------------------------------------------------------------------------- |
+| 1        | `OTEL_SDK_DISABLED` set (non-empty) | `@vercel/otel` early-returns; no exporters/instrumentation; process healthy |
+| 2        | SDK not disabled                    | SDK exports using endpoint/headers/protocol from the environment            |
 
-Once registered, the OpenTelemetry SDK / `@vercel/otel` apply
-`OTEL_SDK_DISABLED`, headers, protocol, and exporter behavior from the environment.
+When the SDK is enabled and `OTEL_EXPORTER_OTLP_ENDPOINT` is unset,
+`@vercel/otel` defaults the traces URL to `http://localhost:4318/v1/traces`.
 
-**Why endpoint presence enables**: Standard OTEL operator model. Unset endpoint
-keeps local workflows quiet. Operators are responsible for a correct endpoint address.
+**Why `OTEL_SDK_DISABLED` for off**: Calling `registerOTel` without an endpoint
+still configures an OTLP exporter (localhost default). The standard SDK disable
+flag is the quiet local kill switch.
 
 ## Runtime export failure
 

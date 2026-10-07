@@ -34,8 +34,8 @@ HTTP auto-instrumentation and OTLP export.
 From [critique-20261005-194125.md](./critiques/critique-20261005-194125.md), kept and
 retargeted to the Next server:
 
-- **E3 / X1**: Presence-only enablement — unset/blank `OTEL_EXPORTER_OTLP_ENDPOINT` keeps traces off; present endpoint registers `@vercel/otel` during ManagedRuntime boot. App code does not validate endpoint URLs (trust env + SDK). Export failures after start remain best-effort.
-- **P5 / E11**: Enable via standard `OTEL_EXPORTER_OTLP_ENDPOINT` (unset = off). `OTEL_SDK_DISABLED` and headers are left to the SDK; see the OTLP contract.
+- **E3 / X1**: ManagedRuntime always calls `registerOTel` + Effect bridge. Quiet local uses `OTEL_SDK_DISABLED=true` (`@vercel/otel` early-return). App code does not validate endpoint URLs. Export failures after start remain best-effort.
+- **P5 / E11**: Standard OTEL env (`OTEL_SDK_DISABLED`, endpoint, headers, service name) owned by the SDK; see the OTLP contract.
 - **E8**: Pin local image `grafana/otel-lgtm:0.35.0`.
 - **P3 / P6 / P7 / X3**: Exercise surface — Next listen `http://127.0.0.1:3000`; verify spans on any Node request (no dedicated demo health routes).
 - **P4 / E5**: MCP docs MUST include the verified local Grafana auth path for the pinned image (**anonymous Viewer** as MCP default via Compose override; read-only service account when anonymous is disabled; `admin`/`admin` or anonymous Admin only as troubleshooting fallback) and a **version-pinned** `mcp-grafana` invocation.
@@ -125,7 +125,7 @@ the same instrumentation path as local—including required export headers when 
 
 1. **Given** a deployed environment with a configured OTLP endpoint and required auth/settings, **When** the Next server runs with observability enabled, **Then** it exports request spans to that endpoint.
 2. **Given** two different OTLP-compatible destinations, **When** only environment configuration differs, **Then** the same Next build can target either destination.
-3. **Given** `OTEL_EXPORTER_OTLP_ENDPOINT` is unset or blank, **When** the process starts, **Then** Next stays healthy with no `registerOTel`. Endpoint correctness is an operator/SDK concern, not an app fail-soft/refuse gate.
+3. **Given** `OTEL_SDK_DISABLED=true`, **When** the process starts, **Then** Next stays healthy and `@vercel/otel` does not export. Endpoint correctness is an operator/SDK concern when the SDK is enabled.
 4. **Given** documentation for deployed observability, **When** an operator follows it, **Then** they can enable trace export without being directed to a single mandatory commercial vendor.
 
 ---
@@ -162,7 +162,7 @@ first attempt. Record that live result as merge-blocking acceptance evidence.
 - Local Grafana stack resource use: optional services MUST be stoppable independently without tearing down unrelated Compose services the developer still needs.
 - Clock skew or delayed batch export: documentation sets a realistic expectation for when spans become visible after traffic.
 - Multiple developers on the same machine: default local ports and data directories are documented; conflicts are called out with remediation guidance (Grafana UI on **3300** so Next keeps **3000**; Keycloak remains on **8080**).
-- Missing/blank OTLP endpoint: no registration; process healthy. Invalid endpoint strings are not app-validated (see Assumptions).
+- `OTEL_SDK_DISABLED=true`: no SDK export; process healthy. Invalid endpoint strings are not app-validated (see Assumptions).
 
 ## Requirements _(mandatory)_
 
@@ -177,7 +177,7 @@ first attempt. Record that live result as merge-blocking acceptance evidence.
 - **FR-007**: Observability configuration MUST be environment-driven (enable/disable, endpoint, headers, and related export settings) and documented for local and deployed use.
 - **FR-008**: Metrics, logs, `@pathableai/pre-ets-backend` instrumentation, browser/RUM telemetry, cross-process trace propagation, and a second OTLP exporter (including Effect `OtlpTracer`) are out of scope for this increment (deferred to later work).
 - **FR-009**: Span attributes MUST exclude secrets, credentials, raw session tokens/cookies, and protected personal or health data. Operators MUST NOT configure header-to-attribute mapping for sensitive headers; application code MUST NOT annotate secrets onto Effect spans.
-- **FR-010**: Next startup and primary request handling MUST succeed when observability is disabled (endpoint unset/blank); export MUST be best-effort when enabled so collector outages do not become hard dependencies for local feature work. App code MUST NOT refuse-to-start or fail-soft based on endpoint URL shape.
+- **FR-010**: Next startup and primary request handling MUST succeed when observability is disabled (`OTEL_SDK_DISABLED`); export MUST be best-effort when the SDK is enabled so collector outages do not become hard dependencies for local feature work. App code MUST NOT refuse-to-start or fail-soft based on endpoint URL shape.
 - **FR-011**: Project documentation MUST include instructions for connecting a **version-pinned** MCP server to the local Grafana stack for AI agent use, including prerequisites, the verified local auth path, configuration, and example agent workflows focused on traces.
 - **FR-012**: Design and documentation MUST remain vendor-agnostic for deployed destinations: OpenTelemetry/OTLP is the interchange standard; no single commercial observability SaaS is required to complete this feature.
 - **FR-013**: Local observability docs MUST state that this increment provides traces (request spans) only, list the expected semantic attributes, and show how to find a known Next request span end to end.
@@ -215,7 +215,7 @@ first attempt. Record that live result as merge-blocking acceptance evidence.
 - Browser/end-user device telemetry (RUM) is out of scope.
 - **Alerting / production SLOs** are out of scope for this increment; operators MUST NOT expect alerting thresholds from this slice.
 - Default local Compose services used today (e.g., Redis, Keycloak) remain available independently of the optional Grafana stack (Compose profiles or equivalent explicit opt-in).
-- **Startup policy (locked)**: Endpoint unset/blank = off. Endpoint present → register during ManagedRuntime boot; trust env + SDK for address correctness. After start, collector outages remain best-effort export (do not block requests).
+- **Startup policy (locked)**: Always `registerOTel` during ManagedRuntime boot. `OTEL_SDK_DISABLED=true` = off (SDK early-return). When enabled, trust env + SDK for address correctness. After start, collector outages remain best-effort export (do not block requests).
 - Existing project docs (`docs/docker-compose.md` and related README paths) are the natural place to extend local observability and MCP setup instructions.
 - MCP guidance documents a Grafana-oriented MCP server suitable for local agent access to traces; for pinned `grafana/otel-lgtm:0.35.0`, verified MCP auth is anonymous **Viewer** (Compose override of the image’s Admin default) or a read-only service account token; `admin`/`admin` and anonymous Admin are troubleshooting fallbacks only. Invocation MUST use a pinned package/version (`mcp-grafana==2.0.0` via `uvx`, or equivalent pinned container).
 - Do not configure sensitive header attribute mapping; do not annotate secrets on Effect spans (FR-009 / SC-007).

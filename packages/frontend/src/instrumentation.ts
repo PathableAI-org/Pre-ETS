@@ -3,7 +3,7 @@ export async function register() {
     return
   }
 
-  // ManagedRuntime boot registers @vercel/otel when OTEL_EXPORTER_OTLP_ENDPOINT
-  // is present and installs the Effect global Tracer bridge.
+  // ManagedRuntime boot always calls registerOTel + Effect global Tracer bridge.
+  // Set OTEL_SDK_DISABLED=true to keep export/instrumentation off.
   await import("./lib/runtime.ts")
 }

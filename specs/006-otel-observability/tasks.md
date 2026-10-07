@@ -6,7 +6,7 @@
 > attribute SpanProcessor, no `/api/health` demo routes. Do not add Effect
 > `OtlpTracer` as a second exporter.
 
-> **Path note (current):** OTEL fields live on `ServerConfig`; `registerOTel` runs in ManagedRuntime boot; presence-only enablement; no app URL validation / fail-soft / refuse-to-start; no dedicated observability unit tests.
+> **Path note (current):** No OTEL fields on `ServerConfig`; ManagedRuntime always `registerOTel` + Effect bridge; off via `OTEL_SDK_DISABLED`; no app URL validation; no dedicated observability unit tests.
 
 **Identity**: Feature directory `specs/006-otel-observability`; git branch
 `007-otel-observability`. Spec Kit directory numbers and git branch numbers are
