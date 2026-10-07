@@ -33,7 +33,7 @@
     "@dprint/json": "0.25.2",
     "@dprint/markdown": "0.26.0",
     "@dprint/typescript": "0.96.1",
-    "@effect/language-service": "0.87.3",
+    "@effect/language-service": "0.87.4",
     "@eslint/js": "10.0.1",
     "@playwright/test": "1.63.0",
     "@types/node": "24.19.1",
