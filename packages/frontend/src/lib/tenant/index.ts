@@ -8,6 +8,13 @@ import { TenantConfigService } from "./service.ts"
 export * from "./alias.ts"
 export * from "./config.ts"
 
+export const getTenantResolutionMode = Effect.fnUntraced(
+  function*() {
+    const service = yield* TenantConfigService
+    return service.getTenantResolutionMode()
+  }
+)
+
 export interface TenantRecord {
   readonly config: TenantConfig
   readonly slug: string

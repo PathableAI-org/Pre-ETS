@@ -10,6 +10,7 @@ export class TenantConfigService extends Context.Service<TenantConfigService, {
   readonly getAlias: (host: string) => Result.Result<TenantAlias, TenantConfigError>
   readonly getConfigFromAlias: (alias: TenantAlias) => Effect.Effect<TenantConfig, TenantConfigError>
   readonly getConfigFromHost: (host: string) => Effect.Effect<TenantConfig, TenantConfigError>
+  readonly getTenantResolutionMode: () => "host" | "static"
 }>()("@pathableai/pre-ets-frontend/TenantConfigService") {
   static readonly layer = (config: Config.Success<typeof ServerConfig>) =>
     Layer.effect(
@@ -29,7 +30,8 @@ export class TenantConfigService extends Context.Service<TenantConfigService, {
         return TenantConfigService.of({
           getAlias,
           getConfigFromAlias,
-          getConfigFromHost
+          getConfigFromHost,
+          getTenantResolutionMode: () => config.tenant.resolution
         })
       })
     )
