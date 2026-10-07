@@ -127,6 +127,52 @@ This local broker stands in for Authentik or Keycloak in other environments.
 Do not add a second local identity stack (Better Auth, Auth.js, a mock that
 skips the browser login) for manual testing.
 
+## Optional: observability profile (`otel-lgtm`)
+
+Local OpenTelemetry + Grafana is **opt-in**. Default
+`docker compose up -d --wait redis keycloak` does **not** start it.
+
+Pinned image: `grafana/otel-lgtm:0.35.0` (digest pinned in `compose.yaml`).
+Compose service name: **`otel-lgtm`**. Compose profile: **`observability`**.
+
+| Host binding     | Container | Purpose                            |
+| ---------------- | --------- | ---------------------------------- |
+| `127.0.0.1:3300` | `3000`    | Grafana UI (Next.js keeps `:3000`) |
+| `127.0.0.1:4317` | `4317`    | OTLP gRPC                          |
+| `127.0.0.1:4318` | `4318`    | OTLP HTTP (Next default)           |
+
+Anonymous Grafana org role is **Viewer** (`GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer`)
+for least-privilege local MCP reads. Do not treat anonymous Admin or
+`admin`/`admin` as the default MCP path (troubleshooting only).
+
+### Start
+
+```sh
+docker compose --profile observability up -d --wait
+```
+
+- Grafana: `http://127.0.0.1:3300`
+- OTLP HTTP for Next: `http://127.0.0.1:4318`
+- Request spans from the Next demo routes are typically visible in Grafana
+  Explore / Tempo within ~30 seconds of traffic when
+  `OTEL_EXPORTER_OTLP_ENDPOINT` points at that endpoint.
+
+Port notes: Grafana is on **3300** so it does not collide with Next on **3000**.
+Keycloak remains on **8080** (unchanged).
+
+### Stop only the observability service
+
+Stop **only** `otel-lgtm` so Redis/Keycloak stay up:
+
+```sh
+docker compose --profile observability stop otel-lgtm
+```
+
+Do **not** run bare `docker compose --profile observability stop` (that can
+stop other enabled project services).
+
+App instrumentation and env vars: [observability.md](./observability.md).
+
 ## Postgres and Flyway
 
 Postgres uses the pinned `postgres:18.6` image, publishes only on

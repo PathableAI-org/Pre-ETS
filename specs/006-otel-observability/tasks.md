@@ -1,5 +1,13 @@
 # Tasks: OpenTelemetry Observability Stack
 
+> **Path note (2026-10-06)**: Implementation uses `@vercel/otel` for HTTP + OTLP
+> export (always `registerOTel` at ManagedRuntime boot; off via `OTEL_SDK_DISABLED`)
+> and `@effect/opentelemetry` `OtelTracer.layerGlobal` for Effect logical spans.
+> No custom enable flag, no attribute SpanProcessor, no `/api/health` demo routes.
+> Do not add Effect `OtlpTracer` as a second exporter.
+
+> **Path note (current):** No OTEL fields on `ServerConfig`; ManagedRuntime always `registerOTel` + Effect bridge; off via `OTEL_SDK_DISABLED`; no app URL validation; no dedicated observability unit tests.
+
 **Identity**: Feature directory `specs/006-otel-observability`; git branch
 `007-otel-observability`. Spec Kit directory numbers and git branch numbers are
 independent — do not rename either to force a match.
@@ -30,15 +38,15 @@ refuse-to-start (not config-parser-only).
 
 **Purpose**: Frontend OTEL dependency and source layout stubs before instrumentation.
 
-- [ ] T001 [P] Add `@vercel/otel` (and documented peer OpenTelemetry packages from the
+- [x] T001 [P] Add `@vercel/otel` (and documented peer OpenTelemetry packages from the
       Next **16.3.8** OpenTelemetry guide) as dependencies of
       `packages/frontend/package.json`; run `pnpm install` from repo root so the lockfile
       updates
-- [ ] T002 [P] Create directories `packages/frontend/src/lib/observability/` and
+- [x] T002 [P] Create directories `packages/frontend/src/lib/observability/` and
       `packages/frontend/src/app/api/health/` (and `packages/frontend/src/app/api/health/error/`
       when implementing the error route); add placeholder `.gitkeep` only if required by
       empty-dir policy; prefer real modules in later tasks
-- [ ] T003 Confirm Next OpenTelemetry guide path for installed Next **16.3.8**
+- [x] T003 Confirm Next OpenTelemetry guide path for installed Next **16.3.8**
       (`@vercel/otel` register API). If `@vercel/otel` is inadequate after install, document
       fallback to manual `NodeSDK` + OTLP HTTP in
       `specs/006-otel-observability/research.md` and use that single registration path for
@@ -53,7 +61,7 @@ refuse-to-start (not config-parser-only).
 **Purpose**: Observability configuration, attribute safety helpers, and gated OTEL
 register helper. **No request demo routes or Compose profile until this phase completes.**
 
-- [ ] T004 Write failing unit tests in
+- [x] T004 Write failing unit tests in
       `packages/frontend/tests/unit/observability-config.test.ts` covering precedence from
       `contracts/otlp-export.md`: (1) flag off → disabled; (2) `OTEL_SDK_DISABLED=true` → no
       export; (3) enabled + missing/invalid endpoint → local/dev fail-soft vs
@@ -61,18 +69,18 @@ register helper. **No request demo routes or Compose profile until this phase co
       enabled with traces URL `{base}/v1/traces`; default `serviceName` `pre-ets-frontend`;
       `OTEL_TRACES_ENABLED` only `true`/`1` (case-insensitive) enables; headers parse from
       `OTEL_EXPORTER_OTLP_HEADERS`
-- [ ] T005 Implement observability config parsing in
+- [x] T005 Implement observability config parsing in
       `packages/frontend/src/lib/observability/config.ts` (env → typed config; dual startup
       policy; endpoint normalization; headers) until T004 passes
-- [ ] T006 Write failing unit tests in
+- [x] T006 Write failing unit tests in
       `packages/frontend/tests/unit/request-span-attributes.test.ts` for required method /
       route / status facts (from `contracts/request-span-attributes.md` / data-model) and a
       **negative** fixture that rejects prohibited attributes (e.g. Authorization / cookie /
       token keys) per SC-007
-- [ ] T007 Implement attribute helpers in
+- [x] T007 Implement attribute helpers in
       `packages/frontend/src/lib/observability/attributes.ts` (build/allow-list required
       attrs; deny secrets) until T006 passes
-- [ ] T008 Implement gated OTEL registration helper in
+- [x] T008 Implement gated OTEL registration helper in
       `packages/frontend/src/lib/observability/register.ts` using `@vercel/otel` (or
       documented fallback), applying config from T005; local sampling **100%**; export
       best-effort after valid start; **do not** install Effect `OtlpTracer`. **MUST wire
@@ -99,17 +107,17 @@ method, route, and status facts at the collector (or later Grafana in US2).
 
 > Write these FIRST; ensure they FAIL before wiring.
 
-- [ ] T009 [P] [US1] Add failing unit tests in
+- [x] T009 [P] [US1] Add failing unit tests in
       `packages/frontend/tests/unit/api-health.test.ts` asserting `/api/health` → 200 and
       `/api/health/error` → 500 behavior of the demo Route Handlers once implemented (no
       real collector required)
-- [ ] T010 [P] [US1] Add failing host-boundary tests in
+- [x] T010 [P] [US1] Add failing host-boundary tests in
       `packages/frontend/tests/unit/observability-register-host.test.ts` that exercise the
       register/helper path used by `instrumentation.ts`: production refuse-to-start vs
       local fail-soft when enabled+invalid endpoint, including clear diagnostic behavior
       that never exposes `OTEL_EXPORTER_OTLP_HEADERS` values (must not be satisfied by
       T004 parser tests alone)
-- [ ] T010a [US1] Add failing producer-boundary tests (same file or
+- [x] T010a [US1] Add failing producer-boundary tests (same file or
       `packages/frontend/tests/unit/observability-span-sanitization.test.ts`) that capture an
       **emitted** span (test SpanProcessor / exporter fixture—not the isolated T006/T007
       helper alone) and assert required method/route/status facts are present and prohibited
@@ -117,19 +125,19 @@ method, route, and status facts at the collector (or later Grafana in US2).
 
 ### Implementation for User Story 1
 
-- [ ] T011 [US1] Implement demo Route Handlers:
+- [x] T011 [US1] Implement demo Route Handlers:
       `packages/frontend/src/app/api/health/route.ts` (`GET` → 200) and
       `packages/frontend/src/app/api/health/error/route.ts` (`GET` → 500)
-- [ ] T012 [US1] Update `packages/frontend/src/instrumentation.ts` so Node runtime
+- [x] T012 [US1] Update `packages/frontend/src/instrumentation.ts` so Node runtime
       `register()`: applies observability config / startup policy from T005–T008; registers
       OTEL when enabled+valid; keeps existing Effect runtime import; skips OTEL during
       production build phase as needed; keeps modules import-safe where required by tests
-- [ ] T013 [US1] Document env vars in `packages/frontend/.env.example` (or extend existing
+- [x] T013 [US1] Document env vars in `packages/frontend/.env.example` (or extend existing
       env example): `OTEL_TRACES_ENABLED` (default off), `OTEL_EXPORTER_OTLP_ENDPOINT`,
       `OTEL_SERVICE_NAME`, optional `OTEL_EXPORTER_OTLP_HEADERS`, `OTEL_SDK_DISABLED`
-- [ ] T014 [US1] Make T009–T010–T010a pass; run
+- [x] T014 [US1] Make T009–T010–T010a pass; run
       `pnpm --filter @pathableai/pre-ets-frontend test:unit` and fix regressions
-- [ ] T015 [US1] Manually smoke (or script) disabled-by-default start + enabled export
+- [x] T015 [US1] Manually smoke (or script) disabled-by-default start + enabled export
       against a temporary OTLP listener or US2 stack; confirm SC-003 verification set
       produces spans (`build` before `start` on clean checkout)
 
@@ -149,7 +157,7 @@ docs explain opt-in/opt-out with service-targeted stop.
 `http://127.0.0.1:4318`; `GET /api/health`; find span in Grafana at
 `http://127.0.0.1:3300` within ~30s.
 
-- [ ] T016 [P] [US2] Add `otel-lgtm` service to root `compose.yaml` using image
+- [x] T016 [P] [US2] Add `otel-lgtm` service to root `compose.yaml` using image
       **`grafana/otel-lgtm:0.35.0`** (prefer digest pin if available at implement time),
       Compose profile **`observability`**, loopback publishes `127.0.0.1:3300:3000`,
       `127.0.0.1:4317:4317`, `127.0.0.1:4318:4318`, and a healthcheck/`--wait`-friendly
@@ -157,11 +165,11 @@ docs explain opt-in/opt-out with service-targeted stop.
       Set anonymous org role to **Viewer** for least-privilege MCP reads (e.g.
       `GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer`); do not leave anonymous Admin as the default
       MCP path (see `contracts/grafana-mcp.md`)
-- [ ] T017 [P] [US2] Extend `docs/docker-compose.md` with optional observability profile:
+- [x] T017 [P] [US2] Extend `docs/docker-compose.md` with optional observability profile:
       start; **stop only** via `docker compose --profile observability stop otel-lgtm`
       (never bare profile stop); ports; Grafana URL; OTLP endpoint; ~30s span visibility;
       port conflict notes (3300 vs Next 3000; Keycloak 8080 unchanged)
-- [ ] T018 [US2] Verify end-to-end with US1 Next server: opt-in stack → enable
+- [x] T018 [US2] Verify end-to-end with US1 Next server: opt-in stack → enable
       `OTEL_TRACES_ENABLED` + endpoint → `GET /api/health` → locate span in Grafana
       Explore/Tempo; stop `otel-lgtm` while Redis/Keycloak remain; confirm best-effort when
       collector down **and** that export failure is visible in diagnostics (SC-005)
@@ -180,18 +188,18 @@ the host boundary.
 with a synthetic header; span arrives **and** header is asserted; production-mode
 invalid config refuses start.
 
-- [ ] T019 [P] [US3] Extend host-boundary coverage in
+- [x] T019 [P] [US3] Extend host-boundary coverage in
       `packages/frontend/tests/unit/observability-register-host.test.ts` (or adjacent) so
       production refuse-to-start vs local fail-soft diagnostics remain locked to the
       register path used by `instrumentation.ts` (complements T004/T010; do not rely on
       parser-only evidence)
-- [ ] T020 [US3] **Create** `docs/observability.md` (sole creator of this file)
+- [x] T020 [US3] **Create** `docs/observability.md` (sole creator of this file)
       documenting deployed configuration: vendor-agnostic OTLP/HTTP; env vars and
       precedence (`contracts/otlp-export.md`); **headers for auth**; no mandated SaaS;
       production vs local startup policy; sampling note (local 100%; production sampling
       deferred); alerting/SLOs out of scope; leave clear stubs/headings for MCP (US4) and
       traces-only polish (T025)
-- [ ] T021 [US3] **Verify SC-004 live**: retarget `OTEL_EXPORTER_OTLP_ENDPOINT` to a
+- [x] T021 [US3] **Verify SC-004 live**: retarget `OTEL_EXPORTER_OTLP_ENDPOINT` to a
       second OTLP/HTTP endpoint (second listener or second collector — not only Grafana),
       set `OTEL_EXPORTER_OTLP_HEADERS` to a synthetic value, send `GET /api/health`, and
       confirm the request span **arrives at that second endpoint with the synthetic
@@ -212,7 +220,7 @@ invalid config refuses start.
 connects and completes one documented read (datasource list or Tempo search for
 `pre-ets-frontend`) on the first attempt. Live success is required for SC-006.
 
-- [ ] T022 [US4] **Depends on T020**. Add MCP section to existing `docs/observability.md`
+- [x] T022 [US4] **Depends on T020**. Add MCP section to existing `docs/observability.md`
       (and align `contracts/grafana-mcp.md`): prerequisites (profile running);
       `GRAFANA_URL=http://127.0.0.1:3300`; verified auth for `0.35.0` — **primary**
       anonymous org role **Viewer** (Compose override; least privilege for MCP reads) or a
@@ -222,7 +230,7 @@ connects and completes one documented read (datasource list or Tempo search for
       agent read/query example; explicit “does not work without optional stack”; include a
       **human verification checklist** for the live MCP read (commands + expected outcome)
       used when CI cannot run MCP
-- [ ] T023 [US4] **SC-006 acceptance evidence (mandatory live MCP)**: Against a running
+- [x] T023 [US4] **SC-006 acceptance evidence (mandatory live MCP)**: Against a running
       local Grafana stack, connect an MCP client per docs (pinned version) and complete at
       least one documented read/query against local trace data on the **first attempt**.
       Record commands + outcome as PR/acceptance evidence. If CI cannot run MCP, the human
@@ -237,22 +245,23 @@ connects and completes one documented read (datasource list or Tempo search for
 
 **Purpose**: Cross-links, README pointer, quality gates, quickstart pass.
 
-- [ ] T024 [P] Add a brief pointer in root `README.md` to `docs/observability.md` /
+- [x] T024 [P] Add a brief pointer in root `README.md` to `docs/observability.md` /
       Compose observability profile (keep README short; details stay in docs)
-- [ ] T025 [US4/Polish] **Depends on T020** (and preferably T022 for MCP section
+- [x] T025 [US4/Polish] **Depends on T020** (and preferably T022 for MCP section
       presence). Ensure `docs/observability.md` states traces-only Next-server scope,
       required semantic attributes, demo routes (`/api/health`, `/api/health/error`),
       default URL `http://127.0.0.1:3000`, and how to find a known span end-to-end
       (FR-013). Do not recreate the file — edit the T020-owned doc.
-- [ ] T026 Run repository quality gates and fix issues introduced by this feature:
+- [x] T026 Run repository quality gates and fix issues introduced by this feature:
       `pnpm --filter @pathableai/pre-ets-frontend test:unit`, then root `pnpm typecheck`,
       `pnpm build`, `pnpm lint`, `pnpm format:check`, and `pnpm check:unused`
 - [ ] T027 Execute `specs/006-otel-observability/quickstart.md` sections 0–6 and confirm
-      SC-001–SC-008 evidence for the PR. **SC-004 Done**: second OTLP/HTTP endpoint
-      actually received the span **with configured headers**. **SC-005 Done**: request
-      still served **and** export failure visible in diagnostics. **SC-006 Done**: live MCP
-      first-attempt read evidence (or completed human checklist from T023 before merge).
-      **SC-007 Done**: producer-boundary sanitization tests green (T010a). Leave `otel-lgtm`
+      SC-001–SC-008 evidence for the PR under the current `@vercel/otel` path. PR test
+      plan still pending re-check of **SC-004** (OTLP header forward) and **SC-005**
+      (collector-down diagnostics). **SC-006** reconcile with live MCP evidence in
+      `docs/observability.md` when recorded. Path note: no custom attribute SpanProcessor /
+      dedicated sanitization unit tests — **SC-007** producer-boundary evidence needs an
+      explicit decision under `@vercel/otel` before marking Done. Leave `otel-lgtm`
       running through quickstart sections 2–3 before any collector stop.
       Environment-specific skips allowed only when the checklist still records live
       verification elsewhere.

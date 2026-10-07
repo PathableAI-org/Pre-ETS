@@ -64,38 +64,28 @@ Reuse a prior frontend build when possible, then start with traces enabled
 
 ```sh
 pnpm --filter @pathableai/pre-ets-frontend build
-OTEL_TRACES_ENABLED=true \
 OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318 \
 OTEL_SERVICE_NAME=pre-ets-frontend \
 pnpm --filter @pathableai/pre-ets-frontend start
 ```
 
-Success path (SC-002 / SC-003):
+Traffic (SC-002 / SC-003) — any Next Node request:
 
 ```sh
-curl -sS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3000/api/health
+curl -sS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3000/
 ```
 
-Expect: `200`.
-
-Intentional error path (SC-003):
-
-```sh
-curl -sS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3000/api/health/error
-```
-
-Expect: `500`.
+Redirect or auth challenge status codes are fine; the goal is an exported span.
 
 ## 3. Find the request spans in Grafana
 
 With `otel-lgtm` still running from section 1:
 
-1. Open `http://127.0.0.1:3300` → Explore → Tempo (or Trace Drilldown).
-2. Search for service `pre-ets-frontend` and routes `/api/health` and
-   `/api/health/error`.
-3. Open each request span and confirm method, route template, and status/outcome
-   are present (see [request-span-attributes.md](./contracts/request-span-attributes.md)
-   for accepted attribute key names).
+1. Open `http://127.0.0.1:3300` → Explore → Tempo (sign in as admin if Explore
+   is hidden for anonymous Viewer).
+2. Search for service `pre-ets-frontend`.
+3. Open a request span and confirm method / route / status when Next emits them
+   (see [request-span-attributes.md](./contracts/request-span-attributes.md)).
 
 Allow up to ~30 seconds for batch export visibility.
 
@@ -111,7 +101,7 @@ docker compose --profile observability stop otel-lgtm
 Do **not** run bare `docker compose --profile observability stop` (that can stop
 other project services).
 
-Then repeat `GET /api/health`.
+Then repeat `GET /` (or any Next route).
 
 Expect (both required for SC-005):
 
@@ -124,21 +114,45 @@ Expect (both required for SC-005):
 ## 5. Deployed-style endpoint switch (config only) — SC-004
 
 Point `OTEL_EXPORTER_OTLP_ENDPOINT` at a **second** OTLP/HTTP collector (or a
-second local listener on a different port). Set a synthetic header, for example:
+second local listener on a different port). One verified local approach:
 
 ```sh
-OTEL_TRACES_ENABLED=true \
+# Terminal A — temporary OTLP/HTTP listener that prints headers + body size
+node --input-type=module <<'EOF'
+import http from "node:http"
+const server = http.createServer((req, res) => {
+  const chunks = []
+  req.on("data", (c) => chunks.push(c))
+  req.on("end", () => {
+    console.log(JSON.stringify({
+      method: req.method,
+      url: req.url,
+      authorization: req.headers.authorization ?? null,
+      contentLength: Buffer.concat(chunks).length
+    }))
+    res.writeHead(200)
+    res.end()
+  })
+})
+server.listen(14318, "127.0.0.1", () => console.log("listening :14318"))
+EOF
+```
+
+```sh
+# Terminal B — Next with second endpoint + synthetic header
 OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:14318 \
 OTEL_EXPORTER_OTLP_HEADERS='Authorization=Bearer sc004-test-token' \
 OTEL_SERVICE_NAME=pre-ets-frontend \
 pnpm --filter @pathableai/pre-ets-frontend start
 ```
 
-Restart Next. Repeat `GET /api/health`.
+Repeat `GET /`. Operator docs:
+[docs/observability.md](../../docs/observability.md).
 
 **Done requires live proof**:
 
-1. Confirm the request span **arrives at the second endpoint**.
+1. Confirm the request span **arrives at the second endpoint** (listener logs a
+   POST to `/v1/traces` with non-zero body).
 2. Confirm the second listener received the synthetic
    `Authorization=Bearer sc004-test-token` header (or equivalent configured
    header). A docs note or endpoint-only receipt without header assertion does
@@ -170,7 +184,7 @@ with:
   troubleshooting fallback
 
 Expect: MCP client connects and completes one documented read (datasource list
-or recent Tempo search for `pre-ets-frontend` / `/api/health`) on the **first
+or recent Tempo search for `pre-ets-frontend` / `/`) on the **first
 attempt** per [grafana-mcp.md](./contracts/grafana-mcp.md).
 
 **Acceptance evidence**: Record the successful live MCP read (commands + outcome).
@@ -180,9 +194,15 @@ success are not SC-006 evidence.
 
 ## Rollback
 
-Unset `OTEL_TRACES_ENABLED` / omit endpoint; stop only `otel-lgtm`:
+Registration is unconditional: omitting `OTEL_EXPORTER_OTLP_ENDPOINT` does **not**
+disable export (`@vercel/otel` falls back to `http://localhost:4318/v1/traces`).
+Set `OTEL_SDK_DISABLED=true`, restart Next, then stop only `otel-lgtm`:
 
 ```sh
+# In the Next process environment:
+# OTEL_SDK_DISABLED=true
+# then restart the Next server
+
 docker compose --profile observability stop otel-lgtm
 ```
 

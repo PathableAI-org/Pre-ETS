@@ -10,7 +10,7 @@ enabled.
 
 | Field            | Rule                                                                           |
 | ---------------- | ------------------------------------------------------------------------------ |
-| Name             | Next root span name (e.g. `GET /api/health` / framework default)               |
+| Name             | Next root span name (framework default for the request)                        |
 | Kind             | Server / internal per Next/OTel defaults for request handling                  |
 | HTTP method      | Required; via `http.request.method` and/or `http.method`                       |
 | Route template   | Required; via `http.route` and/or `next.route`                                 |
@@ -34,23 +34,22 @@ enabled.
 
 Process-level settings resolved at Next boot (`instrumentation.register`).
 
-| Field           | Type       | Rule                                                                            |
-| --------------- | ---------- | ------------------------------------------------------------------------------- |
-| `tracesEnabled` | boolean    | Default `false`; only `true`/`1` (case-insensitive) enable                      |
-| `otlpEndpoint`  | URL string | Required when enabled; base OTLP HTTP endpoint (no path or with collector base) |
-| `serviceName`   | string     | Default `pre-ets-frontend`                                                      |
-| `otlpHeaders`   | map        | Optional; for deployed auth; verified in SC-004                                 |
-| `sdkDisabled`   | boolean    | From `OTEL_SDK_DISABLED`; when true, do not export even if traces enabled       |
+| Field           | Type   | Rule                                                                                       |
+| --------------- | ------ | ------------------------------------------------------------------------------------------ |
+| _(none in app)_ | —      | No OTEL fields on `ServerConfig`; SDK reads env directly                                   |
+| `serviceName`   | string | Passed to `registerOTel` / Effect `Resource` (default `pre-ets-frontend`)                  |
+| `sdkDisabled`   | env    | `OTEL_SDK_DISABLED` — when set, `@vercel/otel` early-returns; required for quiet local off |
+| `otlpEndpoint`  | env    | `OTEL_EXPORTER_OTLP_ENDPOINT`; unset ⇒ SDK default `http://localhost:4318/v1/traces`       |
+| `otlpHeaders`   | env    | `OTEL_EXPORTER_OTLP_HEADERS`; optional; verified in SC-004                                 |
 
 ### State
 
-| State                              | Behavior                                                                                                                         |
-| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| Disabled                           | No OTEL register; requests succeed; no export                                                                                    |
-| Enabled + valid endpoint           | `@vercel/otel` registered; best-effort export                                                                                    |
-| Enabled + invalid/missing endpoint | Clear config diagnostic. **Local/dev**: run without export (fail-soft). **Production** (`NODE_ENV=production`): refuse-to-start. |
-| Enabled + `OTEL_SDK_DISABLED=true` | Do not export; process starts (same as disabled export path)                                                                     |
-| Collector unreachable after start  | Best-effort; request handling continues                                                                                          |
+| State                             | Behavior                                                |
+| --------------------------------- | ------------------------------------------------------- |
+| ManagedRuntime boot               | Always `registerOTel` + Effect global Tracer bridge     |
+| `OTEL_SDK_DISABLED` set           | `@vercel/otel` early-return; no export; process healthy |
+| SDK enabled                       | SDK reads endpoint/headers/protocol; best-effort export |
+| Collector unreachable after start | Best-effort; request handling continues                 |
 
 ## OTLP Export Target
 
@@ -74,10 +73,9 @@ application entity; operator-facing infrastructure only.
 
 ## Demo HTTP Surface
 
-| Route                   | Status | Role in verification                 |
-| ----------------------- | ------ | ------------------------------------ |
-| `GET /api/health`       | 200    | Success request for SC-002 / SC-003  |
-| `GET /api/health/error` | 500    | Intentional error request for SC-003 |
+| Route                 | Status | Role in verification        |
+| --------------------- | ------ | --------------------------- |
+| Any Next Node request | _any_  | Traffic for SC-002 / SC-003 |
 
 Local URL base: `http://127.0.0.1:3000`.
 

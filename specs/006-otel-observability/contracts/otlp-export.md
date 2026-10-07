@@ -3,33 +3,34 @@
 **Consumers**: Next.js Node process; any OTLP-compatible collector (local
 `grafana/otel-lgtm:0.35.0` or deployed).
 
-**Producer**: `@pathableai/pre-ets-frontend` (Next Node runtime) when traces are
-enabled.
+**Producer**: `@pathableai/pre-ets-frontend` (Next Node runtime) —
+`@vercel/otel` is the sole OTLP exporter. Registration always runs inside
+ManagedRuntime boot (via Next `instrumentation.ts` import).
 
 ## Transport
 
-- Protocol: OTLP over HTTP
+- Protocol: OTLP over HTTP (SDK / `@vercel/otel` defaults and env)
 - Default local endpoint base: `http://127.0.0.1:4318`
-- Traces URL: `{base}/v1/traces`
+- Traces URL: `{base}/v1/traces` (SDK)
 - Auth: none locally; optional headers from `OTEL_EXPORTER_OTLP_HEADERS` when
-  deployed (MUST be forwarded; SC-004 verifies a synthetic header)
+  deployed (MUST be forwarded by the SDK; SC-004 verifies a synthetic header)
 
 ## Enablement & precedence
 
-Evaluation order at process boot (first matching row wins for “register OTEL /
-export?”):
+App always calls `registerOTel` + installs the Effect global Tracer bridge.
+Off/on is owned by the SDK env, not `ServerConfig`.
 
-| Priority | Condition                                               | Result                                                                                                        |
-| -------- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| 1        | `OTEL_TRACES_ENABLED` not `true`/`1`                    | No OTEL register; process healthy; no export                                                                  |
-| 2        | `OTEL_SDK_DISABLED=true`                                | No export (even if traces “enabled”); process healthy                                                         |
-| 3        | Enabled + missing/invalid `OTEL_EXPORTER_OTLP_ENDPOINT` | Clear diagnostic; **local/dev** fail-soft (no export); **production** (`NODE_ENV=production`) refuse-to-start |
-| 4        | Enabled + valid endpoint                                | Register `@vercel/otel`; batch export of ended sampled spans                                                  |
+| Priority | Condition                           | Result                                                                      |
+| -------- | ----------------------------------- | --------------------------------------------------------------------------- |
+| 1        | `OTEL_SDK_DISABLED` set (non-empty) | `@vercel/otel` early-returns; no exporters/instrumentation; process healthy |
+| 2        | SDK not disabled                    | SDK exports using endpoint/headers/protocol from the environment            |
 
-**Why `OTEL_TRACES_ENABLED` exists**: Default-off register so local workflows do
-not export merely because an OTEL endpoint env var is present from unrelated
-tooling. Standard OTEL vars (`OTEL_EXPORTER_OTLP_*`, `OTEL_SDK_DISABLED`,
-`OTEL_SERVICE_NAME`) still apply once enabled.
+When the SDK is enabled and `OTEL_EXPORTER_OTLP_ENDPOINT` is unset,
+`@vercel/otel` defaults the traces URL to `http://localhost:4318/v1/traces`.
+
+**Why `OTEL_SDK_DISABLED` for off**: Calling `registerOTel` without an endpoint
+still configures an OTLP exporter (localhost default). The standard SDK disable
+flag is the quiet local kill switch.
 
 ## Runtime export failure
 
@@ -40,7 +41,7 @@ tooling. Standard OTEL vars (`OTEL_EXPORTER_OTLP_*`, `OTEL_SDK_DISABLED`,
 ## Resource
 
 - `service.name` = configured service name (default `pre-ets-frontend`)
-- Local sampling: **100%**
+- Local sampling: **100%** (`traceSampler: "always_on"`)
 
 ## Headers
 

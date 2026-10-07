@@ -57,7 +57,7 @@ without a live success are not acceptance evidence.
 
 Documentation MUST include one concrete agent/MCP action that reads local
 observability data (for example: list datasources, or search recent Tempo traces
-for `pre-ets-frontend` / route `/api/health`). Exact tool names follow
+for `pre-ets-frontend`). Exact tool names follow
 **mcp-grafana 2.0.0** as pinned in docs.
 
 ## Non-goals
