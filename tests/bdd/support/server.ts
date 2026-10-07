@@ -46,17 +46,6 @@ export async function requestSite(world: AppWorld, host: string, document = true
     })
   })
 }
-export async function startSite(world: AppWorld): Promise<void> {
-  if (world.process) return
-  await ensureProductionBuild(world.runtime)
-  world.port = await freePort()
-  world.logs = ""
-  const child = spawnFrontend(world)
-  world.process = child
-  attachLogStreams(world, child)
-  await waitUntilReady(world, child)
-}
-
 export async function stopSite(world: AppWorld): Promise<void> {
   const child = world.process
   if (!child?.pid || !running(child)) {
@@ -102,6 +91,7 @@ async function freePort(): Promise<number> {
 function running(child: ChildProcess): boolean {
   return child.exitCode === null && child.signalCode === null
 }
+
 function signalProcessGroup(pid: number, signal: NodeJS.Signals): void {
   try {
     process.kill(-pid, signal)
@@ -109,7 +99,6 @@ function signalProcessGroup(pid: number, signal: NodeJS.Signals): void {
     if (!(error instanceof Error && "code" in error && error.code === "ESRCH")) throw error
   }
 }
-
 function siteEnv(world: AppWorld): NodeJS.ProcessEnv {
   return {
     ...process.env,
@@ -146,6 +135,17 @@ function spawnFrontend(world: AppWorld): ChildProcess {
     env: siteEnv(world),
     stdio: ["ignore", "pipe", "pipe"]
   })
+}
+
+async function startSite(world: AppWorld): Promise<void> {
+  if (world.process) return
+  await ensureProductionBuild(world.runtime)
+  world.port = await freePort()
+  world.logs = ""
+  const child = spawnFrontend(world)
+  world.process = child
+  attachLogStreams(world, child)
+  await waitUntilReady(world, child)
 }
 
 async function waitUntilReady(world: AppWorld, child: ChildProcess): Promise<void> {
