@@ -1,0 +1,217 @@
+# Research: OpenTelemetry Observability Stack
+
+**Feature**: `specs/006-otel-observability` | **Date**: 2026-10-05
+
+All Technical Context unknowns from planning are resolved below.
+
+## 1. Next.js OTEL registration path
+
+**Decision**: Export traces with Next’s documented **`@vercel/otel`** package,
+registered from the existing
+[`packages/frontend/src/instrumentation.ts`](../../packages/frontend/src/instrumentation.ts)
+`register()` hook when `OTEL_TRACES_ENABLED` is true and configuration is valid.
+Rely on Next’s automatic root request span (documented as
+`[http.method] [next.route]` / `BaseServer.handleRequest`) for MVP acceptance.
+
+Keep the existing Effect runtime import in the same `register()` path so OTEL
+and Effect continue to share the Next Node process host. Do **not** install
+Effect’s `OtlpTracer` Layer as a second OTLP exporter in this increment.
+
+**Enable flag**: Keep **`OTEL_TRACES_ENABLED`** as an explicit default-off gate
+so the host does not call `registerOTel` unless opted in. When the flag is true,
+honor standard OTEL env including `OTEL_SDK_DISABLED`, endpoint, headers, and
+service name (see [contracts/otlp-export.md](./contracts/otlp-export.md)
+precedence). Do **not** treat endpoint presence alone as enablement.
+
+**Fallback**: If `@vercel/otel` cannot meet OTLP/HTTP export needs after
+install verification, fall back within this feature to Next’s manual
+`NodeSDK` + `@opentelemetry/exporter-trace-otlp-http` pattern from the same
+guide (still a single registration path; still no Effect OTLP exporter).
+
+**Rationale**: Matches vendor-agnostic OTLP, uses Next’s built-in request
+instrumentation, and avoids dual tracing stacks with Effect’s separate OTLP
+exporter. Aligns with the scope correction that the instrumented process is the
+Next server, not `packages/backend`.
+
+**Alternatives considered**:
+
+- Effect `OtlpTracer` as primary exporter — rejects Next automatic request spans
+  unless a bridge exists; deferred as dual-stack risk.
+- Vendor SDKs (Datadog, etc.) — rejects vendor-agnostic goal.
+- Always-on `@vercel/otel` without `OTEL_TRACES_ENABLED` — weaker local
+  default-off story.
+- Instrumenting `@pathableai/pre-ets-backend` — rejected; wrong process; port
+  `8080` conflicts with Keycloak.
+
+## 2. Local Grafana / OTLP stack
+
+**Decision**: Add an optional Compose service named **`otel-lgtm`** using pinned
+**`grafana/otel-lgtm:0.35.0`** under Compose profile **`observability`**. Prefer
+also recording an image digest at implement time when available. Publish on
+loopback only:
+
+| Host binding     | Container | Purpose                              |
+| ---------------- | --------- | ------------------------------------ |
+| `127.0.0.1:3300` | `3000`    | Grafana UI (avoid Next.js `:3000`)   |
+| `127.0.0.1:4317` | `4317`    | OTLP gRPC (available; apps use HTTP) |
+| `127.0.0.1:4318` | `4318`    | OTLP HTTP (Next default)             |
+
+Default `docker compose up` (redis/keycloak only) MUST NOT start this service.
+Opt-in: `docker compose --profile observability up -d --wait`.
+
+Stop **only** the observability service without tearing down Redis/Keycloak:
+
+```sh
+docker compose --profile observability stop otel-lgtm
+```
+
+**Rationale**: Single image gives OTLP collector + Tempo + Grafana with minimal
+Compose surface; pin avoids `:latest` auth/port drift across developer machines.
+Named stop target satisfies the requirement that optional services are removable
+independently.
+
+**Alternatives considered**:
+
+- Multi-container Tempo/Loki/Prometheus/Grafana — more moving parts than needed.
+- Jaeger-only — less aligned with Grafana + MCP story.
+- Always-on LGTM — violates optional local requirement.
+- `:latest` tag — non-reproducible; rejected.
+- `docker compose --profile observability stop` with no service name — stops all
+  enabled project services; rejected.
+
+## 3. Next enablement & configuration
+
+**Decision**: Environment-driven config resolved at Next process boot
+(`instrumentation.register` / observability config module):
+
+| Setting                       | Role                                                                    |
+| ----------------------------- | ----------------------------------------------------------------------- |
+| `OTEL_TRACES_ENABLED`         | Explicit opt-in (`true` / `1`); default **off**; controls OTEL register |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | Base URL (e.g. `http://127.0.0.1:4318`); traces POST to `/v1/traces`    |
+| `OTEL_SERVICE_NAME`           | Resource `service.name` (default `pre-ets-frontend`)                    |
+| `OTEL_EXPORTER_OTLP_HEADERS`  | Optional; required for authenticated collectors (verified in SC-004)    |
+| `OTEL_SDK_DISABLED`           | When true, do not export even if traces enabled (standard OTEL)         |
+
+**Startup policy (locked)**:
+
+- Disabled or flag unset: do not register OTEL; process serves requests.
+- Enabled + valid endpoint: register `@vercel/otel`; best-effort export.
+- Enabled + invalid/missing endpoint:
+  - **local/dev**: clear diagnostic; run **without** export (fail-soft).
+  - **production** (`NODE_ENV=production`): clear diagnostic; **refuse-to-start**.
+- Collector unreachable after valid start: best-effort; requests continue.
+
+**Rationale**: Aligns with common OTEL env names for vendor portability while
+keeping an explicit local opt-in flag. Dual startup policy removes Principle I
+ambiguity for this increment.
+
+**Alternatives considered**: Always-on tracer with no-op exporter — harder to
+reason about. Fail-soft in all environments including production — rejected per
+operator expectation that production misconfig should be loud at boot. Fail-fast
+everywhere — too harsh for local optional workflows.
+
+## 4. Request span & semantic attributes
+
+**Decision**: One parent **request span** per handled HTTP request (Next root
+server span). Minimum attributes for acceptance:
+
+| Attribute             | Meaning                                                               |
+| --------------------- | --------------------------------------------------------------------- |
+| HTTP method           | Via Next/OTel convention (`http.request.method` and/or `http.method`) |
+| Route / path template | Via `http.route` and/or `next.route`                                  |
+| Status / outcome      | Via `http.response.status_code` and/or `http.status_code`             |
+
+Contract tests accept either the newer or older HTTP semantic-convention names
+as emitted by Next **16.3.8**, as long as method, route template, and status are
+present and identifiable.
+
+Deny: Authorization headers, cookies, tokens, session ids, raw request bodies,
+PHI/PII, tenant secrets. Unit tests MUST include a **negative fixture** that
+rejects an Authorization (or equivalent) attribute candidate.
+
+**Sampling**: Local default **100%** sampled (no intentional drop filters).
+Production sampling policy deferred.
+
+**Rationale**: Enough to find and understand a request in Grafana Tempo without
+full HTTP semantic-convention sprawl or sensitive data.
+
+## 5. Minimal HTTP surface
+
+**Decision**: Add Next App Router Route Handlers:
+
+| Route                   | Status | Purpose                          |
+| ----------------------- | ------ | -------------------------------- |
+| `GET /api/health`       | 200    | Success path for SC-002 / SC-003 |
+| `GET /api/health/error` | 500    | Intentional error for SC-003     |
+
+Default local URL base: **`http://127.0.0.1:3000`**. These paths are outside the
+frontend proxy matcher (`/` and `/auth/callback` only), so they bypass
+session/OIDC.
+
+**Rationale**: Spec requires a span “around a request”; homepage `/` depends on
+tenant/session and is a poor smoke target. Dedicated health routes keep
+verification deterministic and avoid Keycloak’s `8080`.
+
+## 6. Deployed environments
+
+**Decision**: Same instrumentation; operators set `OTEL_TRACES_ENABLED` and
+`OTEL_EXPORTER_OTLP_ENDPOINT` (plus `OTEL_EXPORTER_OTLP_HEADERS` if required) to
+any OTLP-compatible collector. No mandated SaaS. Document the pattern in
+`docs/observability.md`. Production uses refuse-to-start on enabled+invalid
+config. **SC-004** requires live proof that configured headers are sent.
+**Alerting / SLOs are out of scope.**
+
+**Rationale**: Satisfies vendor-agnostic FR without provisioning a hosted vendor
+in this slice; closes the gap where header-dropping exporters could pass
+endpoint-only checks.
+
+## 7. Grafana MCP for agents
+
+**Decision**: Document connecting the open-source **Grafana MCP server** pinned
+to **`mcp-grafana==2.0.0`** via `uvx` (or an equivalent pinned container image)
+with `GRAFANA_URL=http://127.0.0.1:3300`.
+
+**Verified local auth for `grafana/otel-lgtm:0.35.0`** (least privilege for MCP):
+
+1. **Primary (MCP default)**: Anonymous auth with org role **Viewer** via Compose
+   override (`GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer`). Upstream image may default to
+   Admin — this feature overrides to Viewer for read-only MCP.
+2. **Preferred when anonymous is disabled**: Read-only Grafana service account
+   token (`GRAFANA_SERVICE_ACCOUNT_TOKEN` / MCP equivalent).
+3. **Troubleshooting only**: Built-in `admin` / `admin`, or anonymous Admin if
+   deliberately re-enabled — not the documented MCP primary path.
+
+Document prerequisites: observability profile running; MCP useless without it.
+SC-006 depends on documenting this verified least-privilege path **and** the
+pinned version (not “preferred if available” / unversioned `uvx`).
+
+**Rationale**: Matches the “MCP to local Grafana” requirement with a
+reproducible auth and package story for the pinned image, without granting MCP
+clients Admin/mutation capabilities by default.
+
+**Alternatives considered**: Unversioned `uvx mcp-grafana` — rejected (tool
+drift). Tempo-only MCP — narrower. Committing MCP binary into the repo —
+unnecessary complexity.
+
+## 8. Docs ownership
+
+**Decision**:
+
+- Extend `docs/docker-compose.md` with the optional observability profile,
+  pinned image, ports, start/stop commands (service-targeted stop), and
+  Keycloak/Next port notes.
+- Add `docs/observability.md` for Next env vars (incl. precedence and headers),
+  attribute expectations, deployed OTLP notes, startup policy, and MCP setup
+  with verified auth + pinned version.
+- Keep README pointer brief; detail lives in those docs.
+
+## 9. Deferred (explicit)
+
+- `@pathableai/pre-ets-backend` instrumentation
+- Effect-native `OtlpTracer` / bridging Effect spans into the global OTEL provider
+- Metrics and logs export
+- Browser/RUM telemetry and cross-process propagation
+- Production sampling policies and **alerting / SLOs**
+- Choosing a specific hosted observability vendor
+- Syncing AGENTS.md / effect-guidance Effect pin text (out of band; not required
+  for this feature because Effect OTel APIs are not the export path)
