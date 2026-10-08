@@ -24,8 +24,8 @@
     "test:bdd:checks": "node --test tests/bdd/checks/*.test.*"
   },
   "dependencies": {
-    "@effect/platform-node": "4.0.1",
-    "effect": "4.0.1",
+    "@effect/platform-node": "4.0.2",
+    "effect": "4.0.2",
     "redis": "6.3.0"
   },
   "devDependencies": {
@@ -35,9 +35,9 @@
     "@dprint/typescript": "0.96.1",
     "@effect/language-service": "0.87.4",
     "@eslint/js": "10.0.1",
-    "@playwright/test": "1.63.0",
+    "@playwright/test": "1.64.0",
     "@types/node": "24.19.1",
-    "dprint": "0.60.1",
+    "dprint": "0.61.1",
     "dprint-plugin-yaml": "0.6.0",
     "effect-solutions": "0.5.3",
     "eslint": "10.12.0",
