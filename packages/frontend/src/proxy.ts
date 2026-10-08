@@ -1,3 +1,4 @@
+import { Console, Effect } from "effect"
 import { type NextRequest, NextResponse } from "next/server"
 
 import type { TenantConfig } from "./lib/tenant/index.ts"
@@ -357,7 +358,7 @@ function loginUnavailableRedirect(status: 302 | 303): NextResponse {
 
 function logOutcome(outcomeClass: string): void {
   try {
-    console.error(JSON.stringify({ outcomeClass }))
+    Effect.runSync(Console.error(JSON.stringify({ outcomeClass })))
   } catch {
     // Diagnostics must never change the response.
   }
