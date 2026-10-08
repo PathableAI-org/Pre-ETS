@@ -1,5 +1,6 @@
 import { Given, Then, When } from "@cucumber/cucumber"
 import assert from "node:assert/strict"
+import path from "node:path"
 
 import type { AppWorld } from "../support/world.ts"
 
@@ -8,6 +9,12 @@ import { requestSite } from "../support/server.ts"
 
 Given("production tenant sites for Springfield and Shelbyville", async function(this: AppWorld) {
   await writeTenants(this)
+})
+Given("host resolution uses base hostname {string}", function(this: AppWorld, baseHostname: string) {
+  this.baseHostname = baseHostname
+})
+Given("BASE_HOSTNAME is not configured", function(this: AppWorld) {
+  this.baseHostname = undefined
 })
 Given("static development settings select Shelbyville", function(this: AppWorld) {
   this.staticAlias = "shelbyville"
@@ -34,4 +41,11 @@ Then("the response JSON field {string} is {string}", function(this: AppWorld, fi
   assert.equal(typeof parsed, "object")
   assert.notEqual(parsed, null)
   assert.equal((parsed as Record<string, unknown>)[field], expected)
+})
+Then("the selected configuration path is the {string} tenant file", function(this: AppWorld, alias: string) {
+  assert.ok(this.response, "expected an HTTP response")
+  const parsed: unknown = JSON.parse(this.response.body)
+  assert.equal(typeof parsed, "object")
+  assert.notEqual(parsed, null)
+  assert.equal((parsed as Record<string, unknown>).configPath, path.join(this.directory, `${alias}.json`))
 })

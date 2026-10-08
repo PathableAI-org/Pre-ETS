@@ -100,7 +100,7 @@ function signalProcessGroup(pid: number, signal: NodeJS.Signals): void {
   }
 }
 function siteEnv(world: AppWorld): NodeJS.ProcessEnv {
-  return {
+  const env: NodeJS.ProcessEnv = {
     ...process.env,
     BDD_ALLOW_LOOPBACK_HTTP: "1",
     NEXT_TELEMETRY_DISABLED: "1",
@@ -120,6 +120,9 @@ function siteEnv(world: AppWorld): NodeJS.ProcessEnv {
     TENANT_STATIC_ALIAS: world.staticAlias ?? "",
     WATCHPACK_POLLING: "true"
   }
+  if (world.baseHostname === undefined) delete env.BASE_HOSTNAME
+  else env.BASE_HOSTNAME = world.baseHostname
+  return env
 }
 
 function spawnFrontend(world: AppWorld): ChildProcess {
