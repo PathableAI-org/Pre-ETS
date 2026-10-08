@@ -36,6 +36,7 @@ jobs:
               - 'features/**'
               - 'tests/bdd/**'
               - 'cucumber.mjs'
+              - 'gherkin-lint.json'
               - 'package.json'
               - 'pnpm-lock.yaml'
               - 'packages/frontend/**'
