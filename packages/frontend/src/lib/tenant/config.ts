@@ -4,7 +4,7 @@ import type * as ServerConfig from "../config/index.ts"
 
 import { type TenantAlias, TenantConfig, TenantConfigError } from "./schema.ts"
 
-const tenantConfigPathFromAlias = (
+export const tenantConfigPathFromAlias = (
   config: ServerConfig.TenantConfig,
   path: Path.Path
 ) =>
