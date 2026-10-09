@@ -1,7 +1,7 @@
 import * as client from "openid-client"
 
 import type { SessionStore } from "../session/store.ts"
-import type { TenantConfig, TenantRecord } from "../tenant/index.ts"
+import type { TenantConfig, TenantOidcConfig, TenantRecord } from "../tenant/index.ts"
 import type { OidcSecretResolution } from "./secrets.ts"
 import type { OidcTransactionStore } from "./transaction.ts"
 
@@ -19,7 +19,7 @@ export interface CompleteLoginDeps {
   readonly readOidcCookie?: (request: Request) => string | undefined
   readonly resolveSecret?: (
     slug: string,
-    clientAuth: TenantConfig["oidc"]["clientAuth"]
+    clientAuth: TenantOidcConfig["clientAuth"]
   ) => OidcSecretResolution
   readonly sessionStore: SessionStore
   readonly store: OidcTransactionStore
@@ -107,6 +107,21 @@ async function consumeAndMatchTransaction(
   return matchCallbackRedirectUri(input.request, callbackUrl, matched.tx)
 }
 
+function consumedTransactionMatchesOidc(
+  oidc: TenantOidcConfig | undefined,
+  tx: OidcTransactionRecord
+): boolean {
+  if (oidc === undefined) {
+    return false
+  }
+
+  if (tx.issuer !== oidc.issuer || tx.clientId !== oidc.clientId) {
+    return false
+  }
+
+  return (oidc.connection ?? undefined) === (tx.connection ?? undefined)
+}
+
 function defaultReadOidcCookie(request: Request): string | undefined {
   return readSingleNamedCookie(request, OIDC_COOKIE_NAME)
 }
@@ -119,6 +134,10 @@ async function exchangeCodeAndAuthenticate(input: {
   readonly tx: OidcTransactionRecord
 }): Promise<CompleteLoginOutcome> {
   const oidc = input.input.tenantRecord.config.oidc
+  if (oidc === undefined) {
+    return { kind: "config-refusal", outcomeClass: "403-config" }
+  }
+
   const resolved = await resolveClientAndDiscover(
     {
       clientAuth: oidc.clientAuth,
@@ -258,12 +277,7 @@ function matchConsumedTransaction(
     return { kind: "login-unavailable", outcomeClass: "login-unavailable" }
   }
 
-  const oidc = input.tenantRecord.config.oidc
-  if (tx.issuer !== oidc.issuer || tx.clientId !== oidc.clientId) {
-    return { kind: "config-refusal", outcomeClass: "403-config" }
-  }
-
-  if ((oidc.connection ?? undefined) !== (tx.connection ?? undefined)) {
+  if (!consumedTransactionMatchesOidc(input.tenantRecord.config.oidc, tx)) {
     return { kind: "config-refusal", outcomeClass: "403-config" }
   }
 
@@ -360,7 +374,7 @@ async function writeAuthenticatedSession(input: {
 
     // Phase B: stamp idle fields at authentication on this sid only.
     // Do not extend absolute expiresAt; policy is fixed for the session lifetime.
-    const idleDurationMinutes = input.tenantConfig.idleTimeoutMinutes
+    const idleDurationMinutes = input.tenantConfig.idleTimeoutMinutes ?? 30
     const updated = await input.sessionStore.update(input.tx.sessionId, {
       expiresAt: existing.record.expiresAt,
       idleDurationMinutes,

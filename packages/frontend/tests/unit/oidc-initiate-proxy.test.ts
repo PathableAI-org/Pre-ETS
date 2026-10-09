@@ -20,7 +20,7 @@ import type { OidcTxConfig } from "../../src/lib/oidc/types.ts"
 
 let { config: proxyConfig } = await import("../../src/proxy.ts")
 
-import { springfieldConfig, springfieldRecord } from "./tenant-fixtures.ts"
+import { springfieldOidc, springfieldRecord } from "./tenant-fixtures.ts"
 
 const NOW = 1_700_000_000
 const SESSION_ID = Buffer.from(new Uint8Array(32).fill(9)).toString("base64url")
@@ -308,8 +308,8 @@ describe("OIDC initiate / proxy contracts", () => {
           },
           calculatePKCECodeChallenge: () => Promise.resolve("c"),
           discover: (issuer, clientId) => {
-            expect(issuer).toBe(springfieldConfig.oidc.issuer)
-            expect(clientId).toBe(springfieldConfig.oidc.clientId)
+            expect(issuer).toBe(springfieldOidc.issuer)
+            expect(clientId).toBe(springfieldOidc.clientId)
             expect(request.url).toContain("evil.example")
             return Promise.resolve({
               authorizationEndpoint: "https://identity.example/auth",
@@ -351,7 +351,7 @@ describe("OIDC initiate / proxy contracts", () => {
               displayName: "Springfield Demo",
               idleTimeoutMinutes: 30,
               oidc: {
-                ...springfieldConfig.oidc,
+                ...springfieldOidc,
                 clientAuth: "confidential"
               }
             },

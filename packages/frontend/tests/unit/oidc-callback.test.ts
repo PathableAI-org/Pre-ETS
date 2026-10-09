@@ -14,7 +14,7 @@ import type { OidcTransactionRecord, OidcTxConfig } from "../../src/lib/oidc/typ
 
 let { SessionStoreError } = await import("../../src/lib/session/store.ts")
 
-import { shelbyvilleRecord, springfieldRecord } from "./tenant-fixtures.ts"
+import { shelbyvilleOidc, springfieldOidc, springfieldRecord } from "./tenant-fixtures.ts"
 
 const NOW = 1_700_000_000
 const SESSION_ID = Buffer.from(new Uint8Array(32).fill(9)).toString("base64url")
@@ -183,7 +183,7 @@ describe("completeLogin", () => {
           config: {
             displayName: "Springfield Demo",
             idleTimeoutMinutes: 7,
-            oidc: springfieldRecord.config.oidc
+            oidc: springfieldOidc
           },
           slug: "springfield"
         }
@@ -249,7 +249,7 @@ describe("completeLogin", () => {
           config: {
             displayName: "Shelbyville Demo",
             idleTimeoutMinutes: 20,
-            oidc: shelbyvilleRecord.config.oidc
+            oidc: shelbyvilleOidc
           },
           slug: "shelbyville"
         }

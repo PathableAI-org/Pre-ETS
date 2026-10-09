@@ -98,13 +98,13 @@ describe("ServerConfig", () => {
     })
     describe(".resolution", () => {
       describe("when .env is production", () => {
-        it.effect("ignores static resolution and its alias", () => {
+        it.effect("keeps static resolution and its alias", () => {
           return Effect.gen(function*() {
             const config = yield* ServerConfig
             assert.deepEqual(config.tenant, {
-              baseHostname: "example.test",
               configDir: "/absolute/path/to/packages/frontend/fixtures/tenant-config",
-              resolution: "host"
+              resolution: "static",
+              staticAlias: "shelbyville"
             })
           }).pipe(
             Effect.provideService(
@@ -202,10 +202,10 @@ describe("ServerConfig", () => {
         })
       })
       describe("when .env is production and .resolution is static", () => {
-        it.effect("fails if baseHostname is not set", () => {
+        it.effect("succeeds if baseHostname is not set", () => {
           return Effect.gen(function*() {
-            const exit = yield* Effect.exit(ServerConfig)
-            assert.isTrue(Exit.isFailure(exit))
+            const config = yield* ServerConfig
+            assert.doesNotHaveAnyKeys(config.tenant, ["baseHostname"])
           }).pipe(
             Effect.provideService(
               ConfigProvider.ConfigProvider,

@@ -2,13 +2,15 @@ import type { ChildProcess } from "node:child_process"
 
 import { setWorldConstructor, World } from "@cucumber/cucumber"
 import { randomBytes, randomUUID } from "node:crypto"
+import { fileURLToPath } from "node:url"
+
+const tenantConfigDir = fileURLToPath(new URL("../../../fixtures/tenant-config", import.meta.url))
 
 export class AppWorld extends World {
   baseHostname: string | undefined
   cookie: string | undefined
-  directory = ""
+  directory = tenantConfigDir
   extraHeaders: Record<string, string> = {}
-  readonly issuer = "https://identity.example/realms/pre-ets"
   readonly keyPrefix = `bdd:${randomUUID()}:`
   logs = ""
   port = 0
