@@ -2,7 +2,13 @@
 
 These proposed requirements derive from the maintainer-supplied **Initial on-site job-coaching service-record
 workflow handoff**, provided on 2026-10-06, and the source review below. Drafting does not approve the obligations:
-PREETS-ONSITE-001 through PREETS-ONSITE-008 remain `proposed` and `unverified`.
+The active workflow requirements and referenced shared requirements remain `proposed` and `unverified`.
+
+Non-trivial product data in this workflow is assumed to be PHI under maintainer direction on 2026-10-09.
+[HIPAA protection of product data](hipaa.md#scope-and-regulatory-basis) supplies the cross-cutting regulatory
+requirements and production gates. This includes incomplete input, deleted records, identifying diagnostics,
+and backups. Workflow deferrals do not waive applicable regulatory safeguards; ordinary editing and undo are
+not substitutes for authorized amendment, audit, or retention processes.
 
 ## Scope and product direction
 
@@ -109,6 +115,19 @@ responsible person and record the decision in the affected delivery plan before 
 
 These gates preserve the documented uncertainties; they do not select autosave, offline support, a participant
 registry, a reporting lifecycle, or a permanent-deletion policy.
+
+## Shared data-input requirements
+
+This workflow adopts the following obligations from [Generalized data-input workflows](data-input-workflows.md).
+The shared document owns those promises; this section supplies their on-site applicability.
+
+- [PREETS-ONSITE-004](data-input-workflows.md#preets-onsite-004): records are durable from creation, including when the end time and all narratives are empty; successful time and narrative updates survive session and backend process changes.
+- [PREETS-ONSITE-007](data-input-workflows.md#preets-onsite-007): deletion removes records from ordinary views while preserving participant/coach association, times, and narratives.
+- [PREETS-ONSITE-008](data-input-workflows.md#preets-onsite-008): immediate undo restores the same record with those values intact.
+- [PREETS-ONSITE-009](data-input-workflows.md#preets-onsite-009): the service-record form monitors heartbeat connectivity and disables inputs during detected failure, subject to valid authenticated access on recovery.
+
+Owner-only authorization is defined by PREETS-ONSITE-005. Optional narratives, absence of submission/approval
+states, and the specific fields remain on-site policies. Shared requirements do not grant additional access.
 
 ## Related requirements and current contracts
 
@@ -221,50 +240,6 @@ The source provider’s mandatory-field expectations remain unvalidated; optiona
 
 No reviewed, executed evidence has been recorded. Source review does not establish product behavior.
 
-## PREETS-ONSITE-004
-
-**Title:** Durable records from creation
-**Classification:** Functional Requirement
-**Lifecycle:** proposed
-**Verification:** unverified
-
-### Statement
-
-A coach’s created on-site service record and its successful updates must remain retrievable independently of the browser, authentication session, or application process in which they were created.
-
-### Rationale and sources
-
-A real service event already exists while the coach is documenting it; incomplete documentation must not make the entire record temporary.
-
-- Source: Handoff steps 6–7; current domain-persistence context, “When the line is crossed.” Source labels refer to the reviewed material above.
-- Refinement: Maintainer-requested assessment changes (2026-10-09) clarify process-independent durability; approval and executed verification remain pending.
-- Decision: Pending requirements review and maintainer acceptance; the handoff supplies the proposed product direction.
-
-### Acceptance criteria
-
-1. A successfully created record remains retrievable after reload, browser closure, and a new authenticated session by the same user in the same tenant.
-2. That durability applies when the record has no end time and all narratives are empty.
-3. Successfully updated times and narratives remain available after reopening in a new authenticated session.
-4. Session expiry or logout does not delete the created record or its successful updates.
-5. No submission, approval, or completed-form transition is required to make the created record durable.
-6. Successfully created records and successful updates remain retrievable by their owner in the same tenant after a backend restart or equivalent replacement of the application process, including records without an end time or narratives.
-
-### Open questions
-
-Save interaction and failure/retry outcomes need decisions before delivery. This promise does not establish durability for every unsaved keystroke. Deletion visibility follows PREETS-ONSITE-007.
-
-### Verification plan
-
-Planned evidence only: create an incomplete record and successfully update another record through the real
-application/persistence path. Restart or replace the backend process, then retrieve both through fresh
-application access as the same user and tenant and compare identity, times, and narratives. Exercise the real
-persistence adapter; test-owned collections, canned adapters, browser reloads, and authentication changes alone
-do not establish survival across this boundary. This does not establish backup recovery or disaster tolerance.
-
-### Verification evidence
-
-No reviewed, executed evidence has been recorded. Source review does not establish product behavior.
-
 ## PREETS-ONSITE-005
 
 **Title:** Find and access one’s own records
@@ -337,72 +312,6 @@ The service record can be corrected as understanding develops without importing 
 ### Open questions
 
 Participant-association correction and coach reassignment are not settled. Save, conflict, and failure behavior need decisions before delivery.
-
-### Verification evidence
-
-No reviewed, executed evidence has been recorded. Source review does not establish product behavior.
-
-## PREETS-ONSITE-007
-
-**Title:** Delete from ordinary workflow without destroying the record
-**Classification:** Functional Requirement
-**Lifecycle:** proposed
-**Verification:** unverified
-
-### Statement
-
-A coach must be able to delete their own on-site service record from the normal workflow, removing it from ordinary views while preserving the underlying record.
-
-### Rationale and sources
-
-Users can remove unwanted records while preserving the possibility of undo and future recovery decisions.
-
-- Source: Handoff step 10. Source labels refer to the reviewed material above.
-- Decision: Pending requirements review and maintainer acceptance; the handoff supplies the proposed product direction.
-
-### Acceptance criteria
-
-1. The coach can delete their own record from the normal record workflow.
-2. After successful deletion, the record is absent from the coach’s ordinary record views, including after reload or a new authenticated session.
-3. Deletion preserves the record and its participant/coach association, recorded times, and narratives.
-4. Normal workflow deletion does not permanently destroy the underlying record.
-
-### Open questions
-
-Direct access to a deleted record, retention, later recovery, and permanent deletion policy remain unresolved. Immediate undo is specified separately in PREETS-ONSITE-008.
-
-### Verification evidence
-
-No reviewed, executed evidence has been recorded. Source review does not establish product behavior.
-
-## PREETS-ONSITE-008
-
-**Title:** Immediate deletion undo
-**Classification:** Functional Requirement
-**Lifecycle:** proposed
-**Verification:** unverified
-
-### Statement
-
-Immediately after deleting their own on-site service record, a coach must have an opportunity to undo that deletion and restore the record to ordinary views.
-
-### Rationale and sources
-
-An accidental deletion can be reversed in the workflow without introducing a general trash interface.
-
-- Source: Handoff step 10. Source labels refer to the reviewed material above.
-- Decision: Pending requirements review and maintainer acceptance; the handoff supplies the proposed product direction.
-
-### Acceptance criteria
-
-1. Successful deletion immediately presents an undo opportunity within the current workflow.
-2. Using that opportunity restores the same record to ordinary views with its participant/coach association, times, and narratives intact.
-3. The restored record can again be opened, reviewed, and edited by its owner.
-4. Immediate undo does not require finding a separate trash/recovery interface.
-
-### Open questions
-
-Undo duration, interaction and accessibility, navigation/session-expiry behavior, and failed undo outcomes need decisions before delivery. A later recovery interface is out of scope.
 
 ### Verification evidence
 
