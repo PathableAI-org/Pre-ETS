@@ -7,3 +7,7 @@ if ((process.env.TENANT_CONFIG_DIR?.trim() ?? "") === "") {
 if ((process.env.TENANT_RESOLUTION?.trim() ?? "") === "") {
   process.env.TENANT_RESOLUTION = "host"
 }
+
+if ((process.env.BASE_HOSTNAME?.trim() ?? "") === "") {
+  process.env.BASE_HOSTNAME = "example.test"
+}

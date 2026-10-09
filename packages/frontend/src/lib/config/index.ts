@@ -29,13 +29,18 @@ const validateEnvWithTenantConfig = <T extends RawEnvironmentWithTenantConfig>(
   config: T
 ): Config.Config<Types.Simplify<WithValidatedTenant<T>>> => {
   if (config.env === "production" && config.tenant.resolution === "static") {
-    return Config.succeed({
-      ...config,
-      tenant: {
-        configDir: config.tenant.configDir,
-        resolution: "host"
-      }
-    } as Types.Simplify<WithValidatedTenant<T>>)
+    return Config.NonEmptyString("BASE_HOSTNAME").pipe(
+      Config.map((baseHostname) =>
+        ({
+          ...config,
+          tenant: {
+            baseHostname,
+            configDir: config.tenant.configDir,
+            resolution: "host"
+          }
+        }) as Types.Simplify<WithValidatedTenant<T>>
+      )
+    )
   }
   return Config.succeed(config as Types.Simplify<WithValidatedTenant<T>>)
 }

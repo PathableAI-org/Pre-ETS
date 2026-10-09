@@ -3,10 +3,10 @@ import { describe, it } from "vitest"
 describe("TenantConfigService", () => {
   describe(".getAlias", () => {
     describe("when tenant resolution is host-based", () => {
-      it.todo("returns the lowercase first host label as the tenant alias")
+      it.todo("returns the lowercased alias when the host matches the configured base hostname")
       it.todo("accepts tenant labels containing lowercase letters and hyphens")
       it.todo(
-        "fails with TenantConfigError when the first label is empty or contains characters other than letters and hyphens"
+        "fails with TenantConfigError when the host does not match the configured base hostname or the alias contains characters other than letters and hyphens"
       )
     })
 
