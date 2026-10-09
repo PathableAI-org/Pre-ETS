@@ -55,7 +55,7 @@ This inspection does not establish absence of overlapping pull requests or exter
 - Existing [recovery components](../../packages/frontend/src/components/session/inactivity-recovery-island.tsx), [idle/CAS tests](../../packages/frontend/tests/unit/session-store-idle-cas.test.ts), [capability evidence ledger](../../features/TRACEABILITY.md), and [real-Keycloak E2E](../../e2e/README.md) are reuse candidates. Their existence does not establish these new criteria. Inspect surviving assertions and execute revised evidence during delivery rather than wholesale replacement.
 - [Tenant pilot](tenant-resolution.md) overlaps tenant configuration and vendor-agnostic secret resolution. Coordinate ownership and inspect actual issued work before publication; avoid duplicate tenant/security implementation issues. Concrete cloud provider and ingress work remain deferred under that plan.
 
-Revision inspection on 2026-10-09: read-only GitHub access via the parent agent confirmed PR #114 merged
+Revision inspection on 2026-10-09: read-only GitHub access confirmed PR #114 merged
 at the accepted revision above. The all-state issue listing (limit 100) returned 15 issues and no session delivery
 issues; overlapping PRs and external planning remain unassessed. Verified tenant ownership is
 [#117](https://github.com/PathableAI-org/Pre-ETS/issues/117) (open): tenant consumer/context integration and dummy
@@ -64,7 +64,7 @@ outcomes; [#119](https://github.com/PathableAI-org/Pre-ETS/issues/119) (closed):
 server-only provider. Closure is not runtime verification. S1 consumes these tenant-owned outcomes rather than
 duplicating them; S1 owns authentication, default protection and resolved-tenant/session mismatch 403.
 The current local [tenant plan](tenant-resolution.md) also records that ownership. Initial restricted-network
-inspection failed before the parent completed the remote refresh. No session publication or runtime verification is claimed.
+inspection failed before a successful remote refresh. No session publication or runtime verification is claimed.
 
 ## Blockers and decisions
 
@@ -135,7 +135,7 @@ Conditional issue-body draft; do not publish before decomposition approval.
 >
 > ## Delivery plan
 >
-> [Plan S1](https://github.com/PathableAI-org/Pre-ETS/blob/6058d1010dfc7a6f6800ac3d30cd6b6b1c61485e/docs/delivery/session-management.md#s1--protect-application-entry-points-and-bind-tenant-authentication). This resolving snapshot records the original approved proposal; replace with the remotely accessible revised proposal revision before publication. Revised dependencies and evidence progression above supersede that historical snapshot.
+> [Plan S1](https://github.com/PathableAI-org/Pre-ETS/blob/be2a86d010208527eca771c3a1bd5e121acb76e3/docs/delivery/session-management.md#s1--protect-application-entry-points-and-bind-tenant-authentication). This remotely accessible revision records the revised substantive proposal, pending renewed PR approval. Subsequent link maintenance does not change the decomposition.
 
 **Delivery references:** Not published.
 
@@ -191,7 +191,7 @@ Conditional issue-body draft; do not publish before decomposition approval.
 >
 > ## Delivery plan
 >
-> [Plan S2](https://github.com/PathableAI-org/Pre-ETS/blob/6058d1010dfc7a6f6800ac3d30cd6b6b1c61485e/docs/delivery/session-management.md#s2--share-transient-values-and-authoritative-idle-state-across-instances). This resolving snapshot records the original approved proposal; replace with the remotely accessible revised proposal revision before publication. Revised dependencies and evidence progression above supersede that historical snapshot.
+> [Plan S2](https://github.com/PathableAI-org/Pre-ETS/blob/be2a86d010208527eca771c3a1bd5e121acb76e3/docs/delivery/session-management.md#s2--share-transient-values-and-authoritative-idle-state-across-instances). This remotely accessible revision records the revised substantive proposal, pending renewed PR approval. Subsequent link maintenance does not change the decomposition.
 
 **Delivery references:** Not published.
 
@@ -247,7 +247,7 @@ Conditional issue-body draft; do not publish before decomposition approval.
 >
 > ## Delivery plan
 >
-> [Plan S3](https://github.com/PathableAI-org/Pre-ETS/blob/6058d1010dfc7a6f6800ac3d30cd6b6b1c61485e/docs/delivery/session-management.md#s3--coordinate-intentional-activity-and-logout-across-session-sharing-tabs). This resolving snapshot records the original approved proposal; replace with the remotely accessible revised proposal revision before publication. Revised dependencies and evidence progression above supersede that historical snapshot.
+> [Plan S3](https://github.com/PathableAI-org/Pre-ETS/blob/be2a86d010208527eca771c3a1bd5e121acb76e3/docs/delivery/session-management.md#s3--coordinate-intentional-activity-and-logout-across-session-sharing-tabs). This remotely accessible revision records the revised substantive proposal, pending renewed PR approval. Subsequent link maintenance does not change the decomposition.
 
 **Delivery references:** Not published.
 
@@ -303,7 +303,7 @@ Conditional issue-body draft; do not publish before decomposition approval.
 >
 > ## Delivery plan
 >
-> [Plan S4](https://github.com/PathableAI-org/Pre-ETS/blob/6058d1010dfc7a6f6800ac3d30cd6b6b1c61485e/docs/delivery/session-management.md#s4--warn-before-expiration-and-continue-accessibly-across-tabs). This resolving snapshot records the original approved proposal; replace with the remotely accessible revised proposal revision before publication. Revised dependencies and evidence progression above supersede that historical snapshot.
+> [Plan S4](https://github.com/PathableAI-org/Pre-ETS/blob/be2a86d010208527eca771c3a1bd5e121acb76e3/docs/delivery/session-management.md#s4--warn-before-expiration-and-continue-accessibly-across-tabs). This remotely accessible revision records the revised substantive proposal, pending renewed PR approval. Subsequent link maintenance does not change the decomposition.
 
 **Delivery references:** Not published.
 
@@ -359,7 +359,7 @@ Conditional issue-body draft; do not publish before decomposition approval.
 >
 > ## Delivery plan
 >
-> [Plan S5](https://github.com/PathableAI-org/Pre-ETS/blob/6058d1010dfc7a6f6800ac3d30cd6b6b1c61485e/docs/delivery/session-management.md#s5--protect-expired-content-and-offer-explicit-accessible-recovery). This resolving snapshot records the original approved proposal; replace with the remotely accessible revised proposal revision before publication. Revised dependencies and evidence progression above supersede that historical snapshot.
+> [Plan S5](https://github.com/PathableAI-org/Pre-ETS/blob/be2a86d010208527eca771c3a1bd5e121acb76e3/docs/delivery/session-management.md#s5--protect-expired-content-and-offer-explicit-accessible-recovery). This remotely accessible revision records the revised substantive proposal, pending renewed PR approval. Subsequent link maintenance does not change the decomposition.
 
 **Delivery references:** Not published.
 
@@ -415,7 +415,7 @@ Conditional issue-body draft; do not publish before decomposition approval.
 >
 > ## Delivery plan
 >
-> [Plan S6](https://github.com/PathableAI-org/Pre-ETS/blob/6058d1010dfc7a6f6800ac3d30cd6b6b1c61485e/docs/delivery/session-management.md#s6--complete-fresh-tenant-oidc-recovery-with-a-new-session). This resolving snapshot records the original approved proposal; replace with the remotely accessible revised proposal revision before publication. Revised dependencies and evidence progression above supersede that historical snapshot.
+> [Plan S6](https://github.com/PathableAI-org/Pre-ETS/blob/be2a86d010208527eca771c3a1bd5e121acb76e3/docs/delivery/session-management.md#s6--complete-fresh-tenant-oidc-recovery-with-a-new-session). This remotely accessible revision records the revised substantive proposal, pending renewed PR approval. Subsequent link maintenance does not change the decomposition.
 
 **Delivery references:** Not published.
 
@@ -455,7 +455,7 @@ Do not ship default protection without correct expired-entry classification, or 
 >
 > ## Delivery plan
 >
-> [Original approved plan](https://github.com/PathableAI-org/Pre-ETS/blob/6058d1010dfc7a6f6800ac3d30cd6b6b1c61485e/docs/delivery/session-management.md). This historical snapshot does not contain these revised proposals; replace with the remotely accessible revised proposal revision before publication.
+> [Revised proposal](https://github.com/PathableAI-org/Pre-ETS/blob/be2a86d010208527eca771c3a1bd5e121acb76e3/docs/delivery/session-management.md). This remotely accessible revision records the revised substantive proposal, pending renewed PR approval. Subsequent link maintenance does not change the decomposition.
 
 Keep meaningful verification in each slice: no separate generic testing issue. Use durable Gherkin for product
 behaviors, Playwright where browser interaction is necessary, public-service scenarios for module contracts,
@@ -538,8 +538,8 @@ All accepted ACs are accounted for; none are claimed verified or silently deferr
 warning, and expiration; SESSION-004 spans missing-entry and expired-entry handling. These are explicit aggregate
 shipping gates rather than independently complete partial slices. Existing code only reduces possible remaining work.
 
-Before publication, obtain renewed PR approval of this revised decomposition, refresh remote issue inspection,
-and replace historical issue-body plan links with the remotely accessible revised proposal revision. B1–B6 remain
+Before publication, obtain renewed PR approval of this revised decomposition and refresh remote issue inspection.
+Issue-body plan links pin the remotely accessible substantive proposal; this final revision maintains those links. B1–B6 remain
 affected implementation/shipping gates, not invented policy or evidence. All requirement links pin the accepted
 revision; a later requirement change requires a new coverage review. Prior PR #114 approval is preserved above.
 No session issues were published, no runtime evidence was executed, and requirement verification is unchanged.
