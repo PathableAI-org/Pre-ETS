@@ -11,11 +11,11 @@
     "lint": "eslint \"*.js\" \"*.mjs\" tests e2e --max-warnings=0 && pnpm --filter \"./packages/*\" run lint && pnpm lint:gherkin",
     "lint:fix": "eslint \"*.js\" \"*.mjs\" tests e2e --max-warnings=0 --fix && pnpm --filter \"./packages/*\" run lint:fix && pnpm lint:gherkin",
     "fallow": "fallow",
-    "check:unused": "fallow dead-code",
+    "check:unused": "pnpm --include-workspace-root --no-bail run --parallel \"/^check:unused:/\"",
     "format:check": "dprint check \"*\" .github docs tests e2e && pnpm --filter \"./packages/*\" run format:check && pnpm format:gherkin:check",
     "format:write": "dprint fmt \"*\" .github docs tests e2e && pnpm --filter \"./packages/*\" run format:write && pnpm format:gherkin:write",
     "prepare": "husky",
-    "check:changes": "fallow audit --gate new-only --gate-marker pre-commit",
+    "check:changes": "pnpm --include-workspace-root --no-bail run --parallel \"/^check:changes:/\"",
     "effect-solutions": "node node_modules/effect-solutions/bin.js",
     "test:e2e": "playwright test --config e2e/playwright.config.ts",
     "test:e2e:ui": "playwright test --config e2e/playwright.config.ts --ui",
@@ -24,7 +24,11 @@
     "test:bdd:checks": "node --test tests/bdd/checks/*.test.*",
     "lint:gherkin": "gherkin-lint --config gherkin-lint.json \"tests/bdd/requirements/**/*.feature\"",
     "format:gherkin:check": "prettier --no-config --no-editorconfig --plugin prettier-plugin-gherkin --tab-width 2 --end-of-line lf --print-width 120 --check \"tests/bdd/requirements/**/*.feature\"",
-    "format:gherkin:write": "prettier --no-config --no-editorconfig --plugin prettier-plugin-gherkin --tab-width 2 --end-of-line lf --print-width 120 --write \"tests/bdd/requirements/**/*.feature\""
+    "format:gherkin:write": "prettier --no-config --no-editorconfig --plugin prettier-plugin-gherkin --tab-width 2 --end-of-line lf --print-width 120 --write \"tests/bdd/requirements/**/*.feature\"",
+    "check:unused:frontend": "fallow dead-code --root packages/frontend --production",
+    "check:changes:frontend": "fallow audit --root packages/frontend --production-dead-code --gate new-only --gate-marker pre-commit-frontend",
+    "check:unused:repository": "fallow dead-code",
+    "check:changes:repository": "fallow audit --gate new-only --gate-marker pre-commit"
   },
   "dependencies": {
     "@effect/platform-node": "4.0.2",
