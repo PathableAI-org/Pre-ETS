@@ -1,5 +1,8 @@
 import type { ReactNode } from "react"
 
-export default function AppLayout({ children }: { children: ReactNode }) {
+import { requireTenantConfig } from "./tenant-context"
+
+export default async function AppLayout({ children }: { children: ReactNode }) {
+  await requireTenantConfig()
   return children
 }

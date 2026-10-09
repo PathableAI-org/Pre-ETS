@@ -1,4 +1,4 @@
-import { type Config, Context, Effect, FileSystem, flow, Layer, Path, type Result } from "effect"
+import { type Config, Context, Effect, FileSystem, Layer, Path, type Result } from "effect"
 
 import type { ServerConfig } from "../config/index.ts"
 import type { TenantAlias, TenantConfig, TenantConfigError } from "./schema.ts"
@@ -20,11 +20,11 @@ export class TenantConfigService extends Context.Service<TenantConfigService, {
 
         const getAlias = tenantAliasFromServerConfig(config.tenant)
         const getConfigFromAlias = tenantConfigFromAlias(config.tenant, path, fs)
-        const getConfigFromHost = flow(
-          getAlias,
-          Effect.fromResult,
-          Effect.flatMap((alias) => getConfigFromAlias(alias))
-        )
+        const getConfigFromHost = Effect.fn(function*(host: string) {
+          const alias = yield* Effect.fromResult(getAlias(host))
+          yield* Effect.annotateCurrentSpan("tenant.alias", alias)
+          return yield* getConfigFromAlias(alias)
+        })
 
         return TenantConfigService.of({
           getAlias,
