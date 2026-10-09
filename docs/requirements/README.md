@@ -9,7 +9,9 @@ repository pull requests.
 - [Tenant resolution](tenant-resolution.md)
 - [Infrastructure](infrastructure.md)
 - [Security](security.md)
+- [HIPAA protection of product data](hipaa.md)
 - [Authentication and session management](session-management.md)
+- [Generalized data-input workflows](data-input-workflows.md)
 - [On-site job-coaching service records](on-site-job-coaching.md)
 
 The [area template](templates/area.md) contains placeholders only; it is not an approved product contract.
