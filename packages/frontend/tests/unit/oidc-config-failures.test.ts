@@ -1,13 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import type { OidcTransactionStore } from "../../src/lib/oidc/transaction.ts"
+let { initiateLogin } = await import("../../src/lib/oidc/initiate.ts")
 
-import { initiateLogin } from "../../src/lib/oidc/initiate.ts"
-import {
-  OidcSecretsConfigError,
-  resetOidcSecretsCacheForTests,
-  resolveOidcClientSecret
-} from "../../src/lib/oidc/secrets.ts"
+let { OidcSecretsConfigError, resolveOidcClientSecret } = await import("../../src/lib/oidc/secrets.ts")
+
 import { springfieldConfig, springfieldRecord } from "./tenant-fixtures.ts"
 
 const SESSION_ID = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
@@ -20,8 +17,8 @@ function mockStore(): OidcTransactionStore {
 }
 
 describe("OIDC config failure taxonomy", () => {
-  afterEach(() => {
-    resetOidcSecretsCacheForTests()
+  afterEach(async () => {
+    await reloadModules()
     vi.unstubAllEnvs()
   })
 
@@ -52,11 +49,11 @@ describe("OIDC config failure taxonomy", () => {
     expect(outcome).toEqual({ kind: "config-refusal", outcomeClass: "403-config" })
   })
 
-  it("allows public tenants without a secret and treats unused secrets as unused", () => {
+  it("allows public tenants without a secret and treats unused secrets as unused", async () => {
     vi.stubEnv("OIDC_CLIENT_SECRETS_JSON", "{}")
     expect(resolveOidcClientSecret("springfield", "public")).toEqual({ kind: "none" })
 
-    resetOidcSecretsCacheForTests()
+    await reloadModules()
     vi.stubEnv("OIDC_CLIENT_SECRETS_JSON", JSON.stringify({ springfield: "unused" }))
     expect(resolveOidcClientSecret("springfield", "public")).toEqual({ kind: "unused" })
   })
@@ -86,3 +83,9 @@ describe("OIDC config failure taxonomy", () => {
     expect(JSON.stringify(error.mock.calls)).not.toContain("unused")
   })
 })
+
+async function reloadModules(): Promise<void> {
+  vi.resetModules()
+  ;({ initiateLogin } = await import("../../src/lib/oidc/initiate.ts"))
+  ;({ OidcSecretsConfigError, resolveOidcClientSecret } = await import("../../src/lib/oidc/secrets.ts"))
+}

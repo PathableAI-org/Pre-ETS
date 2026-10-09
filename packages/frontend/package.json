@@ -11,7 +11,9 @@
     "lint:fix": "eslint . --max-warnings=0 --fix",
     "format:check": "dprint check",
     "format:write": "dprint fmt",
-    "test:unit": "vitest run --config vitest.config.ts"
+    "test:unit": "vitest run --config vitest.config.ts",
+    "fallow:unused": "fallow dead-code",
+    "fallow:audit": "fallow audit --gate new-only --gate-marker frontend"
   },
   "dependencies": {
     "@effect/opentelemetry": "4.0.2",

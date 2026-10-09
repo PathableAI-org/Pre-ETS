@@ -1,19 +1,21 @@
 import { randomBytes } from "node:crypto"
 import { afterEach, describe, expect, it, vi } from "vitest"
+let { signSessionCookie } = await import("../../src/lib/session/cookie.ts")
 
-import { signSessionCookie } from "../../src/lib/session/cookie.ts"
-import { guardAuthenticatedAccess } from "../../src/lib/session/guard.ts"
-import { computeIdleExpiresAt } from "../../src/lib/session/idle.ts"
-import { setupSession } from "../../src/lib/session/setup.ts"
-import { type SessionStore, SessionStoreError } from "../../src/lib/session/store.ts"
-import {
-  DEFAULT_SESSION_TTL_SECONDS,
-  resetSessionConfigCacheForTests,
-  SESSION_COOKIE_NAME,
-  type SessionConfig,
-  type SessionCookieClaims,
-  type SessionRecord
-} from "../../src/lib/session/types.ts"
+let { guardAuthenticatedAccess } = await import("../../src/lib/session/guard.ts")
+
+let { computeIdleExpiresAt } = await import("../../src/lib/session/idle.ts")
+
+let { setupSession } = await import("../../src/lib/session/setup.ts")
+
+import type { SessionStore } from "../../src/lib/session/store.ts"
+
+let { SessionStoreError } = await import("../../src/lib/session/store.ts")
+
+import type { SessionConfig, SessionCookieClaims, SessionRecord } from "../../src/lib/session/types.ts"
+
+let { SESSION_COOKIE_NAME } = await import("../../src/lib/session/types.ts")
+
 import { springfieldConfig } from "./tenant-fixtures.ts"
 
 function fixedSessionId(seed = 41): string {
@@ -76,15 +78,15 @@ function testConfig(overrides: Partial<SessionConfig> = {}): SessionConfig {
     redisUrl: "redis://127.0.0.1:6379",
     signingSecret: new Uint8Array(randomBytes(32)),
     storeTimeoutMs: 2000,
-    ttlSeconds: DEFAULT_SESSION_TTL_SECONDS,
+    ttlSeconds: 86400,
     ...overrides
   }
 }
 
 describe("idle expiration HTTP / setup clocks", () => {
-  afterEach(() => {
+  afterEach(async () => {
     vi.restoreAllMocks()
-    resetSessionConfigCacheForTests()
+    await reloadModules()
   })
 
   it("denies authenticated reuse at idleExpiresAt and clears for inactivity", async () => {
@@ -395,3 +397,13 @@ describe("idle expiration HTTP / setup clocks", () => {
     expect(SESSION_COOKIE_NAME).toBe("pathable-session")
   })
 })
+
+async function reloadModules(): Promise<void> {
+  vi.resetModules()
+  ;({ signSessionCookie } = await import("../../src/lib/session/cookie.ts"))
+  ;({ guardAuthenticatedAccess } = await import("../../src/lib/session/guard.ts"))
+  ;({ computeIdleExpiresAt } = await import("../../src/lib/session/idle.ts"))
+  ;({ setupSession } = await import("../../src/lib/session/setup.ts"))
+  ;({ SessionStoreError } = await import("../../src/lib/session/store.ts"))
+  ;({ SESSION_COOKIE_NAME } = await import("../../src/lib/session/types.ts"))
+}

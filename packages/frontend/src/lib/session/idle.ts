@@ -1,12 +1,5 @@
 import type { SessionRecord } from "./types.ts"
 
-/** Inclusive minimum idle duration (whole minutes). */
-export const MIN_IDLE_DURATION_MINUTES = 5
-/** Inclusive maximum idle duration (whole minutes). */
-export const MAX_IDLE_DURATION_MINUTES = 30
-/** Effective idle duration when tenant omits `idleTimeoutMinutes`. */
-export const DEFAULT_IDLE_DURATION_MINUTES = 30
-
 export type AccessEndClassification =
   | "absolute"
   | "idle"
@@ -91,14 +84,6 @@ export function endAuthenticatedForInactivity(
   }
 }
 
-export function isAbsoluteDeadlineElapsed(now: number, expiresAt: number): boolean {
-  return now >= expiresAt
-}
-
-export function isIdleDeadlineElapsed(now: number, idleExpiresAt: number): boolean {
-  return now >= idleExpiresAt
-}
-
 /** True only when classification is confirmed idle clearance — not missing/absolute. */
 export function isInactivityClaim(classification: AccessEndClassification): boolean {
   return classification === "idle"
@@ -122,4 +107,12 @@ export function stampQualifyingActivity(
     idleExpiresAt: computeIdleExpiresAt(now, idleDurationMinutes),
     lastActivityAt: now
   }
+}
+
+function isAbsoluteDeadlineElapsed(now: number, expiresAt: number): boolean {
+  return now >= expiresAt
+}
+
+function isIdleDeadlineElapsed(now: number, idleExpiresAt: number): boolean {
+  return now >= idleExpiresAt
 }

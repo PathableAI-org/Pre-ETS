@@ -5,14 +5,10 @@ import type { SessionConfig, SessionRecord } from "../../src/lib/session/types.t
 
 import { toConfirmSessionActionResult } from "../../src/lib/session/confirm-action.ts"
 import { canRunConfirm, executeConfirmPass, nextConfirmDelayMs } from "../../src/lib/session/confirm-pass.ts"
-import {
-  applyConfirmResult,
-  confirmOutcomeHarnessLabel,
-  formatHarnessClockTime
-} from "../../src/lib/session/confirm-result.ts"
+import { applyConfirmResult } from "../../src/lib/session/confirm-result.ts"
 import { confirmSessionAccess } from "../../src/lib/session/confirm.ts"
 import { signSessionCookie } from "../../src/lib/session/cookie.ts"
-import { computeIdleExpiresAt, DEFAULT_IDLE_DURATION_MINUTES } from "../../src/lib/session/idle.ts"
+import { computeIdleExpiresAt } from "../../src/lib/session/idle.ts"
 import { type SessionStore, SessionStoreError } from "../../src/lib/session/store.ts"
 
 function fixedSessionId(seed = 21): string {
@@ -22,7 +18,7 @@ function fixedSessionId(seed = 21): string {
 }
 
 function idleRecord(now: number, overrides: Partial<SessionRecord> = {}): SessionRecord {
-  const idleDurationMinutes = overrides.idleDurationMinutes ?? DEFAULT_IDLE_DURATION_MINUTES
+  const idleDurationMinutes = overrides.idleDurationMinutes ?? 30
   const lastActivityAt = overrides.lastActivityAt ?? now
   return {
     expiresAt: overrides.expiresAt ?? now + 86_400,
@@ -272,7 +268,7 @@ describe("confirmSessionAccess", () => {
       kind: "ended-other",
       sessionId
     })
-    expect(confirmOutcomeHarnessLabel(toConfirmSessionActionResult(result))).toBe("other")
+    expect(toConfirmSessionActionResult(result).status).toBe("ended-other")
   })
 
   it("performs tombstone handoff on session mismatch after cookie rotation", async () => {
@@ -457,9 +453,7 @@ describe("confirmSessionAccess", () => {
     )
 
     expect(result).toEqual({ kind: "unavailable" })
-    expect(confirmOutcomeHarnessLabel(toConfirmSessionActionResult(result))).toBe(
-      "error (unavailable)"
-    )
+    expect(toConfirmSessionActionResult(result).status).toBe("unavailable")
   })
 })
 
@@ -572,26 +566,5 @@ describe("nextConfirmDelayMs (deadline-aligned schedule)", () => {
     // Label B / delay is schedule visibility only — outcome requires confirm DTO.
     const delay = nextConfirmDelayMs(100, 200, 0)
     expect(delay).toBe(100_000)
-    expect(confirmOutcomeHarnessLabel({ status: "unavailable" })).not.toMatch(/inactivity/i)
-  })
-})
-
-describe("formatHarnessClockTime", () => {
-  it("formats unix seconds as locale HH:MM:SS, not raw epoch", () => {
-    const label = formatHarnessClockTime(1_700_000_000)
-    expect(label).toMatch(/^\d{2}:\d{2}:\d{2}$/)
-    expect(label).not.toBe("1700000000")
-    expect(
-      confirmOutcomeHarnessLabel({
-        expiresAt: 1_700_000_100,
-        idleExpiresAt: 1_700_000_000,
-        sessionId: fixedSessionId(1),
-        status: "authenticated"
-      })
-    ).toBe(
-      `valid (idleExpiresAt=${formatHarnessClockTime(1_700_000_000)}, expiresAt=${
-        formatHarnessClockTime(1_700_000_100)
-      })`
-    )
   })
 })

@@ -85,26 +85,6 @@ export async function completeLogin(
   })
 }
 
-export function extractDisplayName(claims: {
-  readonly name?: unknown
-  readonly preferred_username?: unknown
-  readonly sub?: unknown
-}): string | undefined {
-  if (typeof claims.name === "string" && claims.name.trim() !== "") {
-    return claims.name
-  }
-
-  if (typeof claims.preferred_username === "string" && claims.preferred_username.trim() !== "") {
-    return claims.preferred_username
-  }
-
-  if (typeof claims.sub === "string" && claims.sub.trim() !== "") {
-    return claims.sub
-  }
-
-  return undefined
-}
-
 async function consumeAndMatchTransaction(
   input: CompleteLoginInput,
   deps: CompleteLoginDeps,
@@ -200,6 +180,26 @@ async function exchangeCodeAndAuthenticate(input: {
     location: `${new URL(input.tx.redirectUri).origin}/`,
     outcomeClass: "callback-success"
   }
+}
+
+function extractDisplayName(claims: {
+  readonly name?: unknown
+  readonly preferred_username?: unknown
+  readonly sub?: unknown
+}): string | undefined {
+  if (typeof claims.name === "string" && claims.name.trim() !== "") {
+    return claims.name
+  }
+
+  if (typeof claims.preferred_username === "string" && claims.preferred_username.trim() !== "") {
+    return claims.preferred_username
+  }
+
+  if (typeof claims.sub === "string" && claims.sub.trim() !== "") {
+    return claims.sub
+  }
+
+  return undefined
 }
 
 function extractSubject(claims: { readonly sub?: unknown }): string | undefined {

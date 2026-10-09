@@ -6,17 +6,14 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import type { CompleteLoginDeps } from "../../src/lib/oidc/callback.ts"
 import type { OidcTransactionStore } from "../../src/lib/oidc/transaction.ts"
 import type { SessionStore } from "../../src/lib/session/store.ts"
+let { completeLogin } = await import("../../src/lib/oidc/callback.ts")
 
-import { completeLogin, extractDisplayName } from "../../src/lib/oidc/callback.ts"
-import { signOidcCorrelationCookie } from "../../src/lib/oidc/cookie.ts"
-import { resetOidcDiscoveryCacheForTests } from "../../src/lib/oidc/discovery.ts"
-import {
-  DEFAULT_OIDC_TX_TTL_SECONDS,
-  type OidcTransactionRecord,
-  type OidcTxConfig,
-  resetOidcTxConfigCacheForTests
-} from "../../src/lib/oidc/types.ts"
-import { SessionStoreError } from "../../src/lib/session/store.ts"
+let { signOidcCorrelationCookie } = await import("../../src/lib/oidc/cookie.ts")
+
+import type { OidcTransactionRecord, OidcTxConfig } from "../../src/lib/oidc/types.ts"
+
+let { SessionStoreError } = await import("../../src/lib/session/store.ts")
+
 import { shelbyvilleRecord, springfieldRecord } from "./tenant-fixtures.ts"
 
 const NOW = 1_700_000_000
@@ -69,7 +66,7 @@ function testTxConfig(overrides: Partial<OidcTxConfig> = {}): OidcTxConfig {
     keyPrefix: "test:oidc-tx:",
     signingSecret: signingSecretBytes(),
     storeTimeoutMs: 2000,
-    ttlSeconds: DEFAULT_OIDC_TX_TTL_SECONDS,
+    ttlSeconds: 600,
     ...overrides
   }
 }
@@ -90,22 +87,16 @@ function txRecord(overrides: Partial<OidcTransactionRecord> = {}): OidcTransacti
 }
 
 describe("completeLogin", () => {
-  afterEach(() => {
+  afterEach(async () => {
     vi.restoreAllMocks()
-    resetOidcTxConfigCacheForTests()
-    resetOidcDiscoveryCacheForTests()
+    await reloadModules()
   })
 
-  describe("extractDisplayName", () => {
-    it("prefers name, then preferred_username, then sub", () => {
-      expect(extractDisplayName({ name: "Ada", preferred_username: "ada", sub: "1" })).toBe("Ada")
-      expect(extractDisplayName({ preferred_username: "ada", sub: "1" })).toBe("ada")
-      expect(extractDisplayName({ sub: "1" })).toBe("1")
-      expect(extractDisplayName({})).toBeUndefined()
-    })
-  })
-
-  it("authenticates the session on happy path and redirects home", async () => {
+  it.each([
+    { claims: { name: "Demo User", preferred_username: "demo", sub: "user-sub" }, userName: "Demo User" },
+    { claims: { name: " ", preferred_username: "demo", sub: "user-sub" }, userName: "demo" },
+    { claims: { preferred_username: " ", sub: "user-sub" }, userName: "user-sub" }
+  ])("authenticates with display name $userName and redirects home", async ({ claims, userName }) => {
     const txConfig = testTxConfig()
     const cookie = await signOidcCorrelationCookie(
       { exp: NOW + 600, state: STATE, tenant: "springfield" },
@@ -130,10 +121,7 @@ describe("completeLogin", () => {
         authorizationCodeGrant: (() =>
           Promise.resolve({
             access_token: "access",
-            claims: () => ({
-              name: "Demo User",
-              sub: "user-sub"
-            }),
+            claims: () => claims,
             expiresIn: () => 3600,
             token_type: "bearer"
           })) as unknown as NonNullable<CompleteLoginDeps["authorizationCodeGrant"]>,
@@ -162,7 +150,7 @@ describe("completeLogin", () => {
       lastActivityAt: NOW,
       tenantId: "springfield",
       userId: "user-sub",
-      userName: "Demo User"
+      userName
     })
   })
 
@@ -524,3 +512,10 @@ describe("completeLogin", () => {
     })
   })
 })
+
+async function reloadModules(): Promise<void> {
+  vi.resetModules()
+  ;({ completeLogin } = await import("../../src/lib/oidc/callback.ts"))
+  ;({ signOidcCorrelationCookie } = await import("../../src/lib/oidc/cookie.ts"))
+  ;({ SessionStoreError } = await import("../../src/lib/session/store.ts"))
+}

@@ -40,34 +40,3 @@ export function applyConfirmResult(
   // unavailable / ended-other / mismatch — fail closed, no inactivity claim.
   handlers.setUnavailable()
 }
-
-/** Compact confirm outcome label for unit assertions (never invents inactivity). */
-export function confirmOutcomeHarnessLabel(
-  result: ConfirmSessionActionResult
-): string {
-  if (result.status === "authenticated") {
-    return `valid (idleExpiresAt=${formatHarnessClockTime(result.idleExpiresAt)}, expiresAt=${
-      formatHarnessClockTime(result.expiresAt)
-    })`
-  }
-  if (result.status === "ended-inactivity") {
-    return `inactivity (generation=${String(result.sessionEndGeneration)})`
-  }
-  if (result.status === "ended-other") {
-    return "other"
-  }
-  if (result.status === "mismatch") {
-    return "other (mismatch)"
-  }
-  return "error (unavailable)"
-}
-
-/** Locale wall-clock HH:MM:SS for TEMP harness labels (unix seconds → ms). */
-export function formatHarnessClockTime(unixSeconds: number): string {
-  return new Date(unixSeconds * 1000).toLocaleTimeString(undefined, {
-    hour: "2-digit",
-    hour12: false,
-    minute: "2-digit",
-    second: "2-digit"
-  })
-}

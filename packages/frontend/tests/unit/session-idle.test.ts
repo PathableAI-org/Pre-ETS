@@ -5,13 +5,8 @@ import type { SessionRecord } from "../../src/lib/session/types.ts"
 import {
   classifyAccessEnd,
   computeIdleExpiresAt,
-  DEFAULT_IDLE_DURATION_MINUTES,
   endAuthenticatedForInactivity,
-  isAbsoluteDeadlineElapsed,
-  isIdleDeadlineElapsed,
   isInactivityClaim,
-  MAX_IDLE_DURATION_MINUTES,
-  MIN_IDLE_DURATION_MINUTES,
   stampQualifyingActivity
 } from "../../src/lib/session/idle.ts"
 
@@ -19,7 +14,7 @@ function authenticatedIdleRecord(
   overrides: Partial<SessionRecord> = {}
 ): SessionRecord {
   const lastActivityAt = 1_700_000_000
-  const idleDurationMinutes = DEFAULT_IDLE_DURATION_MINUTES
+  const idleDurationMinutes = 30
   const idleExpiresAt = computeIdleExpiresAt(lastActivityAt, idleDurationMinutes)
   return {
     expiresAt: lastActivityAt + 86_400,
@@ -42,14 +37,6 @@ describe("session idle helpers", () => {
     })
   })
 
-  describe("idle duration constants", () => {
-    it("pins supported range and default", () => {
-      expect(MIN_IDLE_DURATION_MINUTES).toBe(5)
-      expect(MAX_IDLE_DURATION_MINUTES).toBe(30)
-      expect(DEFAULT_IDLE_DURATION_MINUTES).toBe(30)
-    })
-  })
-
   describe("activity must not extend absolute expiresAt", () => {
     it("leaves expiresAt unchanged when stamping qualifying activity", () => {
       const record = authenticatedIdleRecord({
@@ -69,23 +56,15 @@ describe("session idle helpers", () => {
     })
   })
 
-  describe("deadline helpers", () => {
-    it("treats now >= idleExpiresAt as elapsed (deadline wins)", () => {
-      const idleExpiresAt = 1_700_001_800
-      expect(isIdleDeadlineElapsed(idleExpiresAt - 1, idleExpiresAt)).toBe(false)
-      expect(isIdleDeadlineElapsed(idleExpiresAt, idleExpiresAt)).toBe(true)
-      expect(isIdleDeadlineElapsed(idleExpiresAt + 1, idleExpiresAt)).toBe(true)
-    })
-
-    it("treats now >= expiresAt as absolute elapsed", () => {
-      const expiresAt = 1_700_086_400
-      expect(isAbsoluteDeadlineElapsed(expiresAt - 1, expiresAt)).toBe(false)
-      expect(isAbsoluteDeadlineElapsed(expiresAt, expiresAt)).toBe(true)
-      expect(isAbsoluteDeadlineElapsed(expiresAt + 1, expiresAt)).toBe(true)
-    })
-  })
-
   describe("classifyAccessEnd", () => {
+    it.each([-1, 0, 1])("classifies access at deadline offset %i", (offset) => {
+      const deadline = 1_700_001_800
+      const idleRecord = authenticatedIdleRecord({ expiresAt: deadline + 100, idleExpiresAt: deadline })
+      const absoluteRecord = authenticatedIdleRecord({ expiresAt: deadline, idleExpiresAt: deadline + 100 })
+      expect(classifyAccessEnd(deadline + offset, idleRecord)).toBe(offset < 0 ? "still-valid" : "idle")
+      expect(classifyAccessEnd(deadline + offset, absoluteRecord)).toBe(offset < 0 ? "still-valid" : "absolute")
+    })
+
     it("missing store is not an inactivity claim", () => {
       const classification = classifyAccessEnd(1_700_000_000, undefined)
       expect(classification).toBe("missing")

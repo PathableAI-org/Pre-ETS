@@ -35,6 +35,7 @@ jobs:
             fallow:
               - 'packages/**'
               - 'tests/**'
+              - 'e2e/**'
               - '*.js'
               - '*.mjs'
               - 'eslint.config.js'
@@ -45,6 +46,7 @@ jobs:
               - 'pnpm-workspace.yaml'
               - '.node-version'
               - '.fallowrc.json'
+              - '.github/workflows/ci-fallow.yml'
       - name: Set path filter outputs
         id: set
         run: |
@@ -93,4 +95,4 @@ jobs:
             exit 0
           fi
           git cat-file -e "$base^{commit}"
-          pnpm exec fallow audit --gate new-only --base "$base"
+          FALLOW_AUDIT_BASE="$base" pnpm check:changes

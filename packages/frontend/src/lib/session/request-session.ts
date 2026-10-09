@@ -19,20 +19,6 @@ export interface ResolveRequestSessionDependencies {
 }
 
 /**
- * Parse Proxy-forwarded session context header (throws when missing/invalid).
- */
-export function parseRequestSessionContext(rawHeader: null | string): SessionContext {
-  if (rawHeader === null || rawHeader === "") {
-    throw new Error("Session context is required.")
-  }
-  const context = parseSessionContextJson(rawHeader)
-  if (context === undefined) {
-    throw new Error("Session context is invalid.")
-  }
-  return context
-}
-
-/**
  * Header → guarded session resolution (store + tenant config).
  * Authenticated header that fails Redis re-validation fail-closes via auth interrupts
  * (not an opaque Error) so a stale cookie cannot crash SSR.
@@ -75,4 +61,18 @@ export async function resolveRequestSession(
 
   const tenantConfig = await getCurrentTenantConfig(result.context.tenantId)
   return { context: result.context, tenantConfig }
+}
+
+/**
+ * Parse Proxy-forwarded session context header (throws when missing/invalid).
+ */
+function parseRequestSessionContext(rawHeader: null | string): SessionContext {
+  if (rawHeader === null || rawHeader === "") {
+    throw new Error("Session context is required.")
+  }
+  const context = parseSessionContextJson(rawHeader)
+  if (context === undefined) {
+    throw new Error("Session context is invalid.")
+  }
+  return context
 }

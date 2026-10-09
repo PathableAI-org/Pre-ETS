@@ -22,28 +22,16 @@ import {
   type SessionRecord
 } from "./types.ts"
 
-/** Skip Redis writes when computed `idleExpiresAt` is unchanged (~1s activity coalesce). */
-export const IDLE_ACTIVITY_COALESCE_SECONDS = 1
-
 /**
  * Idle lock lease multiplier over `storeTimeoutMs`.
  * Covers load + CAS + optional post-apply revert CAS (each op ≤ timeout), with margin.
  */
-export const IDLE_LOCK_TTL_TIMEOUT_MULTIPLIER = 4
+const IDLE_LOCK_TTL_TIMEOUT_MULTIPLIER = 4
 
 export type ClearForInactivityResult =
   | { readonly kind: "already_cleared"; readonly record: SessionRecord }
   | { readonly kind: "cleared"; readonly record: SessionRecord }
   | { readonly kind: "denied" }
-
-export type IdleRenewalPlan =
-  | { readonly kind: "coalesced"; readonly record: SessionRecord }
-  | { readonly kind: "denied" }
-  | {
-    readonly kind: "write"
-    readonly preRenewalIdleExpiresAt: number
-    readonly renewed: SessionRecord
-  }
 
 export type RenewIdleActivityResult =
   | { readonly kind: "cleared"; readonly record: SessionRecord }
@@ -84,6 +72,15 @@ export type SessionStoreUpdateResult =
   | { readonly kind: "updated" }
 
 type CompareAndSetResult = "mismatch" | "missing" | "ok"
+
+type IdleRenewalPlan =
+  | { readonly kind: "coalesced"; readonly record: SessionRecord }
+  | { readonly kind: "denied" }
+  | {
+    readonly kind: "write"
+    readonly preRenewalIdleExpiresAt: number
+    readonly renewed: SessionRecord
+  }
 
 function lockToken(): string {
   return randomBytes(16).toString("base64url")
@@ -575,10 +572,28 @@ export class SessionStoreError extends Error {
   override readonly name = "SessionStoreError"
 }
 
+function defaultClock(): number {
+  return Math.floor(Date.now() / 1000)
+}
+
+function isIdleAuthenticatedRecord(record: SessionRecord): record is SessionRecord & {
+  readonly idleDurationMinutes: number
+  readonly idleExpiresAt: number
+  readonly lastActivityAt: number
+  readonly userId: string
+  readonly userName: string
+} {
+  return record.userId !== undefined
+    && record.userName !== undefined
+    && record.idleDurationMinutes !== undefined
+    && record.lastActivityAt !== undefined
+    && record.idleExpiresAt !== undefined
+}
+
 /**
- * Pure pre-CAS idle renewal decision (exported for unit coverage).
+ * Pure pre-CAS idle renewal decision.
  */
-export function planIdleRenewal(
+function planIdleRenewal(
   record: SessionRecord,
   nowSeconds: number
 ): IdleRenewalPlan {
@@ -613,24 +628,6 @@ export function planIdleRenewal(
     preRenewalIdleExpiresAt: record.idleExpiresAt,
     renewed
   }
-}
-
-function defaultClock(): number {
-  return Math.floor(Date.now() / 1000)
-}
-
-function isIdleAuthenticatedRecord(record: SessionRecord): record is SessionRecord & {
-  readonly idleDurationMinutes: number
-  readonly idleExpiresAt: number
-  readonly lastActivityAt: number
-  readonly userId: string
-  readonly userName: string
-} {
-  return record.userId !== undefined
-    && record.userName !== undefined
-    && record.idleDurationMinutes !== undefined
-    && record.lastActivityAt !== undefined
-    && record.idleExpiresAt !== undefined
 }
 
 function sleep(ms: number): Promise<void> {
