@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 
 import type { SessionStore } from "../../src/lib/session/store.ts"
 
-import { computeIdleExpiresAt, DEFAULT_IDLE_DURATION_MINUTES } from "../../src/lib/session/idle.ts"
+import { computeIdleExpiresAt } from "../../src/lib/session/idle.ts"
 import { resolveRequestSession } from "../../src/lib/session/request-session.ts"
 import { serializeSessionContext, type SessionContext, type SessionRecord } from "../../src/lib/session/types.ts"
 import { RedirectError, UnauthorizedError } from "./next-navigation-stub.ts"
@@ -33,10 +33,10 @@ function idleRecord(): SessionRecord & {
   readonly idleExpiresAt: number
 } {
   const lastActivityAt = 1_700_000_000
-  const idleExpiresAt = computeIdleExpiresAt(lastActivityAt, DEFAULT_IDLE_DURATION_MINUTES)
+  const idleExpiresAt = computeIdleExpiresAt(lastActivityAt, 30)
   return {
     expiresAt: lastActivityAt + 86_400,
-    idleDurationMinutes: DEFAULT_IDLE_DURATION_MINUTES,
+    idleDurationMinutes: 30,
     idleExpiresAt,
     lastActivityAt,
     tenantId: "springfield",

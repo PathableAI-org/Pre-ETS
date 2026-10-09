@@ -6,24 +6,14 @@ import { applyConfirmResult } from "../../src/lib/session/confirm-result.ts"
 import {
   broadcastInactivityConfirmed,
   INACTIVITY_BROADCAST_CHANNEL,
-  INACTIVITY_CONFIRMED_TYPE,
-  inactivityConfirmedMessage,
   isInactivityConfirmedMessage,
   shouldApplyInactivityBroadcast
 } from "../../src/lib/session/inactivity-channel.ts"
 
 describe("inactivity BroadcastChannel contract", () => {
-  it("builds inactivity-confirmed payload with sessionId and generation", () => {
-    expect(inactivityConfirmedMessage("sid-a", 3)).toEqual({
-      sessionEndGeneration: 3,
-      sessionId: "sid-a",
-      type: INACTIVITY_CONFIRMED_TYPE
-    })
-  })
-
   it("accepts well-formed messages and rejects junk", () => {
     expect(isInactivityConfirmedMessage(
-      inactivityConfirmedMessage("sid-a", 1)
+      { sessionEndGeneration: 1, sessionId: "sid-a", type: "inactivity-confirmed" as const }
     )).toBe(true)
 
     expect(isInactivityConfirmedMessage(null)).toBe(false)
@@ -31,22 +21,22 @@ describe("inactivity BroadcastChannel contract", () => {
     expect(isInactivityConfirmedMessage({
       sessionEndGeneration: 1,
       sessionId: "",
-      type: INACTIVITY_CONFIRMED_TYPE
+      type: "inactivity-confirmed"
     })).toBe(false)
     expect(isInactivityConfirmedMessage({
       sessionEndGeneration: 1.5,
       sessionId: "sid-a",
-      type: INACTIVITY_CONFIRMED_TYPE
+      type: "inactivity-confirmed"
     })).toBe(false)
     expect(isInactivityConfirmedMessage({
       sessionEndGeneration: 0,
       sessionId: "sid-a",
-      type: INACTIVITY_CONFIRMED_TYPE
+      type: "inactivity-confirmed"
     })).toBe(false)
   })
 
   it("ignores foreign sessionId even when generation matches", () => {
-    const message = inactivityConfirmedMessage("foreign-sid", 9)
+    const message = { sessionEndGeneration: 9, sessionId: "foreign-sid", type: "inactivity-confirmed" as const }
     expect(shouldApplyInactivityBroadcast(message, "mounted-sid")).toBe(false)
     expect(shouldApplyInactivityBroadcast(message, "foreign-sid")).toBe(true)
   })
@@ -67,7 +57,7 @@ describe("inactivity BroadcastChannel contract", () => {
       broadcastInactivityConfirmed("sid-a", 4)
 
       expect(postMessage).toHaveBeenCalledWith(
-        inactivityConfirmedMessage("sid-a", 4)
+        { sessionEndGeneration: 4, sessionId: "sid-a", type: "inactivity-confirmed" as const }
       )
       expect(close).toHaveBeenCalledOnce()
       expect(INACTIVITY_BROADCAST_CHANNEL).toBe("pathable-inactivity")

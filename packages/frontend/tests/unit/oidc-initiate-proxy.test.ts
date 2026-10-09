@@ -4,22 +4,22 @@ import { randomBytes } from "node:crypto"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import type { OidcTransactionStore } from "../../src/lib/oidc/transaction.ts"
+let { isDocumentNavigation } = await import("../../src/lib/oidc/document-navigation.ts")
 
-import { isDocumentNavigation } from "../../src/lib/oidc/document-navigation.ts"
-import { extendedForbiddenBody } from "../../src/lib/oidc/forbidden-body.ts"
-import { initiateLogin } from "../../src/lib/oidc/initiate.ts"
-import {
-  approvedApplicationOrigin,
-  isAuthCallbackPath,
-  sessionCookieForRedirect
-} from "../../src/lib/oidc/initiation-http.ts"
-import { OidcSecretsConfigError } from "../../src/lib/oidc/secrets.ts"
-import {
-  DEFAULT_OIDC_TX_TTL_SECONDS,
-  type OidcTxConfig,
-  resetOidcTxConfigCacheForTests
-} from "../../src/lib/oidc/types.ts"
-import { config as proxyConfig } from "../../src/proxy.ts"
+let { extendedForbiddenBody } = await import("../../src/lib/oidc/forbidden-body.ts")
+
+let { initiateLogin } = await import("../../src/lib/oidc/initiate.ts")
+
+let { approvedApplicationOrigin, isAuthCallbackPath, sessionCookieForRedirect } = await import(
+  "../../src/lib/oidc/initiation-http.ts"
+)
+
+let { OidcSecretsConfigError } = await import("../../src/lib/oidc/secrets.ts")
+
+import type { OidcTxConfig } from "../../src/lib/oidc/types.ts"
+
+let { config: proxyConfig } = await import("../../src/proxy.ts")
+
 import { springfieldConfig, springfieldRecord } from "./tenant-fixtures.ts"
 
 const NOW = 1_700_000_000
@@ -57,15 +57,15 @@ function testTxConfig(overrides: Partial<OidcTxConfig> = {}): OidcTxConfig {
     keyPrefix: "test:oidc-tx:",
     signingSecret: signingSecretBytes(),
     storeTimeoutMs: 2000,
-    ttlSeconds: DEFAULT_OIDC_TX_TTL_SECONDS,
+    ttlSeconds: 600,
     ...overrides
   }
 }
 
 describe("OIDC initiate / proxy contracts", () => {
-  afterEach(() => {
+  afterEach(async () => {
     vi.restoreAllMocks()
-    resetOidcTxConfigCacheForTests()
+    await reloadModules()
   })
 
   describe("matcher and callback exclusion", () => {
@@ -268,7 +268,7 @@ describe("OIDC initiate / proxy contracts", () => {
         expect(result.location).not.toContain(VERIFIER)
         expect(result.location).not.toContain("code_verifier")
         expect(result.oidcCookieValue).toBe("oidc-cookie")
-        expect(result.expiresAt).toBe(NOW + DEFAULT_OIDC_TX_TTL_SECONDS)
+        expect(result.expiresAt).toBe(NOW + 600)
       }
 
       expect(create).toHaveBeenCalledTimes(1)
@@ -441,3 +441,15 @@ describe("OIDC initiate / proxy contracts", () => {
     })
   })
 })
+
+async function reloadModules(): Promise<void> {
+  vi.resetModules()
+  ;({ isDocumentNavigation } = await import("../../src/lib/oidc/document-navigation.ts"))
+  ;({ extendedForbiddenBody } = await import("../../src/lib/oidc/forbidden-body.ts"))
+  ;({ initiateLogin } = await import("../../src/lib/oidc/initiate.ts"))
+  ;({ approvedApplicationOrigin, isAuthCallbackPath, sessionCookieForRedirect } = await import(
+    "../../src/lib/oidc/initiation-http.ts"
+  ))
+  ;({ OidcSecretsConfigError } = await import("../../src/lib/oidc/secrets.ts"))
+  ;({ config: proxyConfig } = await import("../../src/proxy.ts"))
+}

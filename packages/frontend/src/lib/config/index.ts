@@ -3,12 +3,7 @@ import { Config, type Types } from "effect"
 import { AppEnv } from "./env.ts"
 import { type HostTenantConfig, TenantConfig } from "./tenant-config.ts"
 
-export type {
-  HostTenantConfig,
-  StaticTenantConfig,
-  TenantConfig,
-  StaticTenantConfig as TenantStaticConfig
-} from "./tenant-config.ts"
+export type { TenantConfig, StaticTenantConfig as TenantStaticConfig } from "./tenant-config.ts"
 
 interface RawEnvironmentWithTenantConfig {
   readonly env: AppEnv

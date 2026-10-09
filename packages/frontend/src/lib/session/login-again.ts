@@ -89,33 +89,6 @@ export async function loginAgain(
   return { kind: "unavailable" }
 }
 
-/** Map OIDC initiation outcome onto login-again result (exported for unit coverage). */
-export function mapInitiationToLoginAgain(
-  initiation: InitiateLoginOutcome,
-  sessionCookieValue: string,
-  sessionExpiresAt: number,
-  sessionId: string
-): LoginAgainResult {
-  if (initiation.kind === "redirect") {
-    return {
-      expiresAt: initiation.expiresAt,
-      kind: "redirect",
-      location: initiation.location,
-      oidcCookieValue: initiation.oidcCookieValue,
-      sessionCookieValue,
-      sessionExpiresAt,
-      sessionId
-    }
-  }
-  if (initiation.kind === "config-refusal") {
-    return { kind: "config-refusal" }
-  }
-  if (initiation.kind === "process-config") {
-    return { kind: "process-config" }
-  }
-  return { kind: "login-unavailable" }
-}
-
 async function createRotatedSession(
   store: SessionStore,
   sessionId: string,
@@ -161,6 +134,33 @@ async function initiateOnRotatedSession(
   }
 
   return mapInitiationToLoginAgain(initiation, sessionCookieValue, sessionExpiresAt, sessionId)
+}
+
+/** Map OIDC initiation outcome onto login-again result. */
+function mapInitiationToLoginAgain(
+  initiation: InitiateLoginOutcome,
+  sessionCookieValue: string,
+  sessionExpiresAt: number,
+  sessionId: string
+): LoginAgainResult {
+  if (initiation.kind === "redirect") {
+    return {
+      expiresAt: initiation.expiresAt,
+      kind: "redirect",
+      location: initiation.location,
+      oidcCookieValue: initiation.oidcCookieValue,
+      sessionCookieValue,
+      sessionExpiresAt,
+      sessionId
+    }
+  }
+  if (initiation.kind === "config-refusal") {
+    return { kind: "config-refusal" }
+  }
+  if (initiation.kind === "process-config") {
+    return { kind: "process-config" }
+  }
+  return { kind: "login-unavailable" }
 }
 
 async function prepareLoginAgain(

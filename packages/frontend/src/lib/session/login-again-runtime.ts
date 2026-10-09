@@ -22,16 +22,16 @@ export interface LoginAgainCookieTarget {
   ): void
 }
 
-export interface LoginAgainRuntime {
+export interface LoginAgainStoreCache {
+  oidcStore: RedisOidcTransactionStore | undefined
+  sessionStore: RedisSessionStore | undefined
+}
+
+interface LoginAgainRuntime {
   readonly config: SessionConfig
   readonly oidcStore: RedisOidcTransactionStore
   readonly sessionStore: RedisSessionStore
   readonly txConfig: OidcTxConfig
-}
-
-export interface LoginAgainStoreCache {
-  oidcStore: RedisOidcTransactionStore | undefined
-  sessionStore: RedisSessionStore | undefined
 }
 
 export function applyLoginAgainCookies(
@@ -119,10 +119,22 @@ export async function buildLoginAgainRedirect(input: {
   return result
 }
 
+function buildLoginAgainRuntime(cache: LoginAgainStoreCache): LoginAgainRuntime {
+  const config = getSessionConfig()
+  const txConfig = getOidcTxConfig()
+  const stores = ensureLoginAgainStores(cache, config, txConfig)
+  return {
+    config,
+    oidcStore: stores.oidcStore,
+    sessionStore: stores.sessionStore,
+    txConfig
+  }
+}
+
 /**
- * Lazy-init session + OIDC stores for login-again (exported for unit coverage).
+ * Lazy-init session + OIDC stores for login-again.
  */
-export function ensureLoginAgainStores(
+function ensureLoginAgainStores(
   cache: LoginAgainStoreCache,
   config: SessionConfig,
   txConfig: OidcTxConfig
@@ -143,14 +155,14 @@ export function ensureLoginAgainStores(
 }
 
 /** True when login-again should fall back to login-unavailable. */
-export function isLoginAgainConfigError(error: unknown): boolean {
+function isLoginAgainConfigError(error: unknown): boolean {
   return error instanceof SessionConfigError || error instanceof OidcTxConfigError
 }
 
 /**
- * Lazy-init session + OIDC stores for login-again (exported for unit coverage).
+ * Lazy-init session + OIDC stores for login-again.
  */
-export function loadLoginAgainRuntime(
+function loadLoginAgainRuntime(
   cache: LoginAgainStoreCache
 ): LoginAgainRuntime | undefined {
   try {
@@ -160,17 +172,5 @@ export function loadLoginAgainRuntime(
       return undefined
     }
     throw error
-  }
-}
-
-function buildLoginAgainRuntime(cache: LoginAgainStoreCache): LoginAgainRuntime {
-  const config = getSessionConfig()
-  const txConfig = getOidcTxConfig()
-  const stores = ensureLoginAgainStores(cache, config, txConfig)
-  return {
-    config,
-    oidcStore: stores.oidcStore,
-    sessionStore: stores.sessionStore,
-    txConfig
   }
 }

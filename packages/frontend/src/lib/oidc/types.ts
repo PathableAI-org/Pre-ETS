@@ -11,10 +11,9 @@ import {
 } from "../session/types.ts"
 
 export const OIDC_COOKIE_NAME = "pathable-oidc"
-export const DEFAULT_OIDC_TX_KEY_PREFIX = "pre-ets:oidc-tx:"
-export const DEFAULT_OIDC_TX_TTL_SECONDS = 600
-export const OIDC_STATE_BYTE_LENGTH = 32
-export const OIDC_STATE_LENGTH = 43
+const DEFAULT_OIDC_TX_KEY_PREFIX = "pre-ets:oidc-tx:"
+const DEFAULT_OIDC_TX_TTL_SECONDS = 600
+const OIDC_STATE_BYTE_LENGTH = 32
 
 export interface OidcCorrelationClaims {
   readonly exp: number
@@ -217,11 +216,6 @@ export function parseOidcTransactionRecord(value: unknown): OidcTransactionRecor
     ...base,
     connection: record.connection
   }
-}
-
-export function resetOidcTxConfigCacheForTests(): void {
-  cachedConfig = undefined
-  cachedConfigError = undefined
 }
 
 export function serializeOidcTransactionRecord(record: OidcTransactionRecord): string {

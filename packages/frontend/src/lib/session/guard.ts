@@ -34,32 +34,6 @@ export type GuardDenyReason =
   | "tenant"
 
 /**
- * When context carries `userId`, re-validate via store+guard; anonymous contexts pass through.
- */
-export async function assertGuardedSession(
-  context: SessionContext,
-  deps: GuardAuthenticatedAccessDependencies
-): Promise<SessionContext> {
-  if (context.userId === undefined) {
-    return context
-  }
-
-  const result = await guardAuthenticatedAccess(
-    {
-      sessionId: context.sessionId,
-      tenantId: context.tenantId
-    },
-    deps
-  )
-
-  if (result.kind === "deny") {
-    throw new Error("Authenticated session access denied.")
-  }
-
-  return result.context
-}
-
-/**
  * Centralized protected-op check: Redis re-read, idle-shaped auth, tenant bind,
  * fresh clock after load, dual deadlines. When idle binds (including equality pin),
  * atomically clear for inactivity. Missing/store error never claim inactivity.

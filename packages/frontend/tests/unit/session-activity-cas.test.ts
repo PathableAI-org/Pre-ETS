@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto"
 import { describe, expect, it } from "vitest"
 
-import { computeIdleExpiresAt, DEFAULT_IDLE_DURATION_MINUTES } from "../../src/lib/session/idle.ts"
+import { computeIdleExpiresAt } from "../../src/lib/session/idle.ts"
 import { SESSION_CAS_UNDER_LOCK_SCRIPT } from "../../src/lib/session/redis-scripts.ts"
 import { RedisSessionStore } from "../../src/lib/session/store.ts"
 import { serializeSessionRecord, type SessionConfig, type SessionRecord } from "../../src/lib/session/types.ts"
@@ -14,7 +14,7 @@ function fixedSessionId(seed = 55): string {
 }
 
 function idleRecord(now: number, overrides: Partial<SessionRecord> = {}): SessionRecord {
-  const idleDurationMinutes = overrides.idleDurationMinutes ?? DEFAULT_IDLE_DURATION_MINUTES
+  const idleDurationMinutes = overrides.idleDurationMinutes ?? 30
   const lastActivityAt = overrides.lastActivityAt ?? now
   return {
     expiresAt: overrides.expiresAt ?? now + 86_400,

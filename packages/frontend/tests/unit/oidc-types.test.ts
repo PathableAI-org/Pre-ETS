@@ -1,13 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
-
-import {
-  DEFAULT_OIDC_TX_KEY_PREFIX,
-  DEFAULT_OIDC_TX_TTL_SECONDS,
-  getOidcTxConfig,
-  parseOidcCorrelationClaims,
-  parseOidcTransactionRecord,
-  resetOidcTxConfigCacheForTests
-} from "../../src/lib/oidc/types.ts"
+let { getOidcTxConfig, parseOidcCorrelationClaims, parseOidcTransactionRecord } = await import(
+  "../../src/lib/oidc/types.ts"
+)
 
 const validRecord = {
   clientId: "springfield-web",
@@ -22,8 +16,8 @@ const validRecord = {
 }
 
 describe("OIDC transaction types", () => {
-  afterEach(() => {
-    resetOidcTxConfigCacheForTests()
+  afterEach(async () => {
+    await reloadModules()
     vi.unstubAllEnvs()
   })
 
@@ -49,8 +43,6 @@ describe("OIDC transaction types", () => {
     vi.stubEnv("SESSION_SIGNING_SECRET", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
     vi.stubEnv("REDIS_URL", "redis://127.0.0.1:6379")
     const config = getOidcTxConfig()
-    expect(config.ttlSeconds).toBe(DEFAULT_OIDC_TX_TTL_SECONDS)
-    expect(config.keyPrefix).toBe(DEFAULT_OIDC_TX_KEY_PREFIX)
     expect(config.ttlSeconds).toBe(600)
     expect(config.keyPrefix).toBe("pre-ets:oidc-tx:")
   })
@@ -76,3 +68,10 @@ describe("OIDC transaction types", () => {
     ).toBeUndefined()
   })
 })
+
+async function reloadModules(): Promise<void> {
+  vi.resetModules()
+  ;({ getOidcTxConfig, parseOidcCorrelationClaims, parseOidcTransactionRecord } = await import(
+    "../../src/lib/oidc/types.ts"
+  ))
+}

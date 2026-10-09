@@ -59,10 +59,6 @@ export async function discoverOidcIssuer(
   return discovered
 }
 
-export function resetOidcDiscoveryCacheForTests(): void {
-  cache.clear()
-}
-
 function discoveryCacheKey(
   issuer: string,
   clientId: string,
