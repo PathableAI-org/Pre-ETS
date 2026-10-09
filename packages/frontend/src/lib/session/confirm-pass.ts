@@ -22,19 +22,6 @@ export function canRunConfirm(
   return !confirming && CONFIRMABLE_STATE_KINDS.has(stateKind)
 }
 
-export function confirmActionInput(
-  sessionId: string,
-  heldGeneration: number | undefined
-): {
-  readonly mountedSessionId: string
-  readonly sessionEndGeneration?: number
-} {
-  if (heldGeneration === undefined) {
-    return { mountedSessionId: sessionId }
-  }
-  return { mountedSessionId: sessionId, sessionEndGeneration: heldGeneration }
-}
-
 /**
  * One confirm pass for the deadline-aligned timer island.
  */
@@ -90,4 +77,17 @@ export function nextConfirmDelayMs(
 ): number {
   const deadlineMs = Math.min(idleExpiresAt, expiresAt) * 1000
   return Math.max(0, deadlineMs - nowMs)
+}
+
+function confirmActionInput(
+  sessionId: string,
+  heldGeneration: number | undefined
+): {
+  readonly mountedSessionId: string
+  readonly sessionEndGeneration?: number
+} {
+  if (heldGeneration === undefined) {
+    return { mountedSessionId: sessionId }
+  }
+  return { mountedSessionId: sessionId, sessionEndGeneration: heldGeneration }
 }

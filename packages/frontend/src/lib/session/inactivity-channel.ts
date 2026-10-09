@@ -5,7 +5,7 @@
 
 export const INACTIVITY_BROADCAST_CHANNEL = "pathable-inactivity"
 
-export const INACTIVITY_CONFIRMED_TYPE = "inactivity-confirmed" as const
+const INACTIVITY_CONFIRMED_TYPE = "inactivity-confirmed" as const
 
 export interface InactivityConfirmedMessage {
   readonly sessionEndGeneration: number
@@ -38,17 +38,6 @@ export function broadcastInactivityConfirmed(
   }
 }
 
-export function inactivityConfirmedMessage(
-  sessionId: string,
-  sessionEndGeneration: number
-): InactivityConfirmedMessage {
-  return {
-    sessionEndGeneration,
-    sessionId,
-    type: INACTIVITY_CONFIRMED_TYPE
-  }
-}
-
 export function isInactivityConfirmedMessage(
   value: unknown
 ): value is InactivityConfirmedMessage {
@@ -73,4 +62,15 @@ export function shouldApplyInactivityBroadcast(
   mountedSessionId: string
 ): boolean {
   return message.sessionId === mountedSessionId
+}
+
+function inactivityConfirmedMessage(
+  sessionId: string,
+  sessionEndGeneration: number
+): InactivityConfirmedMessage {
+  return {
+    sessionEndGeneration,
+    sessionId,
+    type: INACTIVITY_CONFIRMED_TYPE
+  }
 }

@@ -93,24 +93,6 @@ export async function confirmSessionAccess(
   }
 }
 
-export function hasConsumableInactivityLatch(
-  record: SessionRecord,
-  nowSeconds: number
-): boolean {
-  if (record.userId !== undefined) {
-    return false
-  }
-  if (nowSeconds >= record.expiresAt) {
-    return false
-  }
-  if (record.sessionEndGeneration === undefined) {
-    return false
-  }
-  // Generation alone is enough after cause consume; cause may still be present.
-  return record.accessEndedCause === "inactivity"
-    || record.sessionEndGeneration >= 1
-}
-
 async function clearIdleAndEndInactivity(
   input: {
     readonly sessionId: string
@@ -248,6 +230,24 @@ async function consumeCauseKeepLatch(
 
 function endedOther(sessionId: string): ConfirmSessionAccessResult {
   return { kind: "ended-other", sessionId }
+}
+
+function hasConsumableInactivityLatch(
+  record: SessionRecord,
+  nowSeconds: number
+): boolean {
+  if (record.userId !== undefined) {
+    return false
+  }
+  if (nowSeconds >= record.expiresAt) {
+    return false
+  }
+  if (record.sessionEndGeneration === undefined) {
+    return false
+  }
+  // Generation alone is enough after cause consume; cause may still be present.
+  return record.accessEndedCause === "inactivity"
+    || record.sessionEndGeneration >= 1
 }
 
 async function mismatchHandshake(input: {

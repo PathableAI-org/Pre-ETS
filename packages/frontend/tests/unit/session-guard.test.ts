@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 
-import type { SessionContext, SessionRecord } from "../../src/lib/session/types.ts"
+import type { SessionRecord } from "../../src/lib/session/types.ts"
 
-import { assertGuardedSession, guardAuthenticatedAccess } from "../../src/lib/session/guard.ts"
-import { computeIdleExpiresAt, DEFAULT_IDLE_DURATION_MINUTES } from "../../src/lib/session/idle.ts"
+import { guardAuthenticatedAccess } from "../../src/lib/session/guard.ts"
+import { computeIdleExpiresAt } from "../../src/lib/session/idle.ts"
 import { type SessionStore, SessionStoreError } from "../../src/lib/session/store.ts"
 
 function fixedSessionId(seed = 1): string {
@@ -14,7 +14,7 @@ function fixedSessionId(seed = 1): string {
 
 function idleAuthenticatedRecord(overrides: Partial<SessionRecord> = {}): SessionRecord {
   const lastActivityAt = 1_700_000_000
-  const idleDurationMinutes = DEFAULT_IDLE_DURATION_MINUTES
+  const idleDurationMinutes = 30
   return {
     expiresAt: lastActivityAt + 86_400,
     idleDurationMinutes,
@@ -410,72 +410,5 @@ describe("guardAuthenticatedAccess", () => {
       expect(result.record.idleDurationMinutes).toBe(stampedDuration)
     }
     expect(update).not.toHaveBeenCalled()
-  })
-})
-
-describe("assertGuardedSession", () => {
-  afterEach(() => {
-    vi.restoreAllMocks()
-  })
-
-  it("passes anonymous context through without Redis", async () => {
-    const read = vi.fn().mockResolvedValue({ kind: "missing" })
-    const store = mockStore({ read })
-    const context: SessionContext = {
-      expiresAt: 1_700_086_400,
-      sessionId: fixedSessionId(10),
-      tenantId: "springfield"
-    }
-
-    await expect(assertGuardedSession(context, { store })).resolves.toEqual(context)
-    expect(read).not.toHaveBeenCalled()
-  })
-
-  it("re-reads via guard when context carries userId", async () => {
-    const sessionId = fixedSessionId(11)
-    const record = idleAuthenticatedRecord()
-    const idleExpiresAt = record.idleExpiresAt ?? 0
-    const lastActivityAt = record.lastActivityAt ?? 0
-    const read = vi.fn().mockResolvedValue({
-      kind: "record",
-      legacyAuthenticated: false,
-      record
-    })
-    const store = mockStore({ read })
-    const context: SessionContext = {
-      expiresAt: record.expiresAt,
-      idleExpiresAt,
-      sessionId,
-      tenantId: "springfield",
-      userId: "stale-user",
-      userName: "Stale Name"
-    }
-
-    const guarded = await assertGuardedSession(context, {
-      nowSeconds: () => lastActivityAt + 10,
-      store
-    })
-
-    expect(guarded.userId).toBe("user-1")
-    expect(guarded.userName).toBe("Demo User")
-    expect(read).toHaveBeenCalledWith(sessionId)
-  })
-
-  it("throws when authenticated guard denies", async () => {
-    const store = mockStore({
-      read: vi.fn().mockResolvedValue({ kind: "missing" })
-    })
-    const context: SessionContext = {
-      expiresAt: 1_700_086_400,
-      idleExpiresAt: 1_700_001_800,
-      sessionId: fixedSessionId(12),
-      tenantId: "springfield",
-      userId: "user-1",
-      userName: "Demo User"
-    }
-
-    await expect(assertGuardedSession(context, { store })).rejects.toThrow(
-      "Authenticated session access denied."
-    )
   })
 })

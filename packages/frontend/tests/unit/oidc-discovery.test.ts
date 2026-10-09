@@ -1,11 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
-
-import { discoverOidcIssuer, resetOidcDiscoveryCacheForTests } from "../../src/lib/oidc/discovery.ts"
+let { discoverOidcIssuer } = await import("../../src/lib/oidc/discovery.ts")
 
 describe("discoverOidcIssuer cache", () => {
-  afterEach(() => {
+  afterEach(async () => {
     vi.restoreAllMocks()
-    resetOidcDiscoveryCacheForTests()
+    await reloadModules()
   })
 
   it("does not reuse a public client configuration for a confidential client on the same issuer", async () => {
@@ -53,9 +52,9 @@ describe("discoverOidcIssuer cache", () => {
 })
 
 describe("discoverOidcIssuer loopback HTTP options", () => {
-  afterEach(() => {
+  afterEach(async () => {
     vi.restoreAllMocks()
-    resetOidcDiscoveryCacheForTests()
+    await reloadModules()
   })
 
   type DiscoveryCall = [
@@ -119,3 +118,8 @@ describe("discoverOidcIssuer loopback HTTP options", () => {
     expect(discoveryOptionsFromCall(discovery)).toBeUndefined()
   })
 })
+
+async function reloadModules(): Promise<void> {
+  vi.resetModules()
+  ;({ discoverOidcIssuer } = await import("../../src/lib/oidc/discovery.ts"))
+}

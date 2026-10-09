@@ -12,7 +12,7 @@ const hostAliasError = (host: string, cause: Error): TenantConfigError =>
     message: `Failed to read tenant alias from HOST: "${host}"`
   })
 
-export const tenantAliasFromHost = (baseHostname: string) => {
+const tenantAliasFromHost = (baseHostname: string) => {
   const pattern = new RegExp(`^([A-Za-z-]+)\\.${escapeRegExp(baseHostname)}$`)
   return (host: string): Result.Result<TenantAlias, TenantConfigError> =>
     pipe(
@@ -33,7 +33,7 @@ export const tenantAliasFromHost = (baseHostname: string) => {
     )
 }
 
-export const tenantAliasFromStaticTenantConfig = (
+const tenantAliasFromStaticTenantConfig = (
   config: TenantStaticConfig
 ): Result.Result<TenantAlias, TenantConfigError> => {
   return pipe(

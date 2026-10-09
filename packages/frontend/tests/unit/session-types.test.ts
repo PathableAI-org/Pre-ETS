@@ -1,29 +1,22 @@
 import { randomBytes } from "node:crypto"
-import { afterEach, describe, expect, it } from "vitest"
-
-import {
+import { afterEach, describe, expect, it, vi } from "vitest"
+let {
   absoluteExpirySeconds,
   cookieAttributes,
-  DEFAULT_SESSION_KEY_PREFIX,
   DEFAULT_SESSION_STORE_TIMEOUT_MS,
-  DEFAULT_SESSION_TTL_SECONDS,
   generateSessionId,
   getSessionConfig,
   isSafeUnixSeconds,
   isSessionId,
   NODE_TIMER_MAX_MS,
-  parseSessionConfig,
   parseSessionContextJson,
   parseSessionRecord,
   parseSessionRecordDetailed,
-  resetSessionConfigCacheForTests,
   serializeSessionContext,
   serializeSessionRecord,
-  SESSION_ID_BYTE_LENGTH,
-  SESSION_ID_LENGTH,
   SessionConfigError,
   sessionContextFromRecord
-} from "../../src/lib/session/types.ts"
+} = await import("../../src/lib/session/types.ts")
 
 function baseEnv(overrides: Record<string, string | undefined> = {}): Record<string, string | undefined> {
   return {
@@ -34,7 +27,7 @@ function baseEnv(overrides: Record<string, string | undefined> = {}): Record<str
 }
 
 function fixedSessionId(seed = 1): string {
-  const bytes = new Uint8Array(SESSION_ID_BYTE_LENGTH)
+  const bytes = new Uint8Array(32)
   bytes.fill(seed)
   return Buffer.from(bytes).toString("base64url")
 }
@@ -44,17 +37,17 @@ function signingSecret(): string {
 }
 
 describe("session types", () => {
-  afterEach(() => {
-    resetSessionConfigCacheForTests()
+  afterEach(async () => {
+    await reloadModules()
   })
 
   describe("session id", () => {
     it("generates 32 random bytes as unpadded base64url (43 characters)", () => {
-      const bytes = new Uint8Array(SESSION_ID_BYTE_LENGTH)
+      const bytes = new Uint8Array(32)
       bytes.fill(0xab)
       const id = generateSessionId(() => bytes)
 
-      expect(id).toHaveLength(SESSION_ID_LENGTH)
+      expect(id).toHaveLength(43)
       expect(id).toBe(Buffer.from(bytes).toString("base64url"))
       expect(isSessionId(id)).toBe(true)
     })
@@ -422,18 +415,18 @@ describe("session types", () => {
     })
   })
 
-  describe("parseSessionConfig", () => {
+  describe("getSessionConfig validation", () => {
     it("parses defaults for optional settings", () => {
-      const config = parseSessionConfig(baseEnv())
+      const config = validatedSessionConfig(baseEnv())
       expect(config.redisUrl).toBe("redis://127.0.0.1:6379")
-      expect(config.ttlSeconds).toBe(DEFAULT_SESSION_TTL_SECONDS)
+      expect(config.ttlSeconds).toBe(86400)
       expect(config.storeTimeoutMs).toBe(DEFAULT_SESSION_STORE_TIMEOUT_MS)
-      expect(config.keyPrefix).toBe(DEFAULT_SESSION_KEY_PREFIX)
-      expect(config.signingSecret.byteLength).toBeGreaterThanOrEqual(SESSION_ID_BYTE_LENGTH)
+      expect(config.keyPrefix).toBe("pre-ets:session:")
+      expect(config.signingSecret.byteLength).toBeGreaterThanOrEqual(32)
     })
 
     it("accepts custom TTL, timeout, and key prefix", () => {
-      const config = parseSessionConfig(baseEnv({
+      const config = validatedSessionConfig(baseEnv({
         SESSION_KEY_PREFIX: "test:session:",
         SESSION_STORE_TIMEOUT_MS: "5000",
         SESSION_TTL_SECONDS: "7200"
@@ -444,27 +437,27 @@ describe("session types", () => {
     })
 
     it("rejects missing REDIS_URL or SESSION_SIGNING_SECRET", () => {
-      expect(() => parseSessionConfig({ SESSION_SIGNING_SECRET: signingSecret() }))
+      expect(() => validatedSessionConfig({ SESSION_SIGNING_SECRET: signingSecret() }))
         .toThrow(SessionConfigError)
-      expect(() => parseSessionConfig({ REDIS_URL: "redis://127.0.0.1:6379" }))
+      expect(() => validatedSessionConfig({ REDIS_URL: "redis://127.0.0.1:6379" }))
         .toThrow(SessionConfigError)
-      expect(() => parseSessionConfig(baseEnv({ REDIS_URL: "   " })))
+      expect(() => validatedSessionConfig(baseEnv({ REDIS_URL: "   " })))
         .toThrow(/REDIS_URL is required/)
-      expect(() => parseSessionConfig(baseEnv({ SESSION_SIGNING_SECRET: "" })))
+      expect(() => validatedSessionConfig(baseEnv({ SESSION_SIGNING_SECRET: "" })))
         .toThrow(/SESSION_SIGNING_SECRET is required/)
     })
 
     it("rejects invalid or short SESSION_SIGNING_SECRET", () => {
-      expect(() => parseSessionConfig(baseEnv({ SESSION_SIGNING_SECRET: "not-base64url!!!" })))
+      expect(() => validatedSessionConfig(baseEnv({ SESSION_SIGNING_SECRET: "not-base64url!!!" })))
         .toThrow(/base64url/)
-      expect(() => parseSessionConfig(baseEnv({ SESSION_SIGNING_SECRET: "YWJj" })))
+      expect(() => validatedSessionConfig(baseEnv({ SESSION_SIGNING_SECRET: "YWJj" })))
         .toThrow(/at least 32 bytes/)
     })
 
     it("rejects non-loopback cleartext REDIS_URL", () => {
-      expect(() => parseSessionConfig(baseEnv({ REDIS_URL: "redis://192.168.1.10:6379" })))
+      expect(() => validatedSessionConfig(baseEnv({ REDIS_URL: "redis://192.168.1.10:6379" })))
         .toThrow(/loopback/)
-      expect(() => parseSessionConfig(baseEnv({ REDIS_URL: "redis://redis.example.com:6379" })))
+      expect(() => validatedSessionConfig(baseEnv({ REDIS_URL: "redis://redis.example.com:6379" })))
         .toThrow(/loopback/)
     })
 
@@ -476,19 +469,19 @@ describe("session types", () => {
           "redis://[::1]:6379"
         ]
       ) {
-        expect(parseSessionConfig(baseEnv({ REDIS_URL: url })).redisUrl).toBe(url)
+        expect(validatedSessionConfig(baseEnv({ REDIS_URL: url })).redisUrl).toBe(url)
       }
     })
 
     it("rejects TLS REDIS_URL without authentication", () => {
-      expect(() => parseSessionConfig(baseEnv({ REDIS_URL: "rediss://redis.example.com:6379" })))
+      expect(() => validatedSessionConfig(baseEnv({ REDIS_URL: "rediss://redis.example.com:6379" })))
         .toThrow(/TLS and authentication/)
     })
 
     it("accepts TLS REDIS_URL with password auth", () => {
       const password = "x".repeat(16)
       expect(
-        parseSessionConfig(baseEnv({
+        validatedSessionConfig(baseEnv({
           REDIS_URL: `rediss://:${password}@redis.example.com:6379`
         })).redisUrl
       ).toContain("rediss://")
@@ -496,46 +489,46 @@ describe("session types", () => {
 
     it("rejects TLS REDIS_URL with only mTLS query params", () => {
       expect(() =>
-        parseSessionConfig(baseEnv({
+        validatedSessionConfig(baseEnv({
           REDIS_URL: "rediss://redis.example.com:6379?cert=a&key=b"
         }))
       ).toThrow(/TLS and authentication/)
     })
 
     it("rejects unsupported REDIS_URL protocols", () => {
-      expect(() => parseSessionConfig(baseEnv({ REDIS_URL: "http://127.0.0.1:6379" })))
+      expect(() => validatedSessionConfig(baseEnv({ REDIS_URL: "http://127.0.0.1:6379" })))
         .toThrow(/protocol is unsupported/)
     })
 
     it("rejects invalid SESSION_STORE_TIMEOUT_MS values", () => {
-      expect(() => parseSessionConfig(baseEnv({ SESSION_STORE_TIMEOUT_MS: "0" })))
+      expect(() => validatedSessionConfig(baseEnv({ SESSION_STORE_TIMEOUT_MS: "0" })))
         .toThrow(/positive integer/)
-      expect(() => parseSessionConfig(baseEnv({ SESSION_STORE_TIMEOUT_MS: "-1" })))
+      expect(() => validatedSessionConfig(baseEnv({ SESSION_STORE_TIMEOUT_MS: "-1" })))
         .toThrow(/positive integer/)
-      expect(() => parseSessionConfig(baseEnv({ SESSION_STORE_TIMEOUT_MS: "abc" })))
+      expect(() => validatedSessionConfig(baseEnv({ SESSION_STORE_TIMEOUT_MS: "abc" })))
         .toThrow(/positive integer/)
       expect(() =>
-        parseSessionConfig(baseEnv({
+        validatedSessionConfig(baseEnv({
           SESSION_STORE_TIMEOUT_MS: String(NODE_TIMER_MAX_MS + 1)
         }))
       ).toThrow(/timer-safe range/)
     })
 
     it("rejects invalid SESSION_TTL_SECONDS values", () => {
-      expect(() => parseSessionConfig(baseEnv({ SESSION_TTL_SECONDS: "0" })))
+      expect(() => validatedSessionConfig(baseEnv({ SESSION_TTL_SECONDS: "0" })))
         .toThrow(/positive integer/)
-      expect(() => parseSessionConfig(baseEnv({ SESSION_TTL_SECONDS: "not-a-number" })))
+      expect(() => validatedSessionConfig(baseEnv({ SESSION_TTL_SECONDS: "not-a-number" })))
         .toThrow(/positive integer/)
     })
   })
 
   describe("getSessionConfig", () => {
-    it("caches successful config and repeated config errors", () => {
+    it("caches successful config and repeated config errors", async () => {
       const env = baseEnv()
       const first = getSessionConfig(env)
       expect(getSessionConfig(env)).toBe(first)
 
-      resetSessionConfigCacheForTests()
+      await reloadModules()
       expect(() => getSessionConfig({})).toThrow(SessionConfigError)
       expect(() => getSessionConfig({})).toThrow(SessionConfigError)
     })
@@ -549,3 +542,28 @@ describe("session types", () => {
     })
   })
 })
+
+async function reloadModules(): Promise<void> {
+  vi.resetModules()
+  ;({
+    absoluteExpirySeconds,
+    cookieAttributes,
+    DEFAULT_SESSION_STORE_TIMEOUT_MS,
+    generateSessionId,
+    getSessionConfig,
+    isSafeUnixSeconds,
+    isSessionId,
+    NODE_TIMER_MAX_MS,
+    parseSessionContextJson,
+    parseSessionRecord,
+    parseSessionRecordDetailed,
+    serializeSessionContext,
+    serializeSessionRecord,
+    SessionConfigError,
+    sessionContextFromRecord
+  } = await import("../../src/lib/session/types.ts"))
+}
+
+function validatedSessionConfig(env: NodeJS.ProcessEnv | Record<string, string | undefined>) {
+  return getSessionConfig(env, { forceReload: true })
+}

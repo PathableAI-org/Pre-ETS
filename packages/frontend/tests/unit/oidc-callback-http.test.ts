@@ -8,16 +8,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { OidcTransactionStore } from "../../src/lib/oidc/transaction.ts"
 import type { SessionStore } from "../../src/lib/session/store.ts"
 import type { TenantRecord } from "../../src/lib/tenant/index.ts"
+let { completeLogin } = await import("../../src/lib/oidc/callback.ts")
 
-import { completeLogin } from "../../src/lib/oidc/callback.ts"
-import { signOidcCorrelationCookie } from "../../src/lib/oidc/cookie.ts"
-import { resetOidcDiscoveryCacheForTests } from "../../src/lib/oidc/discovery.ts"
-import {
-  DEFAULT_OIDC_TX_TTL_SECONDS,
-  type OidcTransactionRecord,
-  type OidcTxConfig,
-  resetOidcTxConfigCacheForTests
-} from "../../src/lib/oidc/types.ts"
+let { signOidcCorrelationCookie } = await import("../../src/lib/oidc/cookie.ts")
+
+import type { OidcTransactionRecord, OidcTxConfig } from "../../src/lib/oidc/types.ts"
 
 const NOW = Math.floor(Date.now() / 1000)
 const SESSION_ID = Buffer.from(new Uint8Array(32).fill(11)).toString("base64url")
@@ -35,15 +30,13 @@ interface MockIdp {
 describe("completeLogin HTTP callback with mock IdP", () => {
   let mockIdp: MockIdp | undefined
 
-  beforeEach(() => {
-    resetOidcDiscoveryCacheForTests()
-    resetOidcTxConfigCacheForTests()
+  beforeEach(async () => {
+    await reloadModules()
   })
 
   afterEach(async () => {
     vi.restoreAllMocks()
-    resetOidcDiscoveryCacheForTests()
-    resetOidcTxConfigCacheForTests()
+    await reloadModules()
     if (mockIdp !== undefined) {
       await mockIdp.close()
       mockIdp = undefined
@@ -127,6 +120,12 @@ function mockTxStore(overrides: Partial<OidcTransactionStore> = {}): OidcTransac
     create: vi.fn().mockResolvedValue({ kind: "unavailable" }),
     ...overrides
   }
+}
+
+async function reloadModules(): Promise<void> {
+  vi.resetModules()
+  ;({ completeLogin } = await import("../../src/lib/oidc/callback.ts"))
+  ;({ signOidcCorrelationCookie } = await import("../../src/lib/oidc/cookie.ts"))
 }
 
 function springfieldTenant(issuer: string): TenantRecord {
@@ -261,7 +260,7 @@ function testTxConfig(): OidcTxConfig {
     keyPrefix: "test:oidc-tx-http:",
     signingSecret: new Uint8Array(randomBytes(32)),
     storeTimeoutMs: 2000,
-    ttlSeconds: DEFAULT_OIDC_TX_TTL_SECONDS
+    ttlSeconds: 600
   }
 }
 

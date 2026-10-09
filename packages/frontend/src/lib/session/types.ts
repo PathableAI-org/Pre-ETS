@@ -3,11 +3,10 @@ import { randomBytes } from "node:crypto"
 import { parsePositiveSafeInteger, parseStoreTimeoutMs } from "../env/positive-int.ts"
 
 export const SESSION_COOKIE_NAME = "pathable-session"
-export const DEFAULT_SESSION_KEY_PREFIX = "pre-ets:session:"
-export const DEFAULT_SESSION_TTL_SECONDS = 86_400
+const DEFAULT_SESSION_KEY_PREFIX = "pre-ets:session:"
+const DEFAULT_SESSION_TTL_SECONDS = 86_400
 export const DEFAULT_SESSION_STORE_TIMEOUT_MS = 2_000
-export const SESSION_ID_BYTE_LENGTH = 32
-export const SESSION_ID_LENGTH = 43
+const SESSION_ID_BYTE_LENGTH = 32
 export const NODE_TIMER_MAX_MS = 2_147_483_647
 export const SESSION_CONTEXT_HEADER = "x-pathable-session-context"
 export const TENANT_SLUG_HEADER = "x-preets-tenant-slug"
@@ -64,8 +63,6 @@ export interface SessionRecord {
   readonly userId?: string
   readonly userName?: string
 }
-
-export type TenantOrigin = "host-associated" | "local-static"
 
 export class SessionConfigError extends Error {
   override readonly name = "SessionConfigError"
@@ -152,37 +149,6 @@ export function isSessionId(value: string): boolean {
   return SESSION_ID_PATTERN.test(value)
 }
 
-export function parseSessionConfig(env: NodeJS.ProcessEnv | Record<string, string | undefined>): SessionConfig {
-  const redisUrl = requireNonEmpty(env.REDIS_URL, "REDIS_URL")
-  assertRedisUrl(redisUrl)
-
-  const signingSecret = parseSigningSecret(requireNonEmpty(env.SESSION_SIGNING_SECRET, "SESSION_SIGNING_SECRET"))
-  const createError = (message: string): Error => new SessionConfigError(message)
-  const ttlSeconds = parsePositiveSafeInteger(
-    env.SESSION_TTL_SECONDS,
-    DEFAULT_SESSION_TTL_SECONDS,
-    "SESSION_TTL_SECONDS",
-    createError
-  )
-  const storeTimeoutMs = parseStoreTimeoutMs(
-    env.SESSION_STORE_TIMEOUT_MS,
-    DEFAULT_SESSION_STORE_TIMEOUT_MS,
-    NODE_TIMER_MAX_MS,
-    createError
-  )
-  const keyPrefix = env.SESSION_KEY_PREFIX === undefined || env.SESSION_KEY_PREFIX === ""
-    ? DEFAULT_SESSION_KEY_PREFIX
-    : env.SESSION_KEY_PREFIX
-
-  return {
-    keyPrefix,
-    redisUrl,
-    signingSecret,
-    storeTimeoutMs,
-    ttlSeconds
-  }
-}
-
 export function parseSessionContextJson(raw: string): SessionContext | undefined {
   const value = parseJsonObject(raw)
   if (value === undefined) {
@@ -239,11 +205,6 @@ export function parseSigningSecret(raw: string): Uint8Array {
   }
 
   return new Uint8Array(bytes)
-}
-
-export function resetSessionConfigCacheForTests(): void {
-  cachedConfig = undefined
-  cachedConfigError = undefined
 }
 
 export function serializeSessionContext(context: SessionContext): string {
@@ -607,6 +568,37 @@ function parseJsonObject(raw: string): Record<string, unknown> | undefined {
   }
 
   return parsed as Record<string, unknown>
+}
+
+function parseSessionConfig(env: NodeJS.ProcessEnv | Record<string, string | undefined>): SessionConfig {
+  const redisUrl = requireNonEmpty(env.REDIS_URL, "REDIS_URL")
+  assertRedisUrl(redisUrl)
+
+  const signingSecret = parseSigningSecret(requireNonEmpty(env.SESSION_SIGNING_SECRET, "SESSION_SIGNING_SECRET"))
+  const createError = (message: string): Error => new SessionConfigError(message)
+  const ttlSeconds = parsePositiveSafeInteger(
+    env.SESSION_TTL_SECONDS,
+    DEFAULT_SESSION_TTL_SECONDS,
+    "SESSION_TTL_SECONDS",
+    createError
+  )
+  const storeTimeoutMs = parseStoreTimeoutMs(
+    env.SESSION_STORE_TIMEOUT_MS,
+    DEFAULT_SESSION_STORE_TIMEOUT_MS,
+    NODE_TIMER_MAX_MS,
+    createError
+  )
+  const keyPrefix = env.SESSION_KEY_PREFIX === undefined || env.SESSION_KEY_PREFIX === ""
+    ? DEFAULT_SESSION_KEY_PREFIX
+    : env.SESSION_KEY_PREFIX
+
+  return {
+    keyPrefix,
+    redisUrl,
+    signingSecret,
+    storeTimeoutMs,
+    ttlSeconds
+  }
 }
 
 function readSessionContextBase(

@@ -1,18 +1,13 @@
 import { randomBytes } from "node:crypto"
 import { describe, expect, it } from "vitest"
 
-import { computeIdleExpiresAt, DEFAULT_IDLE_DURATION_MINUTES } from "../../src/lib/session/idle.ts"
+import { computeIdleExpiresAt } from "../../src/lib/session/idle.ts"
 import {
   RELEASE_IDLE_LOCK_SCRIPT,
   SESSION_CAS_UNDER_LOCK_SCRIPT,
   SESSION_SET_UNDER_LOCK_SCRIPT
 } from "../../src/lib/session/redis-scripts.ts"
-import {
-  IDLE_ACTIVITY_COALESCE_SECONDS,
-  IDLE_LOCK_TTL_TIMEOUT_MULTIPLIER,
-  RedisSessionStore,
-  SessionStoreError
-} from "../../src/lib/session/store.ts"
+import { RedisSessionStore, SessionStoreError } from "../../src/lib/session/store.ts"
 import { serializeSessionRecord, type SessionConfig, type SessionRecord } from "../../src/lib/session/types.ts"
 import { MemoryRedis } from "./helpers/memory-redis.ts"
 
@@ -24,7 +19,7 @@ function fixedSessionId(seed = 9): string {
 
 function idleRecord(now: number, overrides: Partial<SessionRecord> = {}): SessionRecord {
   const lastActivityAt = overrides.lastActivityAt ?? now
-  const idleDurationMinutes = overrides.idleDurationMinutes ?? DEFAULT_IDLE_DURATION_MINUTES
+  const idleDurationMinutes = overrides.idleDurationMinutes ?? 30
   return Object.assign(
     {
       expiresAt: now + 86_400,
@@ -84,7 +79,7 @@ describe("session store idle CAS", () => {
       expiration: {
         type: "PX",
         value: Math.max(
-          testConfig().storeTimeoutMs * IDLE_LOCK_TTL_TIMEOUT_MULTIPLIER,
+          testConfig().storeTimeoutMs * 4,
           1_000
         )
       }
@@ -112,7 +107,6 @@ describe("session store idle CAS", () => {
 
     const result = await store.renewIdleActivity(sessionId, now, "springfield")
     expect(result.kind).toBe("coalesced")
-    expect(IDLE_ACTIVITY_COALESCE_SECONDS).toBe(1)
 
     const sessionWrites = memory.set.mock.calls.filter(
       (call) => call[0] === sessionKey && call[2]?.condition === "XX"
@@ -124,7 +118,7 @@ describe("session store idle CAS", () => {
 
     const next = await store.renewIdleActivity(
       sessionId,
-      now + IDLE_ACTIVITY_COALESCE_SECONDS,
+      now + 1,
       "springfield"
     )
     expect(next.kind).toBe("renewed")

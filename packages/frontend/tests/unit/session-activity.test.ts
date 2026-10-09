@@ -5,8 +5,8 @@ import type { SessionConfig, SessionRecord } from "../../src/lib/session/types.t
 
 import { recordQualifyingActivity } from "../../src/lib/session/activity.ts"
 import { signSessionCookie } from "../../src/lib/session/cookie.ts"
-import { computeIdleExpiresAt, DEFAULT_IDLE_DURATION_MINUTES } from "../../src/lib/session/idle.ts"
-import { IDLE_ACTIVITY_COALESCE_SECONDS, type SessionStore, SessionStoreError } from "../../src/lib/session/store.ts"
+import { computeIdleExpiresAt } from "../../src/lib/session/idle.ts"
+import { type SessionStore, SessionStoreError } from "../../src/lib/session/store.ts"
 
 function fixedSessionId(seed = 21): string {
   const bytes = new Uint8Array(32)
@@ -15,7 +15,7 @@ function fixedSessionId(seed = 21): string {
 }
 
 function idleRecord(now: number, overrides: Partial<SessionRecord> = {}): SessionRecord {
-  const idleDurationMinutes = overrides.idleDurationMinutes ?? DEFAULT_IDLE_DURATION_MINUTES
+  const idleDurationMinutes = overrides.idleDurationMinutes ?? 30
   const lastActivityAt = overrides.lastActivityAt ?? now
   return {
     expiresAt: overrides.expiresAt ?? now + 86_400,
@@ -182,7 +182,6 @@ describe("recordQualifyingActivity", () => {
     )
 
     expect(result).toEqual({ kind: "coalesced", record })
-    expect(IDLE_ACTIVITY_COALESCE_SECONDS).toBe(1)
   })
 
   it("fails closed when the store times out", async () => {

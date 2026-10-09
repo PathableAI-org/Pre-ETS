@@ -1,17 +1,17 @@
 import { randomBytes } from "node:crypto"
 import { afterEach, describe, expect, it, vi } from "vitest"
+let { signSessionCookie } = await import("../../src/lib/session/cookie.ts")
 
-import { signSessionCookie } from "../../src/lib/session/cookie.ts"
-import { setupSession } from "../../src/lib/session/setup.ts"
-import { type SessionStore, SessionStoreError } from "../../src/lib/session/store.ts"
-import {
-  DEFAULT_SESSION_TTL_SECONDS,
-  resetSessionConfigCacheForTests,
-  SESSION_COOKIE_NAME,
-  type SessionConfig,
-  type SessionCookieClaims,
-  type SessionRecord
-} from "../../src/lib/session/types.ts"
+let { setupSession } = await import("../../src/lib/session/setup.ts")
+
+import type { SessionStore } from "../../src/lib/session/store.ts"
+
+let { SessionStoreError } = await import("../../src/lib/session/store.ts")
+
+import type { SessionConfig, SessionCookieClaims, SessionRecord } from "../../src/lib/session/types.ts"
+
+let { SESSION_COOKIE_NAME } = await import("../../src/lib/session/types.ts")
+
 import { springfieldConfig } from "./tenant-fixtures.ts"
 
 function fixedSessionId(seed = 3): string {
@@ -61,15 +61,15 @@ function testConfig(overrides: Partial<SessionConfig> = {}): SessionConfig {
     redisUrl: "redis://127.0.0.1:6379",
     signingSecret: signingSecretBytes(),
     storeTimeoutMs: 2000,
-    ttlSeconds: DEFAULT_SESSION_TTL_SECONDS,
+    ttlSeconds: 86400,
     ...overrides
   }
 }
 
 describe("setupSession", () => {
-  afterEach(() => {
+  afterEach(async () => {
     vi.restoreAllMocks()
-    resetSessionConfigCacheForTests()
+    await reloadModules()
   })
 
   describe("ordering", () => {
@@ -603,7 +603,7 @@ describe("setupSession", () => {
         expect(result.context.tenantId).toBe("springfield")
       }
       expect(create).toHaveBeenCalledWith(fixedSessionId(62), {
-        expiresAt: now + DEFAULT_SESSION_TTL_SECONDS,
+        expiresAt: now + 86400,
         tenantId: "springfield"
       })
       expect(create).not.toHaveBeenCalledWith(foreignId, expect.anything())
@@ -701,7 +701,7 @@ describe("setupSession", () => {
     })
 
     it("returns 500 without a cookie when runtime config is missing", async () => {
-      resetSessionConfigCacheForTests()
+      await reloadModules()
       vi.stubEnv("REDIS_URL", "")
       vi.stubEnv("SESSION_SIGNING_SECRET", "")
 
@@ -734,3 +734,11 @@ describe("setupSession", () => {
     })
   })
 })
+
+async function reloadModules(): Promise<void> {
+  vi.resetModules()
+  ;({ signSessionCookie } = await import("../../src/lib/session/cookie.ts"))
+  ;({ setupSession } = await import("../../src/lib/session/setup.ts"))
+  ;({ SessionStoreError } = await import("../../src/lib/session/store.ts"))
+  ;({ SESSION_COOKIE_NAME } = await import("../../src/lib/session/types.ts"))
+}

@@ -3,14 +3,9 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 
 import type { SessionConfig, SessionRecord } from "../../src/lib/session/types.ts"
 
-import { OidcTxConfigError } from "../../src/lib/oidc/types.ts"
 import { signSessionCookie } from "../../src/lib/session/cookie.ts"
-import {
-  applyLoginAgainCookies,
-  isLoginAgainConfigError,
-  loadLoginAgainRuntime
-} from "../../src/lib/session/login-again-runtime.ts"
-import { loginAgain, mapInitiationToLoginAgain } from "../../src/lib/session/login-again.ts"
+import { applyLoginAgainCookies, buildLoginAgainRedirect } from "../../src/lib/session/login-again-runtime.ts"
+import { loginAgain } from "../../src/lib/session/login-again.ts"
 import { type SessionStore, SessionStoreError } from "../../src/lib/session/store.ts"
 import { SessionConfigError } from "../../src/lib/session/types.ts"
 import { config as proxyConfig } from "../../src/proxy.ts"
@@ -252,64 +247,53 @@ describe("loginAgain rotation", () => {
     expect(result).toEqual({ kind: "unavailable" })
   })
 
-  it("maps initiation outcomes without carrying tombstone fields", () => {
-    expect(
-      mapInitiationToLoginAgain(
-        {
-          expiresAt: 100,
-          kind: "redirect",
-          location: "https://idp.example",
-          oidcCookieValue: "oidc",
-          outcomeClass: "redirect"
-        },
-        "session-cookie",
-        200,
-        "new-sid"
-      )
-    ).toEqual({
-      expiresAt: 100,
-      kind: "redirect",
-      location: "https://idp.example",
-      oidcCookieValue: "oidc",
-      sessionCookieValue: "session-cookie",
-      sessionExpiresAt: 200,
-      sessionId: "new-sid"
+  it.each(
+    [
+      { kind: "login-unavailable", outcomeClass: "login-unavailable" },
+      { kind: "config-refusal", outcomeClass: "403-config" },
+      { kind: "process-config", outcomeClass: "process-config" }
+    ] as const
+  )("returns $kind when OIDC initiation refuses the rotated session", async (outcome) => {
+    const config = testConfig()
+    const now = 1_700_000_000
+    const cookieValue = await signSessionCookie(
+      { exp: now + 86_400, sid: fixedSessionId(11), tenant: "springfield" },
+      config
+    )
+    const result = await loginAgain({
+      cookieValue,
+      nowSeconds: now,
+      origin: "https://springfield.localhost",
+      tenantId: "springfield",
+      tenantRecord: springfieldRecord
+    }, {
+      config,
+      createId: () => fixedSessionId(12),
+      initiate: () => Promise.resolve(outcome),
+      initiateDeps: { store: { consume: vi.fn(), create: vi.fn() } },
+      store: mockStore()
     })
-    expect(
-      mapInitiationToLoginAgain(
-        { kind: "login-unavailable", outcomeClass: "login-unavailable" },
-        "c",
-        1,
-        "sid"
-      )
-    ).toEqual({ kind: "login-unavailable" })
-    expect(
-      mapInitiationToLoginAgain(
-        { kind: "config-refusal", outcomeClass: "403-config" },
-        "c",
-        1,
-        "sid"
-      )
-    ).toEqual({ kind: "config-refusal" })
+    expect(result).toEqual({ kind: outcome.kind })
   })
 
   it("keeps Proxy matcher on document and callback routes (no SSR inactivity shell)", () => {
     expect(proxyConfig.matcher).toEqual(["/", "/auth/callback"])
   })
 
-  it("classifies recoverable config errors for login-again runtime", () => {
-    expect(isLoginAgainConfigError(new SessionConfigError("missing"))).toBe(true)
-    expect(isLoginAgainConfigError(new OidcTxConfigError("missing"))).toBe(true)
-    expect(isLoginAgainConfigError(new Error("other"))).toBe(false)
-  })
-
-  it("returns undefined from loadLoginAgainRuntime when session config throws", async () => {
+  it("returns no login-again redirect when session config throws", async () => {
     const types = await import("../../src/lib/session/types.ts")
     const spy = vi.spyOn(types, "getSessionConfig").mockImplementation(() => {
       throw new SessionConfigError("missing session config")
     })
     try {
-      expect(loadLoginAgainRuntime({ oidcStore: undefined, sessionStore: undefined })).toBeUndefined()
+      await expect(buildLoginAgainRedirect({
+        cache: { oidcStore: undefined, sessionStore: undefined },
+        cookieValue: undefined,
+        host: "springfield.localhost",
+        nowSeconds: 1_700_000_000,
+        proto: "https",
+        resolveTenant: () => Promise.resolve({ kind: "unknown" })
+      })).resolves.toBeUndefined()
     } finally {
       spy.mockRestore()
     }

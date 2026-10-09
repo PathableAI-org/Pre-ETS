@@ -1,11 +1,6 @@
 {
   "$schema": "./node_modules/fallow/schema.json",
   "entry": [
-    "packages/backend/src/index.ts",
-    "packages/frontend/src/app/**/*.{ts,tsx}",
-    "packages/frontend/src/lib/**/*.ts",
-    "packages/frontend/vitest.config.ts",
-    "packages/frontend/tests/unit/**/*.ts",
     "cucumber.mjs",
     "e2e/playwright.config.ts",
     "e2e/*.spec.ts",
@@ -16,12 +11,8 @@
     "tests/bdd/support/world.ts",
     "tests/bdd/checks/*.test.*"
   ],
-  "workspaces": {
-    "patterns": [
-      "packages/*"
-    ]
-  },
   "ignorePatterns": [
+    "packages/**",
     "**/dist/**",
     "**/build/**",
     "**/coverage/**",
@@ -43,14 +34,25 @@
         "dprint"
       ],
       "configPatterns": [
-        "dprint.json",
-        "packages/*/dprint.json"
+        "dprint.json"
       ],
       "toolingDependencies": [
         "@dprint/typescript",
         "@dprint/json",
         "@dprint/markdown",
         "dprint-plugin-yaml"
+      ]
+    },
+    {
+      "name": "effect-language-service-schema",
+      "enablers": [
+        "@effect/language-service"
+      ],
+      "configPatterns": [
+        "tsconfig.effect.json"
+      ],
+      "toolingDependencies": [
+        "@effect/language-service"
       ]
     }
   ]

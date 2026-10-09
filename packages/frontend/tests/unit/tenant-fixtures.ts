@@ -2,16 +2,16 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 
-import type { TenantConfig, TenantOidcConfig, TenantRecord } from "../../src/lib/tenant/index.ts"
+import type { TenantConfig, TenantRecord } from "../../src/lib/tenant/index.ts"
 
-export const springfieldOidc: TenantOidcConfig = {
+export const springfieldOidc: TenantConfig["oidc"] = {
   clientAuth: "public",
   clientId: "springfield-web",
   connection: "springfield-idp",
   issuer: "https://identity.example/realms/pre-ets"
 }
 
-export const shelbyvilleOidc: TenantOidcConfig = {
+export const shelbyvilleOidc: TenantConfig["oidc"] = {
   clientAuth: "public",
   clientId: "shelbyville-web",
   connection: "shelbyville-idp",

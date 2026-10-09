@@ -15,11 +15,6 @@ export class OidcSecretsConfigError extends Error {
 let cachedMap: Map<string, string> | undefined
 let cachedError: OidcSecretsConfigError | undefined
 
-export function resetOidcSecretsCacheForTests(): void {
-  cachedMap = undefined
-  cachedError = undefined
-}
-
 export function resolveOidcClientSecret(
   slug: string,
   clientAuth: OidcClientAuth,
