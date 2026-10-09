@@ -20,7 +20,6 @@ const OidcClientAuth = Schema.Literals([
   "confidential",
   "public"
 ])
-export type OidcClientAuth = typeof OidcClientAuth.Type
 
 const TenantOidcConfig = Schema.Struct({
   clientAuth: OidcClientAuth,
@@ -28,7 +27,6 @@ const TenantOidcConfig = Schema.Struct({
   connection: Schema.optionalKey(Schema.String),
   issuer: Schema.String
 })
-export type TenantOidcConfig = typeof TenantOidcConfig.Type
 
 const TenantConfigSchema = Schema.Struct({
   displayName: Schema.String,
