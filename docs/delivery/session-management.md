@@ -1,9 +1,9 @@
 # Delivery plan: Authentication and session management
 
-**Status:** draft
-**Planning date:** 2026-10-05
-**Source revision:** `c03c173139724f4f0090bf2d60c15de820dbba13` (local HEAD; session requirements merged in PR #112)
-**Approval:** Pending
+**Status:** issued
+**Planning date:** 2026-10-05; revised 2026-10-09
+**Source revision:** Accepted requirements and original plan at `6058d1010dfc7a6f6800ac3d30cd6b6b1c61485e` (PR #114); current implementation and related plan inspected at `0dd1f59f79d7c2298db9d930a8ab346e76c4031e`.
+**Approval:** Original decomposition approved by [PR #114](https://github.com/PathableAI-org/Pre-ETS/pull/114), merged at `6058d1010dfc7a6f6800ac3d30cd6b6b1c61485e`. Revised decomposition approved by [PR #151](https://github.com/PathableAI-org/Pre-ETS/pull/151), merged at `0e0b58b7d7db196dac1a8f71e3c2f8d27dbc12bf`; that approval does not resolve B1–B6.
 
 ## Goal
 
@@ -13,13 +13,13 @@ and accessible warning/expiration recovery across tabs and application instances
 ## Requirements in scope
 
 All 13 session requirements and their 52 criteria were accepted by explicit maintainer direction on
-2026-10-05. B0 is resolved. The decomposition remains draft pending separate maintainer approval;
+2026-10-05. B0 is resolved. The revised decomposition was approved by the main merge of PR #151;
 B1–B6 retain the unresolved policy and design gates. Accepted tenant/security requirements constrain
 this work rather than being newly claimed as delivered by this plan.
 
-**Source update:** Requirement lifecycle approval is a local documentation update after the inspected
-revision. Existing pinned links show the pre-acceptance snapshot; replace them with the committed
-accepted revision before publication.
+**Revision scope:** Preserve the accepted promises and original six outcomes. Clarify start prerequisites,
+mergeable evidence increments and later integration ownership, and allocate tenant prerequisites to existing issues.
+PR #114 approval remains historical authority for the original decomposition; PR #151 approves the revised decomposition.
 
 | Accepted requirement                                                                                                                    | Selected ACs | Qualification                                           |
 | --------------------------------------------------------------------------------------------------------------------------------------- | ------------ | ------------------------------------------------------- |
@@ -55,11 +55,22 @@ This inspection does not establish absence of overlapping pull requests or exter
 - Existing [recovery components](../../packages/frontend/src/components/session/inactivity-recovery-island.tsx), [idle/CAS tests](../../packages/frontend/tests/unit/session-store-idle-cas.test.ts), [capability evidence ledger](../../features/TRACEABILITY.md), and [real-Keycloak E2E](../../e2e/README.md) are reuse candidates. Their existence does not establish these new criteria. Inspect surviving assertions and execute revised evidence during delivery rather than wholesale replacement.
 - [Tenant pilot](tenant-resolution.md) overlaps tenant configuration and vendor-agnostic secret resolution. Coordinate ownership and inspect actual issued work before publication; avoid duplicate tenant/security implementation issues. Concrete cloud provider and ingress work remain deferred under that plan.
 
+Revision inspection on 2026-10-09: read-only GitHub access confirmed PR #114 merged
+at the accepted revision above. The all-state issue listing (limit 100) returned 15 issues and no session delivery
+issues; overlapping PRs and external planning remain unassessed. Verified tenant ownership is
+[#117](https://github.com/PathableAI-org/Pre-ETS/issues/117) (open): tenant consumer/context integration and dummy
+proxy removal; [#118](https://github.com/PathableAI-org/Pre-ETS/issues/118) (open): tenant frontend/diagnostic 404/500
+outcomes; [#119](https://github.com/PathableAI-org/Pre-ETS/issues/119) (closed): non-secret schema and vendor-agnostic
+server-only provider. Closure is not runtime verification. S1 consumes these tenant-owned outcomes rather than
+duplicating them; S1 owns authentication, default protection and resolved-tenant/session mismatch 403.
+The current local [tenant plan](tenant-resolution.md) also records that ownership. Initial restricted-network
+inspection failed before a successful remote refresh. No session publication or runtime verification is claimed.
+
 ## Blockers and decisions
 
 | ID | Affected work                                                                      | Decision or prerequisite                                                                                                                                                                                                     |
 | -- | ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| B0 | All SESSION criteria / S1–S6                                                       | Resolved: explicit maintainer approval on 2026-10-05 accepts SESSION-001–013 and all 52 criteria. Decomposition approval remains pending.                                                                                    |
+| B0 | All SESSION criteria / S1–S6                                                       | Resolved: explicit maintainer approval on 2026-10-05 accepts SESSION-001–013 and all 52 criteria. Renewed decomposition approval is recorded in PR #151.                                                                     |
 | B1 | SESSION-001 AC1–3 / S1                                                             | Approve public exceptions and enforcement inventory, including diagnostic access and authentication support resources; define application-resource scope without absorbing deferred backend expiration policy.               |
 | B2 | SESSION-004 AC2; SESSION-007 AC1–4 / S1, S5                                        | Decide known-expired versus missing recognition, retention after stored state disappears, and the recovery contract for stale references. Existing tombstones expire at absolute expiry; do not invent indefinite retention. |
 | B3 | SESSION-006 AC1–3 / S2                                                             | Decide supported value representation/capacity, transient retention, and concurrent consistency guarantees. Select storage mechanics during engineering; Redis is existing context, not a new product obligation.            |
@@ -76,19 +87,23 @@ implementation still requires approved decomposition and resolution of affected 
 
 **Outcome:** Protect application entry points and bind tenant authentication.
 
-**Coverage:** [PREETS-SESSION-001](../requirements/session-management.md#preets-session-001) AC1–3; [PREETS-SESSION-002](../requirements/session-management.md#preets-session-002) AC1–3; [PREETS-SESSION-003](../requirements/session-management.md#preets-session-003) AC1–3; [PREETS-SESSION-004](../requirements/session-management.md#preets-session-004) AC1–2; [PREETS-SESSION-005](../requirements/session-management.md#preets-session-005) AC1–4. Accepted criterion coverage; decomposition approval remains pending. Cross-slice qualifications appear below.
+**Coverage:** [PREETS-SESSION-001](../requirements/session-management.md#preets-session-001) AC1–3; [PREETS-SESSION-002](../requirements/session-management.md#preets-session-002) AC1–3; [PREETS-SESSION-003](../requirements/session-management.md#preets-session-003) AC1–3; [PREETS-SESSION-004](../requirements/session-management.md#preets-session-004) AC1–2; [PREETS-SESSION-005](../requirements/session-management.md#preets-session-005) AC1–4. Accepted criterion coverage; decomposition approval is recorded in PR #151. Cross-slice qualifications appear below.
 
-**Included:** Inventory pages, resource handlers, Server Actions, and public exceptions; enforce protection by default, including new resources. Compose independent tenant resolution with authenticated-session validation, tenant-specific OIDC initiation/completion, and HTTP 403 for a resolved-tenant mismatch. Preserve invalid-host HTTP 404 and configuration failures from the accepted tenant contract. Review the dummy proxy bypass against default protection. Retain server-only secret resolution.
+**Included:** Inventory pages, resource handlers, Server Actions, and public exceptions; enforce protection by default, including new resources. Compose independent tenant resolution with authenticated-session validation, tenant-specific OIDC initiation/completion, and HTTP 403 for a resolved-tenant mismatch. Preserve invalid-host HTTP 404 and configuration failures from the accepted tenant contract. Consume tenant-context integration and dummy proxy removal from #117; enforce session protection after that tenant prerequisite. Review any remaining synthetic authentication bypass against default protection. Retain server-only secret resolution.
 
 **Excluded:** Backend/domain persistence and API expiration policy, new absolute lifetime policy, concrete cloud provider/ingress, CI cadence, and implementation of undecided policy.
 
-**Dependencies:** B1 gate production scope; S2 supplies authoritative session operations. Missing-versus-expired classification depends on B2 and S5; that path cannot ship independently.
+**Dependencies:** Start: B1, the mergeable S2 public-service/store increment, and tenant-context integration #117 with its prerequisite #119 non-secret/server-only configuration contract. #118 owns tenant-resolution failure mappings and is an integration gate for preserving those outcomes. B2 and S5 are shipping gates for missing-versus-known-expired entry; S1 does not wait for S5 to establish valid/missing-session protection.
+
+**Observable increment:** Real tenant-bound OIDC login creates identity consumed by an actual protected request; valid, absent and mismatched sessions produce observable HTTP outcomes.
+
+**Evidence progression:** Retain route/default-protection, callback and HTTP fixtures. After the S2 mergeable increment, S1 adds two independently running application instances sharing the real store: authenticate on A, read identity/protected access on B, write independently supplied supported values on A and retrieve on B, renew on A and enforce expiry on B without affinity. These scenarios carry S2 adapter evidence into application composition. Seeded records only support denial/isolation scenarios. Known-expired presentation remains incomplete until S5; final recovery remains S6.
 
 **Planned evidence:** Public authorization scenarios cover matching/distinct resolved identities and rejected callbacks. Real HTTP checks cover public exceptions, representative protected entry points, forged context, missing sessions, and 403 status/content. Route-policy inspection and a newly added representative resource establish the default. Real OIDC completion must establish user/tenant identity used by subsequent protected requests; seeded records cannot establish login.
 
 **Proposed issue title:** Protect application entry points and bind tenant authentication
 
-Conditional issue-body draft; do not publish before decomposition approval.
+Approved issue-body draft; the published issue linked below contains the verified publication revision and actual issue URLs.
 
 > ## Outcome
 >
@@ -96,11 +111,11 @@ Conditional issue-body draft; do not publish before decomposition approval.
 >
 > ## Requirements
 >
-> [PREETS-SESSION-001](https://github.com/PathableAI-org/Pre-ETS/blob/c03c173139724f4f0090bf2d60c15de820dbba13/docs/requirements/session-management.md#preets-session-001) AC1–3; [PREETS-SESSION-002](https://github.com/PathableAI-org/Pre-ETS/blob/c03c173139724f4f0090bf2d60c15de820dbba13/docs/requirements/session-management.md#preets-session-002) AC1–3; [PREETS-SESSION-003](https://github.com/PathableAI-org/Pre-ETS/blob/c03c173139724f4f0090bf2d60c15de820dbba13/docs/requirements/session-management.md#preets-session-003) AC1–3; [PREETS-SESSION-004](https://github.com/PathableAI-org/Pre-ETS/blob/c03c173139724f4f0090bf2d60c15de820dbba13/docs/requirements/session-management.md#preets-session-004) AC1–2; [PREETS-SESSION-005](https://github.com/PathableAI-org/Pre-ETS/blob/c03c173139724f4f0090bf2d60c15de820dbba13/docs/requirements/session-management.md#preets-session-005) AC1–4. Requirements are accepted locally; update this pinned link to the committed accepted revision before publication.
+> [PREETS-SESSION-001](https://github.com/PathableAI-org/Pre-ETS/blob/6058d1010dfc7a6f6800ac3d30cd6b6b1c61485e/docs/requirements/session-management.md#preets-session-001) AC1–3; [PREETS-SESSION-002](https://github.com/PathableAI-org/Pre-ETS/blob/6058d1010dfc7a6f6800ac3d30cd6b6b1c61485e/docs/requirements/session-management.md#preets-session-002) AC1–3; [PREETS-SESSION-003](https://github.com/PathableAI-org/Pre-ETS/blob/6058d1010dfc7a6f6800ac3d30cd6b6b1c61485e/docs/requirements/session-management.md#preets-session-003) AC1–3; [PREETS-SESSION-004](https://github.com/PathableAI-org/Pre-ETS/blob/6058d1010dfc7a6f6800ac3d30cd6b6b1c61485e/docs/requirements/session-management.md#preets-session-004) AC1–2; [PREETS-SESSION-005](https://github.com/PathableAI-org/Pre-ETS/blob/6058d1010dfc7a6f6800ac3d30cd6b6b1c61485e/docs/requirements/session-management.md#preets-session-005) AC1–4. Requirements are accepted at the pinned revision.
 >
 > ## In scope
 >
-> Inventory pages, resource handlers, Server Actions, and public exceptions; enforce protection by default, including new resources. Compose independent tenant resolution with authenticated-session validation, tenant-specific OIDC initiation/completion, and HTTP 403 for a resolved-tenant mismatch. Preserve invalid-host HTTP 404 and configuration failures from the accepted tenant contract. Review the dummy proxy bypass against default protection. Retain server-only secret resolution.
+> Inventory pages, resource handlers, Server Actions, and public exceptions; enforce protection by default, including new resources. Compose independent tenant resolution with authenticated-session validation, tenant-specific OIDC initiation/completion, and HTTP 403 for a resolved-tenant mismatch. Preserve invalid-host HTTP 404 and configuration failures from the accepted tenant contract. Consume tenant-context integration and dummy proxy removal from #117; enforce session protection after that tenant prerequisite. Review any remaining synthetic authentication bypass against default protection. Retain server-only secret resolution.
 >
 > ## Out of scope
 >
@@ -108,35 +123,43 @@ Conditional issue-body draft; do not publish before decomposition approval.
 >
 > ## Dependencies
 >
-> B1 gate production scope; S2 supplies authoritative session operations. Missing-versus-expired classification depends on B2 and S5; that path cannot ship independently. Parent containment supplies no blocking relationship.
+> Start: B1, the mergeable S2 public-service/store increment, and tenant-context integration #117 with its prerequisite #119 non-secret/server-only configuration contract. #118 owns tenant-resolution failure mappings and is an integration gate for preserving those outcomes. B2 and S5 are shipping gates for missing-versus-known-expired entry; S1 does not wait for S5 to establish valid/missing-session protection. Parent containment supplies no blocking relationship.
 >
 > ## Completion evidence
+>
+> **Observable increment:** Real tenant-bound OIDC login creates identity consumed by an actual protected request; valid, absent and mismatched sessions produce observable HTTP outcomes.
+>
+> **Evidence progression:** Retain route/default-protection, callback and HTTP fixtures. After the S2 mergeable increment, S1 adds two independently running application instances sharing the real store: authenticate on A, read identity/protected access on B, write independently supplied supported values on A and retrieve on B, renew on A and enforce expiry on B without affinity. These scenarios carry S2 adapter evidence into application composition. Seeded records only support denial/isolation scenarios. Known-expired presentation remains incomplete until S5; final recovery remains S6.
 >
 > Public authorization scenarios cover matching/distinct resolved identities and rejected callbacks. Real HTTP checks cover public exceptions, representative protected entry points, forged context, missing sessions, and 403 status/content. Route-policy inspection and a newly added representative resource establish the default. Real OIDC completion must establish user/tenant identity used by subsequent protected requests; seeded records cannot establish login. Include implementation review and applicable repository checks; issue closure does not verify requirements.
 >
 > ## Delivery plan
 >
-> Local draft: docs/delivery/session-management.md, S1. Publication must replace this text with a full source-pinned URL to the committed plan revision and slice anchor. The plan does not exist at the inspected source revision; no resolving URL can yet be supplied.
+> [Plan S1](https://github.com/PathableAI-org/Pre-ETS/blob/0e0b58b7d7db196dac1a8f71e3c2f8d27dbc12bf/docs/delivery/session-management.md#s1--protect-application-entry-points-and-bind-tenant-authentication). This revision was approved by the main merge of PR #151. The published issue contains actual parent, child and dependency URLs.
 
-**Delivery references:** Not published.
+**Delivery references:** https://github.com/PathableAI-org/Pre-ETS/issues/154
 
 ### S2 — Share transient values and authoritative idle state across instances
 
 **Outcome:** Share transient values and authoritative idle state across instances.
 
-**Coverage:** [PREETS-SESSION-006](../requirements/session-management.md#preets-session-006) AC1–3; [PREETS-SESSION-008](../requirements/session-management.md#preets-session-008) AC1–5. Accepted criterion coverage; decomposition approval remains pending. Cross-slice qualifications appear below.
+**Coverage:** [PREETS-SESSION-006](../requirements/session-management.md#preets-session-006) AC1–3; [PREETS-SESSION-008](../requirements/session-management.md#preets-session-008) AC1–5. Accepted criterion coverage; decomposition approval is recorded in PR #151. Cross-slice qualifications appear below.
 
 **Included:** Define the application-value storage contract, implement shared transient value operations, and retain authenticated identity across instances. Validate whole-minute timeout values 5 through 30, initialize and renew idle state on qualifying requests, and prevent revival at or after the deadline. Distinguish activity from polling/status traffic. Preserve existing absolute expiry without adopting a new maximum-lifetime policy.
 
 **Excluded:** Backend/domain persistence and API expiration policy, new absolute lifetime policy, concrete cloud provider/ingress, CI cadence, and implementation of undecided policy.
 
-**Dependencies:** B3 and B4 gate contract implementation. Integrate with S1 for protected access; no need to wait for browser presentation.
+**Dependencies:** Start: B3 and B4 for affected contracts. No S1 or browser prerequisite for public session operations or real-store integration. S1 owns the later two-application-instance authentication/protected-request composition; that integration is a shipping gate for SESSION-006 AC2–3 and SESSION-008 protected HTTP enforcement, not an S2 start dependency.
 
-**Planned evidence:** Public-service deadline properties and examples cover before/equal/after expiry, non-activity traffic, and no revival. Real store integration covers renewal/expiration races and outages. Two independently running application instances share the same store: write independently chosen supported values on A, retrieve on B, authenticate on A, read identity on B, renew on A, and enforce expiration on B without affinity. A test-owned map or same-process fixture is insufficient.
+**Observable increment:** The public session service performs value round trips, identity retrieval and authoritative renewal/expiry, with real-store integration across independent clients.
+
+**Evidence progression:** Retain public-service configuration/deadline examples and properties and real-adapter race/outage scenarios. Independently supplied supported values and prepared records establish service/adapter behavior; they do not establish OIDC login or multi-process application recognition. S1 extends this evidence through two real application instances; S3 extends qualifying browser activity. S2 is mergeable with those narrower claims and does not claim all SESSION-006/008 verification complete.
+
+**Planned evidence (including later integration at S1/S4/S5 as allocated above):** Public-service deadline properties and examples cover before/equal/after expiry, non-activity traffic, and no revival. Real store integration covers renewal/expiration races and outages. Later S1 application-composition evidence uses two independently running application instances sharing the same store: write independently chosen supported values on A, retrieve on B, authenticate on A, read identity on B, renew on A, and enforce expiration on B without affinity. A test-owned map or same-process fixture is insufficient.
 
 **Proposed issue title:** Share transient values and authoritative idle state across instances
 
-Conditional issue-body draft; do not publish before decomposition approval.
+Approved issue-body draft; the published issue linked below contains the verified publication revision and actual issue URLs.
 
 > ## Outcome
 >
@@ -144,7 +167,7 @@ Conditional issue-body draft; do not publish before decomposition approval.
 >
 > ## Requirements
 >
-> [PREETS-SESSION-006](https://github.com/PathableAI-org/Pre-ETS/blob/c03c173139724f4f0090bf2d60c15de820dbba13/docs/requirements/session-management.md#preets-session-006) AC1–3; [PREETS-SESSION-008](https://github.com/PathableAI-org/Pre-ETS/blob/c03c173139724f4f0090bf2d60c15de820dbba13/docs/requirements/session-management.md#preets-session-008) AC1–5. Requirements are accepted locally; update this pinned link to the committed accepted revision before publication.
+> [PREETS-SESSION-006](https://github.com/PathableAI-org/Pre-ETS/blob/6058d1010dfc7a6f6800ac3d30cd6b6b1c61485e/docs/requirements/session-management.md#preets-session-006) AC1–3; [PREETS-SESSION-008](https://github.com/PathableAI-org/Pre-ETS/blob/6058d1010dfc7a6f6800ac3d30cd6b6b1c61485e/docs/requirements/session-management.md#preets-session-008) AC1–5. Requirements are accepted at the pinned revision.
 >
 > ## In scope
 >
@@ -156,35 +179,43 @@ Conditional issue-body draft; do not publish before decomposition approval.
 >
 > ## Dependencies
 >
-> B3 and B4 gate contract implementation. Integrate with S1 for protected access; no need to wait for browser presentation. Parent containment supplies no blocking relationship.
+> Start: B3 and B4 for affected contracts. No S1 or browser prerequisite for public session operations or real-store integration. S1 owns the later two-application-instance authentication/protected-request composition; that integration is a shipping gate for SESSION-006 AC2–3 and SESSION-008 protected HTTP enforcement, not an S2 start dependency. Parent containment supplies no blocking relationship.
 >
 > ## Completion evidence
 >
-> Public-service deadline properties and examples cover before/equal/after expiry, non-activity traffic, and no revival. Real store integration covers renewal/expiration races and outages. Two independently running application instances share the same store: write independently chosen supported values on A, retrieve on B, authenticate on A, read identity on B, renew on A, and enforce expiration on B without affinity. A test-owned map or same-process fixture is insufficient. Include implementation review and applicable repository checks; issue closure does not verify requirements.
+> **Observable increment:** The public session service performs value round trips, identity retrieval and authoritative renewal/expiry, with real-store integration across independent clients.
+>
+> **Evidence progression:** Retain public-service configuration/deadline examples and properties and real-adapter race/outage scenarios. Independently supplied supported values and prepared records establish service/adapter behavior; they do not establish OIDC login or multi-process application recognition. S1 extends this evidence through two real application instances; S3 extends qualifying browser activity. S2 is mergeable with those narrower claims and does not claim all SESSION-006/008 verification complete.
+>
+> Public-service deadline properties and examples cover before/equal/after expiry, non-activity traffic, and no revival. Real store integration covers renewal/expiration races and outages. Later S1 application-composition evidence uses two independently running application instances sharing the same store: write independently chosen supported values on A, retrieve on B, authenticate on A, read identity on B, renew on A, and enforce expiration on B without affinity. A test-owned map or same-process fixture is insufficient. Include implementation review and applicable repository checks; issue closure does not verify requirements.
 >
 > ## Delivery plan
 >
-> Local draft: docs/delivery/session-management.md, S2. Publication must replace this text with a full source-pinned URL to the committed plan revision and slice anchor. The plan does not exist at the inspected source revision; no resolving URL can yet be supplied.
+> [Plan S2](https://github.com/PathableAI-org/Pre-ETS/blob/0e0b58b7d7db196dac1a8f71e3c2f8d27dbc12bf/docs/delivery/session-management.md#s2--share-transient-values-and-authoritative-idle-state-across-instances). This revision was approved by the main merge of PR #151. The published issue contains actual parent, child and dependency URLs.
 
-**Delivery references:** Not published.
+**Delivery references:** https://github.com/PathableAI-org/Pre-ETS/issues/153
 
 ### S3 — Coordinate intentional activity and logout across session-sharing tabs
 
 **Outcome:** Coordinate intentional activity and logout across session-sharing tabs.
 
-**Coverage:** [PREETS-SESSION-009](../requirements/session-management.md#preets-session-009) AC1–4; [PREETS-SESSION-010](../requirements/session-management.md#preets-session-010) AC1–6. Accepted criterion coverage; decomposition approval remains pending. Cross-slice qualifications appear below.
+**Coverage:** [PREETS-SESSION-009](../requirements/session-management.md#preets-session-009) AC1–4; [PREETS-SESSION-010](../requirements/session-management.md#preets-session-010) AC1–6. Accepted criterion coverage; decomposition approval is recorded in PR #151. Cross-slice qualifications appear below.
 
 **Included:** Restrict qualifying events to intentional control activation, control keyboard interaction, text entry, and control touch interaction; exclude raw pointer movement and unrelated background traffic. Communicate activity to authoritative renewal. New tabs join the existing session. Synchronize authoritative deadlines and logout across tabs, with messages scoped to the associated session and resolved tenant. Compose warning and expiration synchronization from S4/S5.
 
 **Excluded:** Backend/domain persistence and API expiration policy, new absolute lifetime policy, concrete cloud provider/ingress, CI cadence, and implementation of undecided policy.
 
-**Dependencies:** B5; S2 renewal and shared-state operations are start prerequisites. S1 supplies authenticated entry. S4/S5 are shipping gates for SESSION-010 AC4; S4 also supports continuation isolation under AC6.
+**Dependencies:** Start: B5, S2 operations and S1 authenticated entry/protected request boundary. S4 and S5 extend the retained isolation scenarios for continuation, warning and expiration; they are aggregate shipping gates for SESSION-010 AC4 and those conditions of AC6, not S3 start or merge dependencies.
 
-**Planned evidence:** Multi-page browser Gherkin uses semantic controls and controllable time; activity in one tab keeps another usable beyond its former deadline. Open a tab after login and prove shared identity/state. Logout must deny actual protected operations in all sharing tabs, backed by HTTP denial. Exercise activity, continuation, warning, expiration, and logout while observing independently authenticated other-tenant and separate-context sessions remain unaffected. Check delayed/offline and suspended/resumed cases after B5 resolution.
+**Observable increment:** Real sharing tabs join an authenticated session, renew it through qualifying controls, and deny protected use after shared logout; unrelated sessions retain independent state.
+
+**Evidence progression:** Retain multi-page semantic-control fixtures, controllable time, protected HTTP operations and independent tenant/browser-context sessions. At S3 completion exercise activity, joining and logout isolation, raw movement/background exclusions and late-activity rejection. Warning/expired presentation and continuation isolation are intentionally incomplete. S4 extends the same fixtures for warning/Continue and S5 for expiration; no synthetic warning or disposable presentation suite is required.
+
+**Planned evidence (including later integration at S1/S4/S5 as allocated above):** Multi-page browser Gherkin uses semantic controls and controllable time; activity in one tab keeps another usable beyond its former deadline. Open a tab after login and prove shared identity/state. Logout must deny actual protected operations in all sharing tabs, backed by HTTP denial. At S3 exercise activity and logout while independently authenticated other-tenant and separate-context sessions remain unaffected; S4 adds continuation/warning and S5 adds expiration to these retained scenarios. Check delayed/offline and suspended/resumed cases after B5 resolution.
 
 **Proposed issue title:** Coordinate intentional activity and logout across session-sharing tabs
 
-Conditional issue-body draft; do not publish before decomposition approval.
+Approved issue-body draft; the published issue linked below contains the verified publication revision and actual issue URLs.
 
 > ## Outcome
 >
@@ -192,7 +223,7 @@ Conditional issue-body draft; do not publish before decomposition approval.
 >
 > ## Requirements
 >
-> [PREETS-SESSION-009](https://github.com/PathableAI-org/Pre-ETS/blob/c03c173139724f4f0090bf2d60c15de820dbba13/docs/requirements/session-management.md#preets-session-009) AC1–4; [PREETS-SESSION-010](https://github.com/PathableAI-org/Pre-ETS/blob/c03c173139724f4f0090bf2d60c15de820dbba13/docs/requirements/session-management.md#preets-session-010) AC1–6. Requirements are accepted locally; update this pinned link to the committed accepted revision before publication.
+> [PREETS-SESSION-009](https://github.com/PathableAI-org/Pre-ETS/blob/6058d1010dfc7a6f6800ac3d30cd6b6b1c61485e/docs/requirements/session-management.md#preets-session-009) AC1–4; [PREETS-SESSION-010](https://github.com/PathableAI-org/Pre-ETS/blob/6058d1010dfc7a6f6800ac3d30cd6b6b1c61485e/docs/requirements/session-management.md#preets-session-010) AC1–6. Requirements are accepted at the pinned revision.
 >
 > ## In scope
 >
@@ -204,35 +235,43 @@ Conditional issue-body draft; do not publish before decomposition approval.
 >
 > ## Dependencies
 >
-> B5; S2 renewal and shared-state operations are start prerequisites. S1 supplies authenticated entry. S4/S5 are shipping gates for SESSION-010 AC4; S4 also supports continuation isolation under AC6. Parent containment supplies no blocking relationship.
+> Start: B5, S2 operations and S1 authenticated entry/protected request boundary. S4 and S5 extend the retained isolation scenarios for continuation, warning and expiration; they are aggregate shipping gates for SESSION-010 AC4 and those conditions of AC6, not S3 start or merge dependencies. Parent containment supplies no blocking relationship.
 >
 > ## Completion evidence
 >
-> Multi-page browser Gherkin uses semantic controls and controllable time; activity in one tab keeps another usable beyond its former deadline. Open a tab after login and prove shared identity/state. Logout must deny actual protected operations in all sharing tabs, backed by HTTP denial. Exercise activity, continuation, warning, expiration, and logout while observing independently authenticated other-tenant and separate-context sessions remain unaffected. Check delayed/offline and suspended/resumed cases after B5 resolution. Include implementation review and applicable repository checks; issue closure does not verify requirements.
+> **Observable increment:** Real sharing tabs join an authenticated session, renew it through qualifying controls, and deny protected use after shared logout; unrelated sessions retain independent state.
+>
+> **Evidence progression:** Retain multi-page semantic-control fixtures, controllable time, protected HTTP operations and independent tenant/browser-context sessions. At S3 completion exercise activity, joining and logout isolation, raw movement/background exclusions and late-activity rejection. Warning/expired presentation and continuation isolation are intentionally incomplete. S4 extends the same fixtures for warning/Continue and S5 for expiration; no synthetic warning or disposable presentation suite is required.
+>
+> Multi-page browser Gherkin uses semantic controls and controllable time; activity in one tab keeps another usable beyond its former deadline. Open a tab after login and prove shared identity/state. Logout must deny actual protected operations in all sharing tabs, backed by HTTP denial. At S3 exercise activity and logout while independently authenticated other-tenant and separate-context sessions remain unaffected; S4 adds continuation/warning and S5 adds expiration to these retained scenarios. Check delayed/offline and suspended/resumed cases after B5 resolution. Include implementation review and applicable repository checks; issue closure does not verify requirements.
 >
 > ## Delivery plan
 >
-> Local draft: docs/delivery/session-management.md, S3. Publication must replace this text with a full source-pinned URL to the committed plan revision and slice anchor. The plan does not exist at the inspected source revision; no resolving URL can yet be supplied.
+> [Plan S3](https://github.com/PathableAI-org/Pre-ETS/blob/0e0b58b7d7db196dac1a8f71e3c2f8d27dbc12bf/docs/delivery/session-management.md#s3--coordinate-intentional-activity-and-logout-across-session-sharing-tabs). This revision was approved by the main merge of PR #151. The published issue contains actual parent, child and dependency URLs.
 
-**Delivery references:** Not published.
+**Delivery references:** https://github.com/PathableAI-org/Pre-ETS/issues/155
 
 ### S4 — Warn before expiration and continue accessibly across tabs
 
 **Outcome:** Warn before expiration and continue accessibly across tabs.
 
-**Coverage:** [PREETS-SESSION-011](../requirements/session-management.md#preets-session-011) AC1–5. Accepted criterion coverage; decomposition approval remains pending. Cross-slice qualifications appear below.
+**Coverage:** [PREETS-SESSION-011](../requirements/session-management.md#preets-session-011) AC1–5. Accepted criterion coverage; decomposition approval is recorded in PR #151. Cross-slice qualifications appear below.
 
 **Included:** Validate warning thresholds strictly before idle expiry. Show a blocking warning in every sharing tab; Continue renews through the server and dismisses all warnings only on successful continuation. Reject continuation at/after expiration. Announce the warning, move focus inside, contain keyboard/background interaction, show visible focus, and restore appropriate focus after continuation.
 
 **Excluded:** Backend/domain persistence and API expiration policy, new absolute lifetime policy, concrete cloud provider/ingress, CI cadence, and implementation of undecided policy.
 
-**Dependencies:** B4 warning policy and B5 timing; S2 supplies renewal and S3 synchronization. S5 handles continuation that loses the expiration race.
+**Dependencies:** Start: B4 warning policy, B5 timing, S2 renewal and S3 synchronization. Late continuation is rejected through the existing S2 server boundary; S5 supplies final expired UI after the race and is a shipping gate, not a start dependency.
+
+**Observable increment:** Sharing tabs display a blocking warning and keyboard Continue renews the real server deadline and dismisses warnings; late Continue is denied.
+
+**Evidence progression:** Extend S3 retained multi-tab/isolation scenarios for warning and continuation with configuration examples and focused assistive-technology observations. Observe late Continue denial at S2 even before S5; S5 adds final expired presentation/concealment to that same race scenario. Final expiration and fresh recovery remain incomplete until S5/S6.
 
 **Planned evidence:** Configuration examples reject invalid warning thresholds. Browser Gherkin covers all sharing tabs, keyboard continuation, focus entry/containment/restoration, blocked background interaction, cross-tab dismissal, and authoritative renewal. Integrated race checks cover late Continue. Record assistive-technology announcement and explanation/action observations with browser and assistive-technology versions; dialog strings alone are insufficient.
 
 **Proposed issue title:** Warn before expiration and continue accessibly across tabs
 
-Conditional issue-body draft; do not publish before decomposition approval.
+Approved issue-body draft; the published issue linked below contains the verified publication revision and actual issue URLs.
 
 > ## Outcome
 >
@@ -240,7 +279,7 @@ Conditional issue-body draft; do not publish before decomposition approval.
 >
 > ## Requirements
 >
-> [PREETS-SESSION-011](https://github.com/PathableAI-org/Pre-ETS/blob/c03c173139724f4f0090bf2d60c15de820dbba13/docs/requirements/session-management.md#preets-session-011) AC1–5. Requirements are accepted locally; update this pinned link to the committed accepted revision before publication.
+> [PREETS-SESSION-011](https://github.com/PathableAI-org/Pre-ETS/blob/6058d1010dfc7a6f6800ac3d30cd6b6b1c61485e/docs/requirements/session-management.md#preets-session-011) AC1–5. Requirements are accepted at the pinned revision.
 >
 > ## In scope
 >
@@ -252,35 +291,43 @@ Conditional issue-body draft; do not publish before decomposition approval.
 >
 > ## Dependencies
 >
-> B4 warning policy and B5 timing; S2 supplies renewal and S3 synchronization. S5 handles continuation that loses the expiration race. Parent containment supplies no blocking relationship.
+> Start: B4 warning policy, B5 timing, S2 renewal and S3 synchronization. Late continuation is rejected through the existing S2 server boundary; S5 supplies final expired UI after the race and is a shipping gate, not a start dependency. Parent containment supplies no blocking relationship.
 >
 > ## Completion evidence
+>
+> **Observable increment:** Sharing tabs display a blocking warning and keyboard Continue renews the real server deadline and dismisses warnings; late Continue is denied.
+>
+> **Evidence progression:** Extend S3 retained multi-tab/isolation scenarios for warning and continuation with configuration examples and focused assistive-technology observations. Observe late Continue denial at S2 even before S5; S5 adds final expired presentation/concealment to that same race scenario. Final expiration and fresh recovery remain incomplete until S5/S6.
 >
 > Configuration examples reject invalid warning thresholds. Browser Gherkin covers all sharing tabs, keyboard continuation, focus entry/containment/restoration, blocked background interaction, cross-tab dismissal, and authoritative renewal. Integrated race checks cover late Continue. Record assistive-technology announcement and explanation/action observations with browser and assistive-technology versions; dialog strings alone are insufficient. Include implementation review and applicable repository checks; issue closure does not verify requirements.
 >
 > ## Delivery plan
 >
-> Local draft: docs/delivery/session-management.md, S4. Publication must replace this text with a full source-pinned URL to the committed plan revision and slice anchor. The plan does not exist at the inspected source revision; no resolving URL can yet be supplied.
+> [Plan S4](https://github.com/PathableAI-org/Pre-ETS/blob/0e0b58b7d7db196dac1a8f71e3c2f8d27dbc12bf/docs/delivery/session-management.md#s4--warn-before-expiration-and-continue-accessibly-across-tabs). This revision was approved by the main merge of PR #151. The published issue contains actual parent, child and dependency URLs.
 
-**Delivery references:** Not published.
+**Delivery references:** https://github.com/PathableAI-org/Pre-ETS/issues/156
 
 ### S5 — Protect expired content and offer explicit accessible recovery
 
 **Outcome:** Protect expired content and offer explicit accessible recovery.
 
-**Coverage:** [PREETS-SESSION-007](../requirements/session-management.md#preets-session-007) AC1–4; [PREETS-SESSION-012](../requirements/session-management.md#preets-session-012) AC1–5. Accepted criterion coverage; decomposition approval remains pending. Cross-slice qualifications appear below.
+**Coverage:** [PREETS-SESSION-007](../requirements/session-management.md#preets-session-007) AC1–4; [PREETS-SESSION-012](../requirements/session-management.md#preets-session-012) AC1–5. Accepted criterion coverage; decomposition approval is recorded in PR #151. Cross-slice qualifications appear below.
 
 **Included:** Recognize known-expired SSR requests and redirect to an unauthenticated session-expired page without automatic OIDC or protected content. In running tabs, conceal protected information and show a synchronized blocking expiration modal. Page and modal convey equivalent meaning and explicit recovery. Protect against modal dismissal/bypass, keyboard interaction, and assistive-technology reading of background information.
 
 **Excluded:** Backend/domain persistence and API expiration policy, new absolute lifetime policy, concrete cloud provider/ingress, CI cadence, and implementation of undecided policy.
 
-**Dependencies:** B2 recognition/retention and B5 synchronization; S1/S2 supply denial/classification and S3 propagation. S6 is a shipping gate for completed recovery.
+**Dependencies:** Start: B2 recognition/retention, B5 synchronization, S1 entry protection, S2 authoritative classification and S3 propagation. Extend S4 late-continuation scenarios when S4 exists; S4 is not a start prerequisite. S6 completes fresh recovery and is a shipping gate.
+
+**Observable increment:** Actual expired SSR requests reach the public expired page without protected content or automatic OIDC; sharing tabs conceal already rendered information and expose explicit recovery.
+
+**Evidence progression:** Extend S1 HTTP classification and S3 tab/isolation fixtures, plus S4 late-Continue scenarios when available. Retain browser bypass/focus and assistive-technology procedures. At this step the recovery action can be observed initiating the existing real recovery boundary, but existing generic SSO recovery does not establish freshness. S6 replaces its generic OIDC semantics with approved fresh-auth semantics and extends the same page/modal keyboard journeys through successful and failed recovery. This intermediate implementation cannot ship as final recovery.
 
 **Planned evidence:** HTTP checks establish expired SSR redirect, unauthenticated page access, and absence of protected content, including removed transient state after B2 is decided. Multi-tab browser Gherkin observes actual concealment, bypass attempts, focus entry and visible focus, keyboard recovery, and consistent page/modal meaning. Assistive-technology observations establish announcements and background information being unavailable for reading/navigation. Server-only denial cannot establish concealment.
 
 **Proposed issue title:** Protect expired content and offer explicit accessible recovery
 
-Conditional issue-body draft; do not publish before decomposition approval.
+Approved issue-body draft; the published issue linked below contains the verified publication revision and actual issue URLs.
 
 > ## Outcome
 >
@@ -288,7 +335,7 @@ Conditional issue-body draft; do not publish before decomposition approval.
 >
 > ## Requirements
 >
-> [PREETS-SESSION-007](https://github.com/PathableAI-org/Pre-ETS/blob/c03c173139724f4f0090bf2d60c15de820dbba13/docs/requirements/session-management.md#preets-session-007) AC1–4; [PREETS-SESSION-012](https://github.com/PathableAI-org/Pre-ETS/blob/c03c173139724f4f0090bf2d60c15de820dbba13/docs/requirements/session-management.md#preets-session-012) AC1–5. Requirements are accepted locally; update this pinned link to the committed accepted revision before publication.
+> [PREETS-SESSION-007](https://github.com/PathableAI-org/Pre-ETS/blob/6058d1010dfc7a6f6800ac3d30cd6b6b1c61485e/docs/requirements/session-management.md#preets-session-007) AC1–4; [PREETS-SESSION-012](https://github.com/PathableAI-org/Pre-ETS/blob/6058d1010dfc7a6f6800ac3d30cd6b6b1c61485e/docs/requirements/session-management.md#preets-session-012) AC1–5. Requirements are accepted at the pinned revision.
 >
 > ## In scope
 >
@@ -300,35 +347,43 @@ Conditional issue-body draft; do not publish before decomposition approval.
 >
 > ## Dependencies
 >
-> B2 recognition/retention and B5 synchronization; S1/S2 supply denial/classification and S3 propagation. S6 is a shipping gate for completed recovery. Parent containment supplies no blocking relationship.
+> Start: B2 recognition/retention, B5 synchronization, S1 entry protection, S2 authoritative classification and S3 propagation. Extend S4 late-continuation scenarios when S4 exists; S4 is not a start prerequisite. S6 completes fresh recovery and is a shipping gate. Parent containment supplies no blocking relationship.
 >
 > ## Completion evidence
+>
+> **Observable increment:** Actual expired SSR requests reach the public expired page without protected content or automatic OIDC; sharing tabs conceal already rendered information and expose explicit recovery.
+>
+> **Evidence progression:** Extend S1 HTTP classification and S3 tab/isolation fixtures, plus S4 late-Continue scenarios when available. Retain browser bypass/focus and assistive-technology procedures. At this step the recovery action can be observed initiating the existing real recovery boundary, but existing generic SSO recovery does not establish freshness. S6 replaces its generic OIDC semantics with approved fresh-auth semantics and extends the same page/modal keyboard journeys through successful and failed recovery. This intermediate implementation cannot ship as final recovery.
 >
 > HTTP checks establish expired SSR redirect, unauthenticated page access, and absence of protected content, including removed transient state after B2 is decided. Multi-tab browser Gherkin observes actual concealment, bypass attempts, focus entry and visible focus, keyboard recovery, and consistent page/modal meaning. Assistive-technology observations establish announcements and background information being unavailable for reading/navigation. Server-only denial cannot establish concealment. Include implementation review and applicable repository checks; issue closure does not verify requirements.
 >
 > ## Delivery plan
 >
-> Local draft: docs/delivery/session-management.md, S5. Publication must replace this text with a full source-pinned URL to the committed plan revision and slice anchor. The plan does not exist at the inspected source revision; no resolving URL can yet be supplied.
+> [Plan S5](https://github.com/PathableAI-org/Pre-ETS/blob/0e0b58b7d7db196dac1a8f71e3c2f8d27dbc12bf/docs/delivery/session-management.md#s5--protect-expired-content-and-offer-explicit-accessible-recovery). This revision was approved by the main merge of PR #151. The published issue contains actual parent, child and dependency URLs.
 
-**Delivery references:** Not published.
+**Delivery references:** https://github.com/PathableAI-org/Pre-ETS/issues/157
 
 ### S6 — Complete fresh tenant OIDC recovery with a new session
 
 **Outcome:** Complete fresh tenant OIDC recovery with a new session.
 
-**Coverage:** [PREETS-SESSION-013](../requirements/session-management.md#preets-session-013) AC1–5. Accepted criterion coverage; decomposition approval remains pending. Cross-slice qualifications appear below.
+**Coverage:** [PREETS-SESSION-013](../requirements/session-management.md#preets-session-013) AC1–5. Accepted criterion coverage; decomposition approval is recorded in PR #151. Cross-slice qualifications appear below.
 
 **Included:** Implement approved OIDC freshness request and callback-evidence validation. Explicit recovery creates a new user/tenant-bound session; the old session remains unusable. Existing SSO alone cannot satisfy recovery. Let the IdP choose its mechanism and deny protected access for cancelled, failed, stale, missing, or unconfirmed freshness evidence.
 
 **Excluded:** Backend/domain persistence and API expiration policy, new absolute lifetime policy, concrete cloud provider/ingress, CI cadence, and implementation of undecided policy.
 
-**Dependencies:** B6 freshness policy gate implementation. S1/S2 provide authentication and session operations; S5 provides recovery entry points. Provider capability must be demonstrated before shipping.
+**Dependencies:** Start: B6 freshness policy, S1/S2 authentication/session operations and S5 explicit recovery entry points. Provider capability must be demonstrated before shipping.
+
+**Observable increment:** Explicit page/modal recovery completes a demonstrably fresh tenant-provider authentication and grants a new session while the prior session remains denied.
+
+**Evidence progression:** Extend S5 recovery journeys and S1 real OIDC/HTTP fixtures, retaining independent freshness-response validation and cancelled/failed/stale cases. Execute with existing SSO and record provider/clock limitations. Close aggregate recovery gates only with application/browser and provider evidence; a new session ID or mock callback is insufficient.
 
 **Planned evidence:** OIDC integration observes request freshness parameters and validates independent response evidence, tolerances, stale/missing evidence, cancellation, and failure. Real-provider browser Gherkin begins with an existing SSO session, demonstrates a fresh event and successful recovery, then proves old-session denial. New sid or a mocked callback alone does not establish freshness; provider-specific limits must be recorded.
 
 **Proposed issue title:** Complete fresh tenant OIDC recovery with a new session
 
-Conditional issue-body draft; do not publish before decomposition approval.
+Approved issue-body draft; the published issue linked below contains the verified publication revision and actual issue URLs.
 
 > ## Outcome
 >
@@ -336,7 +391,7 @@ Conditional issue-body draft; do not publish before decomposition approval.
 >
 > ## Requirements
 >
-> [PREETS-SESSION-013](https://github.com/PathableAI-org/Pre-ETS/blob/c03c173139724f4f0090bf2d60c15de820dbba13/docs/requirements/session-management.md#preets-session-013) AC1–5. Requirements are accepted locally; update this pinned link to the committed accepted revision before publication.
+> [PREETS-SESSION-013](https://github.com/PathableAI-org/Pre-ETS/blob/6058d1010dfc7a6f6800ac3d30cd6b6b1c61485e/docs/requirements/session-management.md#preets-session-013) AC1–5. Requirements are accepted at the pinned revision.
 >
 > ## In scope
 >
@@ -348,27 +403,33 @@ Conditional issue-body draft; do not publish before decomposition approval.
 >
 > ## Dependencies
 >
-> B6 freshness policy gate implementation. S1/S2 provide authentication and session operations; S5 provides recovery entry points. Provider capability must be demonstrated before shipping. Parent containment supplies no blocking relationship.
+> Start: B6 freshness policy, S1/S2 authentication/session operations and S5 explicit recovery entry points. Provider capability must be demonstrated before shipping. Parent containment supplies no blocking relationship.
 >
 > ## Completion evidence
+>
+> **Observable increment:** Explicit page/modal recovery completes a demonstrably fresh tenant-provider authentication and grants a new session while the prior session remains denied.
+>
+> **Evidence progression:** Extend S5 recovery journeys and S1 real OIDC/HTTP fixtures, retaining independent freshness-response validation and cancelled/failed/stale cases. Execute with existing SSO and record provider/clock limitations. Close aggregate recovery gates only with application/browser and provider evidence; a new session ID or mock callback is insufficient.
 >
 > OIDC integration observes request freshness parameters and validates independent response evidence, tolerances, stale/missing evidence, cancellation, and failure. Real-provider browser Gherkin begins with an existing SSO session, demonstrates a fresh event and successful recovery, then proves old-session denial. New sid or a mocked callback alone does not establish freshness; provider-specific limits must be recorded. Include implementation review and applicable repository checks; issue closure does not verify requirements.
 >
 > ## Delivery plan
 >
-> Local draft: docs/delivery/session-management.md, S6. Publication must replace this text with a full source-pinned URL to the committed plan revision and slice anchor. The plan does not exist at the inspected source revision; no resolving URL can yet be supplied.
+> [Plan S6](https://github.com/PathableAI-org/Pre-ETS/blob/0e0b58b7d7db196dac1a8f71e3c2f8d27dbc12bf/docs/delivery/session-management.md#s6--complete-fresh-tenant-oidc-recovery-with-a-new-session). This revision was approved by the main merge of PR #151. The published issue contains actual parent, child and dependency URLs.
 
-**Delivery references:** Not published.
+**Delivery references:** https://github.com/PathableAI-org/Pre-ETS/issues/158
+
+**Parent delivery reference:** https://github.com/PathableAI-org/Pre-ETS/issues/152
 
 ## Cross-cutting concerns and issue structure
 
 Propose one parent container, **Deliver shared tenant authentication and accessible session recovery**, containing
 S1–S6. Containment is organizational. The real dependency chain is shared server state/access (S1/S2), browser
 activity and synchronization (S3), warning and expiration presentation (S4/S5), and fresh recovery (S6).
-S1 and S2 contracts can be developed together; S6 protocol design can proceed independently after its decisions.
+Execution order: S2 public-service/store increment → S1 application composition → S3 activity/logout → S4 warning and S5 expiration (independent start after S3) → S6 recovery. Policy/design work can proceed independently; no later integration is a start dependency of earlier slices.
 Do not ship default protection without correct expired-entry classification, or recovery UI without working fresh recovery.
 
-**Proposed parent issue body (pending decomposition approval):**
+**Approved parent issue-body draft (historical proposal; published body linked above):**
 
 > ## Outcome
 >
@@ -376,7 +437,7 @@ Do not ship default protection without correct expired-entry classification, or 
 >
 > ## Requirements
 >
-> [Session requirements at the inspected revision](https://github.com/PathableAI-org/Pre-ETS/blob/c03c173139724f4f0090bf2d60c15de820dbba13/docs/requirements/session-management.md): SESSION-001 AC1–3; 002 AC1–3; 003 AC1–3; 004 AC1–2; 005 AC1–4; 006 AC1–3; 007 AC1–4; 008 AC1–5; 009 AC1–4; 010 AC1–6; 011 AC1–5; 012 AC1–5; 013 AC1–5. All are accepted locally; replace this link with the committed accepted revision before publication.
+> [Session requirements at the inspected revision](https://github.com/PathableAI-org/Pre-ETS/blob/6058d1010dfc7a6f6800ac3d30cd6b6b1c61485e/docs/requirements/session-management.md): SESSION-001 AC1–3; 002 AC1–3; 003 AC1–3; 004 AC1–2; 005 AC1–4; 006 AC1–3; 007 AC1–4; 008 AC1–5; 009 AC1–4; 010 AC1–6; 011 AC1–5; 012 AC1–5; 013 AC1–5. All are accepted at the pinned revision.
 >
 > ## In scope
 >
@@ -388,7 +449,7 @@ Do not ship default protection without correct expired-entry classification, or 
 >
 > ## Dependencies
 >
-> B0 is resolved; decomposition approval precedes publication; resolve B1–B6 for affected work. Follow slice start prerequisites and shipping gates. Children are listed separately above; no issue numbers are allocated.
+> B0 is resolved; decomposition approved in PR #151; resolve B1–B6 for affected work. Follow slice start prerequisites and shipping gates. Children are listed separately above and mapped in the publication record below.
 >
 > ## Completion evidence
 >
@@ -396,7 +457,7 @@ Do not ship default protection without correct expired-entry classification, or 
 >
 > ## Delivery plan
 >
-> docs/delivery/session-management.md; replace with a full source-pinned URL to the committed plan before publication. This new document has no resolving URL at the inspected revision.
+> [Revised proposal](https://github.com/PathableAI-org/Pre-ETS/blob/0e0b58b7d7db196dac1a8f71e3c2f8d27dbc12bf/docs/delivery/session-management.md). This revision was approved by the main merge of PR #151. The published issue contains actual parent, child and dependency URLs.
 
 Keep meaningful verification in each slice: no separate generic testing issue. Use durable Gherkin for product
 behaviors, Playwright where browser interaction is necessary, public-service scenarios for module contracts,
@@ -479,9 +540,54 @@ All accepted ACs are accounted for; none are claimed verified or silently deferr
 warning, and expiration; SESSION-004 spans missing-entry and expired-entry handling. These are explicit aggregate
 shipping gates rather than independently complete partial slices. Existing code only reduces possible remaining work.
 
-Before adoption/publication, resolve affected policies, refresh the register and source revision,
-complete remote duplicate-work inspection, coordinate tenant-pilot ownership, commit the approved documentation,
-and replace each issue-body plan reference with the resulting full pinned URL. Requirement links above are already
-pinned to the inspected revision; update them to the accepted revision before publication. Source changes can alter
-AC numbering/scope and require a new coverage review. Approval remains pending; no issues were published and no
-runtime evidence or requirement verification status was changed.
+Publication on 2026-10-09 verified renewed approval through the main merge of PR #151 and refreshed all-state issue inspection.
+Published issue bodies pin the approved publication revision and retain accepted requirement links. B1–B6 remain
+affected implementation/shipping gates. A later requirement change requires a new coverage review. Prior PR #114
+approval is preserved above. All seven session issues and their required relationships are verified below; no runtime
+evidence was executed, and requirement verification is unchanged.
+
+## Publication record
+
+**Inspection date:** 2026-10-09
+**Approved publication revision:** `0e0b58b7d7db196dac1a8f71e3c2f8d27dbc12bf` ([PR #151](https://github.com/PathableAI-org/Pre-ETS/pull/151), merged into remote `main`).
+**Authorization:** Maintainer requested issue creation for this plan on 2026-10-09.
+**Assessment:** Complete verified publication; all seven identities issued.
+
+- parent: https://github.com/PathableAI-org/Pre-ETS/issues/152 — open; created.
+- S2: https://github.com/PathableAI-org/Pre-ETS/issues/153 — open; created.
+- S1: https://github.com/PathableAI-org/Pre-ETS/issues/154 — open; created.
+- S3: https://github.com/PathableAI-org/Pre-ETS/issues/155 — open; created.
+- S4: https://github.com/PathableAI-org/Pre-ETS/issues/156 — open; created.
+- S5: https://github.com/PathableAI-org/Pre-ETS/issues/157 — open; created.
+- S6: https://github.com/PathableAI-org/Pre-ETS/issues/158 — open; created.
+
+**Verified native relationships:**
+
+- parent → S1 containment
+- S1 blocked by S2
+- S1 blocked by 117
+- S1 blocked by 119
+- parent → S2 containment
+- parent → S3 containment
+- S3 blocked by S2
+- S3 blocked by S1
+- parent → S4 containment
+- S4 blocked by S2
+- S4 blocked by S3
+- parent → S5 containment
+- S5 blocked by S1
+- S5 blocked by S2
+- S5 blocked by S3
+- parent → S6 containment
+- S6 blocked by S1
+- S6 blocked by S2
+- S6 blocked by S5
+
+**Outstanding relationships:** None.
+**Last confirmed action:** All seven bodies, six containment edges and thirteen start-prerequisite edges verified.
+**Failed or indeterminate action:** None.
+**Deferred/unissued identities:** None within the adopted parent/S1–S6 decomposition. Preserve the approved out-of-scope deferrals and B1–B6 policy gates.
+**Inspection limits:** All 15 existing open/closed issues inspected before creation; no session plan identities found. Requirement snapshot matches current remote main. Overlapping PRs and external planning are not assessed. No runtime verification performed.
+**Local records:** Publication was initially recorded locally; the maintainer subsequently requested a PR to merge these records.
+
+**Publication validation:** All published bodies and actual links read back; final parent read-back confirmed six open children and thirteen start-prerequisite edges. Initial checks were blocked by missing local dependencies; the follow-up PR installed the locked dependencies and passed `pnpm typecheck`, `pnpm build`, `pnpm lint`, `pnpm check:unused`, `pnpm format:check`, and `git diff --check`. These repository checks do not establish runtime requirement verification.

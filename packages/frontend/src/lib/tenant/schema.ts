@@ -1,4 +1,4 @@
-import { Effect, Schema } from "effect"
+import { Config, Schema } from "effect"
 
 export class TenantConfigError extends Schema.TaggedError<TenantConfigError>()(
   "@pathableai/pre-ets-frontend/TenantResolutionError",
@@ -9,7 +9,6 @@ export class TenantConfigError extends Schema.TaggedError<TenantConfigError>()(
 ) {}
 
 const TenantAliasBrand = "@pathableai/pre-ets-frontend/TenantAlias" as const
-export type TenantAliasBrand = typeof TenantAliasBrand
 
 export const TenantAlias = Schema.NonEmptyString.pipe(
   Schema.check(Schema.isPattern(/^[a-z-]+$/)),
@@ -17,30 +16,30 @@ export const TenantAlias = Schema.NonEmptyString.pipe(
 )
 export type TenantAlias = typeof TenantAlias.Type
 
-export const OidcClientAuth = Schema.Literals([
+const OidcClientAuth = Schema.Literals([
   "confidential",
   "public"
 ])
-export type OidcClientAuth = typeof OidcClientAuth.Type
 
-export const TenantOidcConfig = Schema.Struct({
+const TenantOidcConfig = Schema.Struct({
   clientAuth: OidcClientAuth,
   clientId: Schema.String,
   connection: Schema.optionalKey(Schema.String),
   issuer: Schema.String
 })
-export type TenantOidcConfig = typeof TenantOidcConfig.Type
 
-export const TenantConfig = Schema.Struct({
+const TenantConfigSchema = Schema.Struct({
   displayName: Schema.String,
-  idleTimeoutMinutes: Schema.Int.pipe(
-    Schema.check(Schema.isBetween({
-      maximum: 30,
-      minimum: 5
-    })),
-    Schema.withDecodingDefault(Effect.succeed(30))
+  idleTimeoutMinutes: Schema.optionalKey(
+    Schema.Int.pipe(
+      Schema.check(Schema.isBetween({
+        maximum: 30,
+        minimum: 5
+      }))
+    )
   ),
-  oidc: TenantOidcConfig
+  oidc: Schema.optionalKey(TenantOidcConfig)
 })
 
-export type TenantConfig = typeof TenantConfig.Type
+export const TenantConfig = Config.schema(TenantConfigSchema)
+export type TenantConfig = Config.Success<typeof TenantConfig>

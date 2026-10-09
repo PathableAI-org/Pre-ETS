@@ -6,8 +6,8 @@
 Run commands from the repository root. Use Node from `.node-version` and pnpm from
 `package.json`. Install with `pnpm install --frozen-lockfile`.
 
-Sample files (after implementation): `packages/frontend/fixtures/tenant-config/springfield.json`
-and `shelbyville.json` with distinct Display Names and synthetic OIDC fields.
+Sample files: `fixtures/tenant-config/springfield.json` and `shelbyville.json`
+with distinct Display Names.
 
 ## Path and CWD notes
 
@@ -35,7 +35,7 @@ files exist again. **Do not** re-enable JSON env documents as a dual configurati
 
 ```sh
 TENANT_RESOLUTION=host \
-TENANT_CONFIG_DIR="$PWD/packages/frontend/fixtures/tenant-config" \
+TENANT_CONFIG_DIR="$PWD/fixtures/tenant-config" \
 pnpm --filter @pathableai/pre-ets-frontend dev
 ```
 
@@ -58,7 +58,7 @@ Stop the server, then:
 ```sh
 TENANT_RESOLUTION=static \
 TENANT_STATIC_ALIAS=springfield \
-TENANT_CONFIG_DIR="$PWD/packages/frontend/fixtures/tenant-config" \
+TENANT_CONFIG_DIR="$PWD/fixtures/tenant-config" \
 pnpm --filter @pathableai/pre-ets-frontend dev
 ```
 
@@ -98,10 +98,10 @@ Expect filesystem Gherkin scenarios to bind and the retargeted tenant suite to s
 Unit tests must cover path escape rejection, ENOENT vs parse failure, and immutable cache
 behavior.
 
-## 6. Production bypass sanity
+## 6. Production static resolution
 
-Build/start production with `TENANT_RESOLUTION=static` and `TENANT_STATIC_ALIAS=springfield`
-set: production MUST still require host association and MUST NOT serve the static stand-in on
-`localhost`.
+Build and start production with `TENANT_RESOLUTION=static` and
+`TENANT_STATIC_ALIAS=springfield`. Production honors static resolution: requests
+use `springfield.json` and do not require `BASE_HOSTNAME`.
 
 See [filesystem-tenant-source.md](./contracts/filesystem-tenant-source.md) for env and path rules.

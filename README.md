@@ -60,77 +60,33 @@ The Compose file and migrations are the shared setup; the local database is not
 exposed as a public URL. See [Docker Compose for local development](docs/docker-compose.md)
 for inspection, persistence, and reset commands.
 
-#### Redis, Keycloak, and session setup
+#### Frontend pages
 
-Start Redis and local Keycloak before exercising session setup or OIDC login
-initiation. Apps stay on the host; Compose publishes loopback only. Keycloak
-imports the tracked realm at `docker/keycloak/pre-ets-realm.json` on first boot.
-Set `KC_BOOTSTRAP_ADMIN_USERNAME`, a generated
-`KC_BOOTSTRAP_ADMIN_PASSWORD`, and a generated `POSTGRES_PASSWORD` in the
-gitignored root `.env` as described above. The PostgreSQL password is required
-here because Compose validates the full model before starting this service
-subset:
-
-```sh
-docker compose up -d --wait redis keycloak
-docker compose exec redis redis-cli ping
-curl -sS -o /dev/null -w '%{http_code}\n' \
-  http://127.0.0.1:8080/realms/pre-ets/.well-known/openid-configuration
-```
-
-Copy `packages/frontend/.env.example` to `packages/frontend/.env.local`, keep
-`TENANT_RESOLUTION=static`, set `REDIS_URL=redis://127.0.0.1:6379`, and generate
-`SESSION_SIGNING_SECRET` with:
-
-```sh
-node -e 'console.log(require("node:crypto").randomBytes(32).toString("base64url"))'
-```
-
-Then `pnpm dev:frontend` and open `http://localhost:3000/` — expect Keycloak
-login (`demo` / `demo`). Issuer:
-`http://127.0.0.1:8080/realms/pre-ets`. See `docs/docker-compose.md`,
-`docs/session-state.md`, and `docs/authentication.md`. Optional local
+Redis and Keycloak are still defined in Compose. The frontend pages do not
+need them. Run `pnpm dev:frontend` and open `http://localhost:3000/` for the
+welcome page. `/auth/callback` renders the authentication-return fallback. The
+proxy forwards both routes with the incoming headers and leaves cookies and
+the response location unchanged. See `docs/authentication.md`. Optional local
 OpenTelemetry + Grafana uses Compose profile `observability` (service
 `otel-lgtm`); see `docs/observability.md`.
 
-Stop with `docker compose down`. Never run `FLUSHALL` against shared Redis.
-After editing the realm JSON, recreate Keycloak
-(`docker compose up -d --force-recreate keycloak`) and restart the frontend.
-
 ### Local tenant resolution
 
-Tenant Display Name and OIDC settings for this increment come from process
-environment, not a database. Session continuity uses the local Redis service
-above. Copy `packages/frontend/.env.example` to `packages/frontend/.env.local`
-(gitignored) and restart after edits (including after Keycloak reprovision).
+Copy `packages/frontend/.env.example` to `packages/frontend/.env.local`
+(gitignored). Set `TENANT_CONFIG_DIR` to an absolute directory of `{alias}.json`
+files, keep `TENANT_RESOLUTION=static`, and set `TENANT_STATIC_ALIAS` to the
+alias of one of those files. Restart the frontend after editing `.env.local`
+or a tenant file.
 
-Host association (default, including omitted `TENANT_RESOLUTION`) uses
-`TENANT_CONFIG_RECORDS_JSON` and `{slug}.localhost` locally or
-`{slug}.pathable.com` in production. Bare `localhost`, unknown hosts, and
-invalid hosts are refused with `forbidden()` (`Access denied.`, no redirect). Production never
-reads `TENANT_RESOLUTION` or `TENANT_LOCAL_CONFIG_JSON`.
-Unsupported mode values keep host association and log a safe `invalid-mode`
-diagnostic to stderr.
-
-Unauthenticated document visits to `/` initiate tenant-bound OIDC (or fail);
-they do not serve Display Name landing content. See `.env.example` for
-synthetic `oidc` fields and empty `OIDC_CLIENT_SECRETS_JSON`.
-
-Development-only static mode (include valid `oidc` for login initiation):
+`GET /_test/tenant-config` returns the selected tenant JSON. Host mode requires
+`BASE_HOSTNAME` and reads `{alias}.${BASE_HOSTNAME}`. See `docs/multi-tenancy.md`
+and `packages/frontend/.env.example`.
 
 ```sh
-TENANT_RESOLUTION=static \
-TENANT_LOCAL_CONFIG_JSON='{"slug":"springfield","config":{"displayName":"Local Demo","oidc":{"issuer":"http://127.0.0.1:8080/realms/pre-ets","clientId":"springfield-web","clientAuth":"public","connection":"springfield-idp"}}}' \
 pnpm dev:frontend
 ```
 
-Open `http://localhost:3000/` and expect login initiation toward the local
-issuer (or a documented failure page)—not Display Name landing. Invalid or
-missing static data returns HTTP 500 with instructions to supply a valid
-record and restart.
-
-See `specs/001-tenant-resolution/quickstart.md` for the full validation
-workflow.
+Open `http://localhost:3000/` for the welcome page.
 
 An Effect v4 backend is planned. Client workflows beyond this landing page are
 not implemented yet.
@@ -231,18 +187,35 @@ root.
 
 ## Fallow
 
-Run `pnpm check:unused` for dead-code and dependency checks, or `pnpm fallow`
-for full analysis including duplication and complexity. To compare changes with
-an available Git base, use `pnpm fallow audit --base origin/main`.
+Run `pnpm check:unused` for dead-code and dependency checks. The root command runs
+`fallow:unused` in the root and every workspace in parallel, completing all scopes
+and failing if any scope fails. Each workspace owns its `.fallowrc.json` and local
+`fallow:unused` / `fallow:audit` scripts. Run a workspace independently with
+`pnpm --filter @pathableai/pre-ets-frontend fallow:unused`.
 
-The configuration uses glob entry points for workspace sources, unit tests, and
-Cucumber support code because start scripts run compiled output: the backend
-`dist` program and the frontend `.next` server. ESLint configurations are discovered by
-Fallow’s ESLint integration. Generated output and Next.js `next-env.d.ts` are
-excluded, and unused dependencies
-remain errors. No public-library exemptions or blanket suppressions are enabled. The Fallow
-configuration declares the four dprint plugins as tooling dependencies because
-Fallow does not resolve their `npm:` references in `dprint.json`.
+The root configuration excludes `packages/**` and owns repository-level tests,
+E2E/BDD support, and tooling. The backend configuration uses `src/index.ts` as its
+runtime root and retains the existing `@effect/platform-node` dependency exception.
+Frontend production code counts as live only when reachable from
+Next.js framework entry points, including routes, layouts, proxy, and instrumentation.
+Library files, ordinary helpers under `app`, and server-action modules must be
+imported by reachable app code. Imports from unit tests or repository E2E/BDD
+fixtures do not establish frontend production liveness.
+
+Frontend production mode applies only to dead-code analysis, so audit health and
+duplication checks still include frontend tests and tooling files. Backend and root
+analysis retain their normal test/tooling reachability. No frontend source-directory
+glob grants automatic liveness.
+
+Run `pnpm fallow` for full analysis of root-owned files, or
+`pnpm --filter @pathableai/pre-ets-frontend exec fallow` for full frontend analysis.
+To audit all scopes against an available Git base, run
+`FALLOW_AUDIT_BASE=origin/main pnpm check:changes`. CI uses the same dispatcher with
+its event's base commit, so every scope compares against the same base.
+
+The root configuration declares the dprint npm plugins and the Effect language-service
+schema dependency as tooling references that Fallow does not resolve from their
+configuration strings.
 
 ## Renovate
 
@@ -318,8 +291,9 @@ Successful fixes are staged automatically. lint-staged’s default backup, rollb
 and partial-staging protections remain enabled: unstaged changes to partially
 staged files are hidden during checks and restored afterward. A failing task
 blocks the commit. After lint-staged succeeds, the hook runs `pnpm check:changes`
-once at the repository root. This Fallow audit uses the `new-only` gate and
-automatically resolves its comparison base from the upstream or default branch.
+once at the repository root. It runs root, frontend, and backend Fallow audits
+in parallel with distinct gate markers. All use the `new-only` gate and automatically
+resolve their comparison base from the upstream or default branch.
 It checks the working tree, including restored unstaged and untracked changes,
 so unfinished local work can block a commit. Error-severity findings and audit
 runtime errors block the commit; warnings remain advisory.
@@ -361,7 +335,7 @@ Examples:
 (`pnpm test:bdd`) on relevant pull requests, pushes to `main`, and manual dispatch.
 Application, production-server and development-server partitions run serially; a failed partition
 still allows later partitions to report. **CI / BDD Dry** reports discovery separately.
-See [BDD commands and evidence](features/README.md). Real-Keycloak E2E remains manual.
+See [BDD commands and evidence](features/README.md). Sign-in browser specs are described in `e2e/README.md`.
 Branch-protection settings are managed separately from this refactor.
 
 CI uses the pinned Node and pnpm versions, a frozen lockfile, and pnpm store caching.

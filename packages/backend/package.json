@@ -9,7 +9,9 @@
     "lint": "eslint . --max-warnings=0",
     "lint:fix": "eslint . --max-warnings=0 --fix",
     "format:check": "dprint check",
-    "format:write": "dprint fmt"
+    "format:write": "dprint fmt",
+    "fallow:unused": "fallow dead-code",
+    "fallow:audit": "fallow audit --gate new-only --gate-marker backend"
   },
   "dependencies": {
     "@effect/platform-node": "4.0.2",

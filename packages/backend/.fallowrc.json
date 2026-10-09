@@ -1,0 +1,12 @@
+{
+  "$schema": "../../node_modules/fallow/schema.json",
+  "entry": [
+    "src/index.ts"
+  ],
+  "rules": {
+    "unused-dependencies": "error"
+  },
+  "ignoreDependencies": [
+    "@effect/platform-node"
+  ]
+}

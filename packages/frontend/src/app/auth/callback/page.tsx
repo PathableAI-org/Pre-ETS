@@ -2,10 +2,6 @@ import { Alert, Container, Heading, Link, Page, Stack, Text } from "@pathableai/
 
 export const dynamic = "force-dynamic"
 
-/**
- * Fallback only: Proxy handles `/auth/callback` document navigations via
- * `completeLogin` and redirects away before this page renders on the happy path.
- */
 export default function AuthCallbackPage() {
   return (
     <Page>

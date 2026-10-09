@@ -1,4 +1,4 @@
-import { Effect, type FileSystem, type Path, pipe, Schema } from "effect"
+import { ConfigProvider, Effect, type FileSystem, type Path, pipe } from "effect"
 
 import type * as ServerConfig from "../config/index.ts"
 
@@ -28,26 +28,32 @@ export const tenantConfigFromAlias: (
 ) =>
   Effect.fn(
     function*(alias: TenantAlias) {
-      const getPath = tenantConfigPathFromAlias(config, path)
-      const parseJson = Schema.decodeEffect(Schema.fromJsonString(TenantConfig))
-
-      const configPath = getPath(alias)
+      const configPath = tenantConfigPathFromAlias(config, path)(alias)
 
       yield* Effect.logDebug("Reading tenant config from path", { alias, path: configPath })
 
       const raw = yield* fs.readFileString(configPath).pipe(
-        Effect.mapError((e) =>
+        Effect.mapError((cause) =>
           new TenantConfigError({
-            cause: e,
+            cause,
             message: `Failed to read tenant config from ${configPath}`
           })
         )
       )
 
-      return yield* parseJson(raw).pipe(
-        Effect.mapError((e) =>
+      const parsed: unknown = yield* Effect.try({
+        catch: (cause) =>
           new TenantConfigError({
-            cause: e,
+            cause: cause instanceof Error ? cause : new Error("Failed to parse tenant config JSON"),
+            message: `Failed to parse tenant config from ${configPath}`
+          }),
+        try: (): unknown => JSON.parse(raw)
+      })
+
+      return yield* TenantConfig.parse(ConfigProvider.fromUnknown(parsed)).pipe(
+        Effect.mapError((error) =>
+          new TenantConfigError({
+            cause: new Error(error.message),
             message: `Failed to parse tenant config from ${configPath}`
           })
         )

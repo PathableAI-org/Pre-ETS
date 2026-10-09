@@ -12,9 +12,9 @@ this data when rendering UI. Binding the host to a slug and loading
 configuration are first-party modules under `packages/frontend/src/lib/tenant`;
 there is no tenancy library. **Current** tenant configuration is a read-only
 filesystem source: one `{alias}.json` file per tenant under `TENANT_CONFIG_DIR`.
-Host association opens only the bound alias’s file. Development static mode
-names a single alias via `TENANT_STATIC_ALIAS` with `TENANT_RESOLUTION=static`
-and reads that same directory. Prefer an absolute `TENANT_CONFIG_DIR`; relative
+Host association opens only the bound alias’s file. Static mode, set with
+`TENANT_RESOLUTION=static`, names a single alias via `TENANT_STATIC_ALIAS` and
+reads that same directory in every environment, including production. Prefer an absolute `TENANT_CONFIG_DIR`; relative
 paths resolve against the process CWD at boot (source construction). After
 editing a tenant file, restart the frontend so the process-lifetime parse cache
 refreshes. Superseded `TENANT_CONFIG_RECORDS_JSON` / `TENANT_LOCAL_CONFIG_JSON`
@@ -68,7 +68,7 @@ authoritative.
 
 ## Loading tenant configuration
 
-The slug from the binding step is the argument to `getCurrentTenantConfig`:
+The slug from the binding step is the argument to `TenantConfigService.getConfigFromAlias`:
 
 ```text
 request URL → slug → tenant configuration (from TENANT_CONFIG_DIR/{alias}.json)
@@ -83,22 +83,17 @@ source construction (visible configuration unavailable). The UI does not
 substitute another tenant’s configuration, a default tenant, or the slug as a
 Display Name.
 
-These functions do not store the current tenant on the request object. The
-nested layout only gates the request. Any Server Component that needs a slug or
-Display Name calls the same functions itself. Session slices may look the
-tenant up from the session first.
+`TenantConfigService` does not store the current tenant on the request object.
+`GET /_test/tenant-config` reads it for the incoming host. The welcome page
+does not.
 
-In development, an explicit `TENANT_RESOLUTION=static` setting may name exactly
-one alias via `TENANT_STATIC_ALIAS` and show only that file’s Display Name on
-`localhost`. That exception is honored only when `NODE_ENV=development`.
-Production always binds `{slug}.pathable.com` and never reads
-`TENANT_RESOLUTION` or `TENANT_STATIC_ALIAS`. Unset, `test`, `staging`, and any
-other runtime use production host association. Unsupported mode values keep
-host association and emit a safe `invalid-mode` diagnostic.
+`TENANT_RESOLUTION` selects `host` or `static` in every environment, including
+production. Host mode requires `BASE_HOSTNAME` and binds a request whose host
+is `${alias}.${BASE_HOSTNAME}`. Static mode requires `TENANT_STATIC_ALIAS`,
+ignores the request host, and does not require `BASE_HOSTNAME`.
 
-Downstream frontend modules that need tenancy call `getCurrentTenant` /
-`getCurrentTenantConfig`. They do not parse the request URL themselves to
-decide which tenant they are in.
+Downstream frontend modules that need tenancy call `TenantConfigService`. They
+do not parse the request URL themselves to decide which tenant they are in.
 
 ## Idle timeout policy
 
