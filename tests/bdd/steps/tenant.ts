@@ -20,5 +20,7 @@ Given("static development settings select Shelbyville", function(this: AppWorld)
   this.staticAlias = "shelbyville"
 })
 Then("the selected configuration path is the {string} tenant file", function(this: AppWorld, alias: string) {
-  assert.equal(responseJson(this).configPath, path.join(this.directory, `${alias}.json`))
+  const body = responseJson(this)
+  assert.equal(body.configPath, path.join(this.directory, `${alias}.json`))
+  assert.deepEqual(Object.keys(body).sort(), ["configPath", "resolutionMode"])
 })
