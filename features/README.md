@@ -37,3 +37,23 @@ Step definitions stay HTTP-only. See [step guidance](../tests/bdd/steps/README.m
 
 CI runs discovery separately and executes the runtime suite on relevant PRs, main, and manual
 dispatch. Real-Keycloak E2E stays manual.
+
+## Gherkin linting and formatting
+
+Run `pnpm lint:gherkin` for structural checks, `pnpm format:gherkin:check` to check
+formatting, and `pnpm format:gherkin:write` to apply formatting. These commands target
+only `tests/bdd/requirements/**/*.feature`; historical material is excluded. Root lint
+and formatting commands include these checks, and CI Quality enforces them.
+
+Linting rejects duplicate feature names, duplicate scenario names within a feature,
+duplicate tags, empty files/backgrounds, files without scenarios, unnamed
+features/scenarios, outlines without examples, and unused outline variables.
+Structural violations require manual correction, including when running `pnpm lint:fix`.
+The linter also enforces its mandatory parser-safety rules. Optional prose, size,
+tag-policy, step-order, and formatting rules are not enabled.
+
+Prettier with the Gherkin plugin formats feature files using two-space indentation,
+LF endings, and a 120-column preference, independently of other Prettier settings.
+Staged active features are linted before formatting; only supplied staged filenames
+are processed. Cucumber dry-run discovery remains necessary to validate parsing and
+step bindings; neither linting nor formatting establishes runtime behavior.
