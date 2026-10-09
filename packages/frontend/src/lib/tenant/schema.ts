@@ -26,6 +26,7 @@ export type OidcClientAuth = typeof OidcClientAuth.Type
 export const TenantOidcConfig = Schema.Struct({
   clientAuth: OidcClientAuth,
   clientId: Schema.String,
+  clientSecretKey: Schema.optionalKey(Schema.NonEmptyString),
   connection: Schema.optionalKey(Schema.String),
   issuer: Schema.String
 })

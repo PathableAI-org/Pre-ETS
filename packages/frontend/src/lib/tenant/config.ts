@@ -29,7 +29,9 @@ export const tenantConfigFromAlias: (
   Effect.fn(
     function*(alias: TenantAlias) {
       const getPath = tenantConfigPathFromAlias(config, path)
-      const parseJson = Schema.decodeEffect(Schema.fromJsonString(TenantConfig))
+      const parseJson = Schema.decodeEffect(Schema.fromJsonString(TenantConfig), {
+        onExcessProperty: "error"
+      })
 
       const configPath = getPath(alias)
 
