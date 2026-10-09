@@ -7,21 +7,7 @@ import { TenantConfigService } from "./service.ts"
 
 export * from "./alias.ts"
 export * from "./config.ts"
-
-export const getTenantConfigPath = Effect.fnUntraced(
-  function*(host: string) {
-    const service = yield* TenantConfigService
-    const alias = yield* service.getAlias(host).pipe(Effect.fromResult)
-    return service.getConfigPath(alias)
-  }
-)
-
-export const getTenantResolutionMode = Effect.fnUntraced(
-  function*() {
-    const service = yield* TenantConfigService
-    return service.getTenantResolutionMode()
-  }
-)
+export { TenantConfigService }
 
 export interface TenantRecord {
   readonly config: TenantConfig

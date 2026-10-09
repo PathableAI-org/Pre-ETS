@@ -1,4 +1,4 @@
-import { Effect, Schema } from "effect"
+import { Config, Schema } from "effect"
 
 export class TenantConfigError extends Schema.TaggedError<TenantConfigError>()(
   "@pathableai/pre-ets-frontend/TenantResolutionError",
@@ -28,17 +28,20 @@ const TenantOidcConfig = Schema.Struct({
   connection: Schema.optionalKey(Schema.String),
   issuer: Schema.String
 })
+export type TenantOidcConfig = typeof TenantOidcConfig.Type
 
-export const TenantConfig = Schema.Struct({
+const TenantConfigSchema = Schema.Struct({
   displayName: Schema.String,
-  idleTimeoutMinutes: Schema.Int.pipe(
-    Schema.check(Schema.isBetween({
-      maximum: 30,
-      minimum: 5
-    })),
-    Schema.withDecodingDefault(Effect.succeed(30))
+  idleTimeoutMinutes: Schema.optionalKey(
+    Schema.Int.pipe(
+      Schema.check(Schema.isBetween({
+        maximum: 30,
+        minimum: 5
+      }))
+    )
   ),
-  oidc: TenantOidcConfig
+  oidc: Schema.optionalKey(TenantOidcConfig)
 })
 
-export type TenantConfig = typeof TenantConfig.Type
+export const TenantConfig = Config.schema(TenantConfigSchema)
+export type TenantConfig = Config.Success<typeof TenantConfig>

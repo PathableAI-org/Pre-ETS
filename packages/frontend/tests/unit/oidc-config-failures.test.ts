@@ -5,7 +5,7 @@ let { initiateLogin } = await import("../../src/lib/oidc/initiate.ts")
 
 let { OidcSecretsConfigError, resolveOidcClientSecret } = await import("../../src/lib/oidc/secrets.ts")
 
-import { springfieldConfig, springfieldRecord } from "./tenant-fixtures.ts"
+import { springfieldOidc, springfieldRecord } from "./tenant-fixtures.ts"
 
 const SESSION_ID = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 
@@ -39,7 +39,7 @@ describe("OIDC config failure taxonomy", () => {
           config: {
             displayName: "Springfield Demo",
             idleTimeoutMinutes: 30,
-            oidc: { ...springfieldConfig.oidc, clientAuth: "confidential" }
+            oidc: { ...springfieldOidc, clientAuth: "confidential" }
           },
           slug: "springfield"
         }

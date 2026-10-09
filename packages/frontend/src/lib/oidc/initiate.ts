@@ -1,6 +1,6 @@
 import * as client from "openid-client"
 
-import type { TenantConfig, TenantRecord } from "../tenant/index.ts"
+import type { TenantOidcConfig, TenantRecord } from "../tenant/index.ts"
 import type { DiscoveredOidcClient } from "./discovery.ts"
 import type { OidcSecretResolution } from "./secrets.ts"
 import type { OidcTransactionStore } from "./transaction.ts"
@@ -23,7 +23,7 @@ export interface InitiateLoginDeps {
   readonly randomPKCECodeVerifier?: typeof client.randomPKCECodeVerifier
   readonly resolveSecret?: (
     slug: string,
-    clientAuth: TenantConfig["oidc"]["clientAuth"]
+    clientAuth: TenantOidcConfig["clientAuth"]
   ) => OidcSecretResolution
   readonly signCookie?: typeof signOidcCorrelationCookie
   readonly store: OidcTransactionStore
@@ -65,7 +65,7 @@ export async function initiateLogin(
   deps: InitiateLoginDeps
 ): Promise<InitiateLoginOutcome> {
   const oidc = input.tenantRecord.config.oidc
-  if (input.tenantRecord.slug !== input.tenantId) {
+  if (oidc === undefined || input.tenantRecord.slug !== input.tenantId) {
     return { kind: "config-refusal", outcomeClass: "403-config" }
   }
 
@@ -116,7 +116,7 @@ function buildAuthorizationLocation(input: {
   readonly codeVerifier: string
   readonly discovered: DiscoveredOidcClient
   readonly nonce: string
-  readonly oidc: TenantConfig["oidc"]
+  readonly oidc: TenantOidcConfig
   readonly redirectUri: string
   readonly state: string
 }): InitiateLoginOutcome | { readonly kind: "ok"; readonly location: string } {
@@ -160,7 +160,7 @@ async function buildRedirectOutcome(input: {
   readonly discovered: DiscoveredOidcClient
   readonly expiresAt: number
   readonly nonce: string
-  readonly oidc: TenantConfig["oidc"]
+  readonly oidc: TenantOidcConfig
   readonly redirectUri: string
   readonly signCookie: typeof signOidcCorrelationCookie
   readonly state: string
@@ -194,7 +194,7 @@ function buildTransactionRecord(input: {
   readonly codeVerifier: string
   readonly expiresAt: number
   readonly nonce: string
-  readonly oidc: TenantConfig["oidc"]
+  readonly oidc: TenantOidcConfig
   readonly redirectUri: string
   readonly sessionId: string
   readonly tenantId: string
@@ -241,7 +241,7 @@ function mapResolveFailure(
 
 async function prepareTransaction(
   input: InitiateLoginInput,
-  oidc: TenantConfig["oidc"],
+  oidc: TenantOidcConfig,
   deps: InitiateLoginDeps
 ): Promise<
   | InitiateLoginOutcome
