@@ -181,7 +181,6 @@ function OnsitePrototype() {
             <Section
               heading="Service visit log"
               id="onsite-log"
-              note="Narratives are optional. Timer values can be corrected before discussing the report with Daniela."
             >
               {visits.map((visit) => (
                 <VisitEntry
