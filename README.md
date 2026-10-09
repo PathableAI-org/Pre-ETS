@@ -231,24 +231,35 @@ root.
 
 ## Fallow
 
-Run `pnpm check:unused` for repository dead-code and dependency checks alongside
-an isolated frontend production check. `pnpm check:unused:frontend` runs only the
-frontend check. Run `pnpm fallow` for full repository analysis including duplication
-and complexity. To compare both analyses with an available Git base, run
-`pnpm fallow audit --base origin/main` and
-`pnpm check:changes:frontend --base origin/main`.
+Run `pnpm check:unused` for dead-code and dependency checks. The root command runs
+`fallow:unused` in the root and every workspace in parallel, completing all scopes
+and failing if any scope fails. Each workspace owns its `.fallowrc.json` and local
+`fallow:unused` / `fallow:audit` scripts. Run a workspace independently with
+`pnpm --filter @pathableai/pre-ets-frontend fallow:unused`.
 
-Frontend production code counts as live only when reachable from Next.js framework
-entry points, including routes, layouts, proxy, and instrumentation. Library files,
-ordinary helpers under `app`, and server-action modules must be imported by reachable
-app code. Imports from unit tests or repository E2E/BDD fixtures do not establish
-frontend production liveness. Production mode excludes test reachability from the
-isolated dead-code graph. It applies only to dead-code analysis, so audit health and duplication
-checks still include frontend tests and tooling files.
+The root configuration excludes `packages/**` and owns repository-level tests,
+E2E/BDD support, and tooling. The backend configuration uses `src/index.ts` as its
+runtime root and retains the existing `@effect/platform-node` dependency exception.
+Frontend production code counts as live only when reachable from
+Next.js framework entry points, including routes, layouts, proxy, and instrumentation.
+Library files, ordinary helpers under `app`, and server-action modules must be
+imported by reachable app code. Imports from unit tests or repository E2E/BDD
+fixtures do not establish frontend production liveness.
 
-The repository analysis retains explicit backend, test, and Cucumber entry points.
-Next.js and tooling entry points are discovered by Fallow's framework plugins.
-No frontend source-directory glob grants automatic liveness.
+Frontend production mode applies only to dead-code analysis, so audit health and
+duplication checks still include frontend tests and tooling files. Backend and root
+analysis retain their normal test/tooling reachability. No frontend source-directory
+glob grants automatic liveness.
+
+Run `pnpm fallow` for full analysis of root-owned files, or
+`pnpm --filter @pathableai/pre-ets-frontend exec fallow` for full frontend analysis.
+To audit all scopes against an available Git base, run
+`FALLOW_AUDIT_BASE=origin/main pnpm check:changes`. CI uses the same dispatcher with
+its event's base commit, so every scope compares against the same base.
+
+The root configuration declares the dprint npm plugins and the Effect language-service
+schema dependency as tooling references that Fallow does not resolve from their
+configuration strings.
 
 ## Renovate
 
@@ -324,9 +335,9 @@ Successful fixes are staged automatically. lint-staged’s default backup, rollb
 and partial-staging protections remain enabled: unstaged changes to partially
 staged files are hidden during checks and restored afterward. A failing task
 blocks the commit. After lint-staged succeeds, the hook runs `pnpm check:changes`
-once at the repository root. It runs repository and isolated frontend Fallow audits
-with distinct gate markers. Both use the `new-only` gate and automatically resolve
-their comparison base from the upstream or default branch.
+once at the repository root. It runs root, frontend, and backend Fallow audits
+in parallel with distinct gate markers. All use the `new-only` gate and automatically
+resolve their comparison base from the upstream or default branch.
 It checks the working tree, including restored unstaged and untracked changes,
 so unfinished local work can block a commit. Error-severity findings and audit
 runtime errors block the commit; warnings remain advisory.
