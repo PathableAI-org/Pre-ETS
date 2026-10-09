@@ -68,7 +68,7 @@ authoritative.
 
 ## Loading tenant configuration
 
-The slug from the binding step is the argument to `getCurrentTenantConfig`:
+The slug from the binding step is the argument to `TenantConfigService.getConfigFromAlias`:
 
 ```text
 request URL → slug → tenant configuration (from TENANT_CONFIG_DIR/{alias}.json)
@@ -83,19 +83,17 @@ source construction (visible configuration unavailable). The UI does not
 substitute another tenant’s configuration, a default tenant, or the slug as a
 Display Name.
 
-These functions do not store the current tenant on the request object. The
-nested layout only gates the request. Any Server Component that needs a slug or
-Display Name calls the same functions itself. Session slices may look the
-tenant up from the session first.
+`TenantConfigService` does not store the current tenant on the request object.
+`GET /_test/tenant-config` reads it for the incoming host. The welcome page
+does not.
 
 `TENANT_RESOLUTION` selects `host` or `static` in every environment, including
 production. Host mode requires `BASE_HOSTNAME` and binds a request whose host
 is `${alias}.${BASE_HOSTNAME}`. Static mode requires `TENANT_STATIC_ALIAS`,
 ignores the request host, and does not require `BASE_HOSTNAME`.
 
-Downstream frontend modules that need tenancy call `getCurrentTenant` /
-`getCurrentTenantConfig`. They do not parse the request URL themselves to
-decide which tenant they are in.
+Downstream frontend modules that need tenancy call `TenantConfigService`. They
+do not parse the request URL themselves to decide which tenant they are in.
 
 ## Idle timeout policy
 
