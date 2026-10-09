@@ -4,8 +4,6 @@
     "cucumber.mjs",
     "e2e/playwright.config.ts",
     "e2e/*.spec.ts",
-    "e2e/setup.ts",
-    "e2e/cleanup.ts",
     "tests/bdd/steps/*.ts",
     "tests/bdd/support/hooks.ts",
     "tests/bdd/support/world.ts",
