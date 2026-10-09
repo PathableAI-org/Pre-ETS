@@ -19,7 +19,7 @@
     "effect-solutions": "node node_modules/effect-solutions/bin.js",
     "test:e2e": "playwright test --config e2e/playwright.config.ts",
     "test:e2e:ui": "playwright test --config e2e/playwright.config.ts --ui",
-    "test:bdd": "cucumber-js --config cucumber.mjs",
+    "test:bdd": "pnpm --filter @pathableai/pre-ets-frontend build && cucumber-js --config cucumber.mjs",
     "test:bdd:dry": "cucumber-js --config cucumber.mjs --dry-run",
     "test:bdd:checks": "node --test tests/bdd/checks/*.test.*",
     "lint:gherkin": "gherkin-lint --config gherkin-lint.json \"tests/bdd/requirements/**/*.feature\"",

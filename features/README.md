@@ -13,7 +13,6 @@ From the repository root, with Redis available when the app needs it (the runner
 Compose):
 
 ```sh
-pnpm --filter @pathableai/pre-ets-frontend build   # when scenarios use production mode
 pnpm test:bdd:dry
 pnpm test:bdd
 ```
@@ -25,12 +24,13 @@ scenario's resources.
 | Command                | Evidence                                                                          |
 | ---------------------- | --------------------------------------------------------------------------------- |
 | `pnpm test:bdd:dry`    | Parse features and discover step bindings; no runtime evidence                    |
-| `pnpm test:bdd`        | Run requirements scenarios against an owned Next process via HTTP                 |
+| `pnpm test:bdd`        | Build the frontend, then run requirements scenarios against an owned Next process |
 | `pnpm test:bdd:checks` | Harness regression checks that still protect fixtures used by BDD/E2E             |
 | `pnpm test:e2e`        | Separate real-Keycloak authentication journeys; see [E2E setup](../e2e/README.md) |
 
-Optional `@development` selects `next dev`; otherwise scenarios use production `next start` (requires
-a frontend build). Dependency tags such as `@redis` are not required—the app receives `REDIS_URL`
+Optional `@development` selects `next dev`; otherwise scenarios use production `next start`.
+`pnpm test:bdd` builds the frontend first so that production output matches the installed Next.js.
+Dependency tags such as `@redis` are not required—the app receives `REDIS_URL`
 whenever the harness starts it.
 
 Step definitions stay HTTP-only. See [step guidance](../tests/bdd/steps/README.md).
