@@ -223,9 +223,9 @@ function OnsitePrototype() {
             >
               <div className="onsite-field-grid onsite-field-grid--two">
                 <Field id="coach-signature" label="Job coach signature (discussion placeholder)" />
-                <Field id="coach-signature-date" label="Date" type="date" />
+                <Field id="coach-signature-date" label="Job coach signature date" type="date" />
                 <Field id="supervisor-signature" label="Supervisor signature (discussion placeholder)" />
-                <Field id="supervisor-signature-date" label="Date" type="date" />
+                <Field id="supervisor-signature-date" label="Supervisor signature date" type="date" />
               </div>
               <Text>
                 On the paper form, the coach's signature confirms the activities and services occurred as indicated.
