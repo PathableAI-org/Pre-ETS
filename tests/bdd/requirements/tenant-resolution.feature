@@ -1,4 +1,5 @@
-@preets-tenant-006 @development
+@preets-tenant-006
+@development
 Feature: Tenant diagnostic observation
   The diagnostic HTTP endpoint reports the effective tenant resolution
   mode from application configuration.

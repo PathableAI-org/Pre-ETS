@@ -3,6 +3,9 @@ packages:
 
 # dprint installs its platform-specific formatter executable.
 allowBuilds:
+  # Gherkin lint dependencies need no lifecycle build (notice/CLI setup only).
+  core-js: false
+  protobufjs: false
   dprint: true
   msgpackr-extract: true
 
