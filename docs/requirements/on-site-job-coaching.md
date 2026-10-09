@@ -10,6 +10,11 @@ This first workflow-specific area covers a coach recording an on-site job-coachi
 returning to their own records, updating them, and deleting them with immediate undo. A service record documents
 a service event; it is not the full monthly progress report represented by the source form.
 
+The first increment replaces the visit-log entry activity. It does not establish complete paper-form retirement.
+Employment/report context, monthly intervention planning and support fading, visit duration and total hours,
+report generation, and coach/supervisor attestation require separately scoped requirements before claiming
+that the whole paper workflow has been replaced. This boundary does not add those capabilities to this slice.
+
 The current product decisions supplied in the handoff are the basis for the proposals below: capture the current
 user and start time when starting a record; capture end time on an explicit action; permit time correction;
 keep visit narratives optional; make the created record durable; allow subsequent updates without submission
@@ -87,6 +92,23 @@ Industry facts, product obligations, implementation choices, and technical guida
 - What makes immediate undo usable, how long is it available, and what happens on navigation or session expiry?
   Define the opportunity before delivering deletion. Later recovery, retention, purge authority, and permanent
   deletion remain discovery questions; normal workflow deletion must preserve the underlying record.
+
+### Decision ownership and affected delivery gates
+
+The roles below identify decision responsibilities, not assigned individuals or completed decisions. Name the
+responsible person and record the decision in the affected delivery plan before its gate is crossed.
+
+| Decision                                                                                     | Responsible role                                                                  | Gate                                                              |
+| -------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| Participant source, minimal association, and correction                                      | Product maintainer, informed by the participant source owner when available       | Before delivering creation or participant correction (-001, -006) |
+| Save acknowledgement, failed writes/retries, and concurrent edits                            | Product maintainer with the application delivery owner                            | Before delivering creation or updates (-001–-004, -006)           |
+| Date/time interpretation, ordering, overnight visits, and repeated end actions               | Product maintainer with the application delivery owner                            | Before delivering time capture/correction (-002)                  |
+| Ownership enforcement and denied-operation outcomes                                          | Application delivery owner, with product maintainer review of observable outcomes | Before delivering any record access or mutation (-001–-008)       |
+| Undo duration, keyboard/focus/announcement behavior, navigation/session expiry, and failures | Product maintainer with the UI delivery owner                                     | Before delivering deletion and undo (-007, -008)                  |
+| Complete paper replacement and remaining monthly-report responsibilities                     | Product maintainer; source-provider validation remains unavailable                | Before expanding this slice or claiming paper retirement          |
+
+These gates preserve the documented uncertainties; they do not select autosave, offline support, a participant
+registry, a reporting lifecycle, or a permanent-deletion policy.
 
 ## Related requirements and current contracts
 
@@ -208,13 +230,14 @@ No reviewed, executed evidence has been recorded. Source review does not establi
 
 ### Statement
 
-A coach’s created on-site service record and its successful updates must remain retrievable independently of the browser or authentication session in which they were created.
+A coach’s created on-site service record and its successful updates must remain retrievable independently of the browser, authentication session, or application process in which they were created.
 
 ### Rationale and sources
 
 A real service event already exists while the coach is documenting it; incomplete documentation must not make the entire record temporary.
 
 - Source: Handoff steps 6–7; current domain-persistence context, “When the line is crossed.” Source labels refer to the reviewed material above.
+- Refinement: Maintainer-requested assessment changes (2026-10-09) clarify process-independent durability; approval and executed verification remain pending.
 - Decision: Pending requirements review and maintainer acceptance; the handoff supplies the proposed product direction.
 
 ### Acceptance criteria
@@ -224,10 +247,19 @@ A real service event already exists while the coach is documenting it; incomplet
 3. Successfully updated times and narratives remain available after reopening in a new authenticated session.
 4. Session expiry or logout does not delete the created record or its successful updates.
 5. No submission, approval, or completed-form transition is required to make the created record durable.
+6. Successfully created records and successful updates remain retrievable by their owner in the same tenant after a backend restart or equivalent replacement of the application process, including records without an end time or narratives.
 
 ### Open questions
 
 Save interaction and failure/retry outcomes need decisions before delivery. This promise does not establish durability for every unsaved keystroke. Deletion visibility follows PREETS-ONSITE-007.
+
+### Verification plan
+
+Planned evidence only: create an incomplete record and successfully update another record through the real
+application/persistence path. Restart or replace the backend process, then retrieve both through fresh
+application access as the same user and tenant and compare identity, times, and narratives. Exercise the real
+persistence adapter; test-owned collections, canned adapters, browser reloads, and authentication changes alone
+do not establish survival across this boundary. This does not establish backup recovery or disaster tolerance.
 
 ### Verification evidence
 
@@ -242,25 +274,36 @@ No reviewed, executed evidence has been recorded. Source review does not establi
 
 ### Statement
 
-A coach must be able to see their previously created on-site service records and open an individual record for review; this slice must limit record visibility and access to the user’s own records.
+A coach must be able to see their previously created, non-deleted on-site service records and open an individual non-deleted record for review; this slice must limit record visibility, access, and mutation to the user’s own records in the authenticated tenant.
 
 ### Rationale and sources
 
 Coaches need continuity across visits; deferring team access must not silently grant access to others’ records.
 
 - Source: Handoff steps 8–9. Source labels refer to the reviewed material above.
+- Refinement: Maintainer-requested assessment changes (2026-10-09) clarify non-deleted scope and authorization across reads and mutations; approval and executed verification remain pending.
 - Decision: Pending requirements review and maintainer acceptance; the handoff supplies the proposed product direction.
 
 ### Acceptance criteria
 
 1. The coach can find their previously created, non-deleted on-site records, including records without an end time or narratives.
-2. The coach can open an individual record and review its participant, coach, service times, and any recorded narratives.
+2. The coach can open an individual non-deleted record and review its participant, coach, service times, and any recorded narratives.
 3. Another user’s records are absent from the coach’s ordinary views.
-4. A user cannot obtain another user’s record by opening it directly or requesting it through an application access path, even within the same tenant.
+4. A user cannot obtain another user’s record by opening it directly or requesting it through an application access path, even within the same tenant; access to records in another tenant is also denied.
+5. Application access paths deny attempts by a same-tenant non-owner or a cross-tenant user to capture service end, change times or narratives, delete, or undo deletion of a record, including direct requests that bypass ordinary views.
+6. A denied operation does not alter the targeted record’s participant/coach association, times, narratives, or deletion status and does not disclose its contents.
 
 ### Open questions
 
 Record-list presentation and navigation need design. Supervisor/team visibility and organizational authorization models are deferred; no such access is granted by this slice.
+
+### Verification plan
+
+Planned evidence only: exercise owner, same-tenant non-owner, and cross-tenant access through the application’s
+actual authorization paths. Cover reads, end capture, time/narrative updates, deletion, and undo, including direct
+requests. After each denied mutation, read through the authorized owner path and verify the record and deletion
+status are unchanged. Include a deleted record for denied undo; this does not decide whether its owner may open
+it directly outside immediate undo.
 
 ### Verification evidence
 
