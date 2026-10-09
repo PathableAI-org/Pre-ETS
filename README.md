@@ -24,6 +24,24 @@ frontend production output into `.next`. After a production build,
 prints a greeting and exits.
 All packages are private; the npm scope identifies ownership, not publication.
 
+### On-site progress report feedback prototype
+
+In PowerShell, set `$env:PRE_ETS_ONSITE_PROTOTYPE = '1'` and run
+`pnpm --filter @pathableai/pre-ets-frontend exec next dev --hostname 127.0.0.1`.
+In a POSIX shell, prefix that command with `PRE_ETS_ONSITE_PROTOTYPE=1`.
+Open `http://127.0.0.1:3000/onsite` to review a sample electronic version of
+the on-site job-coaching progress report and service log. The explicit local
+flag skips the tenant/session startup runtime only in development; the route is
+not available in production. This preview does not need Docker, Redis,
+Keycloak, or a frontend `.env.local`, and it does not bypass authentication for
+other routes.
+
+The form uses synthetic example information and an interactive visit timer for
+visual feedback. Edits are browser-only and disappear on reload. Its duration
+display is a demo estimate, not an approved service-hours calculation; typed
+signature placeholders do not sign or submit a report. Do not enter real
+participant information.
+
 ### Local external services
 
 Docker Compose provides Redis, Keycloak, and Postgres while the application
