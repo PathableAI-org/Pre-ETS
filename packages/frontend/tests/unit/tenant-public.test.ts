@@ -60,6 +60,7 @@ describe("tenant public interface", () => {
   })
 
   it("resolves a host to the associated tenant config", async () => {
+    vi.stubEnv("BASE_HOSTNAME", "localhost")
     const tenant = await loadTenant(configDirWith({
       "springfield.json": JSON.stringify(springfieldConfig)
     }))

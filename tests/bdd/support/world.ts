@@ -4,6 +4,7 @@ import { setWorldConstructor, World } from "@cucumber/cucumber"
 import { randomBytes, randomUUID } from "node:crypto"
 
 export class AppWorld extends World {
+  baseHostname: string | undefined
   cookie: string | undefined
   directory = ""
   extraHeaders: Record<string, string> = {}
