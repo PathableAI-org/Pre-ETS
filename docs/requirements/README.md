@@ -94,6 +94,12 @@ does not demonstrate product behavior. Use [Testing as evidence](../engineering/
 whether the assertions establish the claimed outcome. Document manual verification with its procedure,
 observations, execution context, and limitations when applicable.
 
+For BDD, follow [Requirements-backed BDD](../engineering/testing/requirements-bdd.md). Requirement versions
+already present in current `origin/main` are the approved sources for scenario assertions; merge new or stronger
+promises before adding dependent assertions. Requirement-ID tags identify evidence, and feature-level `@partial`
+identifies an intermediate slice. This source prerequisite and tag do not change lifecycle or verification fields;
+scenario coverage remains distinct from reviewed execution evidence.
+
 When a statement or criterion changes, reassess its evidence and downgrade verification if the old evidence
 no longer supports the new promise. Do not describe `verified` as a permanent guarantee or certification.
 

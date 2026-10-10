@@ -6,6 +6,10 @@ applyTo: "docs/requirements/**"
 
 Use `docs/requirements/README.md` and `docs/requirements/templates/area.md` as the format and lifecycle authority.
 Use `docs/engineering/testing/README.md` when assessing verification claims.
+For BDD references, use `docs/engineering/testing/requirements-bdd.md`: assertions derive from requirement versions
+already in current `origin/main`, not new or strengthened PR-only promises. This BDD source prerequisite does not
+change lifecycle or verification fields. Requirement tags identify evidence; `@partial` describes a feature's
+intermediate scope. Do not demand complete BDD coverage or equate tag removal with reviewed runtime verification.
 
 This register is independent of Spec Kit. Do not compare these documents with `specs/` or `.specify/` artifacts,
 flag their differences, or request synchronization with them. References to historical specifications may document

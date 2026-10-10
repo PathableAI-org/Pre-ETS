@@ -3,6 +3,8 @@
 This guide helps humans and agents choose tests for Pre-ETS. Start with the expectation someone depends on,
 then choose evidence that could reveal a meaningful violation. For a practical introduction to generated tests,
 read [Property-based testing with fast-check](property-based-testing.md).
+For requirements scenarios, steps, and supporting helpers, also read
+[Requirements-backed BDD](requirements-bdd.md) for main-branch sources, semantic scope, requirement tags, and `@partial`.
 
 ## From a consumer to evidence
 
@@ -131,8 +133,9 @@ regressions and boundary examples alongside general properties. When consolidati
 evidence for each obligation; when an expectation changes, explain the requirement change. Do not weaken assertions,
 exclude inconvenient generated inputs, or delete failing tests just to make the current implementation pass.
 
-These principles guide ordinary review. They do not introduce a new approval gate, immutable-test mechanism, or
-Spec Kit workflow. Existing project requirements still govern changes and validation.
+These principles guide ordinary review without an immutable-test mechanism or Spec Kit workflow.
+Requirements BDD follows the [main-branch source prerequisite](requirements-bdd.md#start-from-main-branch-requirements).
+Existing project requirements still govern changes and validation.
 
 ## Background
 
