@@ -13,7 +13,7 @@ catalogs:
 # Restrict each affected parent to its matching published implementation.
 overrides:
   "@effect/platform-node@4.0.2>@effect/platform-node-shared": "4.0.2"
-  "@effect/platform-bun@4.0.0-beta.59>@effect/platform-node-shared": "4.0.0-beta.59"
+  "@effect/platform-bun@4.0.0-beta.59>@effect/platform-node-shared": "4.0.2"
 
 # Enforce the same one-day cooldown locally and in CI.
 minimumReleaseAge: 1440
