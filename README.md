@@ -26,15 +26,22 @@ All packages are private; the npm scope identifies ownership, not publication.
 
 ### On-site progress report feedback prototype
 
-In PowerShell, set `$env:PRE_ETS_ONSITE_PROTOTYPE = '1'` and run
-`pnpm --filter @pathableai/pre-ets-frontend exec next dev --hostname 127.0.0.1`.
-In a POSIX shell, prefix that command with `PRE_ETS_ONSITE_PROTOTYPE=1`.
+Use the existing static tenant settings to start the frontend without changing
+its startup runtime. In PowerShell, from the repository root:
+
+```powershell
+$env:TENANT_RESOLUTION = 'static'
+$env:TENANT_CONFIG_DIR = (Resolve-Path -LiteralPath 'packages/frontend/fixtures/tenant-config').Path
+$env:TENANT_STATIC_ALIAS = 'springfield'
+$env:OTEL_SDK_DISABLED = 'true'
+corepack pnpm --filter @pathableai/pre-ets-frontend exec next dev --hostname 127.0.0.1
+```
+
 Open `http://127.0.0.1:3000/onsite` to review a sample electronic version of
-the on-site job-coaching progress report and service log. The explicit local
-flag skips the tenant/session startup runtime only in development; the route is
-not available in production. This preview does not need Docker, Redis,
-Keycloak, or a frontend `.env.local`, and it does not bypass authentication for
-other routes.
+the on-site job-coaching progress report and service log. Equivalent settings
+may live in the gitignored `packages/frontend/.env.local` instead. This route is
+available only in development, does not need Docker, Redis, or Keycloak, and
+does not bypass authentication for other routes.
 
 The form uses synthetic example information and an interactive visit timer for
 visual feedback. Edits are browser-only and disappear on reload. Its duration
