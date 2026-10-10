@@ -47,6 +47,15 @@
     },
   ],
   "packageRules": [
+    {
+      "description": "Wait for pnpm's one-day cooldown, including companion package publication lag, and deduplicate the resulting lockfile.",
+      "matchManagers": ["npm"],
+      "minimumReleaseAge": "1 day",
+      "minimumReleaseAgeBuffer": "1 hour",
+      "internalChecksFilter": "strict",
+      "rangeStrategy": "pin",
+      "postUpdateOptions": ["pnpmDedupe"],
+    },
     // Residual first; later groupName rules override for Effect / React / lint / test.
     {
       "description": "Group remaining non-major pnpm workspace dependency updates into a reviewable batch.",
@@ -57,7 +66,7 @@
       "addLabels": ["javascript", "pnpm"],
     },
     {
-      "description": "Keep Effect and @effect/* on a coordinated non-major PR; never auto-merge RC lockstep bumps.",
+      "description": "Keep Effect and @effect/* catalog updates coordinated and subject to review.",
       "matchManagers": ["npm"],
       "matchUpdateTypes": ["minor", "patch", "digest", "pin", "pinDigest"],
       "matchPackageNames": ["effect", "/^@effect\\//", "effect-solutions"],

@@ -229,6 +229,29 @@ on Saturdays between midnight and 4 a.m. The policy enables PR/platform automerg
 for eligible updates; Effect, React/Next, PathAble, tests, Node, and major upgrades
 require review. TypeScript major upgrades are disabled pending lint compatibility.
 
+npm updates wait one day plus a one-hour publication buffer before becoming
+eligible. pnpm enforces the one-day release age for direct and transitive
+dependencies; Renovate runs `pnpm dedupe` after lockfile updates. An independently
+published transitive dependency can still delay installation. Wait for it to age
+instead of routinely adding release-age exceptions.
+
+The named `effect` catalog in `pnpm-workspace.yaml` owns exact versions for core
+Effect and its runtime/test integrations. Workspace manifests reference
+`catalog:effect`. Review the catalog entries together: grouping does not guarantee
+peer compatibility, and pnpm rejects incompatible peers. The compatible published
+set is currently 4.0.2; integration releases at 4.0.3 require an unpublished core
+`effect@4.0.3` and must wait for a compatible core release. Parent-specific
+overrides also keep `platform-node@4.0.2` and Effect Solutions' older Bun integration
+on their matching shared-platform implementations; their declared ranges otherwise
+admit shared-platform releases with incompatible core peers. Reassess these
+overrides when updating the affected parent packages.
+
+Release-age exceptions should be temporary and version-specific. Remove an
+exception once its release has aged sufficiently. `minimumReleaseAgeExcludePrune`
+automatically removes versions no longer resolved by the written lockfile; it does
+not remove exceptions just because their releases have aged. Keep the existing
+lockfile when updating dependencies and let pnpm regenerate it.
+
 The Renovate GitHub App must have access to this repository. Platform automerge
 also requires GitHub repository support and permission, and follows configured
 branch protections and required checks. This tooling setup does not enable the
@@ -238,7 +261,7 @@ does not activate Renovate or guarantee validated automatic merges.
 Validate configuration without adding Renovate as a project dependency:
 
 ```sh
-pnpm --package=renovate@44.82.3 dlx renovate-config-validator --strict --no-global renovate.json
+pnpm --package=renovate@44.145.3 dlx renovate-config-validator --strict --no-global renovate.json
 ```
 
 On environments without Renovate’s optional native RE2 module, the validator
