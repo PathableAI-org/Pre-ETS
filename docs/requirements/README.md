@@ -1,152 +1,180 @@
 # Durable requirements
 
-This register holds versioned statements of required product and system behavior. Requirements remain relevant
-after a delivery issue closes or an implementation changes. Review changes to these promises through ordinary
-repository pull requests.
+A requirement is a durable, normative behavioral contract describing what the system is expected to do.
+It describes desired behavior, independently of current implementation, evidence, or deployment.
+An accepted requirement may be entirely unimplemented and unsupported by evidence.
 
-## Register
+## Authority and history
 
-- [Tenant resolution](tenant-resolution.md)
-- [Infrastructure](infrastructure.md)
-- [Security](security.md)
-- [Authentication and session management](session-management.md)
+Git and pull requests govern approval: requirements proposed in a PR are proposals; requirements merged
+into `main` are accepted. Change accepted contracts through subsequent PRs. Human PR review and merge
+remain authoritative; agent and Copilot findings are advisory. Do not maintain approval, implementation,
+or verification status fields, including `proposed`, `accepted`, `verified`, `partial`, or `unverified`.
+Evidence relationships and execution results may eventually yield derived verification views without
+manual requirement-file updates. No such tooling is introduced here.
 
-The [area template](templates/area.md) contains placeholders only; it is not an approved product contract.
-Existing specifications have not been migrated wholesale into this register.
+Retire a requirement by moving it to `deprecated/`, preserving its ID and historical content. Record the
+reason and replacement requirement IDs when applicable; replacements should link back to the retired ID.
+Exclude deprecated files from ordinary active discovery, but include them for history, ID uniqueness,
+supersession, and dependency review. Never reuse an ID. Agents may propose deprecation; only humans may
+explicitly authorize permanent deletion of requirement files.
 
-As areas are added, list links to their documents here. Group related requirements in one Markdown file per
-coherent product area, such as `session-management.md`, rather than creating a file for every requirement.
-This list is a navigation index, not a separate status or traceability matrix.
+## Organization and discovery
 
-## Author a requirement
+Use one requirement per Markdown file, grouped into domain or capability directories:
 
-1. Read the supplied intent and sources. Distinguish discovery, proposed decisions, and approved obligations.
-   Existing code can explain the current behavior; it does not by itself establish what the product must promise.
-2. Search the register for the same obligation before adding one. Copy the area template into an area document
-   or extend an existing document. Replace every placeholder and omit optional references that do not exist.
-3. Assign an ID in the form `PREETS-AREA-NNN`, using an uppercase area token and a zero-padded number starting
-   at `001`. Reuse the existing token for an area and allocate the next unused number after its highest ID.
-   Search all area documents, including retired entries, to avoid collisions. Templates do not allocate IDs.
-4. Describe who depends on the behavior, the relevant conditions, and the observable outcome. Include rationale,
-   attributable sources, and acceptance criteria that can establish whether the obligation is met.
-5. Start new requirements as `proposed` and `unverified`. Record unresolved questions explicitly; do not fill
-   gaps with invented policy. Request review of the proposed promise through the normal repository workflow.
+```text
+docs/requirements/
+├── README.md
+├── tenant/
+│   └── PREETS-TENANT-003.md
+├── session/
+│   └── PREETS-SESSION-001.md
+├── security/
+│   └── PREETS-SECURITY-001.md
+└── deprecated/
+    └── tenant/
+        └── PREETS-TENANT-001.md
+```
 
-Use relative Markdown links for repository sources and full URLs for external sources, issues, and PRs.
-Identify the relevant source section, decision, test title, or scenario rather than linking only to a large file.
-Public repository artifacts and GitHub titles/bodies must never name a specific partner or client, including
-organization names, abbreviations, identifying filenames, link labels, URLs, examples, and quotations. Use generic
-attribution such as “source provider” or “client-supplied form,” retaining non-identifying source titles, sections,
-dates, evidence limitations, and approval boundaries. If a source reference identifies a partner or client, keep
-that identifying reference outside the public repository and use a generic attribution with the access limitation;
-do not invent a sanitized URL or claim the source was unavailable when it was reviewed.
-If a source cannot be accessed, preserve its attribution and describe the limitation; access is not a prerequisite
-for drafting a proposal from supplied material. Keep credentials and sensitive client data out of the register.
+The filesystem is the authoritative index. This guide does not maintain a synchronized requirement list.
+Search the entire active tree before assuming the owning domain; exclude `templates/`, governance guides,
+and `deprecated/` from active-contract discovery. Search active and deprecated contracts before allocating
+IDs in the form `PREETS-AREA-NNN`. Preserve established uppercase area tokens and allocate sequentially
+starting at `001`, after the area's highest allocated number. Templates allocate no IDs.
+Use ID-only filenames. Preserve IDs across moves and refinements of the same contract.
 
-## Obligation boundaries and classification
+Place an obligation in the domain that owns it. Cross-cutting obligations may belong in `security/`;
+an end-to-end workflow may itself be a meaningful commitment. A coherent contract may include success,
+unknown-input, and configuration-failure outcomes. Split only when obligations can reasonably be adopted,
+revised, or retired independently. Multiple acceptance criteria, evidence types, components, or technical
+boundaries alone do not justify splitting. A distinct obligation receives a new ID.
 
-Consider separate IDs when obligations can change independently or have different owners, failure modes, or
-verification boundaries. Keep closely related promises together when splitting would obscure their meaning;
-there is no required number of requirements per feature.
+Optional frontmatter `dependencies` lists requirement IDs that are hard prerequisites, including across
+domains. Related behavior, replacement links, and unresolved product questions are not automatically hard
+dependencies. Check missing prerequisites, cycles, and dependencies on deprecated requirements. Cross-domain
+implications and potential duplication require review, not automatic splitting or relocation.
 
-Use **Classification** to identify the nature of the obligation, such as Functional Requirement, Security
-Requirement, or Regulatory Requirement. Classification is distinct from **Source**, which records the supplied
-basis or attribution. Preserve source labels supplied by the maintainer; a classification is not evidence of
-approval or a regulatory citation. Add detailed attribution when supplied, without inventing references.
+## Requirement format
 
-An optional **Owner / responsible boundary** identifies who or what must deliver the outcome. An optional
-**Design constraints** section records explicitly approved implementation choices separately from observable
-behavior. These constraints are valid obligations; do not discard them merely because they prescribe an
-interface, storage layout, or technique. Distinguish them from incidental implementation behavior.
+Use the [requirement template](templates/area.md), retained at its existing path for compatibility.
+Minimal YAML frontmatter contains `id`, a list of `classifications`, and optional `dependencies`:
 
-Check selectors, prerequisites per mode, and failure outcomes. Qualify broad claims such as “all requests” with
-the intended request classes; do not silently narrow an approved scope. Keep unresolved outcomes explicit.
+```yaml
+---
+id: PREETS-TENANT-003
+classifications:
+  - Functional
+  - Security
+dependencies:
+  - PREETS-TENANT-004
+---
+```
 
-A requirement may contain a **Verification plan** describing future evidence and its responsible boundary.
-Keep that plan separate from **Verification evidence**, which records reviewed execution and limitations.
+This example illustrates syntax, not a decision to establish a dependency. Keep substantive content in Markdown:
+a human-readable title, description of the expected contract, rationale, sources, acceptance criteria,
+Observability, and Verification Plan. Optional open questions, owner, explicitly approved design constraints,
+and design or historical replacement references may clarify the contract. Preserve approved design choices;
+do not infer constraints from incidental code. Do not duplicate Git-derived information in metadata.
+Acceptance criteria need no independent stable IDs; the requirement is the durable traceability unit.
 
-## Lifecycle and verification
+Classifications describe the nature of the obligation and may include Functional, Security, Regulatory,
+Contractual, and Product. Sources describe its origin and belong in the body, separately from classifications.
+Every requirement explains why it exists and where its obligation comes from. Regulations, research, client
+discovery, and internal decisions are legitimate attributable sources. Naming HIPAA, FERPA, or WIOA may suffice;
+do not demand detailed CFR citations or legal interpretation documents. Distinguish direct regulatory duties
+from product decisions informed by regulation and client practices that are not necessarily legal obligations.
+Never invent legal authority, source approval, or attribution.
 
-Lifecycle describes the decision about the requirement:
+## Public-source attribution
 
-| Value        | Meaning                                                       |
-| ------------ | ------------------------------------------------------------- |
-| `proposed`   | A candidate obligation awaiting a product decision.           |
-| `accepted`   | An approved obligation, whether or not it is implemented.     |
-| `deprecated` | Retained for history but no longer an active obligation.      |
-| `superseded` | Replaced by requirements identified in its replacement links. |
+Use relative links for repository sources and full URLs for external sources; identify the relevant section
+or decision. Public artifacts and GitHub titles/bodies must never name a specific partner or client, including
+names, abbreviations, identifying filenames, link labels, URLs, examples, and quotations. Use generic attribution
+such as “source provider” or “client-supplied form,” preserving non-identifying titles, sections, dates, limitations,
+and decision boundaries. Keep identifying references outside the public repository and describe the access
+limitation. Do not invent sanitized URLs or claim a reviewed source was unavailable. If a source cannot be
+accessed, preserve its attribution and explain the limitation; supplied material can still support a draft.
+Keep credentials and sensitive client data out of requirements.
 
-Record the decision reference when accepting or retiring a requirement. Do not infer acceptance from a passing
-test, an existing implementation, or a closed issue. An agent records approval supplied by the maintainer or
-documented in a source; authoring a proposal does not approve it.
+## Observability
 
-Verification describes the available evidence independently:
+Every requirement has a dedicated Observability section. Describe externally meaningful obligations about what
+operators must detect, distinguish, measure, or diagnose. These are binding acceptance obligations, even outside
+the Acceptance criteria section. For example, an operator may need to distinguish unknown tenants from failures
+loading known tenants' configuration. Do not prescribe metric names, spans or attributes, instrumentation libraries,
+Grafana queries, or implementation details; those belong in engineering design. Deliberately consider the need
+and use `Not applicable` when no meaningful operational obligation exists.
 
-| Value        | Meaning                                                                |
-| ------------ | ---------------------------------------------------------------------- |
-| `unverified` | No reviewed, executed evidence establishes the acceptance criteria.    |
-| `partial`    | Reviewed, executed evidence supports only some criteria or conditions. |
-| `verified`   | Reviewed, executed evidence supports all criteria within stated scope. |
+## Verification plans
 
-For evidence, record the covered criteria, responsible boundary, test or scenario, execution result reference
-and date or revision, and limitations. A test link alone, a TODO, a dry run, or passing formatting/type checks
-does not demonstrate product behavior. Use [Testing as evidence](../engineering/testing/README.md) to assess
-whether the assertions establish the claimed outcome. Document manual verification with its procedure,
-observations, execution context, and limitations when applicable.
+Each requirement owns a high-level plan for expected external evidence. Describe what must be demonstrated,
+the evidence category, its intended claim, known limitations or assumptions, and unresolved verification questions.
+Appropriate categories include application Gherkin/BDD, manual procedures, runtime observability and alert
+validation, static analysis of externally meaningful properties, policy-as-code, infrastructure configuration
+assessments, and deployed-environment checks. The distinction is externally meaningful claims, not static versus
+dynamic or automated versus manual evidence. Do not prescribe unit tests, property tests, internal module strategies,
+test steps, functions, generators, or detailed implementation instructions. Engineering testing guidance owns those.
 
-For BDD, follow [Requirements-backed BDD](../engineering/testing/requirements-bdd.md). Requirement versions
-already present in current `origin/main` are the approved sources for scenario assertions; merge new or stronger
-promises before adding dependent assertions. Requirement-ID tags identify evidence, and feature-level `@partial`
-identifies an intermediate slice. This source prerequisite and tag do not change lifecycle or verification fields;
-scenario coverage remains distinct from reviewed execution evidence.
+A plan may reference a manual document or describe one to create, or summarize a Gherkin feature's purpose without
+writing scenarios. Name known limits without exhaustive speculative gaps: a Terraform policy check, for example,
+does not necessarily prove the deployed environment matches configuration. Include observability obligations.
+When criteria or observability change, normally revise the plan in the same PR and identify existing evidence that
+may no longer support the contract.
 
-When a statement or criterion changes, reassess its evidence and downgrade verification if the old evidence
-no longer supports the new promise. Do not describe `verified` as a permanent guarantee or certification.
+A human may explicitly decide a plan is unnecessary or premature. Record the exception and human-provided reason:
 
-## Update and retire
+```markdown
+## Verification Plan
 
-Preserve an ID while refining the same obligation. Explain material changes to accepted promises in the PR
-and record the approving decision. If replacing an obligation with different promises, assign new IDs, retain
-the old entry as `superseded`, and link it to its replacements. Add a backlink from replacements to the old ID.
-Use `deprecated` when withdrawing an obligation without a replacement. Never delete or reuse retired IDs.
+Omitted by explicit maintainer decision.
 
-Review source conflicts, duplicate obligations, testable criteria, lifecycle decisions, replacement links, and
-evidence scope. Missing implementation or verification is a legitimate recorded gap, not a reason to invent links.
+Reason: [Human-provided rationale]
+```
 
-## Traceability and agent use
+Do not invent a justification or enforce an agent-defined test of triviality. Respect documented human exceptions,
+including during revision and review. Omission establishes neither implementation nor verification.
 
-Each requirement owns its source, optional design decisions, delivery issue/PR links, and verification references.
-Issues describe work; closing one does not close the requirement. An eventual requirements traceability matrix
-(RTM) will be generated from these references as a derived view. No generator or manually maintained matrix is
-provided in this version.
+## Evidence ownership and traceability
 
-Repository-local skills support this workflow:
+Evidence artifacts own their relationships to requirement IDs. Requirements describe expected evidence; do not
+maintain a synchronized inventory of implemented tests or execution results in them. Evidence intentionally
+created to verify a requirement must reference its ID; other evidence may do so when appropriate. Not every test
+needs a requirement reference. New relationships require human approval before becoming authoritative. Agents may
+propose incidental relationships in a PR for human review, but must not silently authorize inferred relationships.
 
-- `$requirements-author Draft requirements from these notes` creates or updates proposals using this format.
-- `$requirements-review Review docs/requirements/<area>.md` reports findings without editing by default.
+Respect native conventions: Cucumber tags, readable Vitest descriptions or adjacent metadata, manual prose about
+claims and limits, and policy-system conventions may differ. Readability takes priority over uniform annotations.
+An ID reference alone does not establish an entire requirement. Assess supported claims, execution boundaries,
+conditions, results where applicable, limitations, and remaining unsupported outcomes. Distinguish planned from
+executed evidence, and installed monitoring from evidence that it functions correctly. Read
+[Testing as evidence](../engineering/testing/README.md) when assessing claims. Do not invent results.
 
-The skills live in [.agents/skills](../../.agents/skills). This workflow does not require active Spec Kit state,
-change its commands or artifacts, or automatically synchronize feature specs. It adds no GitHub writes,
-automatic commits, or external account requirements.
+For BDD, follow [Requirements-backed BDD](../engineering/testing/requirements-bdd.md). Assertions derive from requirement versions already in current `origin/main`; merge new or stronger promises before adding dependent assertions. Requirement-ID tags identify evidence, and feature-level `@partial` identifies an intermediate slice, not a manual requirement status. Scenario coverage remains distinct from executed evidence.
 
-## Delivery and process changes
+## Authoring and review
 
-Keep three dimensions separate: lifecycle is the reviewed decision in this register; implementation is tracked by
-linked delivery issues and PRs; verification records accepted execution evidence and its scope. The verification
-field is not a manually mirrored summary of the latest CI run. A future RTM may derive current evidence status
-from declarative evidence contracts and revision-specific CI/deployment results; no contract schema or generator
-is introduced here. Prefer learning from one complete delivery cycle before expanding this framework.
+The repository-local [author skill](../../.agents/skills/requirements-author/SKILL.md) supports interactive
+requirements development; the [review skill](../../.agents/skills/requirements-review/SKILL.md) independently
+assesses contracts and evidence implications. Inspect existing contracts and relevant engineering guidance first.
+Stop for human decisions on conflicts with accepted requirements, material ambiguity, failure policy, scope,
+conditions, or changes to established obligations. Resolve minor editorial ambiguity directly. Finalize once the
+contract is sufficiently clear; surface non-blocking uncertainty without endless speculative questioning.
 
-When reviewing criteria, check mode qualifiers and distinguish superficially similar failures by their meaning
-and responsible boundary. Accepted obligations relying on proposed prerequisites need an explicit decision or
-implementation gate; do not silently promote those prerequisites. Record unresolved failure policies as planning
-dependencies for affected implementation work. A chosen verification technology is planned infrastructure unless
-its integration and execution are evidenced; respect explicitly selected tools without assuming they are installed.
+Explain material changes to the contract, dependents, observability, verification, existing evidence, and other
+domains before editing an existing requirement. Group logically dependent changes in a PR; do not bundle unrelated
+changes just because they share a domain. Missing implementation or evidence is a legitimate gap, not a defect in
+a clear contract. Requirements remain independent of Spec Kit; historical references do not require synchronizing
+`specs/` or `.specify/` artifacts.
 
-For future work, use requirements PRs for product/system obligations and governance PRs for guide, template, skill,
-and validation changes. Keep necessary cross-links, but avoid changing review standards incidentally with a
-functional change. The current bootstrap PR intentionally includes both, in focused commits.
+## Transition and scope
 
-Use the [delivery planning workflow](../delivery/README.md) to propose coherent work for accepted criteria.
-Plans link to requirements; published issue/PR URLs belong in delivery references when available. Plan approval,
-issue closure, and PR merge do not change requirement lifecycle or establish verification evidence.
+Existing area-level documents remain temporarily discoverable as contracts under the previous layout.
+Their legacy status fields and evidence sections are pending migration, not conventions for new authoring.
+Git/PR history governs acceptance even where a legacy field says otherwise. See the separate
+[migration plan](migration-plan.md) for inventory, historical preservation, and decisions needed before migration.
+Do not silently migrate content during governance work.
+
+Assess structure, IDs, dependencies, and organization through human review assisted by agents. Do not introduce
+structural CI validators, lint scripts, schemas, indexes, RTMs, evidence adapters, result aggregation, verification
+dashboards, or review triggers. This governance does not change delivery planning or issue workflows.

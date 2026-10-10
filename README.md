@@ -414,8 +414,8 @@ regenerable composition cache out of version control.
 
 ## Durable requirements
 
-The [requirements register](docs/requirements/README.md) provides area templates, stable requirement IDs,
-lifecycle and verification conventions, and the repository-local `requirements-author` and `requirements-review`
+The [requirements register](docs/requirements/README.md) provides a single-requirement template, stable requirement IDs,
+Git/PR approval and external-evidence conventions, and the repository-local `requirements-author` and `requirements-review`
 skills. It works independently of Spec Kit; existing feature specifications have not been migrated wholesale.
 
 The [delivery planning workflow](docs/delivery/README.md) turns accepted criteria into reviewed issue proposals
