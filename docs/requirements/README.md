@@ -169,11 +169,12 @@ a clear contract. Requirements remain independent of Spec Kit; historical refere
 
 ## Transition and scope
 
-Existing area-level documents remain temporarily discoverable as contracts under the previous layout.
-Their legacy status fields and evidence sections are pending migration, not conventions for new authoring.
-Git/PR history governs acceptance even where a legacy field says otherwise. See the separate
-[migration plan](migration-plan.md) for inventory, historical preservation, and decisions needed before migration.
-Do not silently migrate content during governance work.
+Existing contracts have been migrated to ID-named files. The former area containers retain historical Git
+pointers only and define no active contracts. `context/` holds shared source/scope qualifications, not independent
+requirements; exclude it alongside templates and governance documents from active-contract discovery.
+See the [migration record](migration-plan.md) for preserved IDs, verification-plan changes, and remaining
+product decisions. New operational observability obligations were deliberately excluded from this migration
+by maintainer direction; existing diagnostic obligations remain binding.
 
 Assess structure, IDs, dependencies, and organization through human review assisted by agents. Do not introduce
 structural CI validators, lint scripts, schemas, indexes, RTMs, evidence adapters, result aggregation, verification
