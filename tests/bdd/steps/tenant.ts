@@ -20,6 +20,9 @@ Given("BASE_HOSTNAME is not configured", function(this: AppWorld) {
 Given("static resolution selects Shelbyville", function(this: AppWorld) {
   this.staticAlias = "shelbyville"
 })
+Given("static resolution selects an alias with no tenant file", function(this: AppWorld) {
+  this.staticAlias = "capital-city"
+})
 Then(
   "the response JSON equals the independently parsed {string} tenant file",
   async function(this: AppWorld, alias: string) {

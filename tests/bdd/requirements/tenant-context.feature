@@ -23,5 +23,6 @@ Feature: Dashboard reachability
     Examples:
       | host                     |
       | springfield.example.test |
+      | example.test             |
       | unknown.example.test     |
       | 127.0.0.1                |
