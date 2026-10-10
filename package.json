@@ -16,7 +16,6 @@
     "format:write": "dprint fmt \"*\" .github docs tests e2e && pnpm --filter \"./packages/*\" run format:write && pnpm format:gherkin:write",
     "prepare": "husky",
     "check:changes": "pnpm --include-workspace-root --no-bail run --parallel fallow:audit",
-    "effect-solutions": "node node_modules/effect-solutions/bin.js",
     "test:e2e": "playwright test --config e2e/playwright.config.ts",
     "test:e2e:ui": "playwright test --config e2e/playwright.config.ts --ui",
     "test:bdd": "pnpm --filter @pathableai/pre-ets-frontend build && cucumber-js --config cucumber.mjs",
@@ -43,7 +42,6 @@
     "@types/node": "26.6.4",
     "dprint": "0.61.1",
     "dprint-plugin-yaml": "0.6.0",
-    "effect-solutions": "0.5.3",
     "eslint": "10.12.0",
     "eslint-plugin-perfectionist": "5.12.1",
     "fallow": "3.33.1",
@@ -57,7 +55,7 @@
     "typescript": "6.0.3",
     "typescript-eslint": "8.71.1"
   },
-  "packageManager": "pnpm@12.11.1",
+  "packageManager": "pnpm@12.11.2",
   "engines": {
     "node": ">=26"
   }

@@ -23,10 +23,9 @@ Before designing or modifying Effect code in `packages/frontend`,
 read [Effect agent guidance](docs/engineering/effect-guidance.md) and the target
 workspace's `AGENTS.md`: [frontend](packages/frontend/AGENTS.md),
 [backend](packages/backend/AGENTS.md). This explicit routing also applies when an
-agent starts at the repository root. Consult relevant Effect Solutions topics
-(`pnpm effect-solutions list` / `show`) and verify APIs against the installed
-Effect declarations in the target workspace before using examples. Do not run
-the CLI's interactive setup to rewrite this monorepo.
+agent starts at the repository root. Consult relevant [upstream Effect documentation](https://effect.website/docs/)
+and source matching the target workspace's installed version, then verify APIs
+against its installed declarations before using examples.
 
 Product Effect pins are coordinated in the named `effect` catalog in
 [`pnpm-workspace.yaml`](pnpm-workspace.yaml), including `@effect/platform-node`.

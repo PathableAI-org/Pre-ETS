@@ -55,7 +55,7 @@
       "description": "Keep Effect and @effect/* catalog updates coordinated and subject to review.",
       "matchManagers": ["npm"],
       "matchUpdateTypes": ["minor", "patch", "digest", "pin", "pinDigest"],
-      "matchPackageNames": ["effect", "/^@effect\\//", "effect-solutions"],
+      "matchPackageNames": ["effect", "/^@effect\\//"],
       "groupName": "effect ecosystem",
       "groupSlug": "effect-ecosystem",
       "automerge": false,
