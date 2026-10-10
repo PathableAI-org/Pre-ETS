@@ -1,56 +1,57 @@
-# Existing requirements migration plan
+# Requirements migration record
 
-This is a separate migration proposal, not authorization to migrate contracts or new product obligations.
-The governance update leaves all existing requirement documents, IDs, criteria, and evidence artifacts unchanged.
+This migration is the second PR in the governance stack, targeting `codex/requirements-governance` (PR #179).
+It moves contracts into the conventions established there without changing their behavioral statements,
+acceptance criteria, approved design constraints, or unresolved product decisions.
 
-## Inventory and destination proposal
+## Preserved contracts
 
-| Current document        | IDs to preserve                | Proposed destination                                |
-| ----------------------- | ------------------------------ | --------------------------------------------------- |
-| `tenant-resolution.md`  | PREETS-TENANT-001 through 006  | `tenant/`, with 001 and 002 in `deprecated/tenant/` |
-| `infrastructure.md`     | PREETS-INFRA-001 and 002       | `infrastructure/`                                   |
-| `security.md`           | PREETS-SECURITY-001            | `security/`                                         |
-| `session-management.md` | PREETS-SESSION-001 through 013 | `session/`                                          |
+| Former container        | Preserved IDs                  | Destination                                       |
+| ----------------------- | ------------------------------ | ------------------------------------------------- |
+| `tenant-resolution.md`  | PREETS-TENANT-001 through 006  | `tenant/`; 001 and 002 under `deprecated/tenant/` |
+| `infrastructure.md`     | PREETS-INFRA-001 and 002       | `infrastructure/`                                 |
+| `security.md`           | PREETS-SECURITY-001            | `security/`                                       |
+| `session-management.md` | PREETS-SESSION-001 through 013 | `session/`                                        |
 
-There are 22 IDs, including two superseded historical tenant contracts. Destination directory choices do not
-change area tokens or IDs. These ranges inventory this migration only; they are not an ongoing requirement index.
+All 22 IDs remain, including 20 active contracts and two previously superseded historical contracts.
+This table records the completed migration, not an ongoing requirement index. Former containers remain as
+non-normative historical Git pointers; no requirement history is permanently deleted. Git/PR history governs
+acceptance: PREETS-INFRA-002 entered main through PR #113, despite its former `proposed` field.
 
-## Proposed migration sequence
+## Content and relationships
 
-1. Review Git/PR history and source decisions for each contract. PREETS-INFRA-002 has a legacy `proposed` label;
-   if merged into `main`, the new governance treats it as accepted. Confirm history without inventing approval
-   or silently rewriting its obligation.
-2. Extract each contract to its ID-only file, preserving statement, criteria, rationale, source decisions,
-   approved design constraints, open questions, and historical context. Convert classification into a YAML list;
-   distinguish legacy “Functional Requirement” source labels from actual source attribution.
-3. Move PREETS-TENANT-001 and 002 into deprecated history with their existing retirement reasons and replacement
-   links. Retain forward links and replacement backlinks. Do not delete historical requirement files without
-   explicit human authorization; resolve the old area containers' disposition in migration review.
-4. Carry shared session scope, source limitations, and contract-context notes into the affected files or a linked
-   contextual document so extracting sections loses no qualifications. Update relative links and review inbound
-   links across documentation, delivery artifacts, and evidence without changing their conventions or behavior.
-5. Identify true hard prerequisites before adding structured dependencies. Existing “Related requirements” lists
-   mix replacements, context, and potential prerequisites; do not mechanically convert every link.
-6. Add Observability sections only from existing approved obligations or human decisions. Where the source does
-   not settle operational expectations, ask the human; do not invent telemetry promises or assert Not applicable
-   merely to complete a template.
-7. Recast verification plans as high-level external claims, preserving meaningful scope and known limitations.
-   Internal service/property strategies in tenant and session plans belong to engineering; detailed commands in
-   PREETS-INFRA-002 belong to a manual procedure. Preserve useful context in appropriate documentation when
-   authorized, without implementing evidence or creating authoritative inferred relationships.
-8. Remove manual status fields and synchronized evidence inventories after preserving historical decisions and
-   any substantive evidence context in appropriate artifacts or Git history. Assess evidence relationships
-   semantically and submit new associations for human approval. Review every original ID and obligation for
-   continuity; no CI validator or generated index is part of this migration.
+Descriptions, acceptance criteria, approved design constraints, source decisions, and open questions retain
+their original meaning. Classifications moved into minimal YAML. Legacy generic source labels remain identified
+as legacy attribution; actual maintainer decisions and the originating PR remain attributable sources.
+Only already explicit hard prerequisites became YAML dependencies: TENANT-003 requires TENANT-004/005;
+TENANT-004 requires SECURITY-001; TENANT-006 requires TENANT-003/004/005, SECURITY-001, and INFRA-001.
+Other related contracts remain contextual links; no inferred evidence associations were authorized.
 
-## Decisions and boundaries
+Shared session qualifications are preserved in [session context](context/session-management.md), referenced
+by every session contract. Live links in delivery documents now target the ID files; revision-pinned historical
+references remain unchanged. Delivery conventions, criteria numbering, test artifacts, and application code
+are unchanged.
 
-The existing documents have no dedicated Observability sections. New operational promises need human decisions.
-Existing open questions remain unresolved, including tenant configuration-failure policy, diagnostic access under
-session authentication, session defaults, timing, synchronization, and OIDC freshness. Migration must not answer
-those questions, collapse failure categories, expand scope, or split contracts merely to fit the new layout.
+## Observability and verification
 
-Acceptance criteria numbering and existing references to it can remain readable locators; no new stable criterion
-IDs are needed. Do not migrate tests or change delivery-planning conventions in the governance update.
-Authorize the migration separately, with a reviewable mapping of preserved content, adjusted links, evidence
-implications, and any product decisions before changing accepted contracts.
+Maintainer direction during migration explicitly authorized preserving current obligations only, recording
+that sources establish no additional operational obligation, and deferring new observability decisions to a
+future requirements PR. Each active contract records that scope; TENANT-006 retains its existing diagnostic
+observability obligation. No new monitoring mechanism or failure distinction was invented.
+
+Verification plans now express expected externally meaningful evidence, claims, conditions, and limitations.
+Internal service/property strategies and procedural commands are retained in pre-migration Git history rather
+than prescribed by contracts. The original Sentinel/Playwright selection and deployment gates in INFRA-001
+remain; this migration neither implements nor establishes execution of them. Existing claims about HTTP status,
+no fallback, safe full disclosure, ingress rejection before forwarding, tenant isolation, session expiry,
+accessibility, and provider freshness retain their distinct evidence needs. Manual status fields and empty
+execution inventories were removed; no executed results were available to migrate. Deprecated contracts retain
+historical verification notes rather than implying active verification obligations.
+
+## Remaining decisions
+
+Diagnostic access under default session authentication, session defaults and live policy changes, synchronization
+timing and suspended tabs, OIDC freshness, and externally supplied secret-content controls remain unresolved as
+recorded in the contracts. Current tenant directory/file response decisions are already resolved and remain intact, including the startup configuration-parse prerequisite merged in PR #171.
+No new operational observability commitments are made. Missing evidence remains an evidence gap, not a change
+to contract authority. Future decisions and new evidence relationships require human review.
