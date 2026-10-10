@@ -2,19 +2,19 @@ import { Option, pipe, Result, Schema, String } from "effect"
 
 import type { TenantConfig, TenantStaticConfig } from "../config/index.ts"
 
-import { TenantAlias, TenantConfigError } from "./schema.ts"
+import { TenantAlias, type TenantFailure, TenantNotFound, TenantReadError } from "./schema.ts"
 
 const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 
-const hostAliasError = (host: string, cause: Error): TenantConfigError =>
-  new TenantConfigError({
+const hostAliasError = (host: string, cause: Error): TenantNotFound =>
+  new TenantNotFound({
     cause,
     message: `Failed to read tenant alias from HOST: "${host}"`
   })
 
 const tenantAliasFromHost = (baseHostname: string) => {
   const pattern = new RegExp(`^([A-Za-z-]+)\\.${escapeRegExp(baseHostname)}$`)
-  return (host: string): Result.Result<TenantAlias, TenantConfigError> =>
+  return (host: string): Result.Result<TenantAlias, TenantFailure> =>
     pipe(
       host,
       String.match(pattern),
@@ -35,13 +35,13 @@ const tenantAliasFromHost = (baseHostname: string) => {
 
 const tenantAliasFromStaticTenantConfig = (
   config: TenantStaticConfig
-): Result.Result<TenantAlias, TenantConfigError> => {
+): Result.Result<TenantAlias, TenantFailure> => {
   return pipe(
     config.staticAlias,
     Schema.decodeResult(TenantAlias),
     Result.mapError(
       (error) =>
-        new TenantConfigError({
+        new TenantReadError({
           cause: error,
           message: `Failed to read tenant alias from config value: "${config.staticAlias}"`
         })
@@ -51,7 +51,7 @@ const tenantAliasFromStaticTenantConfig = (
 
 export const tenantAliasFromServerConfig = (
   config: TenantConfig
-): (host: string) => Result.Result<TenantAlias, TenantConfigError> => {
+): (host: string) => Result.Result<TenantAlias, TenantFailure> => {
   switch (config.resolution) {
     case "host":
       return tenantAliasFromHost(config.baseHostname)

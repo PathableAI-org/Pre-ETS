@@ -2,7 +2,7 @@ import { ConfigProvider, Effect, type FileSystem, type Path, pipe } from "effect
 
 import type * as ServerConfig from "../config/index.ts"
 
-import { type TenantAlias, TenantConfig, TenantConfigError } from "./schema.ts"
+import { type TenantAlias, TenantConfig, type TenantFailure, TenantNotFound, TenantReadError } from "./schema.ts"
 
 const tenantConfigPathFromAlias = (
   config: ServerConfig.TenantConfig,
@@ -21,7 +21,7 @@ export const tenantConfigFromAlias: (
   fs: FileSystem.FileSystem
 ) => (
   alias: TenantAlias
-) => Effect.Effect<TenantConfig, TenantConfigError> = (
+) => Effect.Effect<TenantConfig, TenantFailure> = (
   config,
   path,
   fs
@@ -34,16 +34,21 @@ export const tenantConfigFromAlias: (
 
       const raw = yield* fs.readFileString(configPath).pipe(
         Effect.mapError((cause) =>
-          new TenantConfigError({
-            cause,
-            message: `Failed to read tenant config from ${configPath}`
-          })
+          config.resolution === "host" && cause.reason._tag === "NotFound" ?
+            new TenantNotFound({
+              cause,
+              message: `Failed to read tenant config from ${configPath}`
+            }) :
+            new TenantReadError({
+              cause,
+              message: `Failed to read tenant config from ${configPath}`
+            })
         )
       )
 
       const parsed: unknown = yield* Effect.try({
         catch: (cause) =>
-          new TenantConfigError({
+          new TenantReadError({
             cause: cause instanceof Error ? cause : new Error("Failed to parse tenant config JSON"),
             message: `Failed to parse tenant config from ${configPath}`
           }),
@@ -52,7 +57,7 @@ export const tenantConfigFromAlias: (
 
       return yield* TenantConfig.parse(ConfigProvider.fromUnknown(parsed)).pipe(
         Effect.mapError((error) =>
-          new TenantConfigError({
+          new TenantReadError({
             cause: new Error(error.message),
             message: `Failed to parse tenant config from ${configPath}`
           })
