@@ -4,9 +4,10 @@ A new service grounded in our client’s Pre-ETS operations.
 
 ## Setup
 
-Use Node.js **24.21.0** (pinned in `.node-version`) and pnpm **12.4.1**
-(pinned in `package.json`). Select that Node version with your preferred version
-manager, then install pnpm if needed with `npm install --global pnpm@12.4.1`.
+Use the Node.js version pinned in [`.node-version`](.node-version) and the pnpm
+version declared by `packageManager` in [`package.json`](package.json). Select that
+Node version with your preferred version manager, then install the declared pnpm
+version if needed.
 Run `pnpm install` from the repository root. For a reproducible installation, use
 `pnpm install --frozen-lockfile`.
 
@@ -85,86 +86,42 @@ The Compose file and migrations are the shared setup; the local database is not
 exposed as a public URL. See [Docker Compose for local development](docs/docker-compose.md)
 for inspection, persistence, and reset commands.
 
-#### Redis, Keycloak, and session setup
+#### Frontend pages
 
-Start Redis and local Keycloak before exercising session setup or OIDC login
-initiation. Apps stay on the host; Compose publishes loopback only. Keycloak
-imports the tracked realm at `docker/keycloak/pre-ets-realm.json` on first boot.
-Set `KC_BOOTSTRAP_ADMIN_USERNAME`, a generated
-`KC_BOOTSTRAP_ADMIN_PASSWORD`, and a generated `POSTGRES_PASSWORD` in the
-gitignored root `.env` as described above. The PostgreSQL password is required
-here because Compose validates the full model before starting this service
-subset:
-
-```sh
-docker compose up -d --wait redis keycloak
-docker compose exec redis redis-cli ping
-curl -sS -o /dev/null -w '%{http_code}\n' \
-  http://127.0.0.1:8080/realms/pre-ets/.well-known/openid-configuration
-```
-
-Copy `packages/frontend/.env.example` to `packages/frontend/.env.local`, keep
-`TENANT_RESOLUTION=static`, set `REDIS_URL=redis://127.0.0.1:6379`, and generate
-`SESSION_SIGNING_SECRET` with:
-
-```sh
-node -e 'console.log(require("node:crypto").randomBytes(32).toString("base64url"))'
-```
-
-Then `pnpm dev:frontend` and open `http://localhost:3000/` — expect Keycloak
-login (`demo` / `demo`). Issuer:
-`http://127.0.0.1:8080/realms/pre-ets`. See `docs/docker-compose.md`,
-`docs/session-state.md`, and `docs/authentication.md`. Optional local
+Redis and Keycloak are still defined in Compose. The frontend pages do not
+need them. Run `pnpm dev:frontend` and open `http://localhost:3000/` for the
+welcome page. `/auth/callback` renders the authentication-return fallback. The
+proxy forwards both routes with the incoming headers and leaves cookies and
+the response location unchanged. See `docs/authentication.md`. Optional local
 OpenTelemetry + Grafana uses Compose profile `observability` (service
 `otel-lgtm`); see `docs/observability.md`.
 
-Stop with `docker compose down`. Never run `FLUSHALL` against shared Redis.
-After editing the realm JSON, recreate Keycloak
-(`docker compose up -d --force-recreate keycloak`) and restart the frontend.
-
 ### Local tenant resolution
 
-Tenant Display Name and OIDC settings for this increment come from process
-environment, not a database. Session continuity uses the local Redis service
-above. Copy `packages/frontend/.env.example` to `packages/frontend/.env.local`
-(gitignored) and restart after edits (including after Keycloak reprovision).
+Copy `packages/frontend/.env.example` to `packages/frontend/.env.local`
+(gitignored). Set `TENANT_CONFIG_DIR` to an absolute directory of `{alias}.json`
+files, keep `TENANT_RESOLUTION=static`, and set `TENANT_STATIC_ALIAS` to the
+alias of one of those files. Restart the frontend after editing `.env.local`
+or a tenant file.
 
-Host association (default, including omitted `TENANT_RESOLUTION`) uses
-`TENANT_CONFIG_RECORDS_JSON` and `{slug}.localhost` locally or
-`{slug}.pathable.com` in production. Bare `localhost`, unknown hosts, and
-invalid hosts are refused with `forbidden()` (`Access denied.`, no redirect). Production never
-reads `TENANT_RESOLUTION` or `TENANT_LOCAL_CONFIG_JSON`.
-Unsupported mode values keep host association and log a safe `invalid-mode`
-diagnostic to stderr.
-
-Unauthenticated document visits to `/` initiate tenant-bound OIDC (or fail);
-they do not serve Display Name landing content. See `.env.example` for
-synthetic `oidc` fields and empty `OIDC_CLIENT_SECRETS_JSON`.
-
-Development-only static mode (include valid `oidc` for login initiation):
+`GET /_test/tenant-config` returns the selected tenant JSON. Host mode requires
+`BASE_HOSTNAME` and reads `{alias}.${BASE_HOSTNAME}`. See `docs/multi-tenancy.md`
+and `packages/frontend/.env.example`.
 
 ```sh
-TENANT_RESOLUTION=static \
-TENANT_LOCAL_CONFIG_JSON='{"slug":"springfield","config":{"displayName":"Local Demo","oidc":{"issuer":"http://127.0.0.1:8080/realms/pre-ets","clientId":"springfield-web","clientAuth":"public","connection":"springfield-idp"}}}' \
 pnpm dev:frontend
 ```
 
-Open `http://localhost:3000/` and expect login initiation toward the local
-issuer (or a documented failure page)—not Display Name landing. Invalid or
-missing static data returns HTTP 500 with instructions to supply a valid
-record and restart.
-
-See `specs/001-tenant-resolution/quickstart.md` for the full validation
-workflow.
+Open `http://localhost:3000/` for the welcome page.
 
 An Effect v4 backend is planned. Client workflows beyond this landing page are
 not implemented yet.
 
 ## Effect developer setup
 
-Frontend and backend use Effect **4.0.0-rc.113** (coordinated with matching
-`@effect/platform-node` on the backend). Both workspaces enable the Effect
-language-service plugin and follow the Effect-first AI workflow; product
+Frontend and backend use the coordinated Effect pins in the named `effect`
+catalog in [`pnpm-workspace.yaml`](pnpm-workspace.yaml). Both workspaces enable
+the Effect language-service plugin and follow the Effect-first AI workflow; product
 ownership is unchanged (frontend owns Next/OIDC/session; backend owns the
 Effect REST domain layer).
 
@@ -181,8 +138,8 @@ pnpm effect-solutions show services-and-layers error-handling testing
 The package script runs the pinned CLI through Node, bypassing its Bun shebang.
 Its bundled executable supports macOS and Linux on x64/arm64 and provides offline
 documentation. No global Bun installation is required. CLI examples must be
-checked against installed **4.0.0-rc.113** types; its dependencies do not change
-the product pin set. See [Effect agent guidance](docs/engineering/effect-guidance.md)
+checked against the target workspace's installed Effect types; its dependencies
+do not change the product pin set. See [Effect agent guidance](docs/engineering/effect-guidance.md)
 for coding boundaries.
 
 Optionally clone Effect source for local examples and API reference (main / RC
@@ -256,30 +213,85 @@ root.
 
 ## Fallow
 
-Run `pnpm check:unused` for dead-code and dependency checks, or `pnpm fallow`
-for full analysis including duplication and complexity. To compare changes with
-an available Git base, use `pnpm fallow audit --base origin/main`.
+Run `pnpm check:unused` for dead-code and dependency checks. The root command runs
+`fallow:unused` in the root and every workspace in parallel, completing all scopes
+and failing if any scope fails. Each workspace owns its `.fallowrc.json` and local
+`fallow:unused` / `fallow:audit` scripts. Run a workspace independently with
+`pnpm --filter @pathableai/pre-ets-frontend fallow:unused`.
 
-The configuration uses glob entry points for workspace sources, unit tests, and
-Cucumber support code because start scripts run compiled output: the backend
-`dist` program and the frontend `.next` server. ESLint configurations are discovered by
-Fallow’s ESLint integration. Generated output and Next.js `next-env.d.ts` are
-excluded, and unused dependencies
-remain errors. No public-library exemptions or blanket suppressions are enabled. The Fallow
-configuration declares the four dprint plugins as tooling dependencies because
-Fallow does not resolve their `npm:` references in `dprint.json`.
+The root configuration excludes `packages/**` and owns repository-level tests,
+E2E/BDD support, and tooling. The backend configuration uses `src/index.ts` as its
+runtime root and retains the existing `@effect/platform-node` dependency exception.
+Frontend production code counts as live only when reachable from
+Next.js framework entry points, including routes, layouts, proxy, and instrumentation.
+Library files, ordinary helpers under `app`, and server-action modules must be
+imported by reachable app code. Imports from unit tests or repository E2E/BDD
+fixtures do not establish frontend production liveness.
+
+Frontend production mode applies only to dead-code analysis, so audit health and
+duplication checks still include frontend tests and tooling files. Backend and root
+analysis retain their normal test/tooling reachability. No frontend source-directory
+glob grants automatic liveness.
+
+Run `pnpm fallow` for full analysis of root-owned files, or
+`pnpm --filter @pathableai/pre-ets-frontend exec fallow` for full frontend analysis.
+To audit all scopes against an available Git base, run
+`FALLOW_AUDIT_BASE=origin/main pnpm check:changes`. CI uses the same dispatcher with
+its event's base commit, so every scope compares against the same base.
+
+The root configuration declares the dprint npm plugins and the Effect language-service
+schema dependency as tooling references that Fallow does not resolve from their
+configuration strings.
 
 ## Renovate
 
 `renovate.json` follows the update policy in `next-level-preets`, including groups
-for the anticipated Effect, React/Next, PathAble, lint, test, Docker, and GitHub
-Actions dependencies. Rules for tools not yet installed remain inactive until
+for Effect, React/Next, PathAble, ESLint, dprint, Prettier, Git hooks,
+OpenTelemetry, tests, Docker, and GitHub Actions dependencies. Rules for tools not
+yet installed remain inactive until
 those dependencies exist. Node pins, Node types, and package engines are grouped.
 
 Updates run outside office hours in America/New_York, with lockfile maintenance
 on Saturdays between midnight and 4 a.m. The policy enables PR/platform automerge
-for eligible updates; Effect, React/Next, PathAble, tests, Node, and major upgrades
-require review. TypeScript major upgrades are disabled pending lint compatibility.
+for eligible updates; Effect, React/Next, PathAble, tests, Node, OpenTelemetry,
+and major upgrades require review. TypeScript major upgrades are disabled pending
+lint compatibility.
+
+Non-major ESLint updates include TypeScript, `typescript-eslint`, ESLint plugins,
+and `globals` so the compiler and lint integrations can be reviewed together.
+The `typescript-eslint` umbrella package owns its matching parser and plugin
+versions. dprint and its plugins, Prettier and its plugins, and Git hook tooling
+have separate update groups. OpenTelemetry SDKs, instrumentation, semantic
+conventions, and the Next.js integration form a reviewed runtime group;
+`@effect/opentelemetry` remains in the Effect group. React/Next and Vite/Vitest
+retain their existing groups, including Vitest companion packages.
+
+Node types remain declared at the root and grouped with the Node runtime. Keep
+the types major aligned with the supported runtime. A catalog does not constrain
+transitive dependency resolutions; add a scoped override only when a concrete
+compatible dependency edge needs it.
+
+npm updates wait one day plus a one-hour publication buffer before becoming
+eligible. pnpm enforces the one-day release age for direct and transitive
+dependencies; Renovate runs `pnpm dedupe` after lockfile updates. An independently
+published transitive dependency can still delay installation. Wait for it to age
+instead of routinely adding release-age exceptions.
+
+The named `effect` catalog in `pnpm-workspace.yaml` owns exact versions for core
+Effect and its runtime/test integrations. Workspace manifests reference
+`catalog:effect`. Review the catalog entries together: grouping does not guarantee
+peer compatibility, and pnpm rejects incompatible peers. Integration updates must
+wait until a compatible core release is published. Parent-specific overrides in
+`pnpm-workspace.yaml` keep the Node integration and Effect Solutions' older Bun
+integration on their matching shared-platform implementations; their declared
+ranges otherwise admit shared-platform releases with incompatible core peers. Reassess these
+overrides when updating the affected parent packages.
+
+Release-age exceptions should be temporary and version-specific. Remove an
+exception once its release has aged sufficiently. `minimumReleaseAgeExcludePrune`
+automatically removes versions no longer resolved by the written lockfile; it does
+not remove exceptions just because their releases have aged. Keep the existing
+lockfile when updating dependencies and let pnpm regenerate it.
 
 The Renovate GitHub App must have access to this repository. Platform automerge
 also requires GitHub repository support and permission, and follows configured
@@ -287,10 +299,11 @@ branch protections and required checks. This tooling setup does not enable the
 App, change GitHub settings, or establish CI/required checks. Configuration alone
 does not activate Renovate or guarantee validated automatic merges.
 
-Validate configuration without adding Renovate as a project dependency:
+Validate configuration without adding Renovate as a project dependency. The command
+pins a mature validator release so validation is reproducible:
 
 ```sh
-pnpm --package=renovate@44.82.3 dlx renovate-config-validator --strict --no-global renovate.json
+pnpm --package=renovate@44.145.3 dlx renovate-config-validator --strict --no-global renovate.json
 ```
 
 On environments without Renovate’s optional native RE2 module, the validator
@@ -343,8 +356,9 @@ Successful fixes are staged automatically. lint-staged’s default backup, rollb
 and partial-staging protections remain enabled: unstaged changes to partially
 staged files are hidden during checks and restored afterward. A failing task
 blocks the commit. After lint-staged succeeds, the hook runs `pnpm check:changes`
-once at the repository root. This Fallow audit uses the `new-only` gate and
-automatically resolves its comparison base from the upstream or default branch.
+once at the repository root. It runs root, frontend, and backend Fallow audits
+in parallel with distinct gate markers. All use the `new-only` gate and automatically
+resolve their comparison base from the upstream or default branch.
 It checks the working tree, including restored unstaged and untracked changes,
 so unfinished local work can block a commit. Error-severity findings and audit
 runtime errors block the commit; warnings remain advisory.
@@ -386,7 +400,7 @@ Examples:
 (`pnpm test:bdd`) on relevant pull requests, pushes to `main`, and manual dispatch.
 Application, production-server and development-server partitions run serially; a failed partition
 still allows later partitions to report. **CI / BDD Dry** reports discovery separately.
-See [BDD commands and evidence](features/README.md). Real-Keycloak E2E remains manual.
+See [BDD commands and evidence](features/README.md). Sign-in browser specs are described in `e2e/README.md`.
 Branch-protection settings are managed separately from this refactor.
 
 CI uses the pinned Node and pnpm versions, a frozen lockfile, and pnpm store caching.

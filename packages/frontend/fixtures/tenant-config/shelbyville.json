@@ -1,8 +1,0 @@
-{
-  "displayName": "Shelbyville Demo",
-  "oidc": {
-    "issuer": "http://127.0.0.1:8080/realms/pre-ets",
-    "clientId": "shelbyville-web",
-    "clientAuth": "public"
-  }
-}

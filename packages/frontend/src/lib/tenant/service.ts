@@ -1,17 +1,15 @@
-import { type Config, Context, Effect, FileSystem, flow, Layer, Path, type Result } from "effect"
+import { type Config, Context, Effect, FileSystem, Layer, Path, type Result } from "effect"
 
 import type { ServerConfig } from "../config/index.ts"
 import type { TenantAlias, TenantConfig, TenantConfigError } from "./schema.ts"
 
 import { tenantAliasFromServerConfig } from "./alias.ts"
-import { tenantConfigFromAlias, tenantConfigPathFromAlias } from "./config.ts"
+import { tenantConfigFromAlias } from "./config.ts"
 
 export class TenantConfigService extends Context.Service<TenantConfigService, {
   readonly getAlias: (host: string) => Result.Result<TenantAlias, TenantConfigError>
   readonly getConfigFromAlias: (alias: TenantAlias) => Effect.Effect<TenantConfig, TenantConfigError>
   readonly getConfigFromHost: (host: string) => Effect.Effect<TenantConfig, TenantConfigError>
-  readonly getConfigPath: (alias: TenantAlias) => string
-  readonly getTenantResolutionMode: () => "host" | "static"
 }>()("@pathableai/pre-ets-frontend/TenantConfigService") {
   static readonly layer = (config: Config.Success<typeof ServerConfig>) =>
     Layer.effect(
@@ -22,19 +20,16 @@ export class TenantConfigService extends Context.Service<TenantConfigService, {
 
         const getAlias = tenantAliasFromServerConfig(config.tenant)
         const getConfigFromAlias = tenantConfigFromAlias(config.tenant, path, fs)
-        const getConfigFromHost = flow(
-          getAlias,
-          Effect.fromResult,
-          Effect.flatMap((alias) => getConfigFromAlias(alias))
-        )
-        const getConfigPath = tenantConfigPathFromAlias(config.tenant, path)
+        const getConfigFromHost = Effect.fn(function*(host: string) {
+          const alias = yield* Effect.fromResult(getAlias(host))
+          yield* Effect.annotateCurrentSpan("tenant.alias", alias)
+          return yield* getConfigFromAlias(alias)
+        })
 
         return TenantConfigService.of({
           getAlias,
           getConfigFromAlias,
-          getConfigFromHost,
-          getConfigPath,
-          getTenantResolutionMode: () => config.tenant.resolution
+          getConfigFromHost
         })
       })
     )

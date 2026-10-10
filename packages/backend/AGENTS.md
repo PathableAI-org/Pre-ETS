@@ -2,8 +2,9 @@
 
 Read the root [AGENTS.md](../../AGENTS.md) and
 [Effect agent guidance](../../docs/engineering/effect-guidance.md) before Effect
-work. Consult relevant Effect Solutions topics, then check installed Effect
-**4.0.0-rc.113** types.
+work. Consult relevant Effect Solutions topics, then check this workspace's installed Effect
+types. Product pins come from the named `effect` catalog in
+[`pnpm-workspace.yaml`](../../pnpm-workspace.yaml).
 
 Own the planned stateless RESTful Effect v4 domain service: business rules,
 domain authorization, durable domain persistence, Effect services, workflows, and

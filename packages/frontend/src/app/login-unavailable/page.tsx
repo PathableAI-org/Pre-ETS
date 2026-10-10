@@ -2,10 +2,6 @@ import { Alert, Container, Heading, Link, Page, Stack, Text } from "@pathableai/
 
 export const dynamic = "force-dynamic"
 
-/**
- * App-owned provider / transaction failure page (outside `(app)`).
- * Works without a session cookie. Distinct from HTTP 403 config refusal.
- */
 export default function LoginUnavailablePage() {
   return (
     <Page>

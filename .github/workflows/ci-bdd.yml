@@ -114,8 +114,6 @@ jobs:
           echo "SESSION_STORE_TIMEOUT_MS=2000" >> "$GITHUB_ENV"
           echo "SESSION_KEY_PREFIX=ci:bdd:${{ github.run_id }}:" >> "$GITHUB_ENV"
           echo "OIDC_TX_KEY_PREFIX=ci:bdd:oidc-tx:${{ github.run_id }}:" >> "$GITHUB_ENV"
-      - name: Build frontend for production scenarios
-        run: pnpm --filter @pathableai/pre-ets-frontend build
       - name: Run harness checks
         run: pnpm test:bdd:checks
       - name: Run requirements BDD

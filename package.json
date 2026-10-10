@@ -11,25 +11,26 @@
     "lint": "eslint \"*.js\" \"*.mjs\" tests e2e --max-warnings=0 && pnpm --filter \"./packages/*\" run lint && pnpm lint:gherkin",
     "lint:fix": "eslint \"*.js\" \"*.mjs\" tests e2e --max-warnings=0 --fix && pnpm --filter \"./packages/*\" run lint:fix && pnpm lint:gherkin",
     "fallow": "fallow",
-    "check:unused": "fallow dead-code",
+    "check:unused": "pnpm --include-workspace-root --no-bail run --parallel fallow:unused",
     "format:check": "dprint check \"*\" .github docs tests e2e && pnpm --filter \"./packages/*\" run format:check && pnpm format:gherkin:check",
     "format:write": "dprint fmt \"*\" .github docs tests e2e && pnpm --filter \"./packages/*\" run format:write && pnpm format:gherkin:write",
     "prepare": "husky",
-    "check:changes": "fallow audit --gate new-only --gate-marker pre-commit",
+    "check:changes": "pnpm --include-workspace-root --no-bail run --parallel fallow:audit",
     "effect-solutions": "node node_modules/effect-solutions/bin.js",
     "test:e2e": "playwright test --config e2e/playwright.config.ts",
     "test:e2e:ui": "playwright test --config e2e/playwright.config.ts --ui",
-    "test:bdd": "cucumber-js --config cucumber.mjs",
+    "test:bdd": "pnpm --filter @pathableai/pre-ets-frontend build && cucumber-js --config cucumber.mjs",
     "test:bdd:dry": "cucumber-js --config cucumber.mjs --dry-run",
     "test:bdd:checks": "node --test tests/bdd/checks/*.test.*",
     "lint:gherkin": "gherkin-lint --config gherkin-lint.json \"tests/bdd/requirements/**/*.feature\"",
     "format:gherkin:check": "prettier --no-config --no-editorconfig --plugin prettier-plugin-gherkin --tab-width 2 --end-of-line lf --print-width 120 --check \"tests/bdd/requirements/**/*.feature\"",
-    "format:gherkin:write": "prettier --no-config --no-editorconfig --plugin prettier-plugin-gherkin --tab-width 2 --end-of-line lf --print-width 120 --write \"tests/bdd/requirements/**/*.feature\""
+    "format:gherkin:write": "prettier --no-config --no-editorconfig --plugin prettier-plugin-gherkin --tab-width 2 --end-of-line lf --print-width 120 --write \"tests/bdd/requirements/**/*.feature\"",
+    "fallow:unused": "fallow dead-code",
+    "fallow:audit": "fallow audit --gate new-only --gate-marker root"
   },
   "dependencies": {
-    "@effect/platform-node": "4.0.2",
-    "effect": "4.0.2",
-    "redis": "6.3.0"
+    "@effect/platform-node": "catalog:effect",
+    "effect": "catalog:effect"
   },
   "devDependencies": {
     "@cucumber/cucumber": "13.3.0",
@@ -39,24 +40,24 @@
     "@effect/language-service": "0.87.4",
     "@eslint/js": "10.0.1",
     "@playwright/test": "1.64.0",
-    "@types/node": "24.19.1",
+    "@types/node": "24.19.2",
     "dprint": "0.61.1",
     "dprint-plugin-yaml": "0.6.0",
     "effect-solutions": "0.5.3",
     "eslint": "10.12.0",
     "eslint-plugin-perfectionist": "5.12.1",
-    "fallow": "3.32.0",
+    "fallow": "3.33.1",
     "gherkin-lint": "4.2.4",
     "globals": "17.13.0",
     "husky": "9.1.7",
     "lint-staged": "17.6.0",
-    "playwright": "1.63.0",
-    "prettier": "3.9.9",
+    "playwright": "1.64.0",
+    "prettier": "3.9.10",
     "prettier-plugin-gherkin": "4.0.0",
     "typescript": "6.0.3",
     "typescript-eslint": "8.71.1"
   },
-  "packageManager": "pnpm@12.9.1",
+  "packageManager": "pnpm@12.10.1",
   "engines": {
     "node": ">=24"
   }
