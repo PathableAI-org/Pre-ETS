@@ -1,7 +1,7 @@
 "use client"
 
 import { Button, CardGrid, Cluster, FormGroup, Heading, Input, Label, Stack, Surface, Text } from "@pathableai/react"
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 
 import { Field, Narrative } from "./form-fields.tsx"
 import { displayDuration, durationMs, localDateTime, visitClockMs } from "./visit-time.ts"
@@ -19,6 +19,7 @@ const initialVisit: Visit = { date: "", end: "", id: 1, running: false, start: "
 export function VisitLog() {
   const [visits, setVisits] = useState<Visit[]>([initialVisit])
   const [now, setNow] = useState(0)
+  const focusAfterRemove = useRef<null | string>(null)
 
   useEffect(() => {
     if (!visits.some((visit) => visit.running)) {
@@ -32,14 +33,28 @@ export function VisitLog() {
     }
   }, [visits])
 
+  useEffect(() => {
+    const targetId = focusAfterRemove.current
+    if (targetId === null) {
+      return
+    }
+    focusAfterRemove.current = null
+    document.getElementById(targetId)?.focus()
+  }, [visits])
+
+  function removeVisit(id: number) {
+    const index = visits.findIndex((visit) => visit.id === id)
+    const adjacent = visits[index + 1] ?? visits[index - 1]
+    focusAfterRemove.current = adjacent === undefined ? "onsite-add-visit" : `visit-${String(adjacent.id)}-heading`
+    setVisits((current) => current.filter((visit) => visit.id !== id))
+  }
+
   function updateVisit(id: number, change: Partial<Visit>) {
     setVisits((current) => current.map((visit) => visit.id === id ? { ...visit, ...change } : visit))
   }
 
   const recordedMs = visits.reduce((total, visit) => total + (durationMs(visit.start, visit.end) ?? 0), 0)
-  const hasInvalidTime = visits.some((visit) =>
-    visit.start !== "" && visit.end !== "" && durationMs(visit.start, visit.end) === undefined
-  )
+  const hasInvalidTime = visits.some((visit) => visit.end !== "" && durationMs(visit.start, visit.end) === undefined)
 
   return (
     <Surface aria-labelledby="onsite-log" as="section">
@@ -53,12 +68,13 @@ export function VisitLog() {
               updateVisit(visit.id, change)
             }}
             onRemove={() => {
-              setVisits((current) => current.filter((item) => item.id !== visit.id))
+              removeVisit(visit.id)
             }}
             visit={visit}
           />
         ))}
         <Button
+          id="onsite-add-visit"
           onClick={() => {
             setVisits((current) => [...current, {
               date: "",
@@ -113,8 +129,10 @@ function VisitEntry({ now, onChange, onRemove, visit }: {
   return (
     <Stack aria-labelledby={`${prefix}-heading`} as="section" gap="md">
       <Cluster gap="md">
-        <Heading id={`${prefix}-heading`} level={3}>Visit {visit.id}</Heading>
-        <Button onClick={onRemove} type="button" variant="low-emphasis">Remove visit</Button>
+        <Heading id={`${prefix}-heading`} level={3} tabIndex={-1}>Visit {visit.id}</Heading>
+        <Button id={`onsite-remove-${String(visit.id)}`} onClick={onRemove} type="button" variant="low-emphasis">
+          Remove visit
+        </Button>
       </Cluster>
       <CardGrid gap="sm" variant="auto-fit">
         <VisitDate onChange={onChange} prefix={prefix} visit={visit} />
@@ -181,7 +199,7 @@ function VisitTimes({ onChange, prefix, visit }: {
   prefix: string
   visit: Visit
 }) {
-  const invalid = visit.start !== "" && visit.end !== "" && durationMs(visit.start, visit.end) === undefined
+  const invalid = visit.end !== "" && durationMs(visit.start, visit.end) === undefined
   return (
     <>
       <CardGrid gap="sm" variant="auto-fit">
@@ -191,7 +209,8 @@ function VisitTimes({ onChange, prefix, visit }: {
             id={`${prefix}-start`}
             name={`${prefix}-start`}
             onChange={(event) => {
-              onChange({ start: event.currentTarget.value })
+              const start = event.currentTarget.value
+              onChange({ running: start === "" ? false : visit.running, start })
             }}
             step={1}
             type="datetime-local"
@@ -212,7 +231,9 @@ function VisitTimes({ onChange, prefix, visit }: {
           />
         </FormGroup>
       </CardGrid>
-      {invalid ? <Text role="status">End time is before start time. Check the recorded times.</Text> : null}
+      {invalid
+        ? <Text role="status">Start time is required and end time must not be before start time.</Text>
+        : null}
     </>
   )
 }
