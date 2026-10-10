@@ -5,8 +5,8 @@ workflow handoff**, provided on 2026-10-06, and the source review below. Draftin
 The active workflow requirements and referenced shared requirements remain `proposed` and `unverified`.
 
 Non-trivial product data in this workflow is assumed to be PHI under maintainer direction on 2026-10-09.
-[HIPAA protection of product data](hipaa.md#scope-and-regulatory-basis) supplies the cross-cutting regulatory
-requirements and production gates. This includes incomplete input, deleted records, identifying diagnostics,
+[HIPAA protection of product data](hipaa.md#scope-and-regulatory-basis) supplies the cross-cutting software
+safeguards; operational requirements are deferred separately. This includes incomplete input, deleted records, identifying diagnostics,
 and backups. Workflow deferrals do not waive applicable regulatory safeguards; ordinary editing and undo are
 not substitutes for authorized amendment, audit, or retention processes.
 
@@ -293,13 +293,14 @@ No reviewed, executed evidence has been recorded. Source review does not establi
 
 ### Statement
 
-A coach must be able to reopen and update their own non-deleted on-site service record without a submission or approval lifecycle.
+A coach must be able to reopen their own non-deleted on-site service record and update its service times and optional narratives without a submission or approval lifecycle.
 
 ### Rationale and sources
 
 The service record can be corrected as understanding develops without importing monthly-report governance.
 
 - Source: Handoff steps 7–8. Source labels refer to the reviewed material above.
+- Refinement: PR #129 review follow-up (2026-10-10) limits the editing promise to service times and narratives; participant correction and coach reassignment remain unresolved.
 - Decision: Pending requirements review and maintainer acceptance; the handoff supplies the proposed product direction.
 
 ### Acceptance criteria

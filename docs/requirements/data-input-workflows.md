@@ -1,8 +1,8 @@
 # Generalized data-input workflows
 
 Non-trivial product data in this workflow is assumed to be PHI under maintainer direction on 2026-10-09.
-[HIPAA protection of product data](hipaa.md#scope-and-regulatory-basis) supplies the cross-cutting regulatory
-requirements and production gates. This includes incomplete input, deleted records, identifying diagnostics,
+[HIPAA protection of product data](hipaa.md#scope-and-regulatory-basis) supplies the cross-cutting software
+safeguards; operational requirements are deferred separately. This includes incomplete input, deleted records, identifying diagnostics,
 and backups. Workflow deferrals do not waive applicable regulatory safeguards; ordinary editing and undo are
 not substitutes for authorized amendment, audit, or retention processes.
 
