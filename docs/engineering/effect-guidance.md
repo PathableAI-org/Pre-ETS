@@ -9,9 +9,8 @@ remain outside the Effect-first AI workflow unless they explicitly opt in.
 
 Follow the [README developer setup](../../README.md#effect-developer-setup),
 then run `pnpm effect-solutions list` and read only the topics relevant to your
-change. Verify examples against installed Effect declarations (currently
-**4.0.0-rc.113**). Do not run the CLI's interactive setup to rewrite this
-monorepo. `open-issue` sends external feedback and requires explicit user
+change. Verify examples against the target workspace's installed Effect
+declarations. Do not run the CLI's interactive setup to rewrite this monorepo. `open-issue` sends external feedback and requires explicit user
 authorization.
 
 Source precedence:
@@ -21,8 +20,9 @@ Source precedence:
    and examples.
 3. Use Effect Solutions for patterns, checking every API against installed types.
 
-Product workspaces currently use **Effect 4.0.0-rc.113** (coordinated with
-`@effect/platform-node` at the same pin). Allowed installed-truth APIs include
+Product workspaces use the coordinated Effect pins in the named `effect` catalog
+in [`pnpm-workspace.yaml`](../../pnpm-workspace.yaml), including
+`@effect/platform-node`. Allowed installed-truth APIs include
 `Context.Service` and `Schema.TaggedError`. Do not expand into unrelated
 `effect/unstable/*` modules unless a later plan authorizes a specific surface.
 Report documentation drift instead of inventing APIs or weakening contracts to
