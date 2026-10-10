@@ -221,14 +221,30 @@ configuration strings.
 ## Renovate
 
 `renovate.json` follows the update policy in `next-level-preets`, including groups
-for the anticipated Effect, React/Next, PathAble, lint, test, Docker, and GitHub
-Actions dependencies. Rules for tools not yet installed remain inactive until
+for Effect, React/Next, PathAble, ESLint, dprint, Prettier, Git hooks,
+OpenTelemetry, tests, Docker, and GitHub Actions dependencies. Rules for tools not
+yet installed remain inactive until
 those dependencies exist. Node pins, Node types, and package engines are grouped.
 
 Updates run outside office hours in America/New_York, with lockfile maintenance
 on Saturdays between midnight and 4 a.m. The policy enables PR/platform automerge
-for eligible updates; Effect, React/Next, PathAble, tests, Node, and major upgrades
-require review. TypeScript major upgrades are disabled pending lint compatibility.
+for eligible updates; Effect, React/Next, PathAble, tests, Node, OpenTelemetry,
+and major upgrades require review. TypeScript major upgrades are disabled pending
+lint compatibility.
+
+Non-major ESLint updates include TypeScript, `typescript-eslint`, ESLint plugins,
+and `globals` so the compiler and lint integrations can be reviewed together.
+The `typescript-eslint` umbrella package owns its matching parser and plugin
+versions. dprint and its plugins, Prettier and its plugins, and Git hook tooling
+have separate update groups. OpenTelemetry SDKs, instrumentation, semantic
+conventions, and the Next.js integration form a reviewed runtime group;
+`@effect/opentelemetry` remains in the Effect group. React/Next and Vite/Vitest
+retain their existing groups, including Vitest companion packages.
+
+Node types remain declared at the root and grouped with the Node runtime. Keep
+the types major aligned with the supported runtime. A catalog does not constrain
+transitive dependency resolutions; add a scoped override only when a concrete
+compatible dependency edge needs it.
 
 npm updates wait one day plus a one-hour publication buffer before becoming
 eligible. pnpm enforces the one-day release age for direct and transitive
