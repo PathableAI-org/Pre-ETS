@@ -100,31 +100,27 @@ the Effect language-service plugin and follow the Effect-first AI workflow; prod
 ownership is unchanged (frontend owns Next/OIDC/session; backend owns the
 Effect REST domain layer).
 
-After installing dependencies, read the bundled Effect Solutions topics from the
-repository root:
+Install dependencies from the repository root:
 
 ```sh
 pnpm install --frozen-lockfile
-pnpm effect-solutions list
-pnpm effect-solutions show project-setup tsconfig
-pnpm effect-solutions show services-and-layers error-handling testing
 ```
 
-The package script runs the pinned CLI through Node, bypassing its Bun shebang.
-Its bundled executable supports macOS and Linux on x64/arm64 and provides offline
-documentation. No global Bun installation is required. CLI examples must be
-checked against the target workspace's installed Effect types; its dependencies
-do not change the product pin set. See [Effect agent guidance](docs/engineering/effect-guidance.md)
-for coding boundaries.
+Read the [upstream Effect documentation](https://effect.website/docs/) relevant
+to your change and check examples against the target workspace's installed Effect
+declarations. The installed declarations and repository contracts are authoritative
+when documentation differs. See [Effect agent guidance](docs/engineering/effect-guidance.md)
+for source precedence and coding boundaries.
 
-Optionally clone Effect source for local examples and API reference (main / RC
-tags matching the product pin):
+Optionally clone Effect source for local examples and API reference, selecting the
+tag matching the installed Effect version (the example below matches the current
+`effect` catalog):
 
 ```sh
-mkdir -p ~/.local/share/effect-solutions
-git clone --depth 1 --branch main \
+mkdir -p ~/.local/share/effect
+git clone --depth 1 --branch effect@4.0.2 \
   https://github.com/Effect-TS/effect.git \
-  ~/.local/share/effect-solutions/effect-v4
+  ~/.local/share/effect/source
 ```
 
 If that directory already exists, inspect it or choose a different location rather
@@ -256,11 +252,10 @@ The named `effect` catalog in `pnpm-workspace.yaml` owns exact versions for core
 Effect and its runtime/test integrations. Workspace manifests reference
 `catalog:effect`. Review the catalog entries together: grouping does not guarantee
 peer compatibility, and pnpm rejects incompatible peers. Integration updates must
-wait until a compatible core release is published. Parent-specific overrides in
-`pnpm-workspace.yaml` keep the Node integration and Effect Solutions' older Bun
-integration on their matching shared-platform implementations; their declared
-ranges otherwise admit shared-platform releases with incompatible core peers. Reassess these
-overrides when updating the affected parent packages.
+wait until a compatible core release is published. The parent-specific override in
+`pnpm-workspace.yaml` keeps the Node integration on its matching shared-platform
+implementation; its declared range otherwise admits shared-platform releases with
+incompatible core peers. Reassess this override when updating the Node package.
 
 Release-age exceptions should be temporary and version-specific. Remove an
 exception once its release has aged sufficiently. `minimumReleaseAgeExcludePrune`

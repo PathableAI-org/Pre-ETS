@@ -133,8 +133,8 @@ failure signals MUST NOT be used to obtain a passing result.
   RESTful Effect v4 service; this decision does not imply that backend workflows already exist.
 - Before designing or changing Effect code in `packages/frontend` or `packages/backend`, agents
   MUST read [Effect agent guidance](../../docs/engineering/effect-guidance.md) and the affected
-  workspace `AGENTS.md`. Consult Effect Solutions topics and verify APIs against installed Effect
-  declarations. Do not run interactive Effect Solutions setup that rewrites the monorepo.
+  workspace `AGENTS.md`. Consult relevant upstream Effect documentation and source matching the
+  installed version, then verify APIs against installed Effect declarations.
 - The frontend owns OIDC login through the broker and first-party server-side sessions. The broker
   handles tenant identity-provider protocols. The backend verifies broker tokens independently.
 - Redis holds frontend session state. Postgres holds separately owned frontend tenant configuration
