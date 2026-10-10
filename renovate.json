@@ -17,7 +17,6 @@
     "docker-compose",
     "dockerfile",
     "nodenv",
-    "custom.regex",
   ],
   "labels": ["dependencies", "renovate"],
   "prConcurrentLimit": 8,
@@ -33,19 +32,6 @@
   "vulnerabilityAlerts": {
     "labels": ["dependencies", "renovate", "security"],
   },
-  "customManagers": [
-    {
-      "customType": "regex",
-      "description": "Keep package.json engines.node aligned with the .node-version major.",
-      "managerFilePatterns": ["/(^|/)package\\.json$/"],
-      "matchStrings": [
-        "\"engines\"\\s*:\\s*\\{[\\s\\S]*?\"node\"\\s*:\\s*\">=(?<currentValue>\\d+(?:\\.\\d+)*)\"",
-      ],
-      "datasourceTemplate": "node-version",
-      "depNameTemplate": "node",
-      "versioningTemplate": "node",
-    },
-  ],
   "packageRules": [
     {
       "description": "Wait for pnpm's one-day cooldown, including companion package publication lag, and deduplicate the resulting lockfile.",
@@ -218,12 +204,20 @@
     },
     {
       "description": "Keep Node runtime pins coordinated (.node-version, engines, Docker node images, @types/node).",
-      "matchManagers": ["nodenv", "dockerfile", "npm", "custom.regex"],
+      "matchManagers": ["nodenv", "dockerfile", "npm"],
       "matchPackageNames": ["node", "@types/node"],
       "groupName": "node runtime",
       "groupSlug": "node-runtime",
+      "separateMajorMinor": false,
       "automerge": false,
       "addLabels": ["javascript", "node"],
+    },
+    {
+      "description": "Preserve the Node engine minimum instead of pinning it to an exact runtime version.",
+      "matchManagers": ["npm"],
+      "matchDepTypes": ["engines"],
+      "matchPackageNames": ["node"],
+      "rangeStrategy": "replace",
     },
     {
       "description": "Never auto-merge major version upgrades.",
