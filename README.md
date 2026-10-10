@@ -4,9 +4,10 @@ A new service grounded in our client’s Pre-ETS operations.
 
 ## Setup
 
-Use Node.js **24.21.0** (pinned in `.node-version`) and pnpm **12.4.1**
-(pinned in `package.json`). Select that Node version with your preferred version
-manager, then install pnpm if needed with `npm install --global pnpm@12.4.1`.
+Use the Node.js version pinned in [`.node-version`](.node-version) and the pnpm
+version declared by `packageManager` in [`package.json`](package.json). Select that
+Node version with your preferred version manager, then install the declared pnpm
+version if needed.
 Run `pnpm install` from the repository root. For a reproducible installation, use
 `pnpm install --frozen-lockfile`.
 
@@ -93,9 +94,9 @@ not implemented yet.
 
 ## Effect developer setup
 
-Frontend and backend use Effect **4.0.0-rc.113** (coordinated with matching
-`@effect/platform-node` on the backend). Both workspaces enable the Effect
-language-service plugin and follow the Effect-first AI workflow; product
+Frontend and backend use the coordinated Effect pins in the named `effect`
+catalog in [`pnpm-workspace.yaml`](pnpm-workspace.yaml). Both workspaces enable
+the Effect language-service plugin and follow the Effect-first AI workflow; product
 ownership is unchanged (frontend owns Next/OIDC/session; backend owns the
 Effect REST domain layer).
 
@@ -112,8 +113,8 @@ pnpm effect-solutions show services-and-layers error-handling testing
 The package script runs the pinned CLI through Node, bypassing its Bun shebang.
 Its bundled executable supports macOS and Linux on x64/arm64 and provides offline
 documentation. No global Bun installation is required. CLI examples must be
-checked against installed **4.0.0-rc.113** types; its dependencies do not change
-the product pin set. See [Effect agent guidance](docs/engineering/effect-guidance.md)
+checked against the target workspace's installed Effect types; its dependencies
+do not change the product pin set. See [Effect agent guidance](docs/engineering/effect-guidance.md)
 for coding boundaries.
 
 Optionally clone Effect source for local examples and API reference (main / RC
@@ -229,16 +230,39 @@ on Saturdays between midnight and 4 a.m. The policy enables PR/platform automerg
 for eligible updates; Effect, React/Next, PathAble, tests, Node, and major upgrades
 require review. TypeScript major upgrades are disabled pending lint compatibility.
 
+npm updates wait one day plus a one-hour publication buffer before becoming
+eligible. pnpm enforces the one-day release age for direct and transitive
+dependencies; Renovate runs `pnpm dedupe` after lockfile updates. An independently
+published transitive dependency can still delay installation. Wait for it to age
+instead of routinely adding release-age exceptions.
+
+The named `effect` catalog in `pnpm-workspace.yaml` owns exact versions for core
+Effect and its runtime/test integrations. Workspace manifests reference
+`catalog:effect`. Review the catalog entries together: grouping does not guarantee
+peer compatibility, and pnpm rejects incompatible peers. Integration updates must
+wait until a compatible core release is published. Parent-specific overrides in
+`pnpm-workspace.yaml` keep the Node integration and Effect Solutions' older Bun
+integration on their matching shared-platform implementations; their declared
+ranges otherwise admit shared-platform releases with incompatible core peers. Reassess these
+overrides when updating the affected parent packages.
+
+Release-age exceptions should be temporary and version-specific. Remove an
+exception once its release has aged sufficiently. `minimumReleaseAgeExcludePrune`
+automatically removes versions no longer resolved by the written lockfile; it does
+not remove exceptions just because their releases have aged. Keep the existing
+lockfile when updating dependencies and let pnpm regenerate it.
+
 The Renovate GitHub App must have access to this repository. Platform automerge
 also requires GitHub repository support and permission, and follows configured
 branch protections and required checks. This tooling setup does not enable the
 App, change GitHub settings, or establish CI/required checks. Configuration alone
 does not activate Renovate or guarantee validated automatic merges.
 
-Validate configuration without adding Renovate as a project dependency:
+Validate configuration without adding Renovate as a project dependency. The command
+pins a mature validator release so validation is reproducible:
 
 ```sh
-pnpm --package=renovate@44.82.3 dlx renovate-config-validator --strict --no-global renovate.json
+pnpm --package=renovate@44.145.3 dlx renovate-config-validator --strict --no-global renovate.json
 ```
 
 On environments without Renovate’s optional native RE2 module, the validator
