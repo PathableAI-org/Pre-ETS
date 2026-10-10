@@ -48,10 +48,6 @@ Given("tenant resolution uses {string} mode", function(this: AppWorld, mode: str
 Given("the tenant directory is {string}", async function(this: AppWorld, condition: string) {
   const directory = this.directory
   const arrange: Record<string, () => Promise<void> | void> = {
-    "missing setting": () => {
-      // Shadow developer .env.local defaults with an empty required setting.
-      this.directory = ""
-    },
     "nonexistent": () => {
       this.directory = path.join(directory, "absent-directory")
     },

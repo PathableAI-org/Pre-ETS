@@ -3,8 +3,9 @@
 Feature: Unavailable tenant dashboard reachability
   The dashboard is missing when a host cannot select a tenant file, and a server
   failure when static mode selects an alias with no file.
-  Directory failures are server failures; unreadable or malformed selected files
-  are ordinary missing tenants in either mode.
+  A parsed directory setting that does not exist or cannot be read is a server
+  failure. Unreadable or malformed selected files are ordinary missing tenants
+  in either mode.
 
   Scenario: An absent path on a reachable tenant is not found
     Given production tenant sites for Springfield and Shelbyville
@@ -59,8 +60,6 @@ Feature: Unavailable tenant dashboard reachability
 
     Examples:
       | mode   | condition       |
-      | host   | missing setting |
-      | static | missing setting |
       | host   | nonexistent     |
       | static | nonexistent     |
       | host   | not a directory |

@@ -318,9 +318,10 @@ A frontend consumer must receive the parsed configuration corresponding to its s
 selected configuration file does not exist, the request must receive HTTP 500 Internal Server Error without fallback
 configuration.
 
-Missing TENANT_CONFIG_DIR configuration, a nonexistent directory, a path that is not a directory, or an unreadable
-directory produces HTTP 500 in either mode. When the directory is usable, a missing host-mode tenant file, or an
-unreadable or malformed selected tenant file in either mode, is treated like a tenant not found: ordinary HTTP 404
+Configuration that fails to parse prevents the server from starting. When `TENANT_CONFIG_DIR` parses, a nonexistent
+directory, a path that is not a directory, or an unreadable directory produces HTTP 500 in either mode. When the
+directory is usable, a missing host-mode tenant file, or an unreadable or malformed selected tenant file in either
+mode, is treated like a tenant not found: ordinary HTTP 404
 without fallback. A missing static-mode selected file retains HTTP 500. Malformed includes invalid JSON or configuration
 that fails the permitted schema. No separate configured-tenant registry is required to distinguish file failures.
 
@@ -341,8 +342,8 @@ failure, not an unknown host, and must not silently substitute another file.
 1. For two selected aliases with distinct configuration files, consumers receive their corresponding parsed values,
    including across interleaved requests, without substitution of another tenant's configuration.
 2. `TENANT_CONFIG_DIR` is required in every resolution mode and identifies a directory of `{alias}.json` tenant files.
-   Missing configuration, a nonexistent directory, a non-directory path, or an unreadable directory produces actual
-   HTTP 500 without fallback, in both modes.
+   Configuration that fails to parse prevents the server from starting. When the setting parses, a nonexistent
+   directory, a non-directory path, or an unreadable directory produces actual HTTP 500 without fallback, in both modes.
 3. In static mode, an existing usable file for `TENANT_STATIC_ALIAS` supplies its parsed configuration.
 4. In static mode, a missing selected `{alias}.json` file produces an actual HTTP 500 response without fallback.
 5. With a usable directory, a missing host-mode file or an unreadable/malformed selected file in either mode
@@ -491,8 +492,8 @@ An independent comparison with the expected file can detect wrong-tenant configu
    or fixture echo; interleaved requests do not substitute another tenant's configuration.
 3. With a usable static file, the endpoint returns `TENANT_STATIC_ALIAS`'s configuration regardless of Host.
 4. Unknown or unresolvable hosts and missing tenant files in host mode receive HTTP 404. Unreadable/malformed
-   selected files in either mode receive HTTP 404; directory configuration/access failures in either mode and a
-   missing static file receive HTTP 500, following PREETS-TENANT-004.
+   selected files in either mode receive HTTP 404; a parsed directory that does not exist, is not a directory,
+   or is unreadable, and a missing static file, receive HTTP 500, following PREETS-TENANT-004.
 5. Direct application access under production configuration retains the endpoint; environment gating does not
    disable it. Production ingress protection is a separate obligation.
 6. Diagnostic responses include `Cache-Control: no-store`, including HTTP 404 and HTTP 500 responses from this route.
