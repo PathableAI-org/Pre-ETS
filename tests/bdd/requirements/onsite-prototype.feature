@@ -12,6 +12,6 @@ Feature: Local on-site report preview boundary
   @development
   Scenario: Development serves the on-site prototype without a special flag
     Given production tenant sites for Springfield and Shelbyville
-    And static development settings select Shelbyville
+    And static resolution selects Shelbyville
     When a visitor requests "/onsite" at "127.0.0.1"
     Then the response status is 200

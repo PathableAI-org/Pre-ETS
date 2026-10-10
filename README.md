@@ -32,7 +32,7 @@ its startup runtime. In PowerShell, from the repository root:
 
 ```powershell
 $env:TENANT_RESOLUTION = 'static'
-$env:TENANT_CONFIG_DIR = (Resolve-Path -LiteralPath 'packages/frontend/fixtures/tenant-config').Path
+$env:TENANT_CONFIG_DIR = (Resolve-Path -LiteralPath 'fixtures/tenant-config').Path
 $env:TENANT_STATIC_ALIAS = 'springfield'
 $env:OTEL_SDK_DISABLED = 'true'
 corepack pnpm --filter @pathableai/pre-ets-frontend exec next dev --hostname 127.0.0.1
@@ -42,7 +42,7 @@ Open `http://127.0.0.1:3000/onsite` to review a sample electronic version of
 the on-site job-coaching progress report and service log. Equivalent settings
 may live in the gitignored `packages/frontend/.env.local` instead. This route is
 available only in development, does not need Docker, Redis, or Keycloak, and
-does not bypass authentication for other routes.
+does not change the startup or routing behavior of other pages.
 
 The form uses synthetic example information and an interactive visit timer for
 visual feedback. Edits are browser-only and disappear on reload. Its duration
