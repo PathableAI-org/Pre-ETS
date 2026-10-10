@@ -4,6 +4,11 @@ Executable acceptance scenarios live under [`tests/bdd/requirements/`](../tests/
 They observe a running Next.js application over HTTP and in Chromium for missing-page presentation.
 Tests never connect to Redis or other backing services directly; Compose (or CI services) may still run for the app process.
 
+Before authoring or reviewing scenarios and their steps, read
+[Requirements-backed BDD](../docs/engineering/testing/requirements-bdd.md). Reference requirements in current
+`origin/main` using requirement-ID tags. Feature-level `@partial` describes intermediate evidence; those
+scenarios still run and must pass. Review both scenario prose and step assertions within the approved promise.
+
 The historical Spec Kit capability suite has been removed. Surviving dispositions for retired
 scenarios remain in the [migration ledger](TRACEABILITY.md) (not an active runner).
 
