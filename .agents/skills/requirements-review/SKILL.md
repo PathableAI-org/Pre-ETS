@@ -1,54 +1,48 @@
 ---
 name: requirements-review
-description: Review durable Pre-ETS requirements for clarity, sources, lifecycle consistency, and traceability evidence. Reports findings without editing unless changes are requested; independent of Spec Kit.
+description: Independently review Pre-ETS behavioral contracts, sources, dependencies, observability, verification plans, and evidence implications; report without editing by default.
 ---
 
 # Requirements review
 
-Follow the [requirements guide](../../../docs/requirements/README.md#author-a-requirement)’s public-source
-attribution rule: never name a specific partner or client in public repository artifacts or GitHub titles/bodies.
-Use generic attribution and check prose, examples, quotations, filenames, link labels, and URLs for identifying
-names or abbreviations. Preserve evidence meaning and approval boundaries without publishing the identity.
-
 Read the [requirements guide](../../../docs/requirements/README.md) and
-[area template](../../../docs/requirements/templates/area.md). Review the requested area or entries;
-search the full register when checking ID uniqueness, semantic duplicates, or replacement relationships.
-Templates are illustrative and do not allocate IDs or establish product obligations.
+[requirement template](../../../docs/requirements/templates/area.md). They own the shared conventions, including
+Git/PR authority and public-source confidentiality. Check identifying prose, examples, quotations, filenames,
+link labels, and URLs. Review requested contracts and search the entire active tree for overlapping obligations;
+include deprecated history for ID uniqueness, supersession, and dependencies. Account for the documented legacy
+migration transition rather than treating unchanged area documents as new-format submissions.
 
-Assess whether each statement names a consumer, conditions, and observable outcome; whether its rationale
-and attributable sources support the obligation; and whether its acceptance criteria can distinguish a
-meaningful violation. Identify conflicting sources, unresolved product decisions, and accidental implementation
-constraints. Treat inaccessible sources as an assessment limitation, not proof that attribution is invalid.
+Independently assess:
 
-Assess whether independent obligations with different owners, failure modes, or evidence boundaries need distinct
-IDs without demanding fragmentation. Check classification separately from source attribution and verify that
-approved design constraints are identified as such. Distinguish accidental implementation constraints from
-explicit maintainer choices; review feedback must not silently override approved intent. Check selectors,
-mode-specific prerequisites and failure outcomes, and the request classes covered by broad quantifiers.
+- Contract clarity and cohesion: consumer, conditions, scope, selectors, mode-specific prerequisites, success
+  and failure outcomes, and criteria that distinguish meaningful violations. Split only independently meaningful
+  obligations; do not demand fragmentation by component, criterion, or evidence type.
+- Sources, rationale, and classifications: distinguish attribution from classification and direct regulatory
+  duties from informed product decisions or client practices. Flag unsupported legal assertions. Inaccessible
+  sources limit assessment; they do not alone invalidate attribution. Preserve approved design constraints.
+- Duplicates, conflicts, and dependencies: hard prerequisites, missing IDs, cycles, deprecated prerequisites,
+  hidden cross-domain implications, and effects on dependent contracts. Do not automatically split or relocate.
+- Observability: deliberate consideration and meaningful operational obligations, without instrumentation details.
+  Assess these as binding acceptance obligations even outside the acceptance-criteria section.
+- Verification plans: external claims, evidence categories, assumptions, known limits, unresolved questions,
+  and coverage of criteria and observability. Respect explicit human omissions and their supplied rationale;
+  do not enforce a formal triviality threshold or repeatedly flag authorized exceptions.
+- ID continuity, ID-only filenames, frontmatter, domain ownership, historical content, deprecation reasons,
+  replacements, and links. Check Git/PR history for authority; status fields and implementation are not authority.
+- Existing evidence potentially affected by changed contracts. Read
+  [Testing as evidence](../../../docs/engineering/testing/README.md) and inspect meaningful assertions,
+  evaluation conditions, execution boundaries, supported claims, results where available, and limits.
+  A reference alone does not prove full support. Distinguish planned from executed evidence and monitoring
+  implementation from validated operation. Identify weakened claims, removed references, and newly unsupported
+  outcomes. Propose incidental relationships for human approval, without authorizing them.
 
-Check that acceptance criteria explicitly qualify modes and that failure categories reflect their meaning rather
-than sharing an outcome accidentally. Inspect dependency lifecycles: record a decision or delivery gate when an
-accepted obligation relies on a proposed prerequisite; never infer approval. Record unresolved failure policy as
-an implementation-planning dependency. Keep lifecycle, linked delivery state, and accepted execution evidence
-separate; do not mirror the latest CI status into verification. Follow the guide's distinction between requirements
-changes and governance changes without introducing RTM tooling or automatic publication.
+Return concrete findings with requirement ID, file location, consequence, and suggested correction.
+Distinguish confirmed defects/conflicts, possible semantic regressions, potential evidence gaps, legitimate
+intentional changes, and unresolved human decisions. Missing implementation or executed evidence is not by itself
+an invalid contract. Missing optional references are not defects. State assessment limits and do not invent
+execution results; if no defects are found, say so.
 
-Check IDs, lifecycle and decision references, retirement history, and replacement links against the guide.
-Acceptance and verification are independent. A closed issue or present implementation does not demonstrate
-approval or satisfaction. Missing optional delivery/design references are not inherently defects.
-
-Check local links and the relevance of their targets. For verification, read
-[Testing as evidence](../../../docs/engineering/testing/README.md) and inspect referenced assertions or manual
-observations. Map evidence to acceptance criteria and the responsible boundary. Distinguish planned tests,
-static checks, partial runtime evidence, and executed evidence supporting all criteria within stated scope.
-Check the recorded execution result, date/revision, and limitations; flag stale evidence when criteria changed.
-Do not infer that tests passed from their existence. If execution is unavailable or outside the request,
-report that limitation rather than fabricating results. No external access is required for a local review.
-
-Return actionable findings with the requirement ID, file location, consequence, and suggested correction.
-Distinguish defects from legitimate unimplemented or unverified gaps, and separate unresolved questions from
-confirmed findings. If no defects are found, say so and state the assessment's limits.
-
-Do not edit by default. When corrections are requested, preserve IDs, retirement history, and source approval
-boundaries, and follow the shared guide. Do not generate a separate RTM, change Spec Kit artifacts, implement
-product behavior, commit automatically, or write to GitHub as part of this review.
+Do not edit by default or automatically rewrite accepted behavior to resolve substantive questions.
+Requested corrections must preserve IDs, history, and human authority and follow the authoring workflow where
+product decisions are needed. Review adds no automatic commits, GitHub mutations, product/test implementation,
+structural validators, RTM, or synchronization with historical Spec Kit artifacts.

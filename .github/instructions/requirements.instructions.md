@@ -1,56 +1,61 @@
 ---
-applyTo: "docs/requirements/**"
+applyTo: "**"
 ---
 
-# Durable requirements review
+# Requirements and evidence review
 
-Use `docs/requirements/README.md` and `docs/requirements/templates/area.md` as the format and lifecycle authority.
-Use `docs/engineering/testing/README.md` when assessing verification claims.
-For BDD references, use `docs/engineering/testing/requirements-bdd.md`: assertions derive from requirement versions
-already in current `origin/main`, not new or strengthened PR-only promises. This BDD source prerequisite does not
-change lifecycle or verification fields. Requirement tags identify evidence; `@partial` describes a feature's
-intermediate scope. Do not demand complete BDD coverage or equate tag removal with reviewed runtime verification.
+Use `docs/requirements/README.md` as the shared governance authority and
+`docs/requirements/templates/area.md` for format. Use `docs/engineering/testing/README.md` for evidence assessment.
+Apply the following analyses when a change affects requirements or associated evidence; unrelated files do not
+acquire requirement references merely because this instruction applies. Use existing Copilot review configuration;
+do not create another trigger or automation. Findings are advisory; human PR review and merge are authoritative.
 
-This register is independent of Spec Kit. Do not compare these documents with `specs/` or `.specify/` artifacts,
-flag their differences, or request synchronization with them. References to historical specifications may document
-superseded decisions; they do not make those specifications the authority for this review.
+## Requirements changes
 
-Review the requirements register for these conventions:
+- Identify changes to accepted behavioral contracts using Git/PR history. Requirements merged into `main` are
+  accepted regardless of implementation or evidence. Do not require manual approval or verification status fields.
+- Assess coherent contracts, consumers, conditions, selectors, mode qualifiers, relevant success/failure outcomes,
+  rationale, sources, and classifications. Flag unsupported regulatory claims; distinguish direct legal obligations
+  from product decisions and client practices. Preserve explicitly approved scope and design constraints.
+- Search active contracts for conflicts, duplicates, hidden cross-domain implications, missing prerequisites,
+  and dependent obligations. Check structured hard dependencies for missing IDs, cycles, and deprecated targets.
+  Several criteria, components, or evidence types alone do not require splitting or relocation.
+- Check stable IDs across active and deprecated history, one contract per ID-only file, minimal frontmatter,
+  and domain ownership. Templates allocate no IDs. The filesystem is the index; do not request README inventory
+  entries. Respect the documented migration transition for unchanged legacy area documents.
+- Assess binding Observability obligations and high-level external Verification Plans. Normally revise plans with
+  changed criteria or observability. Identify existing evidence that may no longer support revised claims.
+  Respect explicit human verification exceptions and their rationale; do not repeatedly report authorized omissions.
+- Protect confidential partner/client identities under the guide's public-source rule, including identifying URLs,
+  filenames, quotations, and abbreviations. Do not demand private source links or invent attribution.
 
-- Each obligation names its consumer, conditions, observable outcome, rationale, source, and acceptance criteria.
-  Criteria must reveal a meaningful violation. Check selectors, prerequisites per mode, failure outcomes, and
-  the intended request classes behind broad quantifiers. Respect explicitly approved scope and design choices.
-- Classification describes the obligation's nature; source records its supplied basis. Labels such as
-  “Functional Requirement” are intentional source conventions. Do not demand ChatGPT conversation links.
-- IDs use `PREETS-AREA-NNN` and are unique across area documents, including retired entries. Template placeholders
-  allocate no IDs and establish no obligations. New areas must be linked from the register index.
-- Consider separate IDs for independently changing obligations or different owners, failure modes, and evidence
-  boundaries, without demanding fragmentation. Optional owner and design-constraint fields are not mandatory.
-  Explicitly approved design constraints are valid; distinguish them from accidental implementation restrictions.
-- Lifecycle (`proposed`, `accepted`, `deprecated`, `superseded`) is independent of verification (`unverified`,
-  `partial`, `verified`). Acceptance or retirement needs a recorded decision. Implementation and closed issues
-  do not establish approval or verification.
-- Preserve stable IDs for refinements. Replacements retain old entries as superseded history with forward links
-  and replacement backlinks. Never delete or reuse retired IDs. Historical promises may intentionally differ
-  from active replacements; review the replacement decision rather than treating that difference as a defect.
-- Verification plans describe future evidence and responsible boundaries; verification evidence records reviewed
-  execution, covered criteria, result, date/revision, and limitations. Planned tools, TODOs, links, static checks,
-  and Copilot review alone do not establish runtime behavior. Changed criteria require evidence reassessment.
-- Prefer automated verification where suitable. Check that policy/configuration checks and deployed behavior
-  tests establish their respective claims. A blocked-looking HTTP response alone does not prove ingress rejected
-  a request before forwarding. Fixture checks do not prove all externally managed configuration is safe.
-- Tenant configuration excludes secret-bearing fields under the accepted security invariant. Flag changes that
-  undermine this promise, such as proposing `Config.secret` in the exposed tenant configuration contract, while
-  respecting recorded approval and delivery dependencies. A separate server-only secret provider is compatible with the invariant.
-  Non-secret lookup keys in tenant files are approved. Distinguish those keys from resolved secret values or provider
-  credentials. Concrete provider integration is deferred to cloud infrastructure work.
-  Inspect field meaning and data flow, not names alone; full permitted diagnostic JSON is an approved constraint.
-- Explicit open questions and unimplemented/unverified obligations are legitimate gaps. Missing optional delivery
-  or design references are not defects. Do not invent policy, execution results, or stronger approval.
+For BDD references, follow `docs/engineering/testing/requirements-bdd.md`: assertions derive from requirement versions already in current `origin/main`, not new or strengthened PR-only promises. Requirement-ID tags identify evidence; feature-level `@partial` describes intermediate scope, not requirement verification status. Do not demand complete BDD coverage or equate tag removal with runtime verification.
 
-Check relative links and requirement dependencies. Report actionable defects with the requirement ID, location,
-consequence, and suggested correction; distinguish them from unresolved decisions and evidence limitations.
+## Evidence changes
 
-Delivery plans under `docs/delivery/` describe proposed work and criterion coverage. Follow their cross-links without
-treating decomposition approval, issue closure, or PR merge as requirement acceptance or verification. Actual issue/PR
-URLs may be added to delivery references later; a draft plan need not contain published references.
+When tests, manual procedures, policies, configuration assessments, runtime checks, or other associated evidence
+change, inspect the artifact and its declared requirement in context:
+
+- Determine which behavioral claims remain supported at the execution boundary and relevant conditions.
+  An ID reference alone does not establish the entire contract.
+- Inspect meaningful assertion and evaluation-condition changes for weakening/removal of established claims,
+  new limitations, and removed requirement references. Wording changes alone need not be semantic changes.
+- Distinguish planned evidence from executed results and monitoring mechanisms from evidence of correct operation.
+  Static/policy evidence can establish externally meaningful properties but need not establish deployed equivalence.
+- Propose useful additional relationships for human approval; do not silently authorize inferred associations.
+  Evidence intentionally created for a requirement must reference its ID, but not every test needs one.
+  Respect native evidence conventions and readability; do not demand independent acceptance-criterion IDs.
+
+## Deprecation and review style
+
+For deprecation, inspect explicit active dependents, implicit behavioral dependencies, and evidence referencing
+the retired ID. Identify obligations needing revision or replacement; do not automatically alter or retire them.
+Preserve historical content, ID, reason, and applicable replacement links under `deprecated/`. Never reuse IDs;
+permanent deletion requires explicit human authorization.
+
+Report specific actionable findings citing affected requirement IDs, locations, behavioral claims, consequences,
+and suggested corrections. Distinguish confirmed defects/conflicts, possible semantic regressions, potential
+coverage gaps, legitimate intentional changes, and unresolved human decisions. Missing implementation or evidence
+is a legitimate gap. Do not invent policy, results, or stronger approval. Do not synchronize `specs/` or `.specify/`
+with requirements merely because historical references differ. Do not change delivery-planning conventions or
+issue workflows, or demand structural validators, RTMs, dashboards, or manually maintained evidence inventories.
