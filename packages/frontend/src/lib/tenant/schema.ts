@@ -1,12 +1,23 @@
-import { Config, Schema } from "effect"
+import { Effect, Schema } from "effect"
 
-export class TenantConfigError extends Schema.TaggedError<TenantConfigError>()(
-  "@pathableai/pre-ets-frontend/TenantResolutionError",
-  {
-    cause: Schema.instanceOf(globalThis.Error),
-    message: Schema.String
-  }
-) {}
+import { HttpError } from "../error.ts"
+
+const fixedStatus = <const Code extends 404 | 500>(code: Code) =>
+  Schema.Literal(code).pipe(Schema.withConstructorDefault(Effect.succeed(code)))
+
+export type TenantFailure = TenantNotFound | TenantReadError
+
+export class TenantNotFound extends HttpError.extend<TenantNotFound>(
+  "@pathableai/pre-ets-frontend/TenantNotFound"
+)({
+  status: fixedStatus(404)
+}) {}
+
+export class TenantReadError extends HttpError.extend<TenantReadError>(
+  "@pathableai/pre-ets-frontend/TenantReadError"
+)({
+  status: fixedStatus(500)
+}) {}
 
 const TenantAliasBrand = "@pathableai/pre-ets-frontend/TenantAlias" as const
 
@@ -28,7 +39,7 @@ const TenantOidcConfig = Schema.Struct({
   issuer: Schema.String
 })
 
-const TenantConfigSchema = Schema.Struct({
+export const TenantConfig = Schema.Struct({
   displayName: Schema.String,
   idleTimeoutMinutes: Schema.optionalKey(
     Schema.Int.pipe(
@@ -41,5 +52,4 @@ const TenantConfigSchema = Schema.Struct({
   oidc: Schema.optionalKey(TenantOidcConfig)
 })
 
-export const TenantConfig = Config.schema(TenantConfigSchema)
-export type TenantConfig = Config.Success<typeof TenantConfig>
+export type TenantConfig = typeof TenantConfig.Type

@@ -25,3 +25,9 @@ Then("the response has no redirect", function(this: AppWorld) {
 Then("the response JSON field {string} is {string}", function(this: AppWorld, field: string, expected: string) {
   assert.equal(responseJson(this)[field], expected)
 })
+
+Then("the response contains no fallback tenant", function(this: AppWorld) {
+  assert.ok(this.response)
+  assert.doesNotMatch(this.response.body, /Welcome to the Pre-ETS workspace|Springfield|Shelbyville/)
+  assert.doesNotMatch(this.response.body, /"displayName"\s*:/)
+})

@@ -1,8 +1,8 @@
 # Requirements BDD
 
 Executable acceptance scenarios live under [`tests/bdd/requirements/`](../tests/bdd/requirements/).
-They observe a running Next.js application over HTTP. Tests never connect to Redis or other
-backing services directly; Compose (or CI services) may still run for the app process.
+They observe a running Next.js application over HTTP and in Chromium for missing-page presentation.
+Tests never connect to Redis or other backing services directly; Compose (or CI services) may still run for the app process.
 
 The historical Spec Kit capability suite has been removed. Surviving dispositions for retired
 scenarios remain in the [migration ledger](TRACEABILITY.md) (not an active runner).
@@ -14,6 +14,7 @@ Compose):
 
 ```sh
 pnpm test:bdd:dry
+pnpm exec playwright install chromium
 pnpm test:bdd
 ```
 
@@ -21,19 +22,22 @@ pnpm test:bdd
 temporary tenant directory and random session signing material. Cleanup removes only that
 scenario's resources.
 
-| Command                | Evidence                                                                          |
-| ---------------------- | --------------------------------------------------------------------------------- |
-| `pnpm test:bdd:dry`    | Parse features and discover step bindings; no runtime evidence                    |
-| `pnpm test:bdd`        | Build the frontend, then run requirements scenarios against an owned Next process |
-| `pnpm test:bdd:checks` | Harness regression checks that still protect fixtures used by BDD/E2E             |
-| `pnpm test:e2e`        | Separate real-Keycloak authentication journeys; see [E2E setup](../e2e/README.md) |
+| Command                | Evidence                                                                              |
+| ---------------------- | ------------------------------------------------------------------------------------- |
+| `pnpm test:bdd:dry`    | Parse features and discover step bindings; no runtime evidence                        |
+| `pnpm test:bdd`        | Build the frontend, then run HTTP and browser scenarios against an owned Next process |
+| `pnpm test:bdd:checks` | Harness regression checks that still protect fixtures used by BDD/E2E                 |
+| `pnpm test:e2e`        | Separate real-Keycloak authentication journeys; see [E2E setup](../e2e/README.md)     |
 
 Optional `@development` selects `next dev`; otherwise scenarios use production `next start`.
 `pnpm test:bdd` builds the frontend first so that production output matches the installed Next.js.
 Dependency tags such as `@redis` are not required—the app receives `REDIS_URL`
 whenever the harness starts it.
 
-Step definitions stay HTTP-only. See [step guidance](../tests/bdd/steps/README.md).
+Steps use HTTP for status/content claims and Chromium for missing-page presentation.
+Permission-denial scenarios require a non-root user and a filesystem that enforces Unix permissions;
+the setup checks that access is actually denied before asserting an application response.
+See [step guidance](../tests/bdd/steps/README.md).
 
 CI runs discovery separately and executes the runtime suite on relevant PRs, main, and manual
 dispatch. Real-Keycloak E2E stays manual.

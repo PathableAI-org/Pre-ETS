@@ -31,7 +31,7 @@ const boot = () => {
   return Effect.gen(function*() {
     const config = yield* ServerConfig.pipe(
       Effect.tap(() => Effect.logDebug("Loaded server config")),
-      Effect.tapError((error) => Effect.logError(error.message))
+      Effect.tapError(() => Effect.logError("Invalid server configuration"))
     )
 
     const runtime = ManagedRuntime.make(

@@ -3,15 +3,15 @@ import { Result } from "effect"
 import { describe, expect } from "vitest"
 
 import { tenantAliasFromServerConfig } from "../../src/lib/tenant/alias"
-import { TenantConfigError } from "../../src/lib/tenant/schema"
+import { type TenantFailure, TenantNotFound } from "../../src/lib/tenant/schema"
 
 const aliasArb = fc.mixedCase(fc.constantFrom("springfield", "shelbyville"))
 const baseHostnameArb = fc.domain()
 
-const expectAliasFailure = (result: Result.Result<unknown, TenantConfigError>): void => {
+const expectAliasFailure = (result: Result.Result<unknown, TenantFailure>): void => {
   expect(Result.isFailure(result)).toBe(true)
   if (Result.isFailure(result)) {
-    expect(result.failure).toBeInstanceOf(TenantConfigError)
+    expect(result.failure).toBeInstanceOf(TenantNotFound)
   }
 }
 

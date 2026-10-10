@@ -97,8 +97,8 @@ This is a hierarchy of semantic claims, not a required test pyramid. Avoid repea
 matrix at the framework boundary or duplicating a service property against private helpers without a distinct reason.
 
 For new module-contract scenarios, prefer Vitest and Effect Layers. Use BDD to describe externally meaningful
-application behavior observed through the running application (HTTP today; Playwright when actual browser
-interaction is required). Package Vitest unit tests and real-Keycloak `e2e/` remain separate from Cucumber.
+application behavior observed through the running application (HTTP responses and Playwright for browser
+presentation). Package Vitest unit tests and real-Keycloak `e2e/` remain separate from Cucumber.
 Stable cross-feature invariants can also justify E2E workflows.
 
 ## Existing suites and execution references
@@ -108,12 +108,12 @@ Run commands from the repository root. Use the linked guides for infrastructure,
 | Suite                        | Entry point                                            | Evidence and execution reference                                                                                                                                                                                                 |
 | ---------------------------- | ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Frontend Vitest              | `pnpm --filter @pathableai/pre-ets-frontend test:unit` | [Workspace script](../../../packages/frontend/package.json), [configuration](../../../packages/frontend/vitest.config.ts), and [tests](../../../packages/frontend/tests/unit); inspect each test's doubles and real dependencies |
-| Requirements BDD (HTTP)      | `pnpm test:bdd`                                        | Actual HTTP responses from an owned Next process; scenarios under [`tests/bdd/requirements/`](../../../tests/bdd/requirements/)                                                                                                  |
+| Requirements BDD             | `pnpm test:bdd`                                        | Actual HTTP responses and Chromium missing-page presentation from an owned Next process; scenarios under [`tests/bdd/requirements/`](../../../tests/bdd/requirements/)                                                           |
 | Playwright real-Keycloak E2E | `pnpm test:e2e`                                        | Real login and recovery journeys; [E2E setup and limits](../../../e2e/README.md)                                                                                                                                                 |
 
 [Requirements BDD commands](../../../features/README.md) is the authoritative Cucumber execution guide.
 Its dry-run command validates discovery, not runtime behavior. [Step guidance](../../../tests/bdd/steps/README.md)
-explains HTTP-only ownership; the [historical migration ledger](../../../features/TRACEABILITY.md) records retired
+explains HTTP and browser ownership; the [historical migration ledger](../../../features/TRACEABILITY.md) records retired
 Spec Kit dispositions and is not an active runner. The backend currently has no dedicated test script; do not imply a
 frontend test validates backend behavior.
 
