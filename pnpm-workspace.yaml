@@ -26,8 +26,8 @@ minimumReleaseAgeExclude:
   - "@typescript-eslint/visitor-keys@8.70.1 || 8.71.1"
   - typescript-eslint@8.70.1 || 8.71.1
   - "@dprint/json@0.25.0 || 0.25.1"
-  - "@effect/platform-node-shared@4.0.0-rc.118 || 4.0.1"
-  - "@effect/platform-node@4.0.0-rc.118 || 4.0.1"
+  - "@effect/platform-node-shared@4.0.0-rc.118 || 4.0.1 || 4.0.3"
+  - "@effect/platform-node@4.0.0-rc.118 || 4.0.1 || 4.0.3"
   - effect@4.0.0-rc.118 || 4.0.1
   - "@effect/vitest@4.0.0-rc.118"
   - "@next/env@16.3.8"
@@ -82,3 +82,4 @@ minimumReleaseAgeExclude:
   - fallow-type-aware@3.32.0 || 3.33.1
   - fallow@3.32.0 || 3.33.1
   - prettier@3.9.10
+  - "@effect/opentelemetry@4.0.3"
