@@ -39,7 +39,7 @@
     "@effect/language-service": "0.87.4",
     "@eslint/js": "10.0.1",
     "@playwright/test": "1.64.0",
-    "@types/node": "26.6.4",
+    "@types/node": "26.6.5",
     "dprint": "0.61.1",
     "dprint-plugin-yaml": "0.6.0",
     "eslint": "10.12.0",
