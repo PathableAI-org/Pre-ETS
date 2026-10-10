@@ -1,11 +1,10 @@
 import { OtelTracer, Resource } from "@effect/opentelemetry"
 import { NodeServices } from "@effect/platform-node"
 import { registerOTel } from "@vercel/otel"
-import { ConfigProvider, Effect, Layer, ManagedRuntime, Result } from "effect"
+import { ConfigProvider, Effect, Layer, ManagedRuntime } from "effect"
 
 import { ServerConfig } from "./config/index.ts"
 import { appLoggerLayer } from "./observability.ts"
-import { TenantReadError } from "./tenant/schema.ts"
 import { TenantConfigService } from "./tenant/service.ts"
 
 const OTEL_SERVICE_NAME = "pre-ets-frontend"
@@ -32,31 +31,12 @@ const boot = () => {
   return Effect.gen(function*() {
     const config = yield* ServerConfig.pipe(
       Effect.tap(() => Effect.logDebug("Loaded server config")),
-      Effect.tapError(() => Effect.logError("Invalid server configuration")),
-      Effect.result
+      Effect.tapError(() => Effect.logError("Invalid server configuration"))
     )
-
-    const tenantLayer = Result.match(config, {
-      onFailure: (cause) => {
-        const failure = new TenantReadError({
-          cause: new Error(cause.message),
-          message: "Invalid server configuration"
-        })
-        return Layer.succeed(
-          TenantConfigService,
-          TenantConfigService.of({
-            getAlias: () => Result.fail(failure),
-            getConfigFromAlias: () => Effect.fail(failure),
-            getConfigFromHost: () => Effect.fail(failure)
-          })
-        )
-      },
-      onSuccess: TenantConfigService.layer
-    })
 
     const runtime = ManagedRuntime.make(
       Layer.mergeAll(
-        tenantLayer,
+        TenantConfigService.layer(config),
         LoggerLayer,
         ObservabilityLayer
       ).pipe(
@@ -87,4 +67,17 @@ const fakeBoot = new Proxy({} as Awaited<ReturnType<typeof boot>>, {
 
 export const Runtime = process.env.NEXT_PHASE === "phase-production-build" ?
   fakeBoot :
-  await boot()
+  await boot().catch(async (error: unknown) => {
+    // Prefer Effect diagnostics from appLoggerLayer; fall back to stderr when boot
+    // fails before any logger is available. Avoid dumping configuration payloads.
+    const detail = error instanceof Error && error.message.trim() !== "" ?
+      error.message :
+      "startup failed before diagnostics were available"
+
+    await Effect.logError(`pre-ets-frontend: ManagedRuntime boot failed (${detail})`).pipe(
+      Effect.provide(LoggerLayer),
+      Effect.runPromise
+    )
+
+    process.exit(1)
+  })
