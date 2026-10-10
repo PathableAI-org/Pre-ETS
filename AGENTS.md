@@ -25,11 +25,12 @@ workspace's `AGENTS.md`: [frontend](packages/frontend/AGENTS.md),
 [backend](packages/backend/AGENTS.md). This explicit routing also applies when an
 agent starts at the repository root. Consult relevant Effect Solutions topics
 (`pnpm effect-solutions list` / `show`) and verify APIs against the installed
-Effect **4.0.0-rc.113** declarations before using examples. Do not run the CLI's
-interactive setup to rewrite this monorepo.
+Effect declarations in the target workspace before using examples. Do not run
+the CLI's interactive setup to rewrite this monorepo.
 
-Product Effect pins are coordinated on `4.0.0-rc.113` with matching
-`@effect/platform-node`. Existing product ownership still applies: frontend owns
+Product Effect pins are coordinated in the named `effect` catalog in
+[`pnpm-workspace.yaml`](pnpm-workspace.yaml), including `@effect/platform-node`.
+Existing product ownership still applies: frontend owns
 Next.js UI, tenant configuration, OIDC, and session state; backend owns the
 Effect REST domain layer. See
 [effect-guidance](docs/engineering/effect-guidance.md) and
