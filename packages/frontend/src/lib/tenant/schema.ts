@@ -1,4 +1,4 @@
-import { Config, Effect, Schema } from "effect"
+import { Effect, Schema } from "effect"
 
 import { HttpError } from "../error.ts"
 
@@ -39,7 +39,7 @@ const TenantOidcConfig = Schema.Struct({
   issuer: Schema.String
 })
 
-const TenantConfigSchema = Schema.Struct({
+export const TenantConfig = Schema.Struct({
   displayName: Schema.String,
   idleTimeoutMinutes: Schema.optionalKey(
     Schema.Int.pipe(
@@ -52,5 +52,4 @@ const TenantConfigSchema = Schema.Struct({
   oidc: Schema.optionalKey(TenantOidcConfig)
 })
 
-export const TenantConfig = Config.schema(TenantConfigSchema)
-export type TenantConfig = Config.Success<typeof TenantConfig>
+export type TenantConfig = typeof TenantConfig.Type

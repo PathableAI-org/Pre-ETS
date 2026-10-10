@@ -1,4 +1,4 @@
-import { ConfigProvider, Effect, type FileSystem, type Path, pipe } from "effect"
+import { Effect, type FileSystem, type Path, pipe, Schema } from "effect"
 
 import type * as ServerConfig from "../config/index.ts"
 
@@ -28,18 +28,29 @@ export const tenantConfigFromAlias: (
 ) =>
   Effect.fn(
     function*(alias: TenantAlias) {
+      // Validate the directory separately: ENOENT on the file alone cannot tell
+      // a missing selected file from a missing configuration directory.
+      yield* fs.readDirectory(config.configDir).pipe(
+        Effect.mapError((cause) =>
+          new TenantReadError({
+            cause,
+            message: "Tenant configuration directory is unavailable"
+          })
+        )
+      )
+
       const configPath = tenantConfigPathFromAlias(config, path)(alias)
 
       yield* Effect.logDebug("Reading tenant config from path", { alias, path: configPath })
 
       const raw = yield* fs.readFileString(configPath).pipe(
         Effect.mapError((cause) =>
-          config.resolution === "host" && cause.reason._tag === "NotFound" ?
-            new TenantNotFound({
+          config.resolution === "static" && cause.reason._tag === "NotFound" ?
+            new TenantReadError({
               cause,
               message: `Failed to read tenant config from ${configPath}`
             }) :
-            new TenantReadError({
+            new TenantNotFound({
               cause,
               message: `Failed to read tenant config from ${configPath}`
             })
@@ -48,16 +59,16 @@ export const tenantConfigFromAlias: (
 
       const parsed: unknown = yield* Effect.try({
         catch: (cause) =>
-          new TenantReadError({
+          new TenantNotFound({
             cause: cause instanceof Error ? cause : new Error("Failed to parse tenant config JSON"),
             message: `Failed to parse tenant config from ${configPath}`
           }),
         try: (): unknown => JSON.parse(raw)
       })
 
-      return yield* TenantConfig.parse(ConfigProvider.fromUnknown(parsed)).pipe(
+      return yield* Schema.decodeUnknownEffect(TenantConfig)(parsed).pipe(
         Effect.mapError((error) =>
-          new TenantReadError({
+          new TenantNotFound({
             cause: new Error(error.message),
             message: `Failed to parse tenant config from ${configPath}`
           })

@@ -2,6 +2,7 @@ import { After, Before, setDefaultTimeout, Status } from "@cucumber/cucumber"
 
 import type { AppWorld } from "./world.ts"
 
+import { cleanupTenantFixtures } from "./fixtures.ts"
 import { stopSite } from "./server.ts"
 
 setDefaultTimeout(120000)
@@ -10,5 +11,9 @@ Before(function(this: AppWorld, { pickle }) {
 })
 After({ timeout: 30000 }, async function(this: AppWorld, { result }) {
   if (result?.status === Status.FAILED) this.attach(this.logs, "text/plain")
-  await stopSite(this)
+  try {
+    await stopSite(this)
+  } finally {
+    await cleanupTenantFixtures(this)
+  }
 })
