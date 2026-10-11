@@ -3,7 +3,7 @@ import { NextResponse } from "next/server"
 
 import { httpErrorJson } from "../../../lib/error.ts"
 import { Runtime } from "../../../lib/runtime"
-import { TenantConfigService } from "../../../lib/tenant"
+import { TenantConfigService } from "../../../lib/tenant.ts"
 
 const noStore = { "Cache-Control": "private, no-store" }
 

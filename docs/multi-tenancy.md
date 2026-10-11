@@ -9,7 +9,7 @@ session state differs from backend domain persistence is described in
 
 The frontend owns tenant configuration. The Next.js app is the only reader of
 this data when rendering UI. Binding the host to a slug and loading
-configuration are first-party modules under `packages/frontend/src/lib/tenant`;
+configuration are the first-party module `packages/frontend/src/lib/tenant.ts`;
 there is no tenancy library. **Current** tenant configuration is a read-only
 filesystem source: one `{alias}.json` file per tenant under `TENANT_CONFIG_DIR`.
 Host association opens only the bound alias’s file. Static mode, set with
