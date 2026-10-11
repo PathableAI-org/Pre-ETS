@@ -1,4 +1,4 @@
-# Historical hipaa container
+# Historical HIPAA container
 
 This former area-level container defines no active contracts. Discover individual requirements from the filesystem.
 

@@ -25,7 +25,7 @@ Protecting the assumed PHI boundary requires evidence at the responsible softwar
 
 ## Acceptance criteria
 
-1. Define risk-based audit coverage for access, changes, deletion, undo, and privileged actions; evidence identifies actor, target, time, action, and outcome as needed for examination.
+1. The software records activity selected by the risk-based audit coverage for access, changes, deletion, undo, and privileged actions. The resulting audit records identify actor, target, time, action, and outcome as needed for examination.
 2. Audit records remain protected from unauthorized access, alteration, and deletion, and can be retrieved for examination through an authorized software path; ordinary record deletion must not defeat the selected audit coverage.
 
 ## Open questions
@@ -40,7 +40,7 @@ The activity-examination and protected audit-retrieval obligations are defined i
 
 ## Verification Plan
 
-Application and audit-storage evidence demonstrates selected activity coverage and authorized retrieval with actor, target, time, action, and outcome, including preservation through ordinary record deletion. Access and integrity evidence demonstrates protection against unauthorized audit retrieval, alteration, and deletion. Coverage, retention, clock, and failure contracts remain verification conditions; this evidence does not establish recurring human examination.
+Application and audit-storage evidence demonstrates that activity within the selected audit coverage produces records identifying actor, target, time, action, and outcome, and that authorized reviewers can retrieve those records, including after ordinary record deletion. Access and integrity evidence demonstrates protection against unauthorized audit retrieval, alteration, and deletion. Coverage, retention, clock, and failure contracts remain verification conditions; a coverage definition alone does not establish recording, and this evidence does not establish recurring human examination.
 
 Unresolved verification conditions follow the Open questions and shared context. The plan establishes no executed result or compliance claim.
 

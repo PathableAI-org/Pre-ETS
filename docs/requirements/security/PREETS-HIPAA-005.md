@@ -26,11 +26,14 @@ Protecting the assumed PHI boundary requires evidence at the responsible softwar
 ## Acceptance criteria
 
 1. The software applies the selected record-integrity and transmission-integrity controls to protect ePHI from improper alteration or destruction; operational assessment of addressable specifications is deferred separately.
-2. Exercise unauthorized, interrupted, and conflicting writes against the chosen controls; successful updates and deletion/undo preserve the intended record and associations.
+2. Unauthorized writes leave protected records and their associations unchanged. Interrupted and conflicting writes preserve record and association integrity under the separately approved failure and concurrency outcomes; successful updates and deletion/undo preserve the intended record and associations.
 
 ## Open questions
 
-Atomicity, concurrency, retry/deduplication, failure outcomes, and integrity verification mechanisms.
+Atomicity, concurrency, retry/deduplication, failure outcomes, and integrity verification mechanisms. The responsible
+application/persistence and transport owners, with product maintainer review, must define interruption, conflict,
+and retry outcomes before delivering the affected writes. This contract does not select universal rollback,
+atomicity, or a conflict-resolution strategy.
 
 ## Observability
 
@@ -38,7 +41,7 @@ No additional operational observability obligation is established by the current
 
 ## Verification Plan
 
-Application/persistence and transmission evidence under unauthorized, interrupted, and conflicting writes demonstrates the selected integrity controls and preservation of intended record state and associations through successful updates, deletion, and undo. Real adapters are needed for claims about their behavior. The atomicity, concurrency, retry, and failure contracts remain unresolved; software evidence does not establish addressable-safeguard assessment.
+Application/persistence and transmission evidence demonstrates that unauthorized writes leave protected records and associations unchanged, and that interrupted and conflicting writes preserve integrity under the approved failure and concurrency outcomes. It also demonstrates preservation of intended record state and associations through successful updates, deletion, and undo. Real adapters are needed for claims about their behavior. The atomicity, concurrency, retry, and failure contracts remain unresolved and must be defined before delivering the affected writes; software evidence does not establish addressable-safeguard assessment.
 
 Unresolved verification conditions follow the Open questions and shared context. The plan establishes no executed result or compliance claim.
 

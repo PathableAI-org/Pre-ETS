@@ -25,7 +25,8 @@ The current product decisions supplied in the handoff are the basis for the link
 user and start time when starting a record; capture end time on an explicit action; permit time correction;
 keep visit narratives optional; make the created record durable; allow subsequent updates without submission
 or approval; limit this slice to the user's own records; and retain deleted records with immediate undo.
-These are product directions, not findings that the source provider has validated or already accepted register obligations.
+These are maintainer product directions; source-provider validation remains unavailable. Acceptance into the
+requirements register depends on Git and human PR review, not on these source findings.
 
 The adoption strategy is incremental. An organization should not need to replace its participant-management
 processes to adopt service recording. Participant management and integration with the authoritative participant
@@ -45,21 +46,21 @@ billing, supervisor/team visibility, and a general trash/recovery interface are 
 
 - **Handoff:** Maintainer-supplied workflow and discovery context (2026-10-06), including numbered happy-path
   steps 1–10 and known uncertainties. This supplies product intent; it is not client SME validation.
-- **Form:** [On-Site Progress Report.docx](https://drive.google.com/file/d/1HapgjYe1Q61FUgWzcEI4mRgUNyRy3T46/view),
+- **Form:** **On-Site Progress Report.docx**,
   internally titled **Job Coaching Progress Report & Service Log**; reviewed as extracted text on 2026-10-06.
   The visit-log section contains date, coach, start/end, total, purpose of visit, observations, interventions,
   and next steps. The larger form also contains consumer/employment information, a monthly intervention plan,
   total hours, and coach/supervisor signatures. Field presence establishes what the artifact captures, not
   which fields are mandatory in practice or a required digital approval process. Visual layout and current
   template authority were not verified. Totals and monthly content are not adopted as obligations here.
-- **Research:** [First Client Discovery — Forms & Documents](https://app.notion.com/p/3d87cbd04b6d80599084ce030fd54fce),
-  “Evidence standard”; [02 — Business Processes & Handoffs](https://app.notion.com/p/3d87cbd04b6d8180a8b3ce28a300620b),
+- **Research:** **First Client Discovery — Forms & Documents**,
+  “Evidence standard”; **02 — Business Processes & Handoffs**,
   “Placement, stabilization and continuing support” and “Authorization, reporting and billing”; and
-  [05 — Discovery Questions & Validation Agenda](https://app.notion.com/p/3d87cbd04b6d812e8015cc461ed2d44d),
+  **05 — Discovery Questions & Validation Agenda**,
   “P1 — answer before designing the first workflow” and “Systems”; reviewed on 2026-10-06. They distinguish
   document evidence, inference, and unresolved operational questions. Report/submission and authorization
   concepts do not automatically become requirements for an individual service record.
-- **Earlier design:** [08 — Consumer Service Log Database Blueprint](https://app.notion.com/p/3eb7cbd04b6d8160a3c0ce78e586ad5b),
+- **Earlier design:** **08 — Consumer Service Log Database Blueprint**,
   “Scope and naming,” “Business workflow,” and “Security and integrity rules”; reviewed on 2026-10-06.
   It explicitly requires SME validation and proposes broader models, approvals, finalized-report locking, and
   technical choices. This handoff scopes those ideas out of the initial record workflow. No accepted obligation
@@ -73,7 +74,8 @@ The planned client discovery engagement did not proceed and client SMEs are curr
 the handoff. Supplied forms and industry experience inform hypotheses; neither substitutes for independent
 validation.
 **Project Reference Links.txt** was named but not supplied with an accessible location. Drive search did not
-locate it; its contents were not reviewed. The form and linked research above were accessed directly.
+locate it; its contents were not reviewed. The form, research, and earlier design above were accessed directly;
+their identifying source locations are withheld from the public repository under the register's attribution rule.
 Industry facts, product obligations, implementation choices, and technical guidance remain distinct.
 
 ## Open discovery questions and delivery gates
