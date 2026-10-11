@@ -106,17 +106,19 @@ Industry facts, product obligations, implementation choices, and technical guida
 The roles below identify decision responsibilities, not assigned individuals or completed decisions. Name the
 responsible person and record the decision in the affected delivery plan before its gate is crossed.
 
-| Decision                                                                                     | Responsible role                                                                  | Gate                                                              |
-| -------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
-| Participant source, minimal association, and correction                                      | Product maintainer, informed by the participant source owner when available       | Before delivering creation or participant correction (-001, -006) |
-| Save acknowledgement, failed writes/retries, and concurrent edits                            | Product maintainer with the application delivery owner                            | Before delivering creation or updates (-001–-004, -006)           |
-| Date/time interpretation, ordering, overnight visits, and repeated end actions               | Product maintainer with the application delivery owner                            | Before delivering time capture/correction (-002)                  |
-| Ownership enforcement and denied-operation outcomes                                          | Application delivery owner, with product maintainer review of observable outcomes | Before delivering any record access or mutation (-001–-008)       |
-| Undo duration, keyboard/focus/announcement behavior, navigation/session expiry, and failures | Product maintainer with the UI delivery owner                                     | Before delivering deletion and undo (-007, -008)                  |
-| Complete paper replacement and remaining monthly-report responsibilities                     | Product maintainer; source-provider validation remains unavailable                | Before expanding this slice or claiming paper retirement          |
+| Decision                                                                                     | Responsible role                                                                  | Gate                                                        |
+| -------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| Participant source and minimal association                                                   | Product maintainer, informed by the participant source owner when available       | Before delivering creation (-001)                           |
+| Save acknowledgement, failed writes/retries, and concurrent edits                            | Product maintainer with the application delivery owner                            | Before delivering creation or updates (-001–-004, -006)     |
+| Date/time interpretation, ordering, overnight visits, and repeated end actions               | Product maintainer with the application delivery owner                            | Before delivering time capture/correction (-002)            |
+| Ownership enforcement and denied-operation outcomes                                          | Application delivery owner, with product maintainer review of observable outcomes | Before delivering any record access or mutation (-001–-008) |
+| Undo duration, keyboard/focus/announcement behavior, navigation/session expiry, and failures | Product maintainer with the UI delivery owner                                     | Before delivering deletion and undo (-007, -008)            |
+| Complete paper replacement and remaining monthly-report responsibilities                     | Product maintainer; source-provider validation remains unavailable                | Before expanding this slice or claiming paper retirement    |
 
 These gates preserve the documented uncertainties; they do not select autosave, offline support, a participant
 registry, a reporting lifecycle, or a permanent-deletion policy.
+Participant-association correction remains unresolved and requires separately scoped requirements before delivery;
+PREETS-ONSITE-006 promises updates to service times and narratives only.
 
 ## Shared data-input requirements
 

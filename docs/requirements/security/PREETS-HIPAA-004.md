@@ -12,7 +12,7 @@ Application audit and audit-storage owners
 
 ## Description
 
-Software activity involving ePHI must be recorded and available for examination by authorized reviewers through protected audit controls.
+Software must record activity involving ePHI within the separately approved risk-based audit coverage and make resulting audit records available for examination by authorized reviewers through protected audit controls.
 
 ## Rationale
 
