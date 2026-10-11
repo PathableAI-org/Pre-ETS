@@ -167,7 +167,7 @@ const tenantAliasFromServerConfig = (
   }
 }
 
-type TenantFailureReason = "alias" | "directory" | "json" | "not-found" | "schema"
+type TenantFailureReason = "alias" | "directory" | "json" | "not-found" | "read" | "schema"
 
 const failTenant = <E extends TenantFailure>(reason: TenantFailureReason, error: E) =>
   Effect.logWarning("Tenant configuration request failed", {
@@ -197,8 +197,6 @@ const tenantConfigFromAlias = (
     }
   })(
     function*(alias: TenantAlias) {
-      yield* Effect.annotateCurrentSpan("tenant.alias", alias)
-
       // Validate the directory separately: ENOENT on the file alone cannot tell
       // a missing selected file from a missing configuration directory.
       yield* fs.readDirectory(config.configDir).pipe(
@@ -215,7 +213,7 @@ const tenantConfigFromAlias = (
 
       const configPath = tenantConfigPathFromAlias(config, path)(alias)
 
-      yield* Effect.logDebug("Reading tenant config from path", { alias })
+      yield* Effect.logDebug("Reading tenant configuration")
 
       const raw = yield* fs.readFileString(configPath).pipe(
         Effect.catch((cause) => {
@@ -228,9 +226,7 @@ const tenantConfigFromAlias = (
               cause,
               message: `Failed to read tenant config from ${configPath}`
             })
-          return cause.reason._tag === "NotFound" ?
-            failTenant("not-found", error) :
-            Effect.fail(error)
+          return failTenant(cause.reason._tag === "NotFound" ? "not-found" : "read", error)
         })
       )
 
@@ -299,7 +295,6 @@ export class TenantConfigService extends Context.Service<TenantConfigService, {
           const alias = yield* Effect.fromResult(getAlias(host)).pipe(
             Effect.catch((error) => failTenant("alias", error))
           )
-          yield* Effect.annotateCurrentSpan("tenant.alias", alias)
           return yield* getConfigFromAlias(alias)
         })
 
