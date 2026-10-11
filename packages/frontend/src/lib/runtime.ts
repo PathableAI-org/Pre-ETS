@@ -5,7 +5,7 @@ import { ConfigProvider, Effect, Layer, ManagedRuntime } from "effect"
 
 import { ServerConfig } from "./config/index.ts"
 import { appLoggerLayer } from "./observability.ts"
-import { TenantConfigService } from "./tenant/service.ts"
+import { TenantConfigService } from "./tenant.ts"
 
 const OTEL_SERVICE_NAME = "pre-ets-frontend"
 
