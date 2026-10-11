@@ -1,0 +1,47 @@
+---
+id: PREETS-HIPAA-005
+classifications:
+  - Regulatory
+---
+
+# Protect record and transmission integrity
+
+## Owner / responsible boundary
+
+Application/persistence and transport owners
+
+## Description
+
+ePHI must be protected from improper alteration or destruction, including during transmission.
+
+## Rationale
+
+Protecting the assumed PHI boundary requires evidence at the responsible software boundary.
+
+## Sources
+
+- Source: [45 CFR 164.312(c), (e)](https://www.ecfr.gov/current/title-45/section-164.312). Reviewed 2026-10-09; applicability follows the shared HIPAA scope linked below.
+- Decision: Maintainer PHI-handling assumption supplied 2026-10-09.
+
+## Acceptance criteria
+
+1. The software applies the selected record-integrity and transmission-integrity controls to protect ePHI from improper alteration or destruction; operational assessment of addressable specifications is deferred separately.
+2. Exercise unauthorized, interrupted, and conflicting writes against the chosen controls; successful updates and deletion/undo preserve the intended record and associations.
+
+## Open questions
+
+Atomicity, concurrency, retry/deduplication, failure outcomes, and integrity verification mechanisms.
+
+## Observability
+
+No additional operational observability obligation is established by the current sources. Migration preserves the existing externally observable behavior; future operational obligations require a separate requirements decision.
+
+## Verification Plan
+
+Application/persistence and transmission evidence under unauthorized, interrupted, and conflicting writes demonstrates the selected integrity controls and preservation of intended record state and associations through successful updates, deletion, and undo. Real adapters are needed for claims about their behavior. The atomicity, concurrency, retry, and failure contracts remain unresolved; software evidence does not establish addressable-safeguard assessment.
+
+Unresolved verification conditions follow the Open questions and shared context. The plan establishes no executed result or compliance claim.
+
+## Shared context
+
+The [HIPAA scope, regulatory basis, and software boundaries](../context/hipaa.md) qualify this contract.
