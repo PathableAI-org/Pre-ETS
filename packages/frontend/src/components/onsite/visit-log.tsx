@@ -4,15 +4,8 @@ import { Button, CardGrid, Cluster, FormGroup, Heading, Input, Label, Stack, Sur
 import { useEffect, useRef, useState } from "react"
 
 import { Field, Narrative } from "./form-fields.tsx"
+import { transitionVisit, type Visit, type VisitAction } from "./visit-state.ts"
 import { displayDuration, durationMs, localDateTime, visitClockMs } from "./visit-time.ts"
-
-interface Visit {
-  readonly date: string
-  readonly end: string
-  readonly id: number
-  readonly running: boolean
-  readonly start: string
-}
 
 const initialVisit: Visit = { date: "", end: "", id: 1, running: false, start: "" }
 
@@ -49,8 +42,8 @@ export function VisitLog() {
     setVisits((current) => current.filter((visit) => visit.id !== id))
   }
 
-  function updateVisit(id: number, change: Partial<Visit>) {
-    setVisits((current) => current.map((visit) => visit.id === id ? { ...visit, ...change } : visit))
+  function updateVisit(id: number, action: VisitAction) {
+    setVisits((current) => current.map((visit) => visit.id === id ? transitionVisit(visit, action) : visit))
   }
 
   const recordedMs = visits.reduce((total, visit) => total + (durationMs(visit.start, visit.end) ?? 0), 0)
@@ -64,8 +57,8 @@ export function VisitLog() {
           <VisitEntry
             key={visit.id}
             now={now}
-            onChange={(change) => {
-              updateVisit(visit.id, change)
+            onAction={(action) => {
+              updateVisit(visit.id, action)
             }}
             onRemove={() => {
               removeVisit(visit.id)
@@ -98,8 +91,8 @@ export function VisitLog() {
   )
 }
 
-function VisitDate({ onChange, prefix, visit }: {
-  onChange: (change: Partial<Visit>) => void
+function VisitDate({ onAction, prefix, visit }: {
+  onAction: (action: VisitAction) => void
   prefix: string
   visit: Visit
 }) {
@@ -110,7 +103,7 @@ function VisitDate({ onChange, prefix, visit }: {
         id={`${prefix}-date`}
         name={`${prefix}-date`}
         onChange={(event) => {
-          onChange({ date: event.currentTarget.value })
+          onAction({ type: "edit-date", value: event.currentTarget.value })
         }}
         type="date"
         value={visit.date}
@@ -119,9 +112,9 @@ function VisitDate({ onChange, prefix, visit }: {
   )
 }
 
-function VisitEntry({ now, onChange, onRemove, visit }: {
+function VisitEntry({ now, onAction, onRemove, visit }: {
   now: number
-  onChange: (change: Partial<Visit>) => void
+  onAction: (action: VisitAction) => void
   onRemove: () => void
   visit: Visit
 }) {
@@ -135,11 +128,11 @@ function VisitEntry({ now, onChange, onRemove, visit }: {
         </Button>
       </Cluster>
       <CardGrid gap="sm" variant="auto-fit">
-        <VisitDate onChange={onChange} prefix={prefix} visit={visit} />
+        <VisitDate onAction={onAction} prefix={prefix} visit={visit} />
         <Field defaultValue="Example coach" id={`${prefix}-coach`} label="Job coach" />
-        <VisitTimer now={now} onChange={onChange} visit={visit} />
+        <VisitTimer now={now} onAction={onAction} visit={visit} />
       </CardGrid>
-      <VisitTimes onChange={onChange} prefix={prefix} visit={visit} />
+      <VisitTimes onAction={onAction} prefix={prefix} visit={visit} />
       <VisitNarratives prefix={prefix} />
     </Stack>
   )
@@ -156,9 +149,9 @@ function VisitNarratives({ prefix }: { prefix: string }) {
   )
 }
 
-function VisitTimer({ now, onChange, visit }: {
+function VisitTimer({ now, onAction, visit }: {
   now: number
-  onChange: (change: Partial<Visit>) => void
+  onAction: (action: VisitAction) => void
   visit: Visit
 }) {
   return (
@@ -172,7 +165,7 @@ function VisitTimer({ now, onChange, visit }: {
           disabled={visit.running || visit.start !== ""}
           onClick={() => {
             const start = localDateTime(new Date())
-            onChange({ date: start.slice(0, 10), end: "", running: true, start })
+            onAction({ at: start, type: "start" })
           }}
           type="button"
           variant="primary"
@@ -182,7 +175,7 @@ function VisitTimer({ now, onChange, visit }: {
         <Button
           disabled={!visit.running}
           onClick={() => {
-            onChange({ end: localDateTime(new Date()), running: false })
+            onAction({ at: localDateTime(new Date()), type: "end" })
           }}
           type="button"
           variant="outline"
@@ -194,8 +187,8 @@ function VisitTimer({ now, onChange, visit }: {
   )
 }
 
-function VisitTimes({ onChange, prefix, visit }: {
-  onChange: (change: Partial<Visit>) => void
+function VisitTimes({ onAction, prefix, visit }: {
+  onAction: (action: VisitAction) => void
   prefix: string
   visit: Visit
 }) {
@@ -209,8 +202,7 @@ function VisitTimes({ onChange, prefix, visit }: {
             id={`${prefix}-start`}
             name={`${prefix}-start`}
             onChange={(event) => {
-              const start = event.currentTarget.value
-              onChange({ running: start === "" ? false : visit.running, start })
+              onAction({ type: "edit-start", value: event.currentTarget.value })
             }}
             step={1}
             type="datetime-local"
@@ -223,7 +215,7 @@ function VisitTimes({ onChange, prefix, visit }: {
             id={`${prefix}-end`}
             name={`${prefix}-end`}
             onChange={(event) => {
-              onChange({ end: event.currentTarget.value, running: false })
+              onAction({ type: "edit-end", value: event.currentTarget.value })
             }}
             step={1}
             type="datetime-local"
