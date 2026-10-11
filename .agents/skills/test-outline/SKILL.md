@@ -56,11 +56,11 @@ For directory modules, replace the directory's `/index.ts` or `/index.tsx` with 
 
 - `src/a/b/module.ts` → `tests/a/b/module.test.ts`
 - `src/a/b/component.tsx` → `tests/a/b/component.test.ts`
-- `src/lib/tenant/index.ts` → `tests/lib/tenant.test.ts`
+- `src/lib/tenant.ts` → `tests/lib/tenant.test.ts`
 - `src/a/b/module/index.tsx` → `tests/a/b/module.test.ts`
 
 Do not create `tests/lib/tenant/index.test.ts` or `tests/lib/tenant/service.test.ts`
-for the public tenant module merely because its implementation uses those source files.
+for the public tenant module.
 
 Do not move existing tests unless the caller explicitly requests it. If a requested destination conflicts with the owning suite
 or a new module has no established source location, resolve the ambiguity with the

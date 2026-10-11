@@ -5,7 +5,7 @@ import { cache } from "react"
 
 import { httpErrorPage } from "../../lib/error.ts"
 import { Runtime } from "../../lib/runtime"
-import { TenantConfigService } from "../../lib/tenant"
+import { TenantConfigService } from "../../lib/tenant.ts"
 
 export const requireTenantConfig = cache(async () => {
   const host = (await headers()).get("host") ?? ""
