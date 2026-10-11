@@ -1,64 +1,44 @@
-# <Product area>
+---
+id: PREETS-<AREA>-<NNN>
+classifications:
+  - <Functional, Security, Regulatory, Contractual, or Product>
+---
 
-Template only: all angle-bracket values are placeholders, not registered requirements or approved behavior.
-Copy this file into the requirements directory, replace the placeholders, and remove this notice.
-Links below are relative to the copied area document. Repeat the requirement section for related obligations.
+# <Human-readable title>
 
-## PREETS-<AREA>-<NNN>
+Template only: copy to `<domain>/PREETS-<AREA>-<NNN>.md`, replace placeholders, and remove this notice.
+One file represents one coherent contract. Add optional YAML `dependencies` as a list of hard-prerequisite IDs.
+Adjust relative links for the destination. This template allocates no ID and establishes no obligation.
 
-**Title:** <Short name of the obligation>
-**Classification:** <Nature of the obligation>
-**Owner / responsible boundary:** <Optional owner or boundary>
-**Lifecycle:** proposed
-**Verification:** unverified
+## Description
 
-### Statement
+<Actor or consumer, expected behavior, relevant conditions, scope, and success/failure outcomes.>
 
-<Consumer or actor> must <observable outcome> when <relevant conditions>.
+## Rationale
 
-### Rationale and sources
+<Why the obligation exists and what failure means to its consumer.>
 
-<Why this obligation matters and what failure would mean to its consumer.>
+## Sources
 
-- Source: <Attributable document/link and relevant section; distinguish a proposal from an approved decision.>
-- Decision: <Approval or retirement reference when applicable; otherwise pending.>
+- <Attributable source and relevant section or decision; distinguish regulatory duties, product decisions,
+  and client practices. Follow the guide's confidentiality rule.>
 
-### Acceptance criteria
+## Acceptance criteria
 
-1. <Under named conditions, the consumer can observe a specific outcome.>
-2. <A relevant failure or boundary outcome, if required by the source.>
+1. <An externally meaningful outcome under named conditions.>
+2. <Relevant failure or boundary outcome supported by the source.>
 
-### Design constraints
+## Observability
 
-<Optional explicitly approved implementation choices; distinguish these from observable outcomes.>
+<What operators must detect, distinguish, measure, or diagnose. These are binding acceptance obligations.
+Avoid instrumentation details. Use Not applicable after deliberate consideration when appropriate.>
 
-### Open questions
+## Verification Plan
 
-<Unresolved decisions and source conflicts, or None.>
+<What must be demonstrated, expected external evidence category, intended claim, known assumptions/limits,
+and unresolved verification questions. Include observability obligations. Do not write test steps or internal
+module-testing strategies. For an explicit human exception, record the decision and human-provided reason.>
 
-### Implementation dependencies
+## Open questions
 
-<Optional unresolved planning decisions or prerequisite obligations that gate affected delivery work.>
-
-### Related requirements
-
-<Optional links to dependencies, replaced requirements, or replacements. Required replacement links for superseded entries.>
-
-### Design references
-
-<Optional links to relevant architecture decisions or designs.>
-
-### Delivery references
-
-<Optional issue/PR URLs describing work toward this obligation.>
-
-### Verification plan
-
-<Optional future evidence: claims, responsible boundaries, meaningful violations, and limitations.>
-
-### Verification evidence
-
-No executed evidence has been recorded. Planned verification does not change the verification value.
-
-<When evidence exists: link to the test/scenario or manual procedure; identify covered acceptance criteria and
-boundary, execution result and date/revision, and remaining limitations. Label planned evidence explicitly.>
+<Optional unresolved decisions or source conflicts; omit when absent.>

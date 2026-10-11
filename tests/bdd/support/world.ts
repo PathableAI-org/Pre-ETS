@@ -13,10 +13,12 @@ export class AppWorld extends World {
   extraHeaders: Record<string, string> = {}
   readonly keyPrefix = `bdd:${randomUUID()}:`
   logs = ""
+  ownedDirectory: string | undefined
   port = 0
   process: ChildProcess | undefined
   readonly redisUrl = process.env.REDIS_URL ?? "redis://127.0.0.1:6379"
   response: undefined | { body: string; headers: Record<string, string>; status: number }
+  restrictedPaths: string[] = []
   runtime: "development" | "production" = "production"
   readonly signingSecret = randomBytes(32)
   staticAlias: string | undefined

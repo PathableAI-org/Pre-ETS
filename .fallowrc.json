@@ -19,8 +19,7 @@
   ],
   "ignoreDependencies": [
     "@effect/platform-node",
-    "effect",
-    "effect-solutions"
+    "effect"
   ],
   "rules": {
     "unused-dependencies": "error"

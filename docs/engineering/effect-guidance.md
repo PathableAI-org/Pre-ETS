@@ -8,17 +8,16 @@ remain outside the Effect-first AI workflow unless they explicitly opt in.
 ## Before writing Effect code
 
 Follow the [README developer setup](../../README.md#effect-developer-setup),
-then run `pnpm effect-solutions list` and read only the topics relevant to your
-change. Verify examples against the target workspace's installed Effect
-declarations. Do not run the CLI's interactive setup to rewrite this monorepo. `open-issue` sends external feedback and requires explicit user
-authorization.
+then read the [upstream Effect documentation](https://effect.website/docs/) relevant
+to your change. Verify examples against the target workspace's installed Effect
+declarations.
 
 Source precedence:
 
 1. Repository contracts and the installed workspace's declarations are authoritative.
-2. Use the matching Effect v4 source (main / tagged RC) for implementation details
+2. Use Effect v4 source at the tag matching the installed version for implementation details
    and examples.
-3. Use Effect Solutions for patterns, checking every API against installed types.
+3. Use upstream Effect documentation for patterns, checking every API against installed types.
 
 Product workspaces use the coordinated Effect pins in the named `effect` catalog
 in [`pnpm-workspace.yaml`](../../pnpm-workspace.yaml), including
@@ -159,7 +158,7 @@ their environment manually using the README commands.
 
 ## References
 
-- [Effect Solutions setup](https://www.effect.solutions/project-setup)
-- [Effect Solutions TypeScript guidance](https://www.effect.solutions/tsconfig)
+- [Upstream Effect documentation](https://effect.website/docs/)
+- [Upstream Effect source](https://github.com/Effect-TS/effect)
 - [Language service](https://github.com/Effect-TS/language-service)
 - [Upstream MIGRATION.md](https://github.com/Effect-TS/effect/blob/main/MIGRATION.md)

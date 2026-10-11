@@ -2,7 +2,7 @@
 
 Read the root [AGENTS.md](../../AGENTS.md) and
 [Effect agent guidance](../../docs/engineering/effect-guidance.md) before Effect
-work. Consult relevant Effect Solutions topics, then check this workspace's installed Effect
+work. Consult relevant [upstream Effect documentation](https://effect.website/docs/), then check this workspace's installed Effect
 types. Product pins come from the named `effect` catalog in
 [`pnpm-workspace.yaml`](../../pnpm-workspace.yaml).
 

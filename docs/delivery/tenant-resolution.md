@@ -24,13 +24,13 @@ Sentinel gate, deployed ingress suite, or infrastructure review instructions are
 of diagnostics still depends on that separate future infrastructure work; this plan covers direct application
 behavior, including production application mode, rather than a production deployment.
 
-| Accepted requirement                                                        | Selected ACs |
-| --------------------------------------------------------------------------- | ------------ |
-| [PREETS-TENANT-003](../requirements/tenant-resolution.md#preets-tenant-003) | 1–4          |
-| [PREETS-TENANT-004](../requirements/tenant-resolution.md#preets-tenant-004) | 1–5          |
-| [PREETS-TENANT-005](../requirements/tenant-resolution.md#preets-tenant-005) | 1–5          |
-| [PREETS-TENANT-006](../requirements/tenant-resolution.md#preets-tenant-006) | 1–6          |
-| [PREETS-SECURITY-001](../requirements/security.md#preets-security-001)      | 1–3          |
+| Accepted requirement                                                   | Selected ACs |
+| ---------------------------------------------------------------------- | ------------ |
+| [PREETS-TENANT-003](../requirements/tenant/PREETS-TENANT-003.md)       | 1–4          |
+| [PREETS-TENANT-004](../requirements/tenant/PREETS-TENANT-004.md)       | 1–5          |
+| [PREETS-TENANT-005](../requirements/tenant/PREETS-TENANT-005.md)       | 1–5          |
+| [PREETS-TENANT-006](../requirements/tenant/PREETS-TENANT-006.md)       | 1–6          |
+| [PREETS-SECURITY-001](../requirements/security/PREETS-SECURITY-001.md) | 1–3          |
 
 TENANT-001/002 are superseded history, not delivery scope. No proposed requirement is promoted to accepted work.
 
@@ -67,11 +67,11 @@ APIs and resolve relevant guidance drift without changing approved requirements.
 - **B1 resolved — maintainer direction, 2026-10-03:** directory configuration/access failures return HTTP 500 in
   both modes. With a usable directory, missing host files and unreadable/malformed selected files in either mode
   return ordinary HTTP 404 without fallback. Missing static files retain HTTP 500. See
-  [TENANT-004](../requirements/tenant-resolution.md#preets-tenant-004). No configured-tenant registry is needed.
+  [TENANT-004](../requirements/tenant/PREETS-TENANT-004.md). No configured-tenant registry is needed.
 - **B2 provider scope resolved — maintainer direction, 2026-10-03:** avoid secret dependencies where possible;
   permitted tenant files contain non-secret lookup keys when needed. A vendor-agnostic server-only provider resolves
   those keys; credentials and resolved values remain outside configuration and diagnostics. See
-  [SECURITY-001](../requirements/security.md#preets-security-001). Concrete provider selection/integration is deferred
+  [SECURITY-001](../requirements/security/PREETS-SECURITY-001.md). Concrete provider selection/integration is deferred
   until cloud infrastructure work begins. A deterministic provider supports current contract verification.
 - **Remaining external-content limit:** shared schema checks cannot detect all secrets pasted into allowed text.
   Producer controls and their evidence remain an open requirement question, not a concrete provider selection blocker.

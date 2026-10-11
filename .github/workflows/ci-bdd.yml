@@ -116,6 +116,8 @@ jobs:
           echo "OIDC_TX_KEY_PREFIX=ci:bdd:oidc-tx:${{ github.run_id }}:" >> "$GITHUB_ENV"
       - name: Run harness checks
         run: pnpm test:bdd:checks
+      - name: Install Chromium for missing-page presentation checks
+        run: pnpm exec playwright install --with-deps chromium
       - name: Run requirements BDD
         run: pnpm test:bdd
       - name: Preserve BDD reports and failure diagnostics

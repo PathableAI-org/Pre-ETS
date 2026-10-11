@@ -16,7 +16,7 @@ Read the root [AGENTS.md](../../AGENTS.md) before changing this workspace.
 
 This workspace is Effect-first for agents. Before designing or modifying Effect
 code, read [Effect agent guidance](../../docs/engineering/effect-guidance.md),
-run `pnpm effect-solutions list` from the repository root, and verify APIs
+consult relevant [upstream Effect documentation](https://effect.website/docs/), and verify APIs
 against this workspace's installed Effect types. Product pins come from the named
 `effect` catalog in [`pnpm-workspace.yaml`](../../pnpm-workspace.yaml).
 

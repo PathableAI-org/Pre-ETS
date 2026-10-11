@@ -16,6 +16,13 @@ Before designing or changing tests, read [Testing as evidence](docs/engineering/
 For property tests, also read [Property-based testing](docs/engineering/testing/property-based-testing.md).
 Choose evidence for a named expectation and the boundary responsible for it; do not add tests solely for coverage.
 
+Before authoring or reviewing requirements BDD, step definitions, or supporting helpers, read
+[Requirements-backed BDD](docs/engineering/testing/requirements-bdd.md). Inspect the referenced requirements
+in current `origin/main`; report unavailable baseline access rather than assuming approval. Every scenario
+must carry or inherit requirement-ID tags. Keep assertions within those promises and use feature-level
+`@partial` for intermediate evidence. Use the repository's `requirements-bdd-author`,
+`requirements-bdd-scaffold`, and `requirements-bdd-review` skills for those workflows.
+
 ## Effect workspace routing
 
 Before designing or modifying Effect code in `packages/frontend`,
@@ -23,10 +30,9 @@ Before designing or modifying Effect code in `packages/frontend`,
 read [Effect agent guidance](docs/engineering/effect-guidance.md) and the target
 workspace's `AGENTS.md`: [frontend](packages/frontend/AGENTS.md),
 [backend](packages/backend/AGENTS.md). This explicit routing also applies when an
-agent starts at the repository root. Consult relevant Effect Solutions topics
-(`pnpm effect-solutions list` / `show`) and verify APIs against the installed
-Effect declarations in the target workspace before using examples. Do not run
-the CLI's interactive setup to rewrite this monorepo.
+agent starts at the repository root. Consult relevant [upstream Effect documentation](https://effect.website/docs/)
+and source matching the target workspace's installed version, then verify APIs
+against its installed declarations before using examples.
 
 Product Effect pins are coordinated in the named `effect` catalog in
 [`pnpm-workspace.yaml`](pnpm-workspace.yaml), including `@effect/platform-node`.

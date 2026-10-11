@@ -9,11 +9,10 @@ catalogs:
     "@effect/vitest": "4.0.2"
     effect: "4.0.2"
 
-# These published ranges admit incompatible shared-platform peer requirements.
-# Restrict each affected parent to its matching published implementation.
+# This published range admits incompatible shared-platform peer requirements.
+# Restrict the Node parent to its matching published implementation.
 overrides:
   "@effect/platform-node@4.0.2>@effect/platform-node-shared": "4.0.2"
-  "@effect/platform-bun@4.0.0-beta.59>@effect/platform-node-shared": "4.0.0-beta.59"
 
 # Enforce the same one-day cooldown locally and in CI.
 minimumReleaseAge: 1440
@@ -27,10 +26,8 @@ allowBuilds:
   core-js: false
   protobufjs: false
   dprint: true
-  msgpackr-extract: true
 
 minimumReleaseAgeExclude:
-  - "@types/node@24.19.2"
   - "@fallow-cli/darwin-arm64@3.33.1"
   - "@fallow-cli/darwin-x64@3.33.1"
   - "@fallow-cli/linux-arm64-gnu@3.33.1"

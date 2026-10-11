@@ -5,7 +5,7 @@ import { ConfigProvider, Effect, Layer, ManagedRuntime } from "effect"
 
 import { ServerConfig } from "./config/index.ts"
 import { appLoggerLayer } from "./observability.ts"
-import { TenantConfigService } from "./tenant/service.ts"
+import { TenantConfigService } from "./tenant.ts"
 
 const OTEL_SERVICE_NAME = "pre-ets-frontend"
 
@@ -31,7 +31,7 @@ const boot = () => {
   return Effect.gen(function*() {
     const config = yield* ServerConfig.pipe(
       Effect.tap(() => Effect.logDebug("Loaded server config")),
-      Effect.tapError((error) => Effect.logError(error.message))
+      Effect.tapError(() => Effect.logError("Invalid server configuration"))
     )
 
     const runtime = ManagedRuntime.make(
