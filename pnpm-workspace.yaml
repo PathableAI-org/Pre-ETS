@@ -7,7 +7,7 @@ catalogs:
     "@effect/opentelemetry": "4.0.3"
     "@effect/platform-node": "4.0.3"
     "@effect/vitest": "4.0.3"
-    effect: "4.0.2"
+    effect: "4.0.3"
 
 # This published range admits incompatible shared-platform peer requirements.
 # Restrict the Node parent to its matching published implementation.
