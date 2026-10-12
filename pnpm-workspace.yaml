@@ -4,15 +4,15 @@ packages:
 # One reviewed Effect dependency set shared by every importer.
 catalogs:
   effect:
-    "@effect/opentelemetry": "4.0.2"
-    "@effect/platform-node": "4.0.2"
-    "@effect/vitest": "4.0.2"
-    effect: "4.0.2"
+    "@effect/opentelemetry": "4.0.3"
+    "@effect/platform-node": "4.0.3"
+    "@effect/vitest": "4.0.3"
+    effect: "4.0.3"
 
 # This published range admits incompatible shared-platform peer requirements.
 # Restrict the Node parent to its matching published implementation.
 overrides:
-  "@effect/platform-node@4.0.2>@effect/platform-node-shared": "4.0.2"
+  "@effect/platform-node@4.0.2>@effect/platform-node-shared": "4.0.3"
 
 # Enforce the same one-day cooldown locally and in CI.
 minimumReleaseAge: 1440
@@ -39,3 +39,4 @@ minimumReleaseAgeExclude:
   - "fallow-type-aware@3.33.1"
   - "fallow@3.33.1"
   - "prettier@3.9.10"
+  - effect@4.0.3

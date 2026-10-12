@@ -20,12 +20,26 @@ Server rejection alone cannot protect sensitive information already rendered, in
 - Source clarification: Maintainer direction on 2026-10-05 authorizes accessible expiration recovery, addressing the [Copilot review comment](https://github.com/PathableAI-org/Pre-ETS/pull/112#discussion_r4184264246).
 - Decision: Maintainer approval on 2026-10-05 ("mark these requirements as approved") accepts this requirement and its acceptance criteria. Open policy and design questions remain delivery gates.
 
+- Decision: Maintainer direction on 2026-10-12 replaces the originally accepted expired-SSR redirect policy.
+  Fresh protected-page entry through a new tab, refresh, or browser back/forward navigation without a valid
+  session starts tenant OIDC directly. Already-open authenticated tabs retain the blocking expiration modal.
+  Expired or missing-record protected Server Actions return HTTP 401 and display dedicated unauthenticated
+  recovery content with an explanation and Login action, without automatic OIDC. Explain expiration when
+  known and an unavailable session when its cause is unknown. The active modal blocks in-page navigation;
+  its expiration explanation and recovery are equivalent to the Server Action recovery content.
+  Rendering mechanisms belong to engineering. No expiration-recognition retention period is required by
+  this policy. This refinement is subject to Git/PR approval.
+
 ## Acceptance criteria
 
 1. At expiration, protected information already rendered in every session-sharing tab is no longer readable.
-2. The blocking expiration modal explains expiration and offers explicit authentication again; protected information cannot be exposed by dismissing or bypassing the modal.
+2. The blocking expiration modal explains expiration and offers explicit authentication again; protected
+   information cannot be exposed by dismissing or bypassing the modal. In-page navigation is unavailable
+   while the modal is active. Existing-tab refresh and browser back/forward navigation follow
+   PREETS-SESSION-004’s fresh-entry policy.
 3. Expired state propagates across session-sharing tabs.
-4. The modal and PREETS-SESSION-007’s page convey equivalent expiration meaning and recovery actions.
+4. The modal shown in an already-open authenticated tab and PREETS-SESSION-007’s recovery content displayed after a
+   protected Server Action encounters expiration convey equivalent expiration explanations and explicit recovery actions.
 5. Assistive-technology users receive an announcement of expiration and can perceive its explanation and authenticate-again action. Focus moves into the modal; keyboard users can activate reauthentication with visible focus. Protected background information is unavailable to keyboard interaction and assistive-technology reading or navigation while the expired state remains.
 
 ## Open questions
@@ -34,7 +48,10 @@ Define acceptable synchronization latency and suspended/resumed tab protection. 
 
 ## Verification Plan
 
-Browser Gherkin observes actual rendered-content concealment, blocking behavior, focus movement and visible focus, keyboard recovery, multiple tabs, and explicit recovery with controllable time. Assistive-technology observations establish expiration announcement, explanation/action availability, and inability to read or navigate protected background information. Server-only denial or modal-string assertions cannot establish concealment.
+Browser Gherkin observes actual rendered-content concealment, blocking behavior, focus movement and visible focus, keyboard recovery, multiple tabs, and explicit recovery with controllable time. Assistive-technology observations establish expiration announcement, explanation/action availability, and inability to read or navigate protected background information. Browser evidence must establish blocked in-page navigation while the modal is active and the fresh-entry
+behavior of refresh and browser back/forward navigation under PREETS-SESSION-004.
+Compare the already-open tab’s modal with the Server Action recovery content for equivalent expiration explanation
+and recovery. Server-only denial or modal-string assertions cannot establish concealment.
 
 Evidence assumptions follow the shared session context. Unresolved verification conditions follow the Open questions above; no additional operational monitoring claim is introduced.
 
