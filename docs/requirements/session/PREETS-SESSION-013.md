@@ -8,7 +8,10 @@ classifications:
 
 ## Description
 
-Users choosing authentication again after expiration must complete a fresh authentication event at the tenant’s OIDC provider and receive a new application session; the expired session must remain unusable.
+Users authenticating again after application-session expiration must complete a fresh authentication event
+at the tenant’s OIDC provider and receive a new application session; the expired session must remain unusable.
+This applies to explicit modal/Server Action recovery and automatic protected-page entry through a new tab,
+refresh, or browser back/forward navigation under PREETS-SESSION-004.
 
 ## Rationale
 
@@ -19,21 +22,35 @@ Existing SSO alone provides weak evidence that the authorized user returned to a
 - Source: Maintainer-supplied discovery summary (2026-10-05), “Reauthentication after expiration.”
 - Decision: Maintainer approval on 2026-10-05 ("mark these requirements as approved") accepts this requirement and its acceptance criteria. Open policy and design questions remain delivery gates.
 
+- Decision: Maintainer direction on 2026-10-12 confirms that post-expiration fresh-entry authentication must
+  also require fresh OIDC authentication. Starting OIDC automatically does not permit existing SSO alone to
+  satisfy authentication. This scope clarification is subject to Git/PR approval; protocol and provider
+  decisions remain open.
+
 ## Acceptance criteria
 
-1. Explicit recovery initiates tenant OIDC authentication and successful completion establishes a new application session bound to the authenticated user and tenant.
+1. Explicit recovery and automatic fresh entry after expiration initiate tenant OIDC authentication;
+   successful fresh authentication establishes a new application session bound to the authenticated user and tenant.
 2. The old application session cannot be renewed or reused for protected access.
-3. An existing IdP/SSO session alone cannot silently satisfy recovery: the application requests fresh authentication and verifies protocol evidence that a fresh event occurred.
+3. An existing IdP/SSO session alone cannot silently satisfy either explicit recovery or automatic fresh
+   entry after expiration: the application requests fresh authentication and verifies protocol evidence
+   that a fresh event occurred.
 4. The IdP chooses the authentication mechanism; entering a password is not required by this contract.
 5. Cancelled, failed, or unconfirmed fresh authentication leaves protected access unavailable.
 
 ## Open questions
 
-Define OIDC request/response freshness semantics, clock tolerance, broker/provider support, and failure behavior before implementation; do not infer freshness from a new application session identifier.
+Define OIDC request/response freshness semantics, clock tolerance, broker/provider support, and failure
+behavior before implementation. Determine how prior expiration is recognized after old session state is
+removed so fresh entry cannot bypass required freshness. Do not infer freshness from a new application
+session identifier.
 
 ## Verification Plan
 
-OIDC contract/integration checks observe freshness request semantics and validate authentication-event evidence, including stale/missing evidence and cancellation. Focused real-provider browser Gherkin with an existing SSO session demonstrates fresh authentication and new-session recovery; a mocked callback alone cannot establish provider behavior.
+OIDC contract/integration checks observe freshness request semantics and validate authentication-event evidence, including stale/missing evidence and cancellation. Focused real-provider browser Gherkin with an existing SSO session demonstrates fresh authentication and new-session recovery; a mocked callback alone cannot establish provider behavior. Exercise both explicit recovery and automatic
+post-expiration entry through new tabs, refresh, and browser history with existing provider SSO, including
+removed old-session records once recognition semantics are decided. Establish fresh-event evidence, denial
+for stale/missing evidence, and continued denial of the old session; a redirect alone is insufficient.
 
 Evidence assumptions follow the shared session context. Unresolved verification conditions follow the Open questions above; no additional operational monitoring claim is introduced.
 
