@@ -37,8 +37,10 @@ and sign-in failures must be explainable without authenticated access.
 1. A request without valid authentication cannot obtain protected content from any protected frontend page,
    route handler, or Server Action, including `/`. Protection applies at each of these entry points, not only
    to navigation through another page.
-2. An explicitly designated public resource, including the session-expired page, OIDC callback, sign-in error
-   page, the missing-session recovery/error page, and all routes under `/_test`, is accessible without authentication. The callback must still validate
+2. Explicitly designated public resources include the OIDC callback, sign-in error page, all routes under
+   `/_test`, and the dedicated expired/missing-session recovery content required by PREETS-SESSION-007.
+   These resources and recovery content are available without authentication; this does not require a
+   separate recovery page or a particular rendering mechanism. The callback must still validate
    authentication before establishing an authenticated session under PREETS-SESSION-003.
    Static assets needed to display unauthenticated pages may load without a session only when they contain
    no protected information. `GET /_test/tenant-config` does not create an application session.

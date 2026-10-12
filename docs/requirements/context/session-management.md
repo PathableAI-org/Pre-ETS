@@ -46,6 +46,9 @@ they do not describe current implementation or establish executed evidence. The 
   Server Actions, and direct tenant OIDC on fresh entry without a valid session. That refinement awaits Git/PR approval.
 - [Authentication — Login again after inactivity](https://github.com/PathableAI-org/Pre-ETS/blob/6058d1010dfc7a6f6800ac3d30cd6b6b1c61485e/docs/authentication.md#login-again-after-inactivity)
   permits existing IdP SSO without a fresh challenge; PREETS-SESSION-013 requires fresh authentication.
+  Maintainer clarification on 2026-10-12 explicitly applies that obligation to automatic fresh entry after
+  expiration as well as explicit recovery. Recognition after old-record removal and protocol/provider
+  semantics remain B6 decisions; automatic entry is not a freshness exemption.
 - [Multi-tenancy — Idle timeout policy](https://github.com/PathableAI-org/Pre-ETS/blob/6058d1010dfc7a6f6800ac3d30cd6b6b1c61485e/docs/multi-tenancy.md#idle-timeout-policy) records a default and policy
   snapshot at authentication. The 2026-10-12 working refinements select a 30-minute omitted timeout,
   a default warning five minutes before expiration (disabled by default at a five-minute timeout), and

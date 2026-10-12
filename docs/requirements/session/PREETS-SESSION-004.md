@@ -38,14 +38,17 @@ First access should not require finding a separate login control.
 1. A protected page request without an application session initiates the resolved tenant’s OIDC flow automatically.
    New-tab entry, existing-tab refresh, and browser back/forward navigation to a protected page with an
    expired session also start tenant OIDC directly rather than redirecting to the session-expired page.
+   These post-expiration flows require fresh authentication and verified provider evidence under
+   PREETS-SESSION-013; existing IdP SSO alone cannot satisfy them.
    Browser history must not restore usable protected content under an expired session.
 2. Fresh entry does not replace the browser expiration modal required by PREETS-SESSION-012 or the
    expired- or missing-session Server Action recovery content required by PREETS-SESSION-007.
 
 ## Open questions
 
-None for the fresh-entry policy. Server Action failure/status and recovery presentation are governed by
-PREETS-SESSION-007.
+Fresh-authentication protocol semantics and recognition of previous expiration after stored state is
+removed remain B6 decisions under PREETS-SESSION-013. Automatic entry does not exempt expired sessions
+from freshness. Server Action failure/status and recovery presentation are governed by PREETS-SESSION-007.
 
 ## Verification Plan
 
@@ -55,7 +58,9 @@ navigation, including when the old stored record has been removed. Browser-histo
 that an expired session cannot regain protected use through restored page state.
 A new tab with a still-valid session must join it under PREETS-SESSION-010 rather than start independent login.
 Separate running-tab and Server Action evidence must establish the explicit recovery paths without treating
-all requests as fresh entry.
+all requests as fresh entry. Real-provider evidence with an existing SSO session must establish fresh
+authentication for expired fresh entry and denial for stale or unconfirmed freshness under PREETS-SESSION-013.
+Automatic redirects or a newly created application session alone do not establish authentication freshness.
 
 Evidence assumptions follow the shared session context. No additional operational monitoring claim is introduced.
 
