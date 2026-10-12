@@ -38,11 +38,11 @@ $env:OTEL_SDK_DISABLED = 'true'
 corepack pnpm --filter @pathableai/pre-ets-frontend exec next dev --hostname 127.0.0.1
 ```
 
-Open `http://127.0.0.1:3000/onsite` to review a sample electronic version of
-the on-site job-coaching progress report and service log. Equivalent settings
-may live in the gitignored `packages/frontend/.env.local` instead. This route is
-available only in development, does not need Docker, Redis, or Keycloak, and
-does not change the startup or routing behavior of other pages.
+Open `http://127.0.0.1:3000/_test/onsite` to review a sample electronic version
+of the on-site job-coaching progress report and service log. This explicitly
+public preview uses the existing `/_test/*` exception, is available only in
+development, and needs no Docker, Redis, or Keycloak. Equivalent local settings
+may live in the gitignored `packages/frontend/.env.local` instead.
 
 The form uses synthetic example information and an interactive visit timer for
 visual feedback. Edits are browser-only and disappear on reload. Its duration
