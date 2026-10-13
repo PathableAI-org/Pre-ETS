@@ -4,9 +4,11 @@ Feature: Local on-site report preview boundary
   The /_test/onsite feedback form is an explicitly public test route in
   development. Public access does not bypass tenant selection; these scenarios
   establish neither default authentication nor production ingress protection.
+  The tenant-host scenario covers only unknown-alias HTTP rejection, not hosts
+  outside the URL pattern, static-mode failures, or browser missing-page behavior.
 
   @development
-  Scenario: Development serves the on-site prototype without a special flag
+  Scenario: Development serves the public on-site prototype
     Given production tenant sites for Springfield and Shelbyville
     And static resolution selects Shelbyville
     When a visitor requests "/_test/onsite" at "127.0.0.1"

@@ -35,6 +35,10 @@ jobs:
             build:
               - 'packages/**'
               - 'tests/bdd/smoke/**'
+              - 'tests/bdd/steps/**'
+              - 'tests/bdd/support/**'
+              - 'fixtures/tenant-config/**'
+              - 'cucumber.mjs'
               - 'cucumber.smoke.mjs'
               - '.github/workflows/ci-build.yml'
               - 'package.json'
