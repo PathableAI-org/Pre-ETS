@@ -17,17 +17,19 @@ test("importing the application does not start the process", () => {
   assert.equal(result.status, 0)
 })
 
-test("an invalid configured port prevents startup", () => {
-  const result = spawnSync(process.execPath, ["dist/main.js"], {
-    cwd: new URL("../", import.meta.url),
-    encoding: "utf8",
-    env: { ...process.env, BACKEND_PORT: "not-a-port" },
-    timeout: 5000
-  })
+for (const port of ["not-a-port", "0", "65536"]) {
+  test(`BACKEND_PORT=${port} prevents startup`, () => {
+    const result = spawnSync(process.execPath, ["dist/main.js"], {
+      cwd: new URL("../", import.meta.url),
+      encoding: "utf8",
+      env: { ...process.env, BACKEND_PORT: port },
+      timeout: 5000
+    })
 
-  assert.equal(result.status, 1)
-  assert.match(`${result.stdout}${result.stderr}`, /BACKEND_PORT/u)
-})
+    assert.equal(result.status, 1)
+    assert.match(`${result.stdout}${result.stderr}`, /BACKEND_PORT/u)
+  })
+}
 
 test("serves liveness and releases the listening port on shutdown", async () => {
   const serverLayer = HttpRouter.serve(appLayer).pipe(
