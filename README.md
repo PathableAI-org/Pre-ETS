@@ -15,14 +15,20 @@ Run `pnpm install` from the repository root. For a reproducible installation, us
 
 - `packages/frontend` (`@pathableai/pre-ets-frontend`): Next.js 16 App Router
   application with PathAble React components.
-- `packages/backend` (`@pathableai/pre-ets-backend`): future backend process.
+- `packages/backend` (`@pathableai/pre-ets-backend`): independent Effect HTTP process.
 
 The frontend is an SSR-first Next.js app. Run
 `pnpm --filter @pathableai/pre-ets-frontend dev` or `pnpm dev:frontend` for
 local development. `pnpm build` compiles the backend into `dist` and emits the
 frontend production output into `.next`. After a production build,
-`pnpm start:frontend` serves that Next.js output; `pnpm start:backend` still
-prints a greeting and exits.
+`pnpm start:frontend` serves that Next.js output. After building, run
+`pnpm start:backend` to serve `GET http://127.0.0.1:8080/healthz` (HTTP 200,
+`ok`). Set `BACKEND_PORT` to an integer from 1 to 65535 to change the local
+port; an invalid value prevents startup. The backend binds to `127.0.0.1` and
+stops on process shutdown. `/healthz` reports process liveness only: it does
+not check the database or establish readiness for domain requests. The backend
+does not yet expose visit endpoints.
+
 All packages are private; the npm scope identifies ownership, not publication.
 
 ### Local external services
@@ -294,6 +300,12 @@ The shared style follows Effect: two spaces, 120 columns, LF newlines, double
 quotes, no optional semicolons, and no TypeScript trailing commas. ESLint and
 Perfectionist own sorting; dprint preserves import and export order. After code
 changes, run `pnpm lint:fix`, then `pnpm format:write`, and verify both checks.
+
+On Windows, Git's `core.autocrlf=true` may check out tracked LF files with CRLF
+endings. In that case, `pnpm format:check` can report "Text differed by line
+endings" even for untouched files. Use an LF-preserving checkout for the full
+check; `pnpm exec dprint check <changed-file>` can help distinguish changes to
+your files from this checkout issue. Do not commit unrelated line-ending churn.
 
 The CLI and TypeScript/JavaScript, JSON/JSONC, Markdown, and YAML plugins are
 pinned in pnpm and updated through Renovate’s lint-and-format group. Formatting
