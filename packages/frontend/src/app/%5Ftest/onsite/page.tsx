@@ -1,6 +1,7 @@
 import { Container, FormStack, Heading, Page, Stack, Text } from "@pathableai/react"
 import { notFound } from "next/navigation"
 
+import { requireTenantConfig } from "../../(app)/tenant-context"
 import {
   ConsumerInformation,
   EmploymentInformation,
@@ -12,10 +13,12 @@ import "../../../components/onsite/onsite.css"
 
 export const dynamic = "force-dynamic"
 
-export default function OnsitePage() {
+export default async function OnsitePage() {
   if (process.env.NODE_ENV !== "development") {
     notFound()
   }
+
+  await requireTenantConfig()
 
   return (
     <Page>

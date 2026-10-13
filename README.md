@@ -41,8 +41,9 @@ corepack pnpm --filter @pathableai/pre-ets-frontend exec next dev --hostname 127
 Open `http://127.0.0.1:3000/_test/onsite` to review a sample electronic version
 of the on-site job-coaching progress report and service log. This explicitly
 public preview uses the existing `/_test/*` exception, is available only in
-development, and needs no Docker, Redis, or Keycloak. Equivalent local settings
-may live in the gitignored `packages/frontend/.env.local` instead.
+development, and requires a valid selected tenant. It needs no Docker, Redis,
+or Keycloak. Equivalent local settings may live in the gitignored
+`packages/frontend/.env.local` instead.
 
 The form uses synthetic example information and an interactive visit timer for
 visual feedback. Edits are browser-only and disappear on reload. Its duration

@@ -34,6 +34,10 @@ scenario's resources.
 | `pnpm test:bdd:checks` | Harness regression checks that still protect fixtures used by BDD/E2E                 |
 | `pnpm test:e2e`        | Separate real-Keycloak authentication journeys; see [E2E setup](../e2e/README.md)     |
 
+After a frontend build, `pnpm test:bdd:smoke` runs the separate application-level
+[on-site production safeguard](../tests/bdd/smoke/onsite-production.feature).
+It is not requirements-backed evidence or a test of production ingress blocking.
+
 Optional `@development` selects `next dev`; otherwise scenarios use production `next start`.
 `pnpm test:bdd` builds the frontend first so that production output matches the installed Next.js.
 Dependency tags such as `@redis` are not required—the app receives `REDIS_URL`
