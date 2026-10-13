@@ -22,7 +22,7 @@ The frontend is an SSR-first Next.js app. Run
 local development. `pnpm build` compiles the backend into `dist` and emits the
 frontend production output into `.next`. After a production build,
 `pnpm start:frontend` serves that Next.js output. After building, run
-`pnpm start:backend` to serve `GET http://127.0.0.1:8080/healthz` (HTTP 200,
+`pnpm start:backend` to serve `GET http://127.0.0.1:3001/healthz` (HTTP 200,
 `ok`). Set `BACKEND_PORT` to an integer from 1 to 65535 to change the local
 port; an invalid value prevents startup. The backend binds to `127.0.0.1` and
 stops on process shutdown. `/healthz` reports process liveness only: it does

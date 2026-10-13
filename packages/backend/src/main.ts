@@ -6,7 +6,7 @@ import { createServer } from "node:http"
 import { appLayer } from "./index.js"
 
 const main = Effect.gen(function*() {
-  const port = yield* Config.Port("BACKEND_PORT").pipe(Config.withDefault(8080))
+  const port = yield* Config.Port("BACKEND_PORT").pipe(Config.withDefault(3001))
 
   yield* Layer.launch(
     HttpRouter.serve(appLayer).pipe(
