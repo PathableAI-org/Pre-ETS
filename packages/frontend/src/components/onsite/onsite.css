@@ -1,0 +1,4 @@
+.onsite-timer-value {
+  font-size: var(--pathable-font-size-body-lg);
+  font-variant-numeric: tabular-nums;
+}
