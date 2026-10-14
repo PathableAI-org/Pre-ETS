@@ -92,3 +92,4 @@ decisions. Read architecture for ownership and implementation context, not to de
 
 - [Tenant resolution pilot](tenant-resolution.md)
 - [Authentication and session management draft](session-management.md)
+- [On-site job-coaching service records draft](on-site-job-coaching.md)
