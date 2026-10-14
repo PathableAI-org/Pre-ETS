@@ -82,6 +82,7 @@ executed or assessed as satisfaction evidence for this plan.
   [#153](https://github.com/PathableAI-org/Pre-ETS/issues/153) shared identity/idle state,
   [#154](https://github.com/PathableAI-org/Pre-ETS/issues/154) protected entry and tenant OIDC,
   [#155](https://github.com/PathableAI-org/Pre-ETS/issues/155) meaningful activity/shared-tab logout,
+  [#156](https://github.com/PathableAI-org/Pre-ETS/issues/156) warning/accessible continuation across tabs,
   [#157](https://github.com/PathableAI-org/Pre-ETS/issues/157) expiration concealment/recovery, and
   [#158](https://github.com/PathableAI-org/Pre-ETS/issues/158) fresh OIDC recovery; all were open. They exclude
   backend/domain API expiration policy and heartbeat form behavior. Consume their outcomes, define the backend
@@ -219,8 +220,10 @@ public diagnostics that reveal records, and a storage-health guarantee.
 
 B4/B6 and heartbeat-output part of B7. Endpoint/monitor code can begin independently of S1. Actual
 deadline/identity/recovery composition requires [#153](https://github.com/PathableAI-org/Pre-ETS/issues/153)
-and [#154](https://github.com/PathableAI-org/Pre-ETS/issues/154); these are completion prerequisites for the claimed
-application/session increment, not reasons to block design of the endpoint. B10 remains a workflow shipping gate.
+shared identity/idle state, [#154](https://github.com/PathableAI-org/Pre-ETS/issues/154) protected authentication,
+and [#155](https://github.com/PathableAI-org/Pre-ETS/issues/155) qualifying-activity rules that exclude automatic
+background traffic from renewal. These are completion prerequisites for the claimed application/session increment,
+not reasons to block design of the endpoint. B10 remains a workflow shipping gate.
 
 #### Completion evidence
 
@@ -542,8 +545,9 @@ these exclusions do not waive applicable obligations before PHI use.
 
 B1–B7 gate affected implementation; B8–B10 gate production use. Proposed start dependencies: S3 follows S1/S2
 and existing #154; S4 follows S3 for browser integration; S5 follows S3; S6 integrates after S1. S2's authoritative
-session evidence consumes existing #153/#154. S4 also enables S5 restored-editing completion; S6 completion
-requires all delivered operation paths. Do not publish reverse shipping gates as native start blockers.
+session evidence consumes existing #153/#154/#155, including automatic-traffic exclusion from renewal. S4 also
+enables S5 restored-editing completion; S6 completion requires all delivered operation paths. Do not publish
+reverse shipping gates as native start blockers.
 
 #### Completion evidence
 
@@ -564,14 +568,14 @@ actual child URLs during authorized publication; refresh duplicates and external
 
 ### Proposed sequencing relationships
 
-| Work | Start prerequisites                                                                | Additional completion or shipping prerequisites                                              |
-| ---- | ---------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| S1   | B1/B2/B4 and start-time B3; applicable B7 decisions                                | S3 browser/session observations; S4/S5 mutation coverage; S6 and B8–B10 before PHI use.      |
-| S2   | B4/B6 and heartbeat-output B7 decisions                                            | #153/#154 for real authoritative-session evidence; S3 actual-form evidence.                  |
-| S3   | S1/S2 and #154; affected B decisions                                               | #155/#157/#158 for activity/access-loss/fresh-session journeys; S6 and B8–B10 for release.   |
-| S4   | S3 for the browser slice; backend work can start after S1 and affected B decisions | Composed persistence/session/connectivity observations; S6 and B8–B10 for release.           |
-| S5   | S3 and affected B decisions                                                        | S4 restored-editing observation; S6 protected audit and B8–B10 for release.                  |
-| S6   | S1 for actual-path integration; B4/B7                                              | S2–S5 delivered paths and B10 composition for coverage; B8/B9 remain separate release gates. |
+| Work | Start prerequisites                                                                | Additional completion or shipping prerequisites                                                                  |
+| ---- | ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| S1   | B1/B2/B4 and start-time B3; applicable B7 decisions                                | S3 browser/session observations; S4/S5 mutation coverage; S6 and B8–B10 before PHI use.                          |
+| S2   | B4/B6 and heartbeat-output B7 decisions                                            | #153/#154/#155 for real authoritative-session and automatic-traffic exclusion evidence; S3 actual-form evidence. |
+| S3   | S1/S2 and #154; affected B decisions                                               | #155/#157/#158 for activity/access-loss/fresh-session journeys; S6 and B8–B10 for release.                       |
+| S4   | S3 for the browser slice; backend work can start after S1 and affected B decisions | Composed persistence/session/connectivity observations; S6 and B8–B10 for release.                               |
+| S5   | S3 and affected B decisions                                                        | S4 restored-editing observation; S6 protected audit and B8–B10 for release.                                      |
+| S6   | S1 for actual-path integration; B4/B7                                              | S2–S5 delivered paths and B10 composition for coverage; B8/B9 remain separate release gates.                     |
 
 Only genuine issue start prerequisites become native blocking edges during later publication. Decision gates
 stay documented until assigned to concrete delivery work. All S1–S6 are parent children, including independently
