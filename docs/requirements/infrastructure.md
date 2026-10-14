@@ -1,5 +1,5 @@
 # Historical infrastructure container
 
-This former area-level container no longer defines active requirements. Contracts retain their original IDs in domain directories, with retired tenant contracts under `deprecated/`. Discover active requirements from the filesystem.
+This former area-level container defines no active contracts. Discover individual requirements from the filesystem.
 
-The original content remains in [pre-migration Git history](https://github.com/PathableAI-org/Pre-ETS/blob/ec48e91/docs/requirements/infrastructure.md).
+The original content remains in [pre-migration Git history](https://github.com/PathableAI-org/Pre-ETS/blob/7ee4f02df6442a197a3a9c59663b25337832ad73/docs/requirements/infrastructure.md).

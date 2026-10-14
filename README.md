@@ -31,6 +31,32 @@ does not yet expose visit endpoints.
 
 All packages are private; the npm scope identifies ownership, not publication.
 
+### On-site progress report feedback prototype
+
+Use the existing static tenant settings to start the frontend without changing
+its startup runtime. In PowerShell, from the repository root:
+
+```powershell
+$env:TENANT_RESOLUTION = 'static'
+$env:TENANT_CONFIG_DIR = (Resolve-Path -LiteralPath 'fixtures/tenant-config').Path
+$env:TENANT_STATIC_ALIAS = 'springfield'
+$env:OTEL_SDK_DISABLED = 'true'
+corepack pnpm --filter @pathableai/pre-ets-frontend exec next dev --hostname 127.0.0.1
+```
+
+Open `http://127.0.0.1:3000/_test/onsite` to review a sample electronic version
+of the on-site job-coaching progress report and service log. This explicitly
+public preview uses the existing `/_test/*` exception, is available only in
+development, and requires a valid selected tenant. It needs no Docker, Redis,
+or Keycloak. Equivalent local settings may live in the gitignored
+`packages/frontend/.env.local` instead.
+
+The form uses synthetic example information and an interactive visit timer for
+visual feedback. Edits are browser-only and disappear on reload. Its duration
+display is a demo estimate, not an approved service-hours calculation; typed
+signature placeholders do not sign or submit a report. Do not enter real
+participant information.
+
 ### Local external services
 
 Docker Compose provides Redis, Keycloak, and Postgres while the application

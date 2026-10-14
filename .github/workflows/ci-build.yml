@@ -34,6 +34,13 @@ jobs:
           filters: |
             build:
               - 'packages/**'
+              - 'tests/bdd/smoke/**'
+              - 'tests/bdd/steps/**'
+              - 'tests/bdd/support/**'
+              - 'fixtures/tenant-config/**'
+              - 'cucumber.mjs'
+              - 'cucumber.smoke.mjs'
+              - '.github/workflows/ci-build.yml'
               - 'package.json'
               - 'pnpm-lock.yaml'
               - 'pnpm-workspace.yaml'
@@ -71,6 +78,9 @@ jobs:
       - name: Test backend HTTP server
         if: needs.changes.outputs.build == 'true'
         run: pnpm --filter @pathableai/pre-ets-backend test
+      - name: Smoke check production on-site preview
+        if: needs.changes.outputs.build == 'true'
+        run: pnpm test:bdd:smoke
       - name: Smoke check backend
         if: needs.changes.outputs.build == 'true'
         run: |

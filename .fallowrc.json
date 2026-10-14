@@ -2,6 +2,7 @@
   "$schema": "./node_modules/fallow/schema.json",
   "entry": [
     "cucumber.mjs",
+    "cucumber.smoke.mjs",
     "e2e/playwright.config.ts",
     "e2e/*.spec.ts",
     "tests/bdd/steps/*.ts",
