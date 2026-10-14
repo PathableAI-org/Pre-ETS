@@ -74,11 +74,11 @@ jobs:
       - name: Smoke check backend
         if: needs.changes.outputs.build == 'true'
         run: |
-          node packages/backend/dist/main.js &
+          BACKEND_PORT=3002 node packages/backend/dist/main.js &
           backend_pid=$!
           trap 'kill "$backend_pid" 2>/dev/null || true; wait "$backend_pid" 2>/dev/null || true' EXIT
           for attempt in {1..30}; do
-            if test "$(curl --fail --silent http://127.0.0.1:3001/healthz)" = "ok"; then
+            if test "$(curl --fail --silent http://127.0.0.1:3002/healthz)" = "ok"; then
               exit 0
             fi
             if ! kill -0 "$backend_pid" 2>/dev/null; then

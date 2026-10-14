@@ -197,8 +197,8 @@ and failing if any scope fails. Each workspace owns its `.fallowrc.json` and loc
 `pnpm --filter @pathableai/pre-ets-frontend fallow:unused`.
 
 The root configuration excludes `packages/**` and owns repository-level tests,
-E2E/BDD support, and tooling. The backend configuration uses `src/index.ts` as its
-runtime root and retains the existing `@effect/platform-node` dependency exception.
+E2E/BDD support, and tooling. The backend configuration uses `src/main.ts` as its
+runtime root and follows its import of the `src/index.ts` application routes.
 Frontend production code counts as live only when reachable from
 Next.js framework entry points, including routes, layouts, proxy, and instrumentation.
 Library files, ordinary helpers under `app`, and server-action modules must be
