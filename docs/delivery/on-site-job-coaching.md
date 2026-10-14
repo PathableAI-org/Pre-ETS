@@ -1,10 +1,10 @@
 # Delivery plan: On-site job-coaching service records
 
-**Status:** draft
+**Status:** issued
 **Planning date:** 2026-10-13
 **Source revision:** `33a81b55883aa0c11dd0d9b9e1573ed28a0c9c96` (freshly fetched `origin/main` and inspected worktree).
 **Requirement acceptance:** [PR #129](https://github.com/PathableAI-org/Pre-ETS/pull/129), merged into `main` at the source revision.
-**Approval:** Delivery decomposition pending maintainer PR review. Requirement acceptance does not approve this plan.
+**Approval:** Decomposition approved by [PR #188](https://github.com/PathableAI-org/Pre-ETS/pull/188), merged into `main` at `deb87eab816ca1ea891309954b1792bfa48c4b1f`; verified 2026-10-14. B1–B10 remain unresolved gates.
 
 ## Goal
 
@@ -112,11 +112,8 @@ bounded maintainer product decisions can support the selected workflow without c
 
 ## Delivery slices
 
-Source-pinned requirement links in the following proposed issue bodies are usable now. The new plan has no
-committed remote revision yet. Each body's Delivery plan section records its local identity; publication must
-add a full permalink to the approved remotely accessible plan/slice. No URL is fabricated at the requirement
-revision, where this new plan does not exist. This is a publication preparation gap, not authorization to commit
-or publish. All S1–S6 delivery references are **not published**.
+Requirement links retain the inspected source revision. Publication is pinned to the approved main merge
+and actual issue URLs are recorded below; unresolved gates and approved scope remain unchanged.
 
 ### S1 — Create and retrieve authorized durable records through the backend
 
@@ -131,6 +128,8 @@ propagation beyond the selected B4 contract. S3 adds browser/session-change obse
 records and denial/state matrix to every mutation. No temporary public diagnostic or record endpoint is needed.
 
 **Proposed issue title:** Create and retrieve authorized durable on-site records through the backend
+
+**Delivery reference:** https://github.com/PathableAI-org/Pre-ETS/issues/195
 
 #### Outcome
 
@@ -193,6 +192,8 @@ protection from a successful HTTP response. S4/S5 extend write-failure and recov
 
 **Proposed issue title:** Add on-site heartbeat communication without session renewal or save acknowledgement
 
+**Delivery reference:** https://github.com/PathableAI-org/Pre-ETS/issues/196
+
 #### Outcome
 
 Supply the explicitly required heartbeat endpoint and reusable form-monitoring capability under the decided
@@ -251,6 +252,8 @@ seeded identities may establish narrower HTTP behavior only. Retain this form an
 End capture, narrative entry/correction and restored-record editing remain incomplete until those slices.
 
 **Proposed issue title:** Start and reopen one's own on-site records with protected connectivity-aware inputs
+
+**Delivery reference:** https://github.com/PathableAI-org/Pre-ETS/issues/197
 
 #### Outcome
 
@@ -319,6 +322,8 @@ checks on these new controls. Deletion, undo and audit convergence remain S5/S6.
 
 **Proposed issue title:** Capture and correct on-site times and optional narratives without approval gates
 
+**Delivery reference:** https://github.com/PathableAI-org/Pre-ETS/issues/198
+
 #### Outcome
 
 Add explicit current end capture and later time/narrative updates to the existing durable record, with no
@@ -379,6 +384,8 @@ against a deleted record. UI absence alone cannot establish non-destructive pers
 audit retention/retrieval after ordinary deletion; later recovery and final disposal remain B8/B9.
 
 **Proposed issue title:** Delete on-site records non-destructively with immediate authorized undo
+
+**Delivery reference:** https://github.com/PathableAI-org/Pre-ETS/issues/199
 
 #### Outcome
 
@@ -442,6 +449,8 @@ each behavior slice still owns its own completion evidence. Whole-product safegu
 
 **Proposed issue title:** Enforce on-site output safeguards and protected risk-based audit examination
 
+**Delivery reference:** https://github.com/PathableAI-org/Pre-ETS/issues/200
+
 #### Outcome
 
 Implement approved permitted-use/output mappings, selected application confidentiality/integrity controls and
@@ -502,6 +511,8 @@ Propose one parent containing S1–S6. Containment describes the coordinated out
 The proposed parent and child identities have no issue numbers; existing session/tenant issues remain their own work.
 
 ### Proposed parent — Deliver the protected on-site visit-log workflow
+
+**Delivery reference:** https://github.com/PathableAI-org/Pre-ETS/issues/194
 
 #### Outcome
 
@@ -708,3 +719,46 @@ against `origin/main`, six slices/seven proposal identities, existing local link
 source targets. Dependencies were installed using the unchanged frozen lockfile. Formatting used a writable
 temporary `DPRINT_CACHE_DIR` after the default cache path was sandbox-restricted. These checks establish
 repository/document compatibility only. No workflow suite was executed; requirements evidence is unchanged.
+
+## Publication record
+
+Inspection date: 2026-10-14. Approved publication revision: `deb87eab816ca1ea891309954b1792bfa48c4b1f` ([merged PR #188](https://github.com/PathableAI-org/Pre-ETS/pull/188)).
+
+Authorization: maintainer requested issue publication from the merged plan on 2026-10-14.
+Reconciled all 186 all-state issue/PR records (22 issues); no existing plan/slice identities found.
+Accepted requirement files are unchanged between the plan source revision and current `origin/main`.
+
+| Identity | Issue                                                | Observed state |
+| -------- | ---------------------------------------------------- | -------------- |
+| parent   | https://github.com/PathableAI-org/Pre-ETS/issues/194 | open           |
+| S1       | https://github.com/PathableAI-org/Pre-ETS/issues/195 | open           |
+| S2       | https://github.com/PathableAI-org/Pre-ETS/issues/196 | open           |
+| S3       | https://github.com/PathableAI-org/Pre-ETS/issues/197 | open           |
+| S4       | https://github.com/PathableAI-org/Pre-ETS/issues/198 | open           |
+| S5       | https://github.com/PathableAI-org/Pre-ETS/issues/199 | open           |
+| S6       | https://github.com/PathableAI-org/Pre-ETS/issues/200 | open           |
+
+Verified relationships/actions:
+
+- Native containment parent → S1 verified.
+- Native containment parent → S2 verified.
+- Native containment parent → S3 verified.
+- Native containment parent → S4 verified.
+- Native containment parent → S5 verified.
+- Native containment parent → S6 verified.
+- Native start blocker S3 ← S1 verified.
+- Native start blocker S3 ← S2 verified.
+- Native start blocker S3 ← 154 verified.
+- Native start blocker S4 ← S3 verified.
+- Native start blocker S5 ← S3 verified.
+- Native start blocker S6 ← S1 verified.
+
+Required native containment: parent contains S1–S6. Required native start blockers: S3 ← S1/S2/#154; S4 ← S3; S5 ← S3; S6 ← S1.
+
+Completion and shipping prerequisites remain as approved, including S2 consuming #153/#154/#155, S5 restored editing requiring S4, S6 convergence, and B8–B10. They are not additional native start blockers.
+
+Approved unissued/deferred work: B8 emergency/rights/final-disposal application work and B9 infrastructure/storage/keys/backups/protected-copy lifecycle require separate planning and evidence before PHI use; broader product safeguards and operational policy remain outside this plan. All adopted S1–S6 are published when status is issued.
+
+Last confirmed action: All seven issue bodies and twelve native relationships verified; publication complete.
+
+Outstanding: None. All seven bodies, six containment edges and six start-blocking edges read back and verified.
