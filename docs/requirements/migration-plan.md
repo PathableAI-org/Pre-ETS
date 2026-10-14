@@ -55,3 +55,33 @@ timing and suspended tabs, OIDC freshness, and externally supplied secret-conten
 recorded in the contracts. Current tenant directory/file response decisions are already resolved and remain intact, including the startup configuration-parse prerequisite merged in PR #171.
 No new operational observability commitments are made. Missing evidence remains an evidence gap, not a change
 to contract authority. Future decisions and new evidence relationships require human review.
+
+## Branch software requirements migration
+
+The on-site service-record branch now follows the same individual-contract strategy. This migration preserves
+20 software contracts: PREETS-ONSITE-001 through -009, PREETS-HIPAA-002 through -008 and -011 through -012,
+and PREETS-INFRA-003 and -004. On-site contracts live in `on-site-job-coaching/`; shared input behavior lives
+in `data-input/` with its historical ONSITE IDs; cross-cutting application safeguards live in `security/`;
+backup recovery (PREETS-HIPAA-007) and infrastructure safeguards live in `infrastructure/`.
+
+Shared source qualifications, workflow adoption, PHI assumptions, and unresolved delivery decisions live in
+[on-site context](context/on-site-job-coaching.md), [data-input context](context/data-input-workflows.md),
+and [HIPAA context](context/hipaa.md). Every software contract links its applicable context. The four wholly
+operational proposals (PREETS-HIPAA-001, -009, -010, and -013) remain reserved source/scope notes in
+[operational proposal context](context/hipaa-operational-proposals.md). They are not active software contracts,
+are not deprecated obligations, and their IDs must not be reused. No operational capability or acceptance
+criteria were invented to turn those notes into contracts.
+
+Descriptions, acceptance criteria, approved design constraints, owner boundaries, source decisions, and open
+questions retain their meaning. Classifications moved into minimal YAML; manual lifecycle/verification fields
+and empty evidence inventories were removed. Only the explicit heartbeat idle-activity prerequisite became a
+new YAML dependency (PREETS-ONSITE-009 requires PREETS-SESSION-009). Related safeguards and unresolved policy
+contracts remain contextual relationships or delivery gates rather than inferred hard dependencies.
+
+Verification plans now describe external evidence, claims, and limitations, including plans for the six
+contracts that previously had none. Process-independent durability, denial without mutation or disclosure,
+accessible heartbeat recovery, audit protection, real backup restoration, and application versus infrastructure
+copy disposal retain distinct evidence boundaries. No new operator monitoring obligations were introduced;
+existing audit-examination and copy-disposal-result obligations remain explicit. No evidence relationship or
+execution result was created. Product policy questions and deferred operational decisions still require human
+review before the affected delivery work. The former containers preserve revision-pinned Git history only.
