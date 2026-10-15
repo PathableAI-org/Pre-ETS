@@ -507,8 +507,9 @@ do not establish runtime enforcement; local transport does not verify deployed i
 
 ## Cross-cutting concerns and issue structure
 
-Propose one parent containing S1–S6. Containment describes the coordinated outcome and is separate from blockers.
-The proposed parent and child identities have no issue numbers; existing session/tenant issues remain their own work.
+Parent [#194](https://github.com/PathableAI-org/Pre-ETS/issues/194) contains S1–S6, published as
+[#195–#200](#publication-record). Containment describes the coordinated outcome and is separate from blockers.
+Existing session/tenant issues remain their own work.
 
 ### Proposed parent — Deliver the protected on-site visit-log workflow
 
