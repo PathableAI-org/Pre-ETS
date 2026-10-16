@@ -5,7 +5,7 @@ export default {
     "dprint fmt"
   ],
   "tests/bdd/requirements/**/*.feature": [
-    "gherkin-lint --config gherkin-lint.json",
+    "gherkin-lint --config .gherkin-lintrc",
     "prettier --no-config --no-editorconfig --plugin prettier-plugin-gherkin --tab-width 2 --end-of-line lf --print-width 120 --write"
   ]
 }
