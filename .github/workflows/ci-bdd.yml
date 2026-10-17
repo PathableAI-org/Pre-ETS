@@ -53,9 +53,13 @@ jobs:
         run: pnpm test:bdd:checks
       - name: Install Chromium for missing-page presentation checks
         run: pnpm exec playwright install --with-deps chromium
+      - name: Build frontend
+        id: build
+        run: pnpm --filter @pathableai/pre-ets-frontend build
       - name: Run requirements BDD
-        run: pnpm test:bdd
+        run: pnpm exec cucumber-js --config cucumber.mjs
       - name: Smoke check production on-site preview
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: pnpm test:bdd:smoke
       - name: Preserve BDD reports and failure diagnostics
         if: always()

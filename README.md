@@ -387,7 +387,9 @@ and report success when skipped so required status checks are not blocked. Pushe
 and `workflow_dispatch` always run the full work for those three workflows.
 
 **CI / BDD** runs harness checks, installs Chromium, builds the frontend, and executes
-`pnpm test:bdd` followed by `pnpm test:bdd:smoke`. It runs only on `main`, without path
+`pnpm exec cucumber-js --config cucumber.mjs` followed by `pnpm test:bdd:smoke`. After a
+successful build, the smoke check still runs if requirements scenarios fail, unless the job
+is cancelled. A failure in either suite fails the job. It runs only on `main`, without path
 filtering, and preserves runtime reports and failure diagnostics. There is no CI dry-run job.
 See [BDD commands and evidence](features/README.md). Sign-in browser specs are described in `e2e/README.md`.
 
