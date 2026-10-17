@@ -33,22 +33,32 @@ First access should not require finding a separate login control.
   Rendering mechanisms belong to engineering. No expiration-recognition retention period is required by
   this policy. This refinement is subject to Git/PR approval.
 
+- Decision: Maintainer direction on 2026-10-17 requires a fresh provider authentication event for every
+  login without a valid application session, including first-time visits and explicit recovery. Existing IdP
+  SSO alone cannot establish a new application session. A valid application session remains reusable.
+  Freshness enforcement does not depend on recognizing previous expiration after old records are removed;
+  no expiration-recognition retention mechanism is required solely for that decision. Protocol semantics,
+  clock tolerance, and provider/broker support remain B6 decisions. This refinement is subject to Git/PR approval.
+
 ## Acceptance criteria
 
 1. A protected page request without an application session initiates the resolved tenant’s OIDC flow automatically.
    New-tab entry, existing-tab refresh, and browser back/forward navigation to a protected page with an
    expired session also start tenant OIDC directly rather than redirecting to the session-expired page.
-   These post-expiration flows require fresh authentication and verified provider evidence under
-   PREETS-SESSION-013; existing IdP SSO alone cannot satisfy them.
+   Every such entry without a valid application session, including a first-time visit, requires fresh
+   authentication and verified provider evidence under PREETS-SESSION-013; existing IdP SSO alone cannot
+   satisfy it. This does not depend on retaining or recognizing a previous expired session.
    Browser history must not restore usable protected content under an expired session.
 2. Fresh entry does not replace the browser expiration modal required by PREETS-SESSION-012 or the
    expired- or missing-session Server Action recovery content required by PREETS-SESSION-007.
 
 ## Open questions
 
-Fresh-authentication protocol semantics and recognition of previous expiration after stored state is
-removed remain B6 decisions under PREETS-SESSION-013. Automatic entry does not exempt expired sessions
-from freshness. Server Action failure/status and recovery presentation are governed by PREETS-SESSION-007.
+The `max_age=0` / signed-ID-token `auth_time` protocol baseline is selected under PREETS-SESSION-013.
+Authentication-time comparison, clock tolerance, provider/broker support, and unsupported-provider handling
+remain B6 decisions. Freshness applies to every login without a valid application session, so previous
+expiration need not be recognized to select that policy. Server Action failure/status and recovery
+presentation are governed by PREETS-SESSION-007.
 
 ## Verification Plan
 
@@ -59,7 +69,8 @@ that an expired session cannot regain protected use through restored page state.
 A new tab with a still-valid session must join it under PREETS-SESSION-010 rather than start independent login.
 Separate running-tab and Server Action evidence must establish the explicit recovery paths without treating
 all requests as fresh entry. Real-provider evidence with an existing SSO session must establish fresh
-authentication for expired fresh entry and denial for stale or unconfirmed freshness under PREETS-SESSION-013.
+authentication for both first-time entry and expired fresh entry, including absent/removed old records,
+and denial for stale or unconfirmed freshness under PREETS-SESSION-013.
 Automatic redirects or a newly created application session alone do not establish authentication freshness.
 
 Evidence assumptions follow the shared session context. No additional operational monitoring claim is introduced.
