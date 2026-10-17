@@ -1,7 +1,13 @@
 import { Effect, FileSystem, Logger, Path, PlatformError, References, Result, Tracer } from "effect"
+import { inspect } from "node:util"
 import { describe, expect, it } from "vitest"
 
 import { TenantConfigService } from "../../src/lib/tenant.ts"
+
+const document = {
+  displayName: "Customer Organization",
+  oidc: { clientAuth: "public", clientId: "customer-client", issuer: "https://customer.identity.test" }
+}
 
 const runScenario = async (
   resolution: "host" | "static",
@@ -58,13 +64,13 @@ describe.each(["host", "static"] as const)("tenant telemetry in %s mode", (resol
     const { logs, result, spans } = await runScenario(
       resolution,
       {
-        readFileString: () => Effect.succeed("{\"displayName\":\"Customer Organization\"}")
+        readFileString: () => Effect.succeed(JSON.stringify(document))
       },
       undefined,
       fromAlias
     )
 
-    expect(result).toStrictEqual(Result.succeed({ displayName: "Customer Organization" }))
+    expect(result).toStrictEqual(Result.succeed(document))
     expect(logs.some((log) => log.level === "Debug")).toBe(true)
     expect(logs.filter((log) => log.level === "Warn")).toHaveLength(0)
     const emittedLogs = JSON.stringify(logs)
@@ -99,4 +105,65 @@ describe.each(["host", "static"] as const)("tenant telemetry in %s mode", (resol
       ["Tenant configuration request failed", { _tag: status === 500 ? "TenantReadError" : "TenantNotFound", reason }]
     ])
   })
+})
+
+describe("tenant telemetry payload secrecy", () => {
+  const secret = "SYNTHETIC-SECRET-DO-NOT-EXPORT-215"
+  const invalidDocuments = [
+    { label: "malformed JSON", raw: `{"displayName":"${secret}"` },
+    {
+      label: "unexpected credential field",
+      raw: JSON.stringify({ ...document, oidc: { ...document.oidc, clientSecret: secret } })
+    },
+    { label: "unexpected secret-bearing key", raw: JSON.stringify({ ...document, [secret]: true }) },
+    {
+      label: "invalid credential mode",
+      raw: JSON.stringify({ ...document, oidc: { ...document.oidc, clientAuth: secret } })
+    },
+    { label: "invalid policy value", raw: JSON.stringify({ ...document, idleTimeoutMinutes: secret }) }
+  ]
+
+  it.each(invalidDocuments)("omits $label contents from returned errors, logs, and failed spans", async ({ raw }) => {
+    const { logs, result, spans } = await runScenario("host", { readFileString: () => Effect.succeed(raw) })
+    expect(Result.isFailure(result)).toBe(true)
+    expect(logs.filter((log) => log.level === "Warn")).toHaveLength(1)
+    expect(spans).toHaveLength(2)
+    const emitted = inspect({
+      logs,
+      result,
+      spans: spans.map((span) => ({
+        attributes: Object.fromEntries(span.attributes),
+        events: span.events,
+        status: span.status
+      }))
+    }, { depth: null })
+    expect(emitted).not.toContain(secret)
+    expect(emitted).not.toContain(raw)
+    for (const span of spans) {
+      expect(span.status._tag).toBe("Ended")
+      if (span.status._tag === "Ended") expect(span.status.exit._tag).toBe("Failure")
+    }
+  })
+
+  it.each(["readFileString", "readDirectory"] as const)(
+    "omits %s source messages from returned errors and failed span causes",
+    async (method) => {
+      const failure = PlatformError.systemError({
+        _tag: "PermissionDenied",
+        cause: new Error(secret),
+        description: secret,
+        method,
+        module: "FileSystem",
+        pathOrDescriptor: "/tenant-config/customer.json"
+      })
+      const fileSystem = method === "readFileString" ?
+        { readFileString: () => Effect.fail(failure) } :
+        { readDirectory: () => Effect.fail(failure) }
+      const { logs, result, spans } = await runScenario("host", fileSystem)
+      expect(Result.isFailure(result)).toBe(true)
+      expect(inspect({ logs, result, statuses: spans.map((span) => span.status) }, { depth: null })).not.toContain(
+        secret
+      )
+    }
+  )
 })
