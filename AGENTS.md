@@ -10,11 +10,27 @@
   changes. Read only the linked reference relevant to the task.
 - Apply the shared strict TypeScript settings to all code, including non-Effect code.
 
+## Module boundaries
+
+- Modules isolate logic recursively. Use a public entry such as `lib/tenant.ts` with
+  private child modules under `lib/tenant/`, for example `lib/tenant/config.ts`.
+  Only the owning parent imports its children. Sibling modules and external tests
+  use the parent's public interface; they must not import a sibling's children.
+- Re-export child capabilities through the parent only when a current consumer needs
+  them. Follow the same boundary rule when a child decomposes into further modules.
+- Introduce modules and capabilities for actual behavior, not speculative future
+  consumers. In particular, defer a secrets module/provider contract until there is
+  a real secret to read.
+
 ## Testing guidance
 
 Before designing or changing tests, read [Testing as evidence](docs/engineering/testing/README.md).
 For property tests, also read [Property-based testing](docs/engineering/testing/property-based-testing.md).
 Choose evidence for a named expectation and the boundary responsible for it; do not add tests solely for coverage.
+
+Verify observability manually or with temporary agent probes, inspecting real logs
+and exported OTel data. Do not retain durable tests of log output, spans, attributes,
+telemetry payloads, or exporter behavior. Keep durable tests focused on application outcomes.
 
 Before authoring or reviewing requirements BDD, step definitions, or supporting helpers, read
 [Requirements-backed BDD](docs/engineering/testing/requirements-bdd.md). Inspect the referenced requirements

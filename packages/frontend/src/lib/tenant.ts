@@ -16,7 +16,6 @@ import {
   Path,
   pipe,
   PlatformError,
-  type Redacted,
   Result,
   Schema,
   String
@@ -25,8 +24,7 @@ import {
 import type { ServerConfig, TenantConfig as TenantResolutionConfig, TenantStaticConfig } from "./config/index.ts"
 
 import { HttpError } from "./error.ts"
-import { effectiveSessionPolicy, TenantConfig } from "./tenant-config.ts"
-import { type TenantSecretLookupError, TenantSecrets } from "./tenant-secrets.ts"
+import { effectiveSessionPolicy, TenantConfig } from "./tenant/config.ts"
 
 const fixedStatus = <const Code extends 404 | 500>(code: Code) =>
   Schema.Literal(code).pipe(Schema.withConstructorDefault(Effect.succeed(code)))
@@ -238,8 +236,8 @@ const tenantConfigFromAlias = (
  * **Details**
  *
  * `getAlias` resolves the alias without reading a file. `getConfigFromAlias` and `getConfigFromHost` read
- * `{alias}.json` from the configured directory. Authentication consumers call `resolveClientSecret` separately;
- * only confidential-client credential resolution acquires the server-only `TenantSecrets` capability.
+ * `{alias}.json` from the configured directory. Configuration decoding and session policy are private child
+ * implementation details; consumers use this module's public service.
  *
  * @category services
  */
@@ -248,9 +246,6 @@ export class TenantConfigService extends Context.Service<TenantConfigService, {
   readonly getAlias: (host: string) => Result.Result<TenantAlias, TenantFailure>
   readonly getConfigFromAlias: (alias: TenantAlias) => Effect.Effect<TenantConfig, TenantFailure>
   readonly getConfigFromHost: (host: string) => Effect.Effect<TenantConfig, TenantFailure>
-  readonly resolveClientSecret: (
-    config: TenantConfig
-  ) => Effect.Effect<Option.Option<Redacted.Redacted>, TenantSecretLookupError, TenantSecrets>
 }>()("@pathableai/pre-ets-frontend/TenantConfigService") {
   static readonly layer = (config: Config.Success<typeof ServerConfig>) =>
     Layer.effect(
@@ -276,19 +271,11 @@ export class TenantConfigService extends Context.Service<TenantConfigService, {
           return yield* getConfigFromAlias(alias)
         })
 
-        const resolveClientSecret = (tenant: TenantConfig) =>
-          Effect.gen(function*() {
-            if (tenant.oidc.clientAuth === "public") return Option.none<Redacted.Redacted>()
-            const secrets = yield* TenantSecrets
-            return Option.some(yield* secrets.resolve(tenant.oidc.clientSecretRef))
-          })
-
         return TenantConfigService.of({
           effectiveSessionPolicy,
           getAlias,
           getConfigFromAlias,
-          getConfigFromHost,
-          resolveClientSecret
+          getConfigFromHost
         })
       })
     )

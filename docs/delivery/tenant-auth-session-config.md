@@ -14,28 +14,29 @@ Implementation and local execution are recorded below; repository PR review rema
 
 ## Goal and scope
 
-Give frontend OIDC and session consumers a reusable, validated tenant configuration contract. The exported
-`TenantConfig` value must be an `effect/Config` recipe, with its decoded TypeScript type derived using
-`Config.Success<typeof TenantConfig>`. A file-backed `ConfigProvider` supplies the selected tenant JSON.
+Give frontend OIDC and session consumers a reusable, validated tenant configuration contract through
+`lib/tenant.ts`. Its private child `lib/tenant/config.ts` owns the `TenantConfig` Effect `Config` recipe, with
+decoded type `Config.Success<typeof TenantConfig>`. A file-backed `ConfigProvider` supplies the selected JSON.
+Only the parent imports the child; siblings and tests use the public tenant service.
 This is the maintainer's design direction for #215, not a new product requirement.
 
 Keep this within #215. The increments below are implementation checkpoints, not proposals for additional
 GitHub issues. They can be reviewed together or landed incrementally with their own meaningful evidence.
 
-| Accepted requirement                                                   | Selected ACs                            | Qualification                                                                                                            |
-| ---------------------------------------------------------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| [PREETS-SESSION-002](../requirements/session/PREETS-SESSION-002.md)    | 1; enabling configuration for 2–3       | Required non-secret integration data and credential references; no authentication execution                              |
-| [PREETS-SESSION-008](../requirements/session/PREETS-SESSION-008.md)    | 1                                       | Validated whole-minute timeout and effective omitted default                                                             |
-| [PREETS-SESSION-011](../requirements/session/PREETS-SESSION-011.md)    | 1; policy-data support for 2            | Warning settings/defaults; no expiration enforcement, warning UI, or policy adoption by sessions                         |
-| [PREETS-SECURITY-001](../requirements/security/PREETS-SECURITY-001.md) | 1–3, within this configuration boundary | Permitted fields, server-only lookup contract, full safe diagnostic response; external producer controls remain unproven |
-| [PREETS-TENANT-004](../requirements/tenant/PREETS-TENANT-004.md)       | 1–5, preservation                       | Selected file, no substitution, startup versus directory/file failures                                                   |
-| [PREETS-TENANT-006](../requirements/tenant/PREETS-TENANT-006.md)       | 1–6, preservation                       | Complete parsed file, host/static selection, production route availability and no-store; ingress remains separate        |
+| Accepted requirement                                                   | Selected ACs                            | Qualification                                                                                                                        |
+| ---------------------------------------------------------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| [PREETS-SESSION-002](../requirements/session/PREETS-SESSION-002.md)    | 1; enabling configuration for 2–3       | Required non-secret integration data and credential references; no authentication execution                                          |
+| [PREETS-SESSION-008](../requirements/session/PREETS-SESSION-008.md)    | 1                                       | Validated whole-minute timeout and effective omitted default                                                                         |
+| [PREETS-SESSION-011](../requirements/session/PREETS-SESSION-011.md)    | 1; policy-data support for 2            | Warning settings/defaults; no expiration enforcement, warning UI, or policy adoption by sessions                                     |
+| [PREETS-SECURITY-001](../requirements/security/PREETS-SECURITY-001.md) | 1–3, within this configuration boundary | Permitted non-secret fields and full safe diagnostic response; actual secret lookup and external producer controls remain downstream |
+| [PREETS-TENANT-004](../requirements/tenant/PREETS-TENANT-004.md)       | 1–5, preservation                       | Selected file, no substitution, startup versus directory/file failures                                                               |
+| [PREETS-TENANT-006](../requirements/tenant/PREETS-TENANT-006.md)       | 1–6, preservation                       | Complete parsed file, host/static selection, production route availability and no-store; ingress remains separate                    |
 
 Requirement links above resolve locally; use the recorded `origin/main` revision for authority where this older
 checkout differs. Source prose saying a refinement awaits approval must be read alongside its actual merge into
 `main`. Issue descriptions and old specifications do not override that baseline.
 
-## Current observations and related work
+## Planning-baseline observations and related work
 
 - [TenantConfigService](../../packages/frontend/src/lib/tenant.ts) currently owns alias selection, directory checks,
   file reads, JSON parsing, and schema decoding. `oidc` is optional; timeout is optional with bounds but no effective
@@ -48,9 +49,9 @@ checkout differs. Source prose saying a refinement awaits approval must be read 
   its complete value with `Cache-Control: private, no-store`. Do not replace the process provider with one tenant's
   provider or construct a runtime per request.
 - [Tenant test outlines](../../packages/frontend/tests/lib/tenant.test.ts) contain TODOs, not executable evidence.
-  [Alias tests](../../packages/frontend/tests/unit/tenant-alias.test.ts) and
-  [telemetry tests](../../packages/frontend/tests/unit/tenant-observability.test.ts) are executable source, but were
-  not run during planning. The latter use controlled filesystem/logger/tracer dependencies, not an OTLP collector.
+  [Alias tests](../../packages/frontend/tests/unit/tenant-alias.test.ts) are executable source, but were not run
+  during planning. The former durable telemetry suite is removed under the maintainer refinement below;
+  observability is verified manually through application logs and exported OTel data.
 - [Tracked fixtures](../../fixtures/tenant-config) contain display names only.
   [The E2E fixture](../../e2e/tenant-directory.ts) has an obsolete nested `{ config, slug }` shape. Update fixture
   producers and independent expected values together when required OIDC is introduced; preserve owned cleanup.
@@ -72,9 +73,10 @@ checkout differs. Source prose saying a refinement awaits approval must be read 
 
 ### File-backed Config, strict JSON, and tenant isolation
 
-Create a focused server-only tenant-file configuration module, separate from process-resolution settings.
-Keep schema definitions as decoding machinery; expose `TenantConfig` as `Config.Config<...>`, not just a Schema
-or a Context tag. Preserve the service's public alias/read operations and HTTP failure vocabulary.
+Keep tenant-file configuration in the private child `lib/tenant/config.ts`, separate from process-resolution
+settings. `lib/tenant.ts` is the public boundary and the only importer of that child. Keep `TenantConfig` as
+`Config.Config<...>` internally, with schemas as decoding machinery. Preserve the public service operations
+and HTTP failure vocabulary; re-export child capabilities only when a current consumer needs them.
 
 Recommended implementation, verified for API feasibility against Effect 4.0.5:
 
@@ -132,16 +134,15 @@ values instead of defaulting them. Resolve omitted timeout before validating the
 
 Keep the parsed file value faithful to supplied permitted fields: the diagnostic contract requires equality with
 the independently parsed file, not a response with injected defaults. Expose effective policy as a shared consumer
-derivation alongside `TenantConfig`; do not introduce a redacted diagnostic DTO or hide permitted fields. An omitted
+derivation through `TenantConfigService.effectiveSessionPolicy(config)`; do not introduce a redacted diagnostic DTO or hide permitted fields. An omitted
 setting can therefore remain absent in diagnostic JSON while the consumer policy yields 30/5. Document both types
 and ensure #218/#220 reuse the derivation rather than reimplement defaults. Validation and derivation must agree.
 
-Define a vendor-agnostic server-only credential lookup capability, a typed lookup failure, and a deterministic
-test implementation using synthetic secrets. Return a redacted secret value to the authentication consumer;
-never put the resolved value/provider credentials in `TenantConfig` or diagnostic JSON. Tenant reads and
-diagnostics must not resolve credentials or fail merely because a concrete provider is not configured. The
-authentication composition will supply that provider when needed. A schema cannot detect every secret pasted into
-an otherwise permitted text field; external producer controls and concrete provider integration remain separate.
+Keep non-secret credential references as configuration data. Do not add a secrets module, service/provider
+contract, lookup operation, or synthetic implementation until an actual consumer needs to read a real secret.
+Future resolution must remain server-only and keep resolved values/provider credentials out of tenant
+configuration and diagnostic JSON. A schema cannot detect every secret pasted into an otherwise permitted
+text field; external producer controls and actual secret reading remain downstream.
 
 ## Delivery checkpoints within #215
 
@@ -150,14 +151,14 @@ an otherwise permitted text field; external producer controls and concrete provi
 **Outcome/coverage:** `TenantConfig` is a Config backed by the selected JSON file; supports SESSION-002 AC1
 and configuration prerequisites for AC2–3, SECURITY-001 AC1–3, and preserves TENANT-004/006.
 
-**Included:** Provider/decoder, required OIDC and non-secret credential-reference contract, server-only lookup
-capability, safe failure mapping, fixture migration, bounded runtime wiring, and documentation of the new contract.
+**Included:** Private provider/decoder, required OIDC and non-secret credential-reference data, safe failure
+mapping, fixture migration, bounded runtime wiring, and documentation of the public tenant contract.
 Preserve timeout validation while deferring new effective warning policy to A2.
 
 **Observable increment:** The real public service returns the selected permitted file or its established public
 failure; diagnostics expose that file safely. No temporary endpoint or response fields are needed.
 
-**Durable completion evidence:** D1, D3–D5 below. Extend existing tenant service and telemetry tests instead of
+**Durable completion evidence:** D1, D3–D5 below. Extend existing tenant service tests instead of
 building a parallel mock loader. Keep a focused real-filesystem check for provider/path integration.
 
 **Ad hoc evidence:** M1/M3 and representative failure requests from M2 after this increment is runnable.
@@ -211,13 +212,13 @@ authentication/session/browser or provider-compatibility completion claim.
 
 ## Durable tests to implement and retain
 
-| ID | Consumer and meaningful violation                                               | Test boundary and retained evidence                                                                                                                                                                                                                                                                                                                                                       | Limits                                                                                                         |
-| -- | ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| D1 | OIDC consumer gets missing/wrong integration data or another tenant's data      | Real `TenantConfigService` with deterministic filesystem/path Layers: required OIDC, public/confidential reference cases, optional connection, wrong JSON types, explicit alias reads, interleaved and concurrent two-tenant reads with distinct values                                                                                                                                   | No provider discovery, redirect, callback or credentials exchange                                              |
-| D2 | Session consumer silently defaults invalid policy or computes the wrong warning | Read valid/invalid JSON through the real service, then call the exported effective-policy derivation. Check all valid timeout/warning relationships, omitted timeout with explicit lead, omitted warning at 5 and above 5, explicit zero, boundaries, fractions, null, strings, booleans and warning equal/above timeout                                                                  | No stored deadlines, renewal races or browser behavior; avoid duplicating the matrix against private helpers   |
-| D3 | Refactor changes public failure or falls back across tenants                    | Public service scenarios preserve directory failure 500, host missing file 404, static missing file 500, unreadable/invalid/schema-invalid file 404 in both modes. Assert public status/cause contract, not internal error subclass tags; keep existing actual-HTTP regression suite                                                                                                      | Controlled filesystem failures do not prove OS permissions or actual HTTP status                               |
-| D4 | Provider wiring reads the wrong document or becomes permanently stale           | One focused integration scenario with an owned temporary directory and real Node filesystem: read A/B, update A between calls, observe updated A and unchanged B, then delete/clean up. Use the production Config/provider path                                                                                                                                                           | No claim of atomic external file replacement or simultaneous policy adoption by existing sessions              |
-| D5 | Secret fields are accepted or secrets escape through responses/telemetry        | Strict root/nested field rejection; deterministic server-only lookup returns synthetic redacted value or explicit failure. Exercise real loader and diagnostic adapter with those capabilities; full permitted output contains references but no resolved values. Inspect emitted application logs/span failures for synthetic sentinels and ensure diagnostic reads do not invoke lookup | No concrete secrets backend or proof all allowed strings are safe; in-memory tracer does not prove OTLP export |
+| ID | Consumer and meaningful violation                                               | Test boundary and retained evidence                                                                                                                                                                                                                                                                                              | Limits                                                                                                       |
+| -- | ------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| D1 | OIDC consumer gets missing/wrong integration data or another tenant's data      | Real `TenantConfigService` with deterministic filesystem/path Layers: required OIDC, public/confidential reference cases, optional connection, wrong JSON types, explicit alias reads, interleaved and concurrent two-tenant reads with distinct values                                                                          | No provider discovery, redirect, callback or credentials exchange                                            |
+| D2 | Session consumer silently defaults invalid policy or computes the wrong warning | Read valid/invalid JSON through the real service, then call the public service's effective-policy derivation. Check all valid timeout/warning relationships, omitted timeout with explicit lead, omitted warning at 5 and above 5, explicit zero, boundaries, fractions, null, strings, booleans and warning equal/above timeout | No stored deadlines, renewal races or browser behavior; avoid duplicating the matrix against private helpers |
+| D3 | Refactor changes public failure or falls back across tenants                    | Public service scenarios preserve directory failure 500, host missing file 404, static missing file 500, unreadable/invalid/schema-invalid file 404 in both modes. Assert public status/cause contract, not internal error subclass tags; keep existing actual-HTTP regression suite                                             | Controlled filesystem failures do not prove OS permissions or actual HTTP status                             |
+| D4 | Provider wiring reads the wrong document or becomes permanently stale           | One focused integration scenario with an owned temporary directory and real Node filesystem: read A/B, update A between calls, observe updated A and unchanged B, then delete/clean up. Use the production Config/provider path                                                                                                  | No claim of atomic external file replacement or simultaneous policy adoption by existing sessions            |
+| D5 | Forbidden credential fields enter parsed configuration                          | Real tenant service rejects unknown root/nested fields and returns the full permitted document, including non-secret references                                                                                                                                                                                                  | Actual secret reading is deferred; diagnostic HTTP and all log/trace inspection remain ad hoc M1–M3          |
 
 Reuse existing Vitest/Effect Layer conventions; do not expand test-runner setup. Architecture/typecheck review
 establishes that the exported recipe is `Config` and its type is inferred; avoid source-text tests, mocks of the
@@ -226,7 +227,8 @@ and assess stale TODOs against the named claims rather than blindly implementing
 
 ## Ad hoc agent verification with curl and OTel
 
-These are execution instructions for the implementation agent, not tests executed by this planning change.
+These are manual/temporary agent checks, not a durable observability suite. Do not retain tests asserting logs,
+spans, attributes, telemetry payloads, or exporter behavior. The execution records below identify actual runs.
 Use synthetic local tenant names/data, an owned `mktemp -d` directory, and unused ports. Never modify deployed tenant
 files. Build once after implementation; start/stop the owned process between host/static/startup cases. Remove only
 the directory/process created for this run, restoring permissions before cleanup.
@@ -343,29 +345,29 @@ prove effective policy values, prove the absence of all secrets, or establish lo
 
 ## Coverage, handoff, and completion record
 
-| Requirement / AC  | Disposition and evidence                                                            | Remaining conditions                                                                                |
-| ----------------- | ----------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| SESSION-002 AC1   | A1, D1/D5, M1/M2: usable integration data and lookup references                     | Actual initiation/callback and provider sufficiency exercised in #216/#217; full integration #154   |
-| SESSION-002 AC2–3 | A1 supports tenant-specific generic configuration; D1 isolation                     | Provider use, redirect/delegation and absence of local credential collection are downstream         |
-| SESSION-008 AC1   | A2, D2, invalid-policy HTTP in M2                                                   | AC2–5 session initialization/renewal/enforcement remain #218/#220/#154                              |
-| SESSION-011 AC1   | A2, D2: configuration-domain/default/disable portion                                | Expiration despite disabled warning, and actual presentation remain session/browser evidence        |
-| SESSION-011 AC2   | A2 supplies effective warning policy data                                           | Live refresh adoption #220; all-tab presentation #156; no complete AC2 claim                        |
-| SECURITY-001 AC1  | A1, D5, M2/M3: permitted fields and bounded disclosure checks                       | Cannot detect arbitrary secrets in permitted text; external content controls remain open            |
-| SECURITY-001 AC2  | A1, D5/M1/M3: server-only lookup contract, references, no resolved values in config | Concrete provider integration and actual authentication usage downstream                            |
-| SECURITY-001 AC3  | A1/A3, D5/M1: full parsed permitted file, no redaction DTO                          | Production ingress requires independent INFRA-001 evidence                                          |
-| TENANT-004 AC1    | A1, D1/D4/M1: correspondence and interleaved/concurrent isolation                   | External deployment behavior outside sampled environment                                            |
-| TENANT-004 AC2    | A1/A3, D3/M2: startup parsing separate from parsed directory failures               | Actual permission denial required for unreadability claim                                           |
-| TENANT-004 AC3–5  | A1/A3, D3/D4/M2: static read, static missing 500, host missing and bad files 404    | Existing HTTP/browser regressions retained; source-only assertions are insufficient                 |
-| TENANT-006 AC1–3  | A1/A3, M1/M2 and existing HTTP suite: file equality and host/static selection       | Effective defaults are separately observed through the policy consumer                              |
-| TENANT-006 AC4    | A1/A3, D3/M2 and existing HTTP suite                                                | Curl status proves HTTP outcomes; browser missing-page presentation remains existing suite evidence |
-| TENANT-006 AC5–6  | A3, M1/M2 on production-mode Next: route retained and no-store success/failure      | No infrastructure ingress verification claim                                                        |
+| Requirement / AC  | Disposition and evidence                                                         | Remaining conditions                                                                                        |
+| ----------------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| SESSION-002 AC1   | A1, D1/D5, M1/M2: usable integration data and lookup references                  | Actual initiation/callback and provider sufficiency exercised in #216/#217; full integration #154           |
+| SESSION-002 AC2–3 | A1 supports tenant-specific generic configuration; D1 isolation                  | Provider use, redirect/delegation and absence of local credential collection are downstream                 |
+| SESSION-008 AC1   | A2, D2, invalid-policy HTTP in M2                                                | AC2–5 session initialization/renewal/enforcement remain #218/#220/#154                                      |
+| SESSION-011 AC1   | A2, D2: configuration-domain/default/disable portion                             | Expiration despite disabled warning, and actual presentation remain session/browser evidence                |
+| SESSION-011 AC2   | A2 supplies effective warning policy data                                        | Live refresh adoption #220; all-tab presentation #156; no complete AC2 claim                                |
+| SECURITY-001 AC1  | A1, D5, M2/M3: permitted fields and bounded disclosure checks                    | Cannot detect arbitrary secrets in permitted text; external content controls remain open                    |
+| SECURITY-001 AC2  | A1, D5/M1: non-secret references and permitted configuration only                | Server-only lookup deferred until a real secret is needed; no resolved-secret/provider implementation claim |
+| SECURITY-001 AC3  | A1/A3, D5/M1: full parsed permitted file, no redaction DTO                       | Production ingress requires independent INFRA-001 evidence                                                  |
+| TENANT-004 AC1    | A1, D1/D4/M1: correspondence and interleaved/concurrent isolation                | External deployment behavior outside sampled environment                                                    |
+| TENANT-004 AC2    | A1/A3, D3/M2: startup parsing separate from parsed directory failures            | Actual permission denial required for unreadability claim                                                   |
+| TENANT-004 AC3–5  | A1/A3, D3/D4/M2: static read, static missing 500, host missing and bad files 404 | Existing HTTP/browser regressions retained; source-only assertions are insufficient                         |
+| TENANT-006 AC1–3  | A1/A3, M1/M2 and existing HTTP suite: file equality and host/static selection    | Effective defaults are separately observed through the policy consumer                                      |
+| TENANT-006 AC4    | A1/A3, D3/M2 and existing HTTP suite                                             | Curl status proves HTTP outcomes; browser missing-page presentation remains existing suite evidence         |
+| TENANT-006 AC5–6  | A3, M1/M2 on production-mode Next: route retained and no-store success/failure   | No infrastructure ingress verification claim                                                                |
 
 Before implementation, base the working branch on current main and re-read its AGENTS, Effect pins, source and
 issue state. Check for an already active implementation PR to avoid duplicating work. This plan does not update
 requirements, publish/revise GitHub issues, approve a decomposition, or claim #215 is complete.
 
 Implementation completion requires A1–A3, durable test executions, actual HTTP and trace observations, and a handoff
-naming the Config/provider interface, file fields, effective-policy derivation, secret lookup contract, failure
+naming the public tenant boundary, private Config/provider, file fields, policy derivation, deferred secret reading, failure
 outcomes, fixture migration and downstream limitations. Retain #215/S2-A identity; no new parent or blockers.
 
 Run from the repository root: frontend `test:unit`, `pnpm typecheck`, `pnpm build`, `pnpm lint`,
@@ -383,7 +385,22 @@ issue closure and plan completion do not establish full requirement verification
 and temporary Effect 4.0.5 provider/decoder experiments. No frontend server, curl behavior matrix, OTel collector,
 OIDC integration, or application tests were executed as behavioral evidence during this planning task.
 
-## Implementation and local execution — 2026-10-17
+## Maintainer refinement for PR #223
+
+The maintainer requested these changes after the initial implementation:
+
+- Module boundaries are recursive. Move configuration to `lib/tenant/config.ts`, imported only by its parent
+  `lib/tenant.ts`. Siblings and tests use the public tenant service, with parent re-exports only as needed.
+- Remove the secrets module, lookup operation, and synthetic provider tests. Non-secret references remain data;
+  add actual secret reading only when a real consumer needs it.
+- Remove durable observability tests, including the former in-memory logger/tracer suite. Verify application logs
+  and exported OTel data manually. Retain durable tests of configuration, policy, isolation, and public failures.
+
+The active proposal above incorporates this direction. The following initial execution record is historical:
+its secret capability, telemetry tests, counts, paths, and fingerprint describe the earlier revision, not the
+revised implementation. Updated execution results are recorded after that history.
+
+## Historical initial implementation and execution — 2026-10-17
 
 The maintainer subsequently authorized implementation with subagents. Three implementation agents delivered the
 Config/policy, tenant reader/tests, and secret contract/docs; an independent source review found no concrete defects.
@@ -462,3 +479,43 @@ initialization/renewal/expiration; browser warning/recovery behavior; actual Mic
 secrets backend; external producer content controls; production ingress. Local HTTP/traces do not establish these
 downstream conditions or universal absence of secrets. No provider login or session/browser warning behavior was
 claimed by this implementation.
+
+## Revised implementation and execution — 2026-10-17
+
+The maintainer's PR #223 style refinement is implemented on top of `d67668490c65211fc10e75deefa59526b27111b1`:
+
+- `lib/tenant.ts` is the public tenant boundary. It alone imports its private `lib/tenant/config.ts` child.
+  Siblings and tests use the service; no unused re-exports were added.
+- The secrets module, lookup operation, and synthetic provider tests are removed. Non-secret references remain
+  permitted configuration data; actual secret reading is deferred until a real consumer needs it.
+- The durable observability suite is removed. Remaining durable tests assert application configuration, policy,
+  isolation, and public failure outcomes. Log/span/export checks remain manual, temporary agent observations.
+- `AGENTS.md`, the Effect development guide, and Testing as evidence now teach recursive module boundaries,
+  deferring speculative capabilities, and manual observability verification. Authentication/tenancy docs and the
+  active proposal above reflect these rules.
+
+**Executed source:** the revised working tree before commit. The two implementation modules
+(`packages/frontend/src/lib/tenant.ts` and `packages/frontend/src/lib/tenant/config.ts`), two tracked tenant
+fixtures, and E2E fixture producer have SHA256 fingerprint
+`de7c9f9d4a293a6fe94c7c40a1bd907b6d2b7ede60c66979c7fc4f10d24569ea`, using the same filename/NUL/bytes/NUL
+method as the historical record. This replaces the earlier fingerprint for the current PR implementation.
+
+**Durable evidence:** 166 tests passed in 7 frontend test files. The retained production HTTP/browser suite passed
+31 scenarios / 313 steps. Typecheck, build, lint, unused-code, changed-code, formatting, relative document links,
+and whitespace checks passed. The reduced test count reflects removal of the unwanted secrets and telemetry
+suites, not weakened configuration/policy/tenant-isolation assertions. Source inspection confirmed only the parent
+imports `tenant/config.ts`; no permanent architecture or observability test was introduced.
+
+**Manual evidence:** the revised production build passed the same 109 curl observations, including actual
+file/directory permission denial, host/static selection, invalid policy, no-store, file equality, and startup
+failure. A temporary probe inspected 14 exported success/schema/file/directory traces and process logs. HTTP
+statuses, tenant span parentage, resolution mode, and success/error outcomes matched; synthetic rejected-input,
+Authorization, and Cookie values were absent from the sampled telemetry and logs. This is sampled local evidence,
+not proof of all deployed content or a retained test suite.
+
+Temporary raw artifacts are under `/tmp/preets-215-evidence-mgov_vql`; commands/check logs use
+`/tmp/preets-223-style-*.log`. Representative revised trace IDs: host success
+`6ad3fbf5000000000000000000000001`, host unreadable directory `6ad3fbf5000000000000000000000032`, static success
+`6ad3fbf5000000000000000000000037`, static missing file `6ad3fbf5000000000000000000000066`. Owned app processes,
+tenant directories, and the separate Compose collector are cleaned up after inspection. The downstream limits
+in the historical record still apply, and there is now explicitly no secrets module/provider implementation.

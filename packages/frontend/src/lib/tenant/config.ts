@@ -57,7 +57,7 @@ const TenantFileSchema = Schema.Struct({
  * Reads one complete tenant JSON document from the selected file's ConfigProvider.
  *
  * The decoded value preserves supplied fields. Use {@link effectiveSessionPolicy} for omitted-setting defaults.
- * Resolved credentials belong to the server-only credential lookup capability, never this document.
+ * Resolved credentials never belong in this document. Credential lookup is deferred until a consumer needs it.
  */
 export const TenantConfig = Config.String().pipe(
   Config.mapEffect((raw) =>

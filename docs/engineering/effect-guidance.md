@@ -68,6 +68,17 @@ boundary with a public interface and private implementation. A `Context.Service`
 expose its capability to other modules; consumers should generally use that contract
 rather than reach into private helpers. This does not require a service for every file.
 
+Module boundaries are recursive and reflected in the filesystem. A public entry such
+as `lib/tenant.ts` owns child modules in `lib/tenant/`, such as `config.ts`. Only that
+parent imports its children; sibling modules and external tests depend on the parent's
+public interface. Re-export a child capability only when a current consumer needs it.
+Apply the same rule when a child itself decomposes into further modules: sibling
+modules do not reach into one another's descendants.
+
+Build a module or capability when actual behavior needs it. A future integration or
+a synthetic test does not justify introducing an unused provider/service contract.
+For example, add a secrets module only when there is a real secret to read.
+
 Default to small, composable pure functions within a module. Return Effect when an
 operation needs environmental capabilities, meaningful typed failures, asynchronous or
 stateful work, or composition with other Effects. Effect-first development does not mean

@@ -32,9 +32,11 @@ original Host header and protect the diagnostic endpoint separately.
 request Host → selected alias → TENANT_CONFIG_DIR/{alias}.json → validated tenant configuration
 ```
 
-The exported [TenantConfig](../packages/frontend/src/lib/tenant-config.ts) value is an
-Effect `Config` recipe; its decoded type is `Config.Success<typeof TenantConfig>`.
-A file-backed `ConfigProvider` supplies the complete selected JSON document. This
+The [tenant module](../packages/frontend/src/lib/tenant.ts) owns a private child at
+`lib/tenant/config.ts`. Its `TenantConfig` value is an Effect `Config` recipe with
+decoded type `Config.Success<typeof TenantConfig>`. Only `tenant.ts` imports this
+child; sibling modules and tests use the public tenant service. A file-backed
+`ConfigProvider` supplies the complete selected JSON document. This
 provider is local to that read and does not replace the environment provider used
 for process settings. The process-resolution configuration also has a `TenantConfig`
 name in `lib/config/tenant-config.ts`; it is a separate contract.
@@ -86,20 +88,17 @@ has no such field. Unknown fields are rejected, including nested credential fiel
 JSON types remain strict: strings, null, and booleans cannot substitute for numeric
 policy settings.
 
-Resolved secrets are obtained separately through the server-only
-[TenantSecrets](../packages/frontend/src/lib/tenant-secrets.ts) contract when an
-authentication consumer invokes `TenantConfigService.resolveClientSecret(config)`.
-Public clients return no credential without a provider lookup; confidential clients
-resolve their reference to a redacted credential or a typed safe failure. Tenant loading
-and diagnostics do not resolve those references. No concrete vendor provider is currently configured. Producers
+Non-secret credential references remain data. A secrets module/provider contract
+and actual resolution are deferred until an authentication consumer needs to read
+a real secret. Tenant loading and diagnostics do not resolve those references. Producers
 must still prevent secrets inside permitted text fields; schema validation alone
 cannot establish that external content is safe.
 
 ## Idle timeout and warning policy
 
-`effectiveSessionPolicy(config)` is the shared derivation for session consumers. The
-tenant service exposes the same function as `service.effectiveSessionPolicy(config)`,
-and schema validation uses it to check the warning/timeout relationship. It
+`service.effectiveSessionPolicy(config)` is the public derivation for session consumers.
+The private Config child uses that same logic to validate the warning/timeout
+relationship. It
 returns `idleTimeoutMinutes` and `warningLeadMinutes` from validated file content:
 
 | Supplied timeout              | Supplied warning                         | Effective timeout / warning                     |
@@ -132,7 +131,8 @@ the request-cached `requireTenantConfig`; it does not call the diagnostic endpoi
 
 Local HTTP and OTel inspection can establish the running composition's selection,
 status, response, and telemetry behavior. Durable service tests separately protect
-validation, effective defaults, isolation, and safe failure reporting. Neither form
+validation, effective defaults, isolation, and public failure outcomes. Observability
+is checked manually through application logs and exported OTel data. Neither form
 of evidence establishes ingress protection or every external producer's content
 controls. The scoped implementation and evidence are recorded in the
 [#215 delivery plan](./delivery/tenant-auth-session-config.md).

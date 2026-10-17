@@ -26,28 +26,18 @@ including embedded credential fields, are rejected at root and nested boundaries
 This validation cannot detect a secret pasted into an otherwise permitted text field;
 configuration producers remain responsible for those values.
 
-The server-only [TenantSecrets](../packages/frontend/src/lib/tenant-secrets.ts) service
-accepts a reference and returns an Effect `Redacted<string>` value or a typed
-`TenantSecretLookupError`. Implementations must translate provider failures into this
-safe failure without preserving raw provider errors or credentials. A deterministic
-synthetic implementation exists in the service contract tests. No concrete provider
-is selected or installed in the application runtime; future authentication composition
-must supply it. Tenant loading and diagnostics never resolve credentials and do not
-require that provider.
-
-After reading validated configuration through `TenantConfigService`, an authentication
-consumer explicitly calls `resolveClientSecret(config)`. Public clients return
-`Option.none()` without acquiring the secrets capability. Confidential clients use
-`clientSecretRef` and return `Option.some(Redacted)` or the typed lookup failure. The
-authentication composition supplies `TenantSecrets` only for this separate operation;
-it is not acquired while constructing the tenant service or reading tenant files.
+The non-secret reference remains configuration data. There is no secrets module,
+provider contract, or credential lookup operation yet: add them when an actual
+authentication consumer needs to read a real secret. Tenant loading and diagnostics
+do not resolve references or depend on a secrets provider.
 
 ## Session policy handoff
 
-[TenantConfig and effectiveSessionPolicy](../packages/frontend/src/lib/tenant-config.ts)
-provide validated integration data and shared effective timeout/warning values. File
-parsing preserves omitted fields; the tenant service also exposes that shared function
-as `service.effectiveSessionPolicy(config)`. The policy derivation supplies omitted defaults
+[TenantConfigService](../packages/frontend/src/lib/tenant.ts) provides validated
+integration data and shared effective timeout/warning values through
+`service.effectiveSessionPolicy(config)`. The Config recipe and policy implementation
+are private children of the tenant module. File parsing preserves omitted fields;
+the policy derivation supplies omitted defaults
 without changing the diagnostic document. See the
 [policy contract](./multi-tenancy.md#idle-timeout-and-warning-policy) for the accepted
 values and examples.

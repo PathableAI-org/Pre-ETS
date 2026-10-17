@@ -124,6 +124,23 @@ isolate dependencies, but a simulated adapter does not establish the real adapte
 
 ## Preserve useful knowledge
 
+### Verify observability manually
+
+Observability is verified through manual checks or temporary agent probes against
+real application logs and exported OTel data. Record the exercised revision,
+environment, requests, observations, and limits. Do not retain durable tests of log
+messages, spans, attributes, telemetry payload secrecy, or exporter wiring, including
+tests using in-memory loggers/tracers. The temporary probes and their transcripts
+do not become a permanent test suite.
+
+Keep durable tests for application outcomes such as configuration rejection,
+returned values, HTTP failure mapping, and tenant isolation. Supplying a logger to
+silence a scenario's output is fine; assertions about its output belong to manual
+verification. Test public module interfaces rather than importing their private
+child modules.
+
+### Retain application expectations
+
 A durable test protects an expectation future implementations must continue to satisfy. A temporary experiment
 may characterize unfamiliar code, probe a library assumption, or verify an intermediate refactor. Its usefulness
 during construction does not automatically justify permanent maintenance.
