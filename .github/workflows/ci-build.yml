@@ -75,11 +75,27 @@ jobs:
       - name: Build workspaces
         if: needs.changes.outputs.build == 'true'
         run: pnpm build
+      - name: Test backend HTTP server
+        if: needs.changes.outputs.build == 'true'
+        run: pnpm --filter @pathableai/pre-ets-backend test
       - name: Smoke check production on-site preview
         if: needs.changes.outputs.build == 'true'
         run: pnpm test:bdd:smoke
       - name: Smoke check backend
         if: needs.changes.outputs.build == 'true'
         run: |
-          greeting=$(pnpm --silent start:backend)
-          test "$greeting" = "Hello from backend"
+          BACKEND_PORT=3002 node packages/backend/dist/main.js &
+          backend_pid=$!
+          trap 'kill "$backend_pid" 2>/dev/null || true; wait "$backend_pid" 2>/dev/null || true' EXIT
+          for attempt in {1..30}; do
+            if test "$(curl --connect-timeout 2 --max-time 3 --fail --silent http://127.0.0.1:3002/healthz)" = "ok"; then
+              exit 0
+            fi
+            if ! kill -0 "$backend_pid" 2>/dev/null; then
+              echo "Backend exited before becoming healthy"
+              exit 1
+            fi
+            sleep 1
+          done
+          echo "Backend did not become healthy"
+          exit 1
