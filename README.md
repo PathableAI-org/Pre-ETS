@@ -249,17 +249,19 @@ yet installed remain inactive until
 those dependencies exist. Node pins, Node types, and package engines are grouped.
 
 Updates run outside office hours in America/New_York, with lockfile maintenance
-on Saturdays between midnight and 4 a.m. The policy enables PR/platform automerge
-for eligible updates; Effect, React/Next, PathAble, tests, Node, OpenTelemetry,
-and major upgrades require review. TypeScript major upgrades are disabled pending
-lint compatibility.
+on Saturdays between midnight and 4 a.m. All Renovate PRs, including major upgrades
+and lockfile maintenance, are eligible for squash automerge after checks pass.
+Renovate performs the merge on a subsequent run after the branch is up to date
+and all reported checks pass (`platformAutomerge: false`, `ignoreTests: false`),
+including checks that GitHub does not require. TypeScript major upgrades remain
+disabled pending lint compatibility.
 
 Non-major ESLint updates include TypeScript, `typescript-eslint`, ESLint plugins,
 and `globals` so the compiler and lint integrations can be reviewed together.
 The `typescript-eslint` umbrella package owns its matching parser and plugin
 versions. dprint and its plugins, Prettier and its plugins, and Git hook tooling
 have separate update groups. OpenTelemetry SDKs, instrumentation, semantic
-conventions, and the Next.js integration form a reviewed runtime group;
+conventions, and the Next.js integration form a coordinated runtime group;
 `@effect/opentelemetry` remains in the Effect group. React/Next and Vite/Vitest
 retain their existing groups, including Vitest companion packages.
 
@@ -289,11 +291,12 @@ automatically removes versions no longer resolved by the written lockfile; it do
 not remove exceptions just because their releases have aged. Keep the existing
 lockfile when updating dependencies and let pnpm regenerate it.
 
-The Renovate GitHub App must have access to this repository. Platform automerge
-also requires GitHub repository support and permission, and follows configured
-branch protections and required checks. This tooling setup does not enable the
-App, change GitHub settings, or establish CI/required checks. Configuration alone
-does not activate Renovate or guarantee validated automatic merges.
+The Renovate GitHub App must have access and merge permission for this repository.
+Renovate-managed automerge respects branch rules and does not require GitHub's
+repository auto-merge setting. Keep CI and required-check rules configured;
+Renovate's [automerge documentation](https://docs.renovatebot.com/key-concepts/automerge/)
+describes merge prerequisites and troubleshooting. The policy takes effect once
+`renovate.json` is merged into the default branch.
 
 Validate configuration without adding Renovate as a project dependency. The command
 pins a mature validator release so validation is reproducible:
