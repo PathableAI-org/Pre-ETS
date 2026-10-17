@@ -366,38 +366,27 @@ Fallow’s hook installer. Builds and full typechecks remain separate checks.
 
 ## Continuous integration
 
-CI is split across four workflows that run on every pull request, pushes to
-`main`, and manual dispatch:
+Quality, Build, and Fallow run on every pull request, pushes to `main`, and manual dispatch.
+BDD runs nightly at 06:17 UTC on `main` and can also be dispatched manually on `main`.
 
-| Workflow                           | Required check names           | Role                                      |
-| ---------------------------------- | ------------------------------ | ----------------------------------------- |
-| `.github/workflows/ci-quality.yml` | **CI / Quality**               | Formatting, lint, types, frontend Vitest  |
-| `.github/workflows/ci-build.yml`   | **CI / Build**                 | Package builds and backend greeting smoke |
-| `.github/workflows/ci-bdd.yml`     | **CI / BDD Dry**, **CI / BDD** | Cucumber discovery; full suite when gated |
-| `.github/workflows/ci-fallow.yml`  | **CI / Fallow**                | Unused code and new-finding audit         |
+| Workflow                           | Check name       | Role                                                    |
+| ---------------------------------- | ---------------- | ------------------------------------------------------- |
+| `.github/workflows/ci-quality.yml` | **CI / Quality** | Formatting, lint, types, frontend Vitest                |
+| `.github/workflows/ci-build.yml`   | **CI / Build**   | Package builds and backend greeting smoke               |
+| `.github/workflows/ci-bdd.yml`     | **CI / BDD**     | Nightly requirements BDD and production safeguard smoke |
+| `.github/workflows/ci-fallow.yml`  | **CI / Fallow**  | Unused code and new-finding audit                       |
 
 Shared install steps live in `.github/actions/setup-node-pnpm`.
 
-On pull requests, each workflow detects changed paths with `dorny/paths-filter`
-and skips expensive install/work when those paths are irrelevant. The named
-checks still run and report success when skipped so required status checks are
-not blocked. Pushes to `main` and `workflow_dispatch` always run the full work
-for Quality, Build, BDD Dry, and Fallow.
+On pull requests, Quality, Build, and Fallow detect changed paths with `dorny/paths-filter`
+and skip expensive install/work when those paths are irrelevant. The named checks still run
+and report success when skipped so required status checks are not blocked. Pushes to `main`
+and `workflow_dispatch` always run the full work for those three workflows.
 
-Examples:
-
-- Specs-only Speckit PR (`specs/**`, `.specify/**`) → required checks succeed
-  without install/build/Cucumber.
-- Acceptance changes touching `features/` or `tests/bdd/` → **CI / BDD Dry** and
-  **CI / BDD** (plus Quality when format/code paths match).
-- Implementation PR changing `packages/` → Quality, Build, and Fallow run.
-
-**CI / BDD** builds the frontend, installs Chromium, and runs the capability suite
-(`pnpm test:bdd`) on relevant pull requests, pushes to `main`, and manual dispatch.
-Application, production-server and development-server partitions run serially; a failed partition
-still allows later partitions to report. **CI / BDD Dry** reports discovery separately.
+**CI / BDD** runs harness checks, installs Chromium, builds the frontend, and executes
+`pnpm test:bdd` followed by `pnpm test:bdd:smoke`. It runs only on `main`, without path
+filtering, and preserves runtime reports and failure diagnostics. There is no CI dry-run job.
 See [BDD commands and evidence](features/README.md). Sign-in browser specs are described in `e2e/README.md`.
-Branch-protection settings are managed separately from this refactor.
 
 CI uses the pinned Node and pnpm versions, a frozen lockfile, and pnpm store caching.
 `HUSKY=0` skips local hook installation; CI invokes the full checks directly and
@@ -409,9 +398,8 @@ check still runs. Missing nonempty base references are errors. Audit warnings ar
 advisory; failures and runtime errors fail the job.
 
 The `Main CI checks` repository ruleset must require **CI / Quality**,
-**CI / Build**, **CI / Fallow**, and **CI / BDD Dry**, plus an up-to-date branch,
-before merging into `main`. Do **not** require **CI / BDD** on pull requests.
-After changing workflows, update that ruleset’s required checks to match.
+**CI / Build**, and **CI / Fallow**, plus an up-to-date branch,
+before merging into `main`. BDD checks are not required for merging.
 Organization rules continue to require pull requests and squash merges. GitHub
 automerge remains disabled.
 

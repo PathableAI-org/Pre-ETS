@@ -1,92 +1,25 @@
-name: CI BDD
+name: Nightly BDD
 
 on:
-  pull_request:
-  push:
-    branches: [main]
+  schedule:
+    - cron: "17 6 * * *"
   workflow_dispatch:
 
 permissions:
   contents: read
-  pull-requests: read
 
 env:
   CI: "true"
   HUSKY: "0"
 
 concurrency:
-  group: ci-bdd-${{ github.event.pull_request.number || github.ref }}
+  group: ci-bdd-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  changes:
-    name: Detect BDD paths
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    outputs:
-      bdd: ${{ steps.set.outputs.bdd }}
-    steps:
-      - name: Detect pull request path changes
-        if: github.event_name == 'pull_request'
-        id: filter
-        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
-        with:
-          filters: |
-            bdd:
-              - 'features/**'
-              - 'tests/bdd/**'
-              - 'cucumber.mjs'
-              - 'gherkin-lint.json'
-              - 'package.json'
-              - 'pnpm-lock.yaml'
-              - 'packages/frontend/**'
-              - '.github/workflows/ci-bdd.yml'
-              - '.github/actions/setup-node-pnpm/**'
-              - 'pnpm-workspace.yaml'
-              - '.node-version'
-              - 'tsconfig*.json'
-              - 'compose.yaml'
-      - name: Set path filter outputs
-        id: set
-        run: |
-          if [ "${{ github.event_name }}" != "pull_request" ]; then
-            echo "bdd=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "bdd=${{ steps.filter.outputs.bdd }}" >> "$GITHUB_OUTPUT"
-          fi
-
-  bdd-dry:
-    name: CI / BDD Dry
-    needs: changes
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - name: Skip when no BDD-relevant paths changed
-        if: needs.changes.outputs.bdd != 'true'
-        run: echo "No BDD-relevant paths changed; skipping."
-      - name: Check out repository
-        if: needs.changes.outputs.bdd == 'true'
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          persist-credentials: false
-      - name: Set up Node.js and install dependencies
-        if: needs.changes.outputs.bdd == 'true'
-        uses: ./.github/actions/setup-node-pnpm
-      - name: Dry-run Cucumber discovery
-        if: needs.changes.outputs.bdd == 'true'
-        run: pnpm test:bdd:dry
-      - name: Preserve discovery report
-        if: always() && needs.changes.outputs.bdd == 'true'
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: bdd-discovery
-          path: reports/cucumber-bdd.json
-          if-no-files-found: ignore
-
   bdd:
     name: CI / BDD
-    needs: changes
-    if: needs.changes.outputs.bdd == 'true'
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     services:
@@ -108,18 +41,22 @@ jobs:
         uses: ./.github/actions/setup-node-pnpm
       - name: Configure session environment
         run: |
-          echo "REDIS_URL=redis://127.0.0.1:6379" >> "$GITHUB_ENV"
-          echo "SESSION_SIGNING_SECRET=$(openssl rand -base64 32 | tr '+/' '-_' | tr -d '=')" >> "$GITHUB_ENV"
-          echo "SESSION_TTL_SECONDS=86400" >> "$GITHUB_ENV"
-          echo "SESSION_STORE_TIMEOUT_MS=2000" >> "$GITHUB_ENV"
-          echo "SESSION_KEY_PREFIX=ci:bdd:${{ github.run_id }}:" >> "$GITHUB_ENV"
-          echo "OIDC_TX_KEY_PREFIX=ci:bdd:oidc-tx:${{ github.run_id }}:" >> "$GITHUB_ENV"
+          {
+            echo "REDIS_URL=redis://127.0.0.1:6379"
+            echo "SESSION_SIGNING_SECRET=$(openssl rand -base64 32 | tr '+/' '-_' | tr -d '=')"
+            echo "SESSION_TTL_SECONDS=86400"
+            echo "SESSION_STORE_TIMEOUT_MS=2000"
+            echo "SESSION_KEY_PREFIX=ci:bdd:${{ github.run_id }}:"
+            echo "OIDC_TX_KEY_PREFIX=ci:bdd:oidc-tx:${{ github.run_id }}:"
+          } >> "$GITHUB_ENV"
       - name: Run harness checks
         run: pnpm test:bdd:checks
       - name: Install Chromium for missing-page presentation checks
         run: pnpm exec playwright install --with-deps chromium
       - name: Run requirements BDD
         run: pnpm test:bdd
+      - name: Smoke check production on-site preview
+        run: pnpm test:bdd:smoke
       - name: Preserve BDD reports and failure diagnostics
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

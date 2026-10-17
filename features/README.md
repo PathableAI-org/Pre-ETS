@@ -48,8 +48,8 @@ Permission-denial scenarios require a non-root user and a filesystem that enforc
 the setup checks that access is actually denied before asserting an application response.
 See [step guidance](../tests/bdd/steps/README.md).
 
-CI runs discovery separately and executes the runtime suite on relevant PRs, main, and manual
-dispatch. Real-Keycloak E2E stays manual.
+CI runs requirements BDD and the production safeguard smoke nightly at 06:17 UTC on `main`.
+Manual dispatch is also restricted to `main`; there is no CI dry-run job. Real-Keycloak E2E stays manual.
 
 ## Gherkin linting and formatting
 
