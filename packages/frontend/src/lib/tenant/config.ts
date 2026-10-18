@@ -53,6 +53,10 @@ const TenantFileSchema = Schema.Struct({
   }))
 )
 
+const decodeTenantFile = Schema.decodeUnknownEffect(Schema.fromJsonString(TenantFileSchema), {
+  onExcessProperty: "error"
+})
+
 /**
  * Reads one complete tenant JSON document from the selected file's ConfigProvider.
  *
@@ -61,7 +65,7 @@ const TenantFileSchema = Schema.Struct({
  */
 export const TenantConfig = Config.String().pipe(
   Config.mapEffect((raw) =>
-    Schema.decodeUnknownEffect(Schema.fromJsonString(TenantFileSchema), { onExcessProperty: "error" })(raw).pipe(
+    decodeTenantFile(raw).pipe(
       Effect.mapError((error) =>
         new Config.ConfigError(
           new Schema.SchemaError(

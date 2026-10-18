@@ -46,9 +46,17 @@ Before designing or modifying Effect code in `packages/frontend`,
 read [Effect agent guidance](docs/engineering/effect-guidance.md) and the target
 workspace's `AGENTS.md`: [frontend](packages/frontend/AGENTS.md),
 [backend](packages/backend/AGENTS.md). This explicit routing also applies when an
-agent starts at the repository root. Consult relevant [upstream Effect documentation](https://effect.website/docs/)
-and source matching the target workspace's installed version, then verify APIs
-against its installed declarations before using examples.
+agent starts at the repository root. Locate the available Effect v4 checkout,
+read its `LLMS.md`, then only the linked examples/source relevant to the task.
+The local discovery path and source precedence are in the Effect guide. Verify
+APIs against the target workspace's installed declarations; a local checkout may
+be ahead of the product pins. Use external documentation only to fill local gaps.
+
+These Effect conventions apply to Effect workflows, not every file in the repository.
+Keep pure TypeScript, React/UI, Next.js adapters, and root tooling idiomatic to their
+own boundaries. Do not add Effect dependencies, services, or wrappers merely to
+imitate library examples. Reusable Effect generators use `Effect.fn` for useful
+tracing boundaries or `Effect.fnUntraced` otherwise; inline programs use `Effect.gen`.
 
 Product Effect pins are coordinated in the named `effect` catalog in
 [`pnpm-workspace.yaml`](pnpm-workspace.yaml), including `@effect/platform-node`.

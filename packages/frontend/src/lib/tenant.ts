@@ -79,6 +79,8 @@ const TenantAlias = Schema.NonEmptyString.pipe(
  */
 type TenantAlias = typeof TenantAlias.Type
 
+const decodeTenantAlias = Schema.decodeResult(TenantAlias)
+
 const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 
 const hostAliasError = (host: string, cause: Error): TenantNotFound =>
@@ -101,7 +103,7 @@ const tenantAliasFromHost = (baseHostname: string) => {
           pipe(
             label,
             String.toLowerCase,
-            Schema.decodeResult(TenantAlias),
+            decodeTenantAlias,
             Result.mapError((error) => hostAliasError(host, error))
           )
       })
@@ -113,7 +115,7 @@ const tenantAliasFromStaticTenantConfig = (
 ): Result.Result<TenantAlias, TenantFailure> => {
   return pipe(
     config.staticAlias,
-    Schema.decodeResult(TenantAlias),
+    decodeTenantAlias,
     Result.mapError(
       (error) =>
         new TenantReadError({

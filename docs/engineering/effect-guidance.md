@@ -7,17 +7,21 @@ remain outside the Effect-first AI workflow unless they explicitly opt in.
 
 ## Before writing Effect code
 
-Follow the [README developer setup](../../README.md#effect-developer-setup),
-then read the [upstream Effect documentation](https://effect.website/docs/) relevant
-to your change. Verify examples against the target workspace's installed Effect
-declarations.
+Follow the [README developer setup](../../README.md#effect-developer-setup).
+Find the available local Effect v4 checkout; a common location is
+`$HOME/.local/share/effect-solutions/effect-v4`. Read its `LLMS.md`, then only
+the linked `ai-docs/src/` examples and source relevant to the task. This guide adapts
+that library guidance to an application that also contains non-Effect code.
 
 Source precedence:
 
 1. Repository contracts and the installed workspace's declarations are authoritative.
-2. Use Effect v4 source at the tag matching the installed version for implementation details
-   and examples.
-3. Use upstream Effect documentation for patterns, checking every API against installed types.
+2. Prefer the local v4 `LLMS.md`, linked examples, and source matching the installed version.
+   Inspect the checkout's revision: an existing checkout may be ahead of the product pins.
+   Verify every API against the owning workspace's installed declarations/source before use.
+3. Fill local documentation gaps from official upstream sources. Avoid unrelated checkouts
+   and v3 examples; report missing local sources or documentation drift. Do not reset another
+   checkout or assume an example authorizes a dependency, product behavior, or new framework.
 
 Product workspaces use the coordinated Effect pins in the named `effect` catalog
 in [`pnpm-workspace.yaml`](../../pnpm-workspace.yaml), including
@@ -43,8 +47,14 @@ fit an example.
   distinct from recoverable failures.
 - Use explicit readonly service interfaces and Layer implementations. Acquire
   implementation dependencies in Layers and preserve existing public interfaces.
-- Use `Effect.gen` for sequential composition and `Effect.fn` where its tracing
-  and function shape fit the contract. Avoid converting operations to Promises
+- Use `Effect.gen` for inline sequential programs. For reusable generator functions,
+  use named `Effect.fn("Module.operation")` at useful tracing boundaries and
+  `Effect.fnUntraced` for helpers/hot paths. Avoid functions that only return
+  `Effect.gen`. Add recovery/provision/annotation combinators as additional arguments
+  to the function constructor; do not call `.pipe` on the constructed function.
+  Use `Effect.fn.Return<A, E, R>` when an explicit generator return type is useful.
+  Return terminal failures with `return yield*` so control-flow narrowing is clear.
+  Small pure or combinator-only functions need no generator wrapper. Avoid converting operations to Promises
   inside business workflows or executing Effects merely to construct adapters.
 - Decode external input through schemas at the actual trust or persistence
   boundary. Passing an already validated value between modules does not require
@@ -53,12 +63,78 @@ fit an example.
 - Compose shared Layers at process boundaries. Preserve resource scope and Layer
   identity; do not mechanically merge sequential provides when one supplies
   dependencies of another.
-- Prefer deterministic test Layers for Effect behavior. Cover failures and
-  cleanup as well as success. Do not adopt `@effect/vitest` unless a later plan
-  authorizes it.
+- Prefer deterministic test Layers for Effect behavior. Use the already-installed
+  `@effect/vitest` `it.effect` for Effect-returning scenarios; it manages test execution,
+  scope, and test services. Keep ordinary Vitest for pure code and framework adapters.
+  Cover failures and cleanup as well as success. Do not convert test Effects to Promises
+  merely to run an async test. Keep observability verification manual.
 - Keep runtime startup, disposal, and long-lived execution at the process host
   entrypoint for each workspace. Importing library modules must remain safe
   without starting a runtime.
+
+### Validation, errors, and runtime checks
+
+Use Schema to model and decode untrusted inputs at their actual boundaries. Reuse
+schema decoders instead of rebuilding them for each request. Use schema checks for
+domain constraints; do not replace decoding with handwritten predicates, casts, or
+manual parsing. Already-validated values and pure calculations need no second decode.
+Preserve independent expected-fixture parsing in tests rather than reusing the decoder
+under test. For small runtime type guards in Effect code, use existing `Predicate`
+helpers instead of inventing `isRecord`/`isString` utilities. Outside Effect code,
+use the owning framework's and TypeScript's normal narrowing tools.
+
+Use `Schema.TaggedError` for expected application failures and typed recovery such as
+`Effect.catchTag` where the error vocabulary supports it. Inspect structured reasons
+when a library contract requires them. Do not turn defects, interruption, or unrelated
+failures into successful defaults. Keep public failure mappings stable and keep raw
+untrusted inputs, credentials, and unsafe cause payloads out of responses/telemetry.
+
+Comments and JSDoc should explain a contract, limitation, or non-obvious decision.
+Do not copy the tutorial's illustrative comments or narrate obvious code. Prefer
+schema-backed models when validation/encoding is needed; plain readonly TypeScript
+data remains appropriate for internal results and non-Effect code.
+
+### Resources, time, and existing application code
+
+Acquire resources with `Effect.acquireRelease` and let Scope/Layer finalizers close
+them on success, failure, or interruption. Use Layers for long-lived services and
+background work. Tests owning temporary resources should use scoped cleanup too.
+Do not add a long-lived service, cache, or background process without a current need.
+
+Within Effect workflows, use `DateTime` and the Effect clock for current time, parsing,
+formatting, time zones, and calendar operations. Keep time replaceable in tests.
+Outside Effect, native/framework date APIs remain appropriate; do not introduce a
+runtime solely for a UI formatting operation or root harness timestamp.
+
+The frontend host bridges Effects through its shared `ManagedRuntime`; the independent
+backend process owns its runtime entrypoint and shutdown. Keep Promises and framework
+response construction at those execution edges. Root tooling, Cucumber/Playwright,
+React components, pure functions, and existing framework adapters keep their native
+APIs unless a concrete workflow needs Effect. Strict TypeScript and recursive module
+boundaries apply to all of them.
+
+### Choose a focused local example
+
+Resolve these paths relative to the discovered v4 checkout. Read only the needed topic,
+then verify the API in the installed package. The list is a lookup aid, not adoption scope.
+
+| Need                                  | Local guide/example area                                                               | Application constraint                                                                                         |
+| ------------------------------------- | -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| Effects, schemas, errors              | `LLMS.md`; `ai-docs/src/01_effect/{01_basics,02_schema,04_errors}/`                    | Validate external values once; preserve public outcomes                                                        |
+| Services/configuration, Layers        | `ai-docs/src/01_effect/03_services`                                                    | Readonly public capabilities; dependencies acquired in Layers; no service per file                             |
+| Resource lifetime and process startup | `ai-docs/src/01_effect/{05_resources,06_running}/`                                     | Scope finalizers and host-owned boot/disposal                                                                  |
+| Framework integration                 | `ai-docs/src/04_integration/10_managed-runtime.ts`                                     | Adapt the bridge to Next.js; do not add the example framework                                                  |
+| Effect tests/shared Layers            | `ai-docs/src/09_testing`                                                               | Fresh mutable state per scenario; retain semantic evidence; no observability tests                             |
+| Dates/time zones                      | `ai-docs/src/07_datetime`                                                              | Effect clock inside workflows; native APIs outside them                                                        |
+| Logging/tracing                       | `ai-docs/src/08_observability`                                                         | Preserve the existing Vercel exporter/global Effect bridge; manual verification only                           |
+| PubSub, streams, schedules, batching  | `ai-docs/src/01_effect/07_pubsub/`; `ai-docs/src/{03_stream,05_batching,06_schedule}/` | Introduce only for required behavior, not speculative architecture                                             |
+| HTTP clients, REST servers, SQL       | `ai-docs/src/{50_http-client,51_http-server,40_sql}/`                                  | Frontend keeps Next handlers; backend owns REST/domain persistence; follow accepted database/migration choices |
+
+Do not copy library setup wholesale. The existing [observability setup](../observability.md)
+uses one `@vercel/otel` exporter and the Effect global tracer bridge. Local examples of
+Otlp exporters or NodeSdk do not authorize another exporter. GraphQL, CLI, AI, cluster,
+new drivers, and other example modules require an actual task and installed/approved
+dependencies before adoption.
 
 ## Design modules from the consumer inward
 

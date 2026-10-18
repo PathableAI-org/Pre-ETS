@@ -220,7 +220,8 @@ authentication/session/browser or provider-compatibility completion claim.
 | D4 | Provider wiring reads the wrong document or becomes permanently stale           | One focused integration scenario with an owned temporary directory and real Node filesystem: read A/B, update A between calls, observe updated A and unchanged B, then delete/clean up. Use the production Config/provider path                                                                                                  | No claim of atomic external file replacement or simultaneous policy adoption by existing sessions            |
 | D5 | Forbidden credential fields enter parsed configuration                          | Real tenant service rejects unknown root/nested fields and returns the full permitted document, including non-secret references                                                                                                                                                                                                  | Actual secret reading is deferred; diagnostic HTTP and all log/trace inspection remain ad hoc M1–M3          |
 
-Reuse existing Vitest/Effect Layer conventions; do not expand test-runner setup. Architecture/typecheck review
+Use the installed `@effect/vitest` runner helpers and scenario Layers for Effect tests; no new runner setup is
+needed. Architecture/typecheck review
 establishes that the exported recipe is `Config` and its type is inferred; avoid source-text tests, mocks of the
 service under test, exact private helper calls, or tests solely for coverage. Preserve existing semantic assertions
 and assess stale TODOs against the named claims rather than blindly implementing them all.
@@ -498,7 +499,8 @@ The maintainer's PR #223 style refinement is implemented on top of `d67668490c65
 (`packages/frontend/src/lib/tenant.ts` and `packages/frontend/src/lib/tenant/config.ts`), two tracked tenant
 fixtures, and E2E fixture producer have SHA256 fingerprint
 `de7c9f9d4a293a6fe94c7c40a1bd907b6d2b7ede60c66979c7fc4f10d24569ea`, using the same filename/NUL/bytes/NUL
-method as the historical record. This replaces the earlier fingerprint for the current PR implementation.
+method as the historical record. This identifies the style-refinement revision; the next record identifies the
+latest implementation.
 
 **Durable evidence:** 166 tests passed in 7 frontend test files. The retained production HTTP/browser suite passed
 31 scenarios / 313 steps. Typecheck, build, lint, unused-code, changed-code, formatting, relative document links,
@@ -519,3 +521,42 @@ Temporary raw artifacts are under `/tmp/preets-215-evidence-mgov_vql`; commands/
 `6ad3fbf5000000000000000000000037`, static missing file `6ad3fbf5000000000000000000000066`. Owned app processes,
 tenant directories, and the separate Compose collector are cleaned up after inspection. The downstream limits
 in the historical record still apply, and there is now explicitly no secrets module/provider implementation.
+
+## Local Effect guidance and execution — 2026-10-18
+
+On top of PR head `bba060784a2526f1f1493cbb1700bfd2b5323bf2`, agent configuration now routes to the available
+local Effect v4 `LLMS.md` and its focused examples/source before external documentation. The inspected checkout
+was `41cf29b5d85af7fc25bcc7713f2e05142edaa66a`, ahead of installed Effect / `@effect/vitest` **4.0.5**;
+the installed declarations remain authoritative. The shared guide adapts generator functions, schema decoding,
+readonly services/Layers, typed errors, resource lifetime, clocks, and test conventions to this application.
+It preserves native TypeScript, React, framework adapters, and root harness code outside Effect workflows,
+host-owned runtime execution, recursive module boundaries, and manual observability verification.
+
+The tenant implementation now reuses its document and alias decoders. The two Effect service suites use the
+installed `@effect/vitest` `it.effect` runner, reusable `Effect.fnUntraced` helpers, and `Effect.acquireRelease`
+for the owned temporary directory. Their assertions still cover application outcomes; no durable telemetry tests
+or new dependencies were added. The E2E fixture producer stays idiomatic Node tooling.
+
+**Executed source:** the two tenant implementation modules, two tracked fixtures, and E2E fixture producer have
+SHA256 fingerprint `97478684fd43e8c4d7b98c8f80e0ed4f2c39b734eea436e3c0485ccd8aa9e9ea`, using the sorted
+filename/NUL/bytes/NUL method above. This is the latest exercised implementation fingerprint.
+
+**Durable evidence:** 166 frontend tests passed in 7 files; the production HTTP/browser suite passed
+31 scenarios / 313 steps. Typecheck, build, lint, unused-code, changed-code, formatting, relative documentation
+links, and whitespace checks passed. The test-runner conversion retains the existing configuration/policy,
+failure-mapping, tenant-isolation, and real-filesystem assertions.
+
+**Manual evidence:** a temporary driver issued 12 curl observations across host/static processes built from this
+revision: permitted file equality, tenant selection, rejected credential field, malformed JSON, missing file,
+and recovery after repair, with no-store and no session cookie. Six exported success/rejection/missing-file
+traces were inspected with the process logs: HTTP outcomes, tenant parent-span connections, resolution modes,
+and success/error outcomes matched. The synthetic rejected-input/Authorization/Cookie sentinel was absent from
+these sampled traces and logs. This smaller regression run does not repeat the prior revision's broader
+permission/startup matrix and makes no new downstream or production claim.
+
+Temporary responses, logs, and trace JSON are in
+`/var/folders/yp/gryy3nm924l5vr8k534t1_bh0000gn/T/preets-223-llms-evidence-n33we459`; the temporary probe and
+command logs use `/tmp/preets-223-llms-*`. Representative traces: host success
+`903f54c277064646870e80b1e0366319`, host rejected credential `6855d24d8ee34b6e8bf4d39c47f7f7d1`, static
+missing-file 500 `97585203f37e477db50cca8563c1b51c`. Owned app processes, tenant directories, and the separate
+Compose collector were removed after inspection. No probe or raw telemetry is retained in the repository.

@@ -2,8 +2,9 @@
 
 Read the root [AGENTS.md](../../AGENTS.md) and
 [Effect agent guidance](../../docs/engineering/effect-guidance.md) before Effect
-work. Consult relevant [upstream Effect documentation](https://effect.website/docs/), then check this workspace's installed Effect
-types. Product pins come from the named `effect` catalog in
+work. Read the local Effect v4 checkout's `LLMS.md` and relevant linked examples/source,
+then check this workspace's installed Effect types. Keep runtime execution and shutdown
+at the backend process host; pure transformations need no Effect wrapper. Product pins come from the named `effect` catalog in
 [`pnpm-workspace.yaml`](../../pnpm-workspace.yaml).
 
 Own the planned stateless RESTful Effect v4 domain service: business rules,
