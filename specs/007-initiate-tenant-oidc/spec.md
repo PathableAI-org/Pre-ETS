@@ -137,9 +137,13 @@ requirement IDs or changes to those contracts.
 
 ### External contract expectations
 
+The implementation plan uses two automatic application hops: `/` validates the tenant and redirects to
+`/auth/login`; that public Route Handler persists the transaction, sets its cookie, and redirects to the
+provider. No extra user action is introduced. A first-hop redirect alone does not prove initiation succeeded.
+
 | Boundary                                                      | Expected observable contract                                                                                                                 | Limit in this feature                                                                                                                           |
 | ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| Unauthenticated `GET /` with usable configuration             | HTTP redirect using the selected tenant's configured authorization integration; no protected content in the response                         | Exact redirect status within the redirect family is an implementation choice; other entry points and valid-session joining are not established  |
+| Unauthenticated `GET /` with usable configuration             | Automatic redirect through public `/auth/login` to the selected tenant's authorization integration; no protected content                     | Exact redirect status within the redirect family is an implementation choice; other entry points and valid-session joining are not established  |
 | Application to configured identity provider                   | Initiates authentication for the configured client, requests `max_age=0`, and supplies return/transaction context needed by later validation | No token exchange, signed-token validation, `auth_time` acceptance, or provider-authentication success claim                                    |
 | Authentication transaction to later callback consumer         | Identifies the originating tenant and correlates the initiated attempt; creation does not confer authentication                              | Representation, storage, cookie names, transaction lifetime, and protocol-library selection belong to planning; no retention policy is invented |
 | Public callback/error/test/recovery resources and safe assets | Authentication-independent access without automatic initiation; normal tenant/configuration obligations still apply                          | No new recovery screen, successful callback, ingress protection, or application-wide protection claim                                           |
