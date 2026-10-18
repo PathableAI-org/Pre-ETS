@@ -98,7 +98,16 @@ without introducing a new tenant contract.
 This is a hierarchy of semantic claims, not a required test pyramid. Avoid repeating the module's full behavior
 matrix at the framework boundary or duplicating a service property against private helpers without a distinct reason.
 
-For new module-contract scenarios, prefer Vitest and Effect Layers. Use BDD to describe externally meaningful
+For Effect module-contract scenarios, use the installed `@effect/vitest` `it.effect`
+with the real service and scenario Layers. Return an Effect from the test; let the
+runner own execution and scope instead of wrapping it in `runPromise`/async tests.
+Use `Effect.fnUntraced` for reusable generator helpers and scoped finalizers for owned
+temporary resources. Keep mutable test Layers fresh per scenario. Ordinary Vitest
+remains appropriate for pure TypeScript/React/framework behavior; no Effect wrapper is
+needed merely to satisfy a testing convention. See the local v4 examples routed through
+[Effect guidance](../effect-guidance.md#choose-a-focused-local-example).
+
+Use BDD to describe externally meaningful
 application behavior observed through the running application (HTTP responses and Playwright for browser
 presentation). Package Vitest unit tests and real-Keycloak `e2e/` remain separate from Cucumber.
 Stable cross-feature invariants can also justify E2E workflows.
@@ -123,6 +132,23 @@ For Effect behavior, follow [Effect development guidance](../effect-guidance.md)
 isolate dependencies, but a simulated adapter does not establish the real adapter's semantics.
 
 ## Preserve useful knowledge
+
+### Verify observability manually
+
+Observability is verified through manual checks or temporary agent probes against
+real application logs and exported OTel data. Record the exercised revision,
+environment, requests, observations, and limits. Do not retain durable tests of log
+messages, spans, attributes, telemetry payload secrecy, or exporter wiring, including
+tests using in-memory loggers/tracers. The temporary probes and their transcripts
+do not become a permanent test suite.
+
+Keep durable tests for application outcomes such as configuration rejection,
+returned values, HTTP failure mapping, and tenant isolation. Supplying a logger to
+silence a scenario's output is fine; assertions about its output belong to manual
+verification. Test public module interfaces rather than importing their private
+child modules.
+
+### Retain application expectations
 
 A durable test protects an expectation future implementations must continue to satisfy. A temporary experiment
 may characterize unfamiliar code, probe a library assumption, or verify an intermediate refactor. Its usefulness

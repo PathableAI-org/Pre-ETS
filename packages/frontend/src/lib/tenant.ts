@@ -5,11 +5,26 @@
  * alias for every host. The loaded file is `{alias}.json` under the configured tenant directory.
  */
 import "server-only"
-import { type Config, Context, Effect, FileSystem, Layer, Option, Path, pipe, Result, Schema, String } from "effect"
+import {
+  type Config,
+  ConfigProvider,
+  Context,
+  Effect,
+  FileSystem,
+  Layer,
+  Option,
+  Path,
+  pipe,
+  PlatformError,
+  Result,
+  Schema,
+  String
+} from "effect"
 
 import type { ServerConfig, TenantConfig as TenantResolutionConfig, TenantStaticConfig } from "./config/index.ts"
 
 import { HttpError } from "./error.ts"
+import { effectiveSessionPolicy, TenantConfig } from "./tenant/config.ts"
 
 const fixedStatus = <const Code extends 404 | 500>(code: Code) =>
   Schema.Literal(code).pipe(Schema.withConstructorDefault(Effect.succeed(code)))
@@ -64,42 +79,7 @@ const TenantAlias = Schema.NonEmptyString.pipe(
  */
 type TenantAlias = typeof TenantAlias.Type
 
-const OidcClientAuth = Schema.Literals([
-  "confidential",
-  "public"
-])
-
-const TenantOidcConfig = Schema.Struct({
-  clientAuth: OidcClientAuth,
-  clientId: Schema.String,
-  connection: Schema.optionalKey(Schema.String),
-  issuer: Schema.String
-})
-
-/**
- * Parsed tenant configuration file: display name, optional idle timeout, and optional OIDC settings.
- *
- * @category models
- */
-const TenantConfig = Schema.Struct({
-  displayName: Schema.String,
-  idleTimeoutMinutes: Schema.optionalKey(
-    Schema.Int.pipe(
-      Schema.check(Schema.isBetween({
-        maximum: 30,
-        minimum: 5
-      }))
-    )
-  ),
-  oidc: Schema.optionalKey(TenantOidcConfig)
-})
-
-/**
- * Decoded tenant configuration file.
- *
- * @category models
- */
-type TenantConfig = typeof TenantConfig.Type
+const decodeTenantAlias = Schema.decodeResult(TenantAlias)
 
 const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 
@@ -123,7 +103,7 @@ const tenantAliasFromHost = (baseHostname: string) => {
           pipe(
             label,
             String.toLowerCase,
-            Schema.decodeResult(TenantAlias),
+            decodeTenantAlias,
             Result.mapError((error) => hostAliasError(host, error))
           )
       })
@@ -135,7 +115,7 @@ const tenantAliasFromStaticTenantConfig = (
 ): Result.Result<TenantAlias, TenantFailure> => {
   return pipe(
     config.staticAlias,
-    Schema.decodeResult(TenantAlias),
+    decodeTenantAlias,
     Result.mapError(
       (error) =>
         new TenantReadError({
@@ -200,11 +180,11 @@ const tenantConfigFromAlias = (
       // Validate the directory separately: ENOENT on the file alone cannot tell
       // a missing selected file from a missing configuration directory.
       yield* fs.readDirectory(config.configDir).pipe(
-        Effect.catch((cause) =>
+        Effect.catch(() =>
           failTenant(
             "directory",
             new TenantReadError({
-              cause,
+              cause: new Error("Tenant configuration directory could not be read"),
               message: "Tenant configuration directory is unavailable"
             })
           )
@@ -215,46 +195,39 @@ const tenantConfigFromAlias = (
 
       yield* Effect.logDebug("Reading tenant configuration")
 
-      const raw = yield* fs.readFileString(configPath).pipe(
-        Effect.catch((cause) => {
-          const error = config.resolution === "static" && cause.reason._tag === "NotFound" ?
-            new TenantReadError({
-              cause,
-              message: `Failed to read tenant config from ${configPath}`
-            }) :
+      const provider = ConfigProvider.make((key) =>
+        key.length === 0 ?
+          fs.readFileString(configPath).pipe(
+            Effect.map(ConfigProvider.makeValue),
+            Effect.mapError((cause) =>
+              new ConfigProvider.SourceError({ cause, message: "Tenant configuration source is unavailable" })
+            )
+          ) :
+          Effect.succeed(undefined)
+      )
+
+      return yield* TenantConfig.parse(provider).pipe(
+        Effect.catch((error) => {
+          if (error.cause._tag === "SourceError") {
+            const sourceCause = error.cause.cause
+            const notFound = PlatformError.isPlatformError(sourceCause) && sourceCause.reason._tag === "NotFound"
+            const cause = new Error(
+              notFound ? "Tenant configuration file was not found" : "Tenant configuration file could not be read"
+            )
+            const failure = config.resolution === "static" && notFound ?
+              new TenantReadError({ cause, message: `Failed to read tenant config from ${configPath}` }) :
+              new TenantNotFound({ cause, message: `Failed to read tenant config from ${configPath}` })
+            return failTenant(notFound ? "not-found" : "read", failure)
+          }
+          const reason = error.message.includes("Tenant configuration JSON is invalid") ? "json" : "schema"
+          return failTenant(
+            reason,
             new TenantNotFound({
-              cause,
-              message: `Failed to read tenant config from ${configPath}`
+              cause: new Error(`Tenant configuration ${reason} validation failed`),
+              message: `Failed to parse tenant config from ${configPath}`
             })
-          return failTenant(cause.reason._tag === "NotFound" ? "not-found" : "read", error)
+          )
         })
-      )
-
-      const parsed: unknown = yield* Effect.try({
-        catch: (cause) => cause instanceof Error ? cause : new Error("Failed to parse tenant config JSON"),
-        try: (): unknown => JSON.parse(raw)
-      }).pipe(
-        Effect.catch((cause) =>
-          failTenant(
-            "json",
-            new TenantNotFound({
-              cause,
-              message: `Failed to parse tenant config from ${configPath}`
-            })
-          )
-        )
-      )
-
-      return yield* Schema.decodeUnknownEffect(TenantConfig)(parsed).pipe(
-        Effect.catch((error) =>
-          failTenant(
-            "schema",
-            new TenantNotFound({
-              cause: new Error(error.message),
-              message: `Failed to parse tenant config from ${configPath}`
-            })
-          )
-        )
       )
     }
   )
@@ -265,11 +238,13 @@ const tenantConfigFromAlias = (
  * **Details**
  *
  * `getAlias` resolves the alias without reading a file. `getConfigFromAlias` and `getConfigFromHost` read
- * `{alias}.json` from the configured directory.
+ * `{alias}.json` from the configured directory. Configuration decoding and session policy are private child
+ * implementation details; consumers use this module's public service.
  *
  * @category services
  */
 export class TenantConfigService extends Context.Service<TenantConfigService, {
+  readonly effectiveSessionPolicy: typeof effectiveSessionPolicy
   readonly getAlias: (host: string) => Result.Result<TenantAlias, TenantFailure>
   readonly getConfigFromAlias: (alias: TenantAlias) => Effect.Effect<TenantConfig, TenantFailure>
   readonly getConfigFromHost: (host: string) => Effect.Effect<TenantConfig, TenantFailure>
@@ -299,6 +274,7 @@ export class TenantConfigService extends Context.Service<TenantConfigService, {
         })
 
         return TenantConfigService.of({
+          effectiveSessionPolicy,
           getAlias,
           getConfigFromAlias,
           getConfigFromHost

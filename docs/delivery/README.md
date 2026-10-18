@@ -92,5 +92,6 @@ decisions. Read architecture for ownership and implementation context, not to de
 
 - [Tenant resolution pilot](tenant-resolution.md)
 - [Authentication and session management draft](session-management.md)
+- [Tenant authentication and session configuration — issue #215 draft](tenant-auth-session-config.md)
 - [Session management S2 PR steps — publication supplement](session-management-s2-steps.md)
 - [On-site job-coaching service records — issued](on-site-job-coaching.md)

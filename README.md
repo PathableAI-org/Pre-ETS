@@ -132,21 +132,23 @@ Install dependencies from the repository root:
 pnpm install --frozen-lockfile
 ```
 
-Read the [upstream Effect documentation](https://effect.website/docs/) relevant
-to your change and check examples against the target workspace's installed Effect
-declarations. The installed declarations and repository contracts are authoritative
-when documentation differs. See [Effect agent guidance](docs/engineering/effect-guidance.md)
-for source precedence and coding boundaries.
+Read the available local Effect v4 checkout's `LLMS.md`, then its task-relevant linked
+examples/source. A common local path is `~/.local/share/effect-solutions/effect-v4`.
+Check its revision and verify APIs against the owning workspace's installed Effect
+declarations/source: a local checkout may be ahead of the installed version. Use
+official external documentation only for local gaps. See
+[Effect agent guidance](docs/engineering/effect-guidance.md) for source precedence,
+the topic index, and conventions covering Effect and non-Effect application code.
 
-Optionally clone Effect source for local examples and API reference, selecting the
-tag matching the installed Effect version (the example below matches the current
-`effect` catalog):
+If no suitable checkout is available, optionally clone source at the tag matching
+the installed frontend Effect version:
 
 ```sh
-mkdir -p ~/.local/share/effect
-git clone --depth 1 --branch effect@4.0.2 \
+effect_tag="effect@$(node -p "require('./packages/frontend/node_modules/effect/package.json').version")"
+mkdir -p ~/.local/share/effect-solutions
+git clone --depth 1 --branch "$effect_tag" \
   https://github.com/Effect-TS/effect.git \
-  ~/.local/share/effect/source
+  ~/.local/share/effect-solutions/effect-v4
 ```
 
 If that directory already exists, inspect it or choose a different location rather

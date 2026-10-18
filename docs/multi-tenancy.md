@@ -1,110 +1,138 @@
 # Multi-tenancy strategy
 
-This note records how the frontend identifies a tenant on an incoming request
-and loads that tenant’s configuration. What happens next on an unauthenticated
-request is described in [authentication.md](./authentication.md). Session
-state after that is described in [session-state.md](./session-state.md). How
-session state differs from backend domain persistence is described in
-[domain-persistence.md](./domain-persistence.md).
+The frontend owns tenant configuration. The server-only
+[TenantConfigService](../packages/frontend/src/lib/tenant.ts) resolves tenant aliases
+and loads one `{alias}.json` file under `TENANT_CONFIG_DIR` for each read. The current
+app has a welcome page and a tenant diagnostic route; login and sessions remain
+follow-on work described in [authentication.md](./authentication.md). Durable business
+records belong to the backend; see [domain-persistence.md](./domain-persistence.md).
 
-The frontend owns tenant configuration. The Next.js app is the only reader of
-this data when rendering UI. Binding the host to a slug and loading
-configuration are the first-party module `packages/frontend/src/lib/tenant.ts`;
-there is no tenancy library. **Current** tenant configuration is a read-only
-filesystem source: one `{alias}.json` file per tenant under `TENANT_CONFIG_DIR`.
-Host association opens only the bound alias’s file. Static mode, set with
-`TENANT_RESOLUTION=static`, names a single alias via `TENANT_STATIC_ALIAS` and
-reads that same directory in every environment, including production. Prefer an absolute `TENANT_CONFIG_DIR`; relative
-paths resolve against the process CWD at boot (source construction). After
-editing a tenant file, restart the frontend so the process-lifetime parse cache
-refreshes. Superseded `TENANT_CONFIG_RECORDS_JSON` / `TENANT_LOCAL_CONFIG_JSON`
-are **silently ignored** if still set (no dual source). Authentication and
-session architecture are described in the linked notes. Local configuration
-needs no external services and does not use Compose for tenant config.
-Committed examples and fixtures are synthetic only.
+## Tenant selection
 
-**Postgres** (or another shared mutable multi-node store) remains a longer-term
-architecture target when product needs it—not the active source today. See
-`specs/005-tenant-config-fs/` for the filesystem contract and constitution
-exception recorded while Postgres stays deferred.
+`TENANT_RESOLUTION` selects `host` or `static` in every environment, including production:
 
-## Tenant slug
+- Host mode requires `BASE_HOSTNAME`. A host matching `${alias}.${BASE_HOSTNAME}`
+  selects that alias. Tenant labels contain letters and hyphens and are normalized
+  to lowercase. Bare base hosts, extra labels, and hosts with a retained port fail
+  alias resolution. The diagnostic adapter passes the incoming Host header to the service.
+- Static mode requires `TENANT_STATIC_ALIAS`, ignores the request host, and always
+  selects that alias from the same configuration directory. It does not require
+  `BASE_HOSTNAME`.
 
-Each tenant has a unique **slug**. The slug is the identifier used to query
-tenant configuration. It is not a display name, and it is not inferred from
-path, query string, or request headers other than the URL’s host.
-
-Users belong to a single tenant. A request is always for exactly one tenant.
-
-## Binding: slug from the URL
-
-The UI binds a request to a tenant by reading the `Host` header in
-`getCurrentTenant()`. Production hosts follow `{slug}.pathable.com`. Local host
-association uses `{slug}.localhost` with the same label rules. Only this binding
-step may parse the host. It returns a slug or calls Next.js `forbidden()`. It
-does not load configuration, and it does not fall through to a default tenant.
-
-The host must be a known application pattern. On Proxy-matched `/` routes,
-`setupSession` runs before SSR, validates the host tenant, and forwards
-`x-pathable-session-context`, `x-preets-tenant-slug`, and
-`x-preets-tenant-origin` on the internal request. The nested `(app)` layout and
-page code consume that context through the server-only `getRequestSession()`
-accessor (which loads tenant configuration from the session tenant id). An
-unusable host or unknown slug still renders `app/forbidden.tsx`
-(`Access denied.`) with no redirect on non-participating routes and on matched
-routes where tenant validation fails before session setup completes:
-
-- the host is the apex (`pathable.com`) or another non-tenant host such as
-  `www.pathable.com`
-- the host has extra labels (`a.b.pathable.com`)
-- the host does not match the application’s tenant URL scheme
-- the slug is unknown
-
-When the app sits behind a reverse proxy, the binding step must use one trusted
-source for the original host (`Host`) and ignore caller-supplied
-`X-Forwarded-Host` and query values. Deployment ingress must still present the
-original host; this application cannot make untrusted forwarded headers
-authoritative.
+`TenantConfigService.getAlias` resolves an alias without reading a file;
+`getConfigFromAlias` reads an explicit validated alias, and `getConfigFromHost`
+combines selection and reading. Consumers use these operations rather than storing a
+mutable current tenant or parsing hosts independently. Host reads do not consult
+`X-Forwarded-Host` or query parameters. Deployment ingress must supply the trusted
+original Host header and protect the diagnostic endpoint separately.
 
 ## Loading tenant configuration
 
-The slug from the binding step is the argument to `TenantConfigService.getConfigFromAlias`:
-
 ```text
-request URL → slug → tenant configuration (from TENANT_CONFIG_DIR/{alias}.json)
+request Host → selected alias → TENANT_CONFIG_DIR/{alias}.json → validated tenant configuration
 ```
 
-Host association reads `{TENANT_CONFIG_DIR}/{slug}.json` only (no directory
-scan). A missing file for an otherwise valid host is refused with
-`forbidden()`. An unknown or non-canonical slug argument is also
-`forbidden()`. Invalid, mismatched, or unreadable selected configuration throws
-(HTTP 500). A missing, empty, or non-directory `TENANT_CONFIG_DIR` fails at
-source construction (visible configuration unavailable). The UI does not
-substitute another tenant’s configuration, a default tenant, or the slug as a
-Display Name.
+The [tenant module](../packages/frontend/src/lib/tenant.ts) owns a private child at
+`lib/tenant/config.ts`. Its `TenantConfig` value is an Effect `Config` recipe with
+decoded type `Config.Success<typeof TenantConfig>`. Only `tenant.ts` imports this
+child; sibling modules and tests use the public tenant service. A file-backed
+`ConfigProvider` supplies the complete selected JSON document. This
+provider is local to that read and does not replace the environment provider used
+for process settings. The process-resolution configuration also has a `TenantConfig`
+name in `lib/config/tenant-config.ts`; it is a separate contract.
 
-`TenantConfigService` does not store the current tenant on the request object.
-`GET /_test/tenant-config` reads it for the incoming host. The welcome page
-does not.
+Each read checks directory availability and reads one complete file snapshot. Later
+calls observe file changes without restarting the process; there is no process-lifetime
+parsed-file cache. Prefer an absolute directory path: relative paths are interpreted
+by filesystem operations against the process working directory. Superseded
+`TENANT_CONFIG_RECORDS_JSON` and `TENANT_LOCAL_CONFIG_JSON` are ignored.
 
-`TENANT_RESOLUTION` selects `host` or `static` in every environment, including
-production. Host mode requires `BASE_HOSTNAME` and binds a request whose host
-is `${alias}.${BASE_HOSTNAME}`. Static mode requires `TENANT_STATIC_ALIAS`,
-ignores the request host, and does not require `BASE_HOSTNAME`.
+The service never substitutes another file or a default tenant. Its HTTP outcomes are:
 
-Downstream frontend modules that need tenancy call `TenantConfigService`. They
-do not parse the request URL themselves to decide which tenant they are in.
+| Failure                                  | Status |
+| ---------------------------------------- | ------ |
+| Host cannot select a tenant alias        | 404    |
+| Selected file missing in host mode       | 404    |
+| Selected file missing in static mode     | 500    |
+| Selected file has invalid JSON or schema | 404    |
+| Other selected-file read failure         | 404    |
+| Configuration directory unavailable      | 500    |
 
-## Idle timeout policy
+Invalid process settings fail runtime startup separately from request-time directory
+or selected-file failures. Committed examples are synthetic and use the local
+Keycloak integration values. Loading them performs no discovery or network request.
 
-Tenant configuration may include optional `idleTimeoutMinutes`:
+## Permitted file content
 
-- Whole minutes **5–30** inclusive.
-- Omitted → effective **30** minutes for new authenticated sessions.
-- Invalid explicit values fail at the trusted configuration boundary for the
-  **whole** source (no silent substitution of the default or another tenant’s
-  policy).
-- Policy is fixed on the session at authentication (OIDC callback idle stamp).
-  Changing a tenant’s choice does not rewrite live sessions; login-again and other
-  new authentications pick up the **current** effective duration.
-- Tenants are isolated: one tenant’s choice never governs another’s sessions.
+A tenant file contains `displayName`, required `oidc`, and optional
+`idleTimeoutMinutes` and `warningLeadMinutes`. For example:
+
+```json
+{
+  "displayName": "Springfield",
+  "oidc": {
+    "clientAuth": "confidential",
+    "clientId": "pre-ets",
+    "clientSecretRef": "springfield-oidc",
+    "issuer": "http://localhost:8080/realms/pre-ets"
+  },
+  "idleTimeoutMinutes": 20,
+  "warningLeadMinutes": 3
+}
+```
+
+OIDC requires nonempty `issuer` and `clientId` integration identifiers, plus
+`clientAuth` of `public` or `confidential`. Optional `connection` is a string. A
+confidential client requires a nonempty non-secret `clientSecretRef`; a public client
+has no such field. Unknown fields are rejected, including nested credential fields.
+JSON types remain strict: strings, null, and booleans cannot substitute for numeric
+policy settings.
+
+Non-secret credential references remain data. A secrets module/provider contract
+and actual resolution are deferred until an authentication consumer needs to read
+a real secret. Tenant loading and diagnostics do not resolve those references. Producers
+must still prevent secrets inside permitted text fields; schema validation alone
+cannot establish that external content is safe.
+
+## Idle timeout and warning policy
+
+`service.effectiveSessionPolicy(config)` is the public derivation for session consumers.
+The private Config child uses that same logic to validate the warning/timeout
+relationship. It
+returns `idleTimeoutMinutes` and `warningLeadMinutes` from validated file content:
+
+| Supplied timeout              | Supplied warning                         | Effective timeout / warning                     |
+| ----------------------------- | ---------------------------------------- | ----------------------------------------------- |
+| Omitted                       | Omitted                                  | 30 / 5 minutes                                  |
+| 5                             | Omitted                                  | 5 / 0 minutes; warning disabled                 |
+| 6–30                          | Omitted                                  | Supplied timeout / 5 minutes                    |
+| Any valid timeout, or omitted | 0                                        | Effective timeout / 0 minutes; warning disabled |
+| Any valid timeout, or omitted | Positive integer below effective timeout | Effective timeout / supplied warning            |
+
+Explicit timeout must be a JSON integer from 5 through 30. Explicit warning must be
+a JSON integer from zero through one less than the effective timeout. Invalid
+explicit settings fail the selected document; defaults apply only to omitted fields.
+Resolve an omitted timeout to 30 before checking the warning relationship.
+
+[#218](https://github.com/PathableAI-org/Pre-ETS/issues/218) and
+[#220](https://github.com/PathableAI-org/Pre-ETS/issues/220) consume this derivation
+for session creation and refresh. This module does not enforce expiration, display
+warnings, or update live sessions.
+
+## Diagnostic contract
+
+`GET /_test/tenant-config` uses the real tenant service in production and other
+environments, returning the complete parsed permitted document with
+`Cache-Control: private, no-store`. Successful JSON equals an independently parsed
+selected file. Defaults are not inserted into its response, and a non-secret
+`clientSecretRef` remains visible. Provider credentials and resolved secrets are
+never part of this document. The welcome page consumes the same tenant service through
+the request-cached `requireTenantConfig`; it does not call the diagnostic endpoint.
+
+Local HTTP and OTel inspection can establish the running composition's selection,
+status, response, and telemetry behavior. Durable service tests separately protect
+validation, effective defaults, isolation, and public failure outcomes. Observability
+is checked manually through application logs and exported OTel data. Neither form
+of evidence establishes ingress protection or every external producer's content
+controls. The scoped implementation and evidence are recorded in the
+[#215 delivery plan](./delivery/tenant-auth-session-config.md).
