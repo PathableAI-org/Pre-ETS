@@ -38,6 +38,9 @@
   or claiming fresh-event validation. B6 response-validation/provider decisions remain downstream gates.
 - Planned Gherkin is specification prose only. No active features/bindings, product implementation, requirement
   status updates, or executed authentication evidence are created by this review.
-- Existing `/` HTTP 200 expectations are identified for semantic reconciliation in the implementation PR.
+- Root/layout eager tenant reads and existing root tenant assertions are identified for semantic reconciliation: root session-missing 307 is separate from login actual 404/500 and missing-page presentation.
+- The real session capability always reports absence. Redis, recoverable attempts and correlation cookies move
+  together to #217; no constant-mirroring test or fake authenticated session is proposed.
 - All 16 quality checks pass. This is specification review, not implementation acceptance or requirement verification.
-- Ready for `$speckit-plan` for initiation; resolve affected B6 decisions before planning dependent validation behavior.
+- Specification and revised plan are ready for initiation task decomposition; resolve affected B6 decisions
+  before dependent callback/freshness implementation.

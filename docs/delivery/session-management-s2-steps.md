@@ -56,6 +56,26 @@ Source: maintainer direction on 2026-10-17. Repository inspection confirmed the 
 [compose.yaml](../../compose.yaml) and its tracked realm in
 [docker/keycloak/pre-ets-realm.json](../../docker/keycloak/pre-ets-realm.json); containers were not started or assessed.
 
+## Initiation/session boundary refinement (2026-10-18)
+
+Maintainer direction during feature #216 planning: introduce a session-presence capability that reports no usable
+session for this increment. The reference root entry checks it first and redirects to `/auth/login`; the login
+route then resolves the request tenant before provider work. Remove eager request-tenant reads from the root and
+its enclosing layout. Public diagnostics/previews keep their own applicable tenant checks. A future positive
+session still requires independent request-tenant resolution and binding before protected access.
+
+S2-B prepares a tenant-bound authorization attempt and demonstrates delegation only. Recoverable transaction
+persistence, its browser correlation cookie, and Redis integration move together to S2-C (#217), which must save
+context before redirecting and recover/consume it on return. No temporary in-memory store or speculative storage
+interface is introduced in S2-B. S2-D (#218) continues to own authenticated application-session establishment.
+This refines earlier S2-B wording that said it establishes the authentication transaction; keep the distinction
+between preparing an attempt and completing a recoverable round trip explicit.
+
+The [feature specification](../../specs/007-initiate-tenant-oidc/spec.md) and
+[implementation plan](../../specs/007-initiate-tenant-oidc/plan.md) record the proposed design. Existing issue
+identities/dependency graph and publication history are unchanged. This revision awaits PR review; live issue
+bodies have not been republished and no behavior is claimed as executed.
+
 ## Steps
 
 ### S2-A — Complete tenant authentication and session configuration
@@ -95,8 +115,9 @@ AC1–3 (initiation portion);
 [PREETS-SESSION-004](https://github.com/PathableAI-org/Pre-ETS/blob/cddbb741e73af8b79cdc699101c08770ddb56096/docs/requirements/session/PREETS-SESSION-004.md)
 AC1 (missing-session initiation portion).
 
-**Included:** Redirect unauthenticated protected-page entry to the independently resolved tenant's provider and
-establish the authentication transaction. Preserve callback, sign-in error, recovery content, all /_test routes, and
+**Included:** Check the session-presence boundary (always no usable session in this increment), then redirect
+the reference entry to the login route. That route resolves the tenant and prepares the provider authorization
+request. Recoverable transaction persistence and its browser cookie are delivered with S2-C. Preserve callback, sign-in error, recovery content, all /_test routes, and
 safe public-asset exceptions; diagnostics create no application session. Preserve tenant configuration failure behavior
 and server-only secrets. This is the initiation increment; valid-session recognition and full default protection arrive
 in S2-E.
@@ -120,8 +141,9 @@ AC1–3 (callback portion);
 [PREETS-SESSION-003](https://github.com/PathableAI-org/Pre-ETS/blob/cddbb741e73af8b79cdc699101c08770ddb56096/docs/requirements/session/PREETS-SESSION-003.md)
 AC1–2 (validated identity prerequisite).
 
-**Included:** Receive provider redirects, validate the authentication transaction and provider evidence, and produce
-trusted user/tenant identity. Reject invalid, failed, or mismatched callbacks. Retain independent tenant resolution and
+**Included:** Connect transaction persistence before the initiation redirect with browser correlation and atomic
+recovery/consumption on callback, then validate the transaction and provider evidence to produce trusted
+user/tenant identity. Reject invalid, failed, or mismatched callbacks. Retain independent tenant resolution and
 server-only credential handling. Successful validation alone does not grant authenticated application access; S2-D
 creates the application session. Coordinate affected freshness/callback choices with B6/#158 before commitment.
 

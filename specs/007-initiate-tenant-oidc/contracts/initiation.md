@@ -1,81 +1,76 @@
-# External contracts: initiation only
+# External contracts: session-missing initiation only
 
-These are planned application contracts for #216, not executed evidence. Requirements remain the main-branch
-contracts referenced by [spec.md](../spec.md).
+Proposed #216 contracts; no runtime evidence is claimed. The maintainer's 2026-10-18 refinement supersedes the
+previous design's root tenant precheck, Redis issuance and correlation-cookie contract.
 
-## Automatic protected-page entry
+## Session presence and root entry
 
-1. `GET /` without an application session validates the request tenant using the existing page boundary.
-2. A usable tenant receives an automatic same-origin HTTP 307 to `/auth/login`, without protected welcome content.
-3. `GET /auth/login` independently resolves that request's tenant and prepares initiation. Successful persistence
-   yields HTTP 307 to the configured authorization endpoint and the transaction cookie below.
+The public session capability reports whether a usable session exists. Its implementation always reports false
+in this feature and performs no cookie, store or request-tenant lookup. Root checks it before tenant-dependent
+work and returns automatic same-origin HTTP 307 to `/auth/login`, without protected content.
 
-Initiation-handler responses use `Cache-Control: private, no-store`, including failed preparation, so per-attempt
-redirect/cookie data cannot become a cached login attempt. Cover this module contract in the handler examples;
-do not infer a new durable requirement from an implementation header choice.
+Both the root and its enclosing `(app)` layout must stop eager tenant reads. A layout alone cannot ensure that
+child rendering stops; the root consumer must make its own session decision before returning content. Runtime
+construction may decode process settings but does not resolve the request's tenant.
 
-This is a two-hop application flow; there is no login button or local credential form. A caller observing only
-the first response cannot conclude that provider preparation succeeded. GET/HEAD are initiation transport methods;
-do not extend this redirect policy to protected Server Actions or other methods. Valid-session reuse remains
-unimplemented; no authenticated application sessions are created by this increment.
+There is no supported positive-session rendering path in this feature. Future true/Some outcomes must be based
+on a real usable session, followed by independent request-tenant resolution and session/tenant comparison before
+protected access. A forged/present cookie or presence predicate alone must not authorize protected content.
 
-## Provider request
+## Login request and provider redirect
 
-The final application redirect carries the selected client ID, exact configured callback URI, code response,
-`scope=openid`, fresh state/nonce, PKCE S256 challenge, and `max_age=0`. The issuer/discovered metadata determines
-the provider authorization endpoint; application code adds no Keycloak/Microsoft policy or vendor-specific
-connection hint. The PKCE verifier stays server-side. Client credentials are not needed for this stage.
+`GET /auth/login` is a public server page. It independently resolves the current tenant through the public tenant
+service before provider work. The preparation capability returns the authorization destination to this page;
+redirect outside catch blocks that would swallow framework navigation interrupts.
 
-Use HTTPS by default. An explicit loopback-only local switch is necessary for the tracked HTTP Keycloak fixture;
-validate the discovered authorization endpoint too, not just the issuer. Do not silently allow external HTTP.
-Do not infer verified fresh authentication from `max_age=0`, a redirect, provider UI, or a new transaction handle.
+The final application response is an automatic provider HTTP 307 carrying the selected client, configured exact
+callback, code/openid, S256 challenge, state/nonce and `max_age=0`. Request values are fresh per preparation.
+The verifier stays server-local, with no persistence or browser correlation cookie. Do not return transient
+context through HTML or query debug fields. Do not map `connection` to a vendor hint or resolve credentials here.
 
-## Public capability and errors
+Provider HTTPS is default; an explicit loopback-only setting permits the tracked HTTP local integration. Validate
+issuer/discovery/authorization and callback URLs at their relevant boundaries. Canonical callback authority comes
+from the process map keyed by resolved tenant alias, never incoming Host/forwarded/query data.
 
-`AuthenticationService.begin({ host })` is a framework-independent Effect. Its success contains only the prepared
-authorization destination and cookie issuance data the host must send. It uses the shared process Layer graph,
-typed tenant context, Effect clock, cryptographic randomness, and bounded external adapters.
+Root/login must decide before streaming commits 200. Keep dynamic responses non-cacheable; verify real production
+307 and the no-store response directive, without imposing an incidental complete Cache-Control string. No cookie
+write requires a Route Handler yet. #217 may introduce a cookie-writing host adapter when persistence is connected.
 
-- Existing public tenant errors retain 404/500 semantics; `HttpError` is not expanded to model provider outages.
-- `AuthenticationUnavailable` is a separate safe category for missing callback setup, unacceptable provider
-  metadata/transport, or transaction persistence failure. Raw URLs, library errors and stored payloads are not
-  returned or attached as unsafe causes to public errors/telemetry.
-- Expected failures yield no new successful transaction cookie/provider redirect. A timed-out Redis command can
-  have created an orphan record; TTL bounds it. No rollback or absence-of-write claim is made for ambiguous I/O.
-- Interruption/defects retain their distinct Effect behavior; do not catch every failure into a successful fallback.
+## Public service outcomes and failures
 
-The HTTP adapter maps initiation unavailability to a same-origin redirect to the existing public
-`/login-unavailable`. It contains no error payload in a query string and grants no access. Direct login-route
-tenant failures retain their status via safe error mapping; root tenant failures preserve the ordinary missing
-page/500 experience before entering this handler. Exact provider error wording is not part of the contract.
+`AuthenticationService.prepare({ host })` is a framework-independent Effect. Success returns only the prepared
+authorization destination needed by the login consumer. Existing tenant `HttpError` and a separate safe
+`AuthenticationUnavailable` remain distinguishable. No current API returns an authenticated identity, stored
+session or transaction record. Introduce dependency seams only for actual preparation/transport needs.
 
-## Callback authority and transaction handoff
+Tenant failure at `/auth/login` uses the existing page error boundary: actual ordinary 404/missing page or actual
+500, with no fallback provider. Root's preceding 307 remains a separate session-routing response. Provider
+preparation failure directs to the public sign-in error page without protected content or raw upstream payloads.
+Invalid explicit process settings fail startup; missing callback entry is request-time preparation unavailability.
+Interruption/defects stay distinct from expected failures and must not become a successful default.
 
-Callback authority comes from `OIDC_CALLBACK_ORIGINS_JSON[resolvedTenantAlias]`, never request/forwarded headers,
-query return targets, or mutable last-used tenant state. Append fixed `/auth/callback` and persist the exact URI.
-Static mode's arbitrary Host does not change the configured callback origin. The normal browser entry must use
-its canonical configured host so the host-only cookie can accompany the callback; no broader cookie domain is added
-to accommodate arbitrary static-mode aliases.
+The browser follows the root hop and therefore sees the ordinary missing-page experience on invalid-tenant login.
+Tests must assert the actual tenant-dependent response status and final presentation; a raw root 307 or error text
+alone cannot establish TENANT-004/005.
 
-Cookie `preets_oidc_tx`: opaque independent handle, host-only, HttpOnly, SameSite=Lax, Path `/auth/callback`,
-remaining lifetime at most 600 seconds, Secure except explicit local HTTP. The record is versioned and scoped by
-tenant plus handle, with issuer/client/auth-mode, exact redirect URI, state, nonce, verifier and issue/expiry times.
-See [data-model.md](../data-model.md) for the wire fields. No application session cookie or identity is issued.
+## Recoverable attempts are deferred
 
-One pending cookie per browser host means re-initiation replaces the earlier attempt's browser handle. #217 adds
-atomic consume/replay prevention and all callback validations. Persisted records are untrusted at that later read
-boundary and must be decoded. This feature does not expose a speculative consume/token/session operation.
+This increment constructs a request and then discards its server-local attempt context. It cannot accept an OIDC
+callback or complete an authentication round trip. The current callback remains a denying fallback even if a real
+provider returns a code. No in-memory substitute, persistence-provider interface, Redis client, TTL, storage wire
+schema, signing secret, or correlation cookie is introduced here.
 
-## Public exceptions and unchanged failures
+#217 must connect both sides: persist correlation/verifier context before redirect and recover/consume it on
+callback before accepting provider evidence. That work chooses actual storage/cookie/expiry contracts with their
+consumers and adds corresponding failure/race tests. #218 continues to own authenticated application sessions.
 
-`/auth/callback`, `/login-unavailable`, all `/_test` routes, existing recovery content and required safe assets
-remain authentication-independent. `/auth/login` is explicitly the public initiation transport. Exceptions
-preserve applicable tenant resolution, safe configuration, and separate production ingress obligations.
+## Public exceptions and diagnostics
 
-`GET /_test/tenant-config` keeps complete permitted selected JSON, no-store and existing 404/500 outcomes, and
-creates no application session or login transaction. A provider or Redis outage alone must not make this
-diagnostic or existing public error page inaccessible after valid process configuration.
+Callback/error/test/recovery content and required safe assets retain their existing authentication-independent
+policy. `/auth/login` is explicitly public initiation transport. Preserve each route's applicable tenant checks;
+root's routing exception does not exempt tenant-dependent login or diagnostic work.
 
-Host-mode invalid/missing tenants and malformed/unreadable selected files remain ordinary 404; unavailable
-directories and a missing static selected file remain 500. Invalid explicit process settings fail startup.
-No fallback provider, protected page body, or authenticated session is a valid failure result.
+`GET /_test/tenant-config` returns full permitted selected JSON and no-store with actual 404/500, no new session
+or correlation cookie, and no dependency on Redis or provider availability. Existing preview environment gating
+and its explicit tenant check remain unchanged. Other methods/Server Actions do not acquire automatic OIDC behavior
+from this root/login flow. Production ingress, callback acceptance and full default protection remain downstream.

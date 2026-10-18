@@ -10,10 +10,14 @@
 
 **Input**: Specify issue #216's tenant OIDC initiation increment, including external contracts, expected
 requirements-backed Gherkin additions, relevant requirements, and explicit partial completion boundaries.
+Maintainer refinement on 2026-10-18: introduce a session-presence boundary that always reports no usable session;
+check it before tenant lookup and resolve the tenant in the login route. Recoverable transaction persistence
+and its Redis/cookie integration move to #217.
 
 **Requirement baseline**: Current `origin/main`, `9f83d3bcf623f4fa4d8aa6ee7918033c259387be`, refreshed and
-inspected on 2026-10-18. The working checkout is `2b35b9b662f2bd58b90e6af4b74ab1de5e2e0dc2`; the relevant
-requirements, delivery plans, and frontend sources match that main baseline. Requirements in main govern the
+inspected on 2026-10-18. Application sources were inspected at `2b35b9b662f2bd58b90e6af4b74ab1de5e2e0dc2`;
+this draft PR has changed only specification/planning documents. The relevant application and requirement sources
+match that main baseline. Requirements in main govern the
 contract even where older delivery prose still says a merged refinement awaits review.
 
 **Delivery context**: [#216](https://github.com/PathableAI-org/Pre-ETS/issues/216), S2-B in the
@@ -75,15 +79,18 @@ without another organization's login or protected content being substituted.
 
 **Why this priority**: Isolation and denied access are prerequisites for a useful authentication entry.
 
-**Independent Test**: Exercise existing tenant failure conditions at `/`, and an initiation failure with
-usable tenant configuration. Inspect actual responses and any composed sign-in failure presentation.
+**Independent Test**: Request `/` and explicitly follow its automatic same-origin `/auth/login` redirect.
+Exercise tenant failures at that tenant-dependent login boundary and inspect the actual status and browser
+missing-page/error experience. A raw first-hop 307 is not evidence of tenant success or failure.
 
 **Acceptance Scenarios**:
 
 1. **Given** an invalid host-mode selection or an unreadable/malformed selected file in either mode, **When**
-   `/` is requested, **Then** ordinary HTTP 404 is preserved without a provider redirect or fallback tenant.
+   `/` redirects to `/auth/login`, **Then** that tenant-dependent login request returns ordinary HTTP 404
+   without a provider redirect or fallback tenant; browser navigation presents the ordinary missing page.
 2. **Given** a parsed directory setting pointing to an unavailable directory, or a missing static tenant file,
-   **When** `/` is requested, **Then** HTTP 500 is preserved without fallback authentication.
+   **When** `/` redirects to `/auth/login`, **Then** the login request returns HTTP 500 without fallback
+   authentication. The tenant-independent first hop still returns its session-missing redirect.
 3. **Given** usable tenant configuration but initiation cannot be prepared, **When** the visitor enters `/`,
    **Then** protected access remains unavailable, no authenticated application session is established, and
    unauthenticated sign-in failure content remains reachable. This specification does not invent a provider
@@ -91,7 +98,7 @@ usable tenant configuration. Inspect actual responses and any composed sign-in f
 
 ### Edge Cases
 
-- Interleaving two tenants must not reuse the previous tenant's provider settings or authentication transaction.
+- Interleaving two tenants must not reuse the previous tenant's provider settings or transient attempt values.
 - Static-mode host variation must not become a host-mode rejection or select a different integration.
 - A public callback visit, including unsolicited return parameters, must not grant authenticated access;
   actual callback validation and rejection evidence belong to #217.
@@ -99,8 +106,14 @@ usable tenant configuration. Inspect actual responses and any composed sign-in f
   and stale/missing evidence rejection remain downstream.
 - Provider unavailability must not select another tenant's login or bypass the denied-access boundary.
 - Diagnostic requests must not begin login, create an application session, or resolve credentials unnecessarily.
-- Tenant startup failures remain startup failures. Public exceptions do not bypass applicable tenant resolution
-  or configuration safety, and preserving an exception does not require creating absent recovery UI.
+- Tenant startup failures remain startup failures. Root request routing performs no request-tenant lookup;
+  `/auth/login` and diagnostics retain their applicable tenant/configuration checks.
+- The session predicate is an intentional always-empty implementation in this feature, including with supplied
+  cookies. No positive-session rendering, cookie trust, or protected access is implemented.
+- A later positive session result must still be followed by independent request-tenant resolution and binding
+  before protected access. A presence predicate alone is not authorization.
+- Removing the root page lookup is insufficient while `(app)/layout.tsx` eagerly reads tenant configuration;
+  the layout must cease that read too. Existing public previews retain their explicit tenant checks.
 
 ## Requirements _(mandatory)_
 
@@ -116,8 +129,9 @@ requirement IDs or changes to those contracts.
   configuration in host and static modes, including interleaved host-mode requests. No fallback tenant or
   vendor-specific application policy is introduced. Sources: SESSION-002 AC1–2, TENANT-003 AC1–4.
 - **FR-003**: Every initiation in this increment MUST request fresh provider authentication with `max_age=0`
-  and establish an authentication transaction bound to its originating tenant for #217's validation handoff.
-  Initiation MUST NOT establish authenticated user identity or an authenticated application session.
+  and prepare tenant-bound authentication-attempt context for #217's later round-trip integration. No
+  recoverable transaction, correlation cookie, Redis dependency, or authenticated application session is
+  established here. Callback processing remains unavailable.
   Sources: SESSION-013's selected protocol baseline and AC1/3; SESSION-001 AC1; constitution tenant isolation.
 - **FR-004**: Initiation MUST preserve callback, sign-in error, all `/_test` routes, dedicated recovery content
   when present, and necessary safe public assets as authentication-independent exceptions. Diagnostics MUST
@@ -131,24 +145,33 @@ requirement IDs or changes to those contracts.
 - **FR-007**: Initiation failures MUST leave authenticated access unavailable. Public sign-in failure content
   MUST remain understandable and usable with keyboard and assistive technology if changed by this increment.
   Sources: SESSION-001 AC1–2; constitution accessible UI principles. Exact failure copy is not prescribed.
-- **FR-008**: The increment MUST retain its transaction/provider fixtures and describe their public consumer
-  handoff to #217. Evidence MUST distinguish initiation from callback validation, session creation, and full
-  freshness verification. Source: S2-B's observable increment and evidence progression.
+- **FR-008**: The increment MUST retain its provider/request fixtures and describe the handoff to #217.
+  #217 owns both saving attempt context before provider redirect and recovering/consuming it at the callback.
+  This feature MUST NOT substitute an in-memory store or add an unused persistence-provider interface.
+  Source: maintainer-refined S2-B/C evidence boundary.
+- **FR-009**: The root entry MUST first consult the session-presence capability. Its implementation always
+  reports no usable session in this feature, so `/` redirects to `/auth/login` before resolving the request
+  tenant. The login route MUST resolve the tenant before provider-specific work. No positive-session access
+  path is claimed. Source: maintainer direction on 2026-10-18; the observable denial/delegation remains within
+  SESSION-001/004 and tenant-dependent login still follows TENANT-003/004/005.
 
 ### External contract expectations
 
-The implementation plan uses two automatic application hops: `/` validates the tenant and redirects to
-`/auth/login`; that public Route Handler persists the transaction, sets its cookie, and redirects to the
-provider. No extra user action is introduced. A first-hop redirect alone does not prove initiation succeeded.
+`/` first consults a session-presence capability whose real implementation always reports no usable session.
+It redirects to `/auth/login` without request-tenant resolution. The public login server page resolves the tenant,
+prepares OIDC, and redirects to the provider; no additional user action is needed. Root/layout code must not perform
+an earlier tenant read. Once positive sessions exist, protected access still requires independent tenant binding.
 
-| Boundary                                                      | Expected observable contract                                                                                                                 | Limit in this feature                                                                                                                           |
-| ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| Unauthenticated `GET /` with usable configuration             | Automatic redirect through public `/auth/login` to the selected tenant's authorization integration; no protected content                     | Exact redirect status within the redirect family is an implementation choice; other entry points and valid-session joining are not established  |
-| Application to configured identity provider                   | Initiates authentication for the configured client, requests `max_age=0`, and supplies return/transaction context needed by later validation | No token exchange, signed-token validation, `auth_time` acceptance, or provider-authentication success claim                                    |
-| Authentication transaction to later callback consumer         | Identifies the originating tenant and correlates the initiated attempt; creation does not confer authentication                              | Representation, storage, cookie names, transaction lifetime, and protocol-library selection belong to planning; no retention policy is invented |
-| Public callback/error/test/recovery resources and safe assets | Authentication-independent access without automatic initiation; normal tenant/configuration obligations still apply                          | No new recovery screen, successful callback, ingress protection, or application-wide protection claim                                           |
-| `GET /_test/tenant-config`                                    | Full selected permitted JSON, no-store, existing failure responses, no application session creation                                          | Authentication transactions and application sessions are distinct; this does not prohibit all cookies on actual login initiation                |
-| Tenant resolution/configuration failure                       | Existing startup, ordinary 404, or 500 outcome without fallback or login redirect                                                            | Provider failure status/presentation must not be confused with tenant failure mappings                                                          |
+| Boundary                                                      | Expected observable contract                                                                                      | Partial limit                                                                                              |
+| ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Session presence                                              | Always no usable session; no cookie or store lookup grants access                                                 | No actual session lookup, identity, persistence, positive-session access, or Option payload is implemented |
+| Raw `GET /`                                                   | Automatic same-origin redirect to `/auth/login`, with no protected content or request-tenant lookup               | This response does not establish tenant validity; final tenant outcomes are observed after the login hop   |
+| `GET /auth/login`                                             | Resolve the request tenant before provider work; prepare the selected integration and automatic provider redirect | No correlation cookie or recoverable attempt is created                                                    |
+| Application to provider                                       | Selected client, callback authority, PKCE/correlation request data, and `max_age=0`                               | No token exchange, callback acceptance, application session, or verified fresh event                       |
+| Attempt handoff                                               | Retained preparation capability and fixtures; context remains server-local in this feature                        | #217 must connect save-before-redirect and callback recovery together; no temporary store                  |
+| Public callback/error/test/recovery resources and safe assets | Authentication-independent access with existing applicable tenant/configuration obligations                       | No new recovery screen, successful callback, ingress or comprehensive protection claim                     |
+| `GET /_test/tenant-config`                                    | Full permitted selected JSON, no-store and actual 404/500; no session or login cookie                             | Does not depend on provider or Redis availability                                                          |
+| Tenant/configuration failure                                  | Actual ordinary 404/500 at the login/diagnostic tenant-dependent request; no fallback/provider redirect           | Root's first-hop redirect is not reclassified as the tenant failure response                               |
 
 ### Relevant requirements and partial contribution
 
@@ -162,7 +185,7 @@ not authoritative verification status or a separate tracking system.
 | [PREETS-SESSION-004](../../docs/requirements/session/PREETS-SESSION-004.md) AC1                                                                             | Automatic missing-session entry at `/`                                                                           | Expired/new-tab/refresh/history behavior, valid-session joining, recovery composition, and verified freshness                                                      |
 | [PREETS-SESSION-013](../../docs/requirements/session/PREETS-SESSION-013.md) AC1/3 and protocol baseline                                                     | Request-side freshness with `max_age=0`, including first-time entry without old records                          | Signed-ID-token `auth_time` validation, existing-SSO fresh-event evidence, stale/missing evidence rejection, cancellation, recovery, and new-session establishment |
 | [PREETS-TENANT-003](../../docs/requirements/tenant/PREETS-TENANT-003.md) AC1–4                                                                              | Extend host/static selection and isolation evidence into authentication initiation                               | Authenticated requests and remaining tenant-dependent consumers                                                                                                    |
-| [PREETS-TENANT-004](../../docs/requirements/tenant/PREETS-TENANT-004.md) and [005](../../docs/requirements/tenant/PREETS-TENANT-005.md)                     | Preserve selected configuration and failure semantics when `/` begins login                                      | Broader downstream consumer integration; existing evidence remains scoped to its own boundary                                                                      |
+| [PREETS-TENANT-004](../../docs/requirements/tenant/PREETS-TENANT-004.md) and [005](../../docs/requirements/tenant/PREETS-TENANT-005.md)                     | Preserve selected configuration and actual failure statuses at the tenant-dependent `/auth/login` request        | Broader downstream consumer integration; existing evidence remains scoped to its own boundary                                                                      |
 | [PREETS-TENANT-006](../../docs/requirements/tenant/PREETS-TENANT-006.md) and [PREETS-SECURITY-001](../../docs/requirements/security/PREETS-SECURITY-001.md) | Preserve full safe diagnostic disclosure and no-store; ensure initiation adds no secret configuration dependency | Actual credential lookup/exchange if required, external producer controls, and independent production ingress evidence                                             |
 
 SESSION-003/005/006/008–012 describe downstream identity, request/session isolation, distributed state, idle,
@@ -197,7 +220,7 @@ Illustrative acceptance prose for the first file; step wording/bindings are prop
 @partial
 Feature: Tenant authentication initiation
   This slice establishes automatic tenant-specific login initiation at the reference entry.
-  Callback validation, application sessions, valid-session reuse, and verified freshness remain incomplete.
+  Recoverable attempts, callback validation, application sessions, valid-session reuse, and verified freshness remain incomplete.
 
   @preets-session-002 @preets-session-004 @preets-tenant-003
   Scenario: Interleaved entries use each selected tenant's authentication integration
@@ -217,18 +240,20 @@ Feature: Tenant authentication initiation
 Observe real application responses over HTTP; use a browser for actual delegation or failure presentation.
 Compare destinations/client identity against independently supplied tenant expectations. A redirect does not
 show provider acceptance; retained real-Keycloak integration must show it reaches the configured provider.
-BDD steps must not connect directly to Redis, session stores, or mock providers. Transaction lifecycle/security
-checks belong at the reusable public capability boundary when HTTP cannot establish them economically. Do not
+BDD steps must not connect directly to Redis, session stores, or mock providers. Protocol preparation properties
+belong at the public capability boundary; recoverable transaction lifecycle/security evidence moves to #217. Do not
 hide product assertions in setup or replace them with incidental UI checks.
 
-The existing [tenant-context feature](../../tests/bdd/requirements/tenant-context.feature) and valid-entry
-probes in [tenant-failures](../../tests/bdd/requirements/tenant-failures.feature) expect HTTP 200 at `/`.
-Reconcile these expectations in the implementation PR when `/` redirects: preserve their named tenant
-selection/failure claims using the new entry observation or a suitable existing diagnostic observation. Do not
-delete tenant failure checks, change unrelated missing-path outcomes, or preserve 200 by bypassing authentication
-for tests. Reuse diagnostic comparisons in
-[tenant-resolution](../../tests/bdd/requirements/tenant-resolution.feature) for full JSON/no-store preservation.
-Review shared step assertions for hidden extra promises.
+The existing [tenant-context feature](../../tests/bdd/requirements/tenant-context.feature) and
+[tenant-failures](../../tests/bdd/requirements/tenant-failures.feature) observe `/` as a tenant consumer.
+Move tenant-specific success/failure assertions to `/auth/login` or explicitly follow the one same-origin hop,
+keeping its actual 404/500 and ordinary missing-page browser assertions. Add root missing-session delegation
+under SESSION-001/004 without treating that 307 as tenant evidence. Do not globally change status-step semantics,
+delete failures, alter unrelated missing-path outcomes, or bypass authentication for tests. Browser interception
+must let the browser follow the application redirect while preserving logical Host; it must not swallow provider
+navigation. Reuse independent diagnostic JSON comparisons in
+[tenant-resolution](../../tests/bdd/requirements/tenant-resolution.feature). Redis and stored-transaction
+assertions are outside this feature. No active Gherkin claims a current positive-session path.
 
 Before implementation completion, run applicable Gherkin lint/format checks, discovery, and actual application
 scenarios. Discovery alone does not demonstrate behavior. Record real-provider execution separately, including
@@ -239,8 +264,10 @@ with temporary/manual log and exported OTel inspection, not retained telemetry t
 ### Key Entities
 
 - **Resolved tenant**: The independently selected organization context and permitted OIDC integration data.
-- **Authentication transaction**: One tenant-bound attempt with the context later callback validation needs.
-  It is not an authenticated application session.
+- **Session presence**: Whether a usable session is available. This feature always reports absence and defines
+  no authenticated identity shape or stored session representation.
+- **Authentication attempt**: Transient tenant-bound preparation data used to build a provider request. It is
+  not persisted or recoverable across the redirect in this feature; #217 adds that lifecycle.
 - **Provider authorization request**: Delegates authentication to the configured provider, including selected
   client, return context, and fresh-authentication request.
 - **Public resource designation**: A resource allowed before authentication while retaining applicable tenant
@@ -269,9 +296,10 @@ no unsupported performance, concurrency, or provider-availability commitment.
 - #215 is delivered by [PR #223](https://github.com/PathableAI-org/Pre-ETS/pull/223). The public tenant service,
   strict configuration, effective policy, and tenant failure mappings are available. OIDC initiation/callbacks,
   actual secret reading, and authenticated sessions are absent from that delivery.
-- `/` is this feature's reference entry. Other application resources are not redesignated public. Reusable
-  capability/reference evidence belongs to #153; #154 inventories and integrates comprehensive default
-  protection, valid/missing-session behavior, and multi-instance application HTTP evidence.
+- `/` is this feature's reference session-routing entry. It reads no request tenant while the session
+  capability reports absence; `/auth/login` owns tenant-dependent preparation. Other application resources
+  are not redesignated public. Reusable capability/reference evidence belongs to #153; #154 retains
+  comprehensive protection, usable-session integration and multi-instance HTTP evidence.
 - #216 is open with sole prerequisite #215 closed; no open PR covered it at the 2026-10-18 inspection.
   #217 follows initiation; #218 follows callback/configuration; #219 and #220 follow #218; #221 follows #220.
   This feature does not change issue relationships or duplicate these increments.
