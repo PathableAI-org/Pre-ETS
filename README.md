@@ -433,6 +433,14 @@ Commit shared scripts, templates, skills, extension configuration, and the
 constitution. Keep the current-feature pointer, local extension overrides, and
 regenerable composition cache out of version control.
 
+The [Upgrade Spec Kit workflow](.github/workflows/speckit-upgrade.yml) checks for
+the latest stable release every Monday at 14:00 UTC. It upgrades installed
+integrations and extensions, then opens or refreshes `automation/speckit-upgrade`
+with changes to `.specify/`, `.agents/skills/`, and `.cursor/skills/`. Review the
+generated diff for overwritten local customizations before merging. Use **Run
+workflow** in GitHub Actions to check immediately or supply a specific release
+tag through `specify_version`.
+
 ## Durable requirements
 
 The [requirements register](docs/requirements/README.md) provides a single-requirement template, stable requirement IDs,
