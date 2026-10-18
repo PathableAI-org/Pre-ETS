@@ -32,6 +32,13 @@ Provider HTTPS is default; an explicit loopback-only setting permits the tracked
 issuer/discovery/authorization and callback URLs at their relevant boundaries. Canonical callback authority comes
 from the process map keyed by resolved tenant alias, never incoming Host/forwarded/query data.
 
+The loopback HTTP exception applies only to parsed URL hosts `localhost`, names ending in `.localhost`, IPv4
+addresses in `127.0.0.0/8`, and IPv6 `::1`; it does not include wildcard bind addresses, private-network hosts or
+lookalikes such as `localhost.example.test`. Validate the issuer, actual discovery target, authorization endpoint
+and callback separately. Supply an issuer URL to discovery, not a direct discovery-document URL. Preserve manual
+HTTP redirect handling and reject discovery redirects instead of following them. The client's insecure-HTTP escape
+does not enforce this application policy by itself.
+
 Root/login must decide before streaming commits 200. Keep dynamic responses non-cacheable; verify real production
 307 and the no-store response directive, without imposing an incidental complete Cache-Control string. No cookie
 write requires a Route Handler yet. #217 may introduce a cookie-writing host adapter when persistence is connected.
@@ -48,6 +55,12 @@ Tenant failure at `/auth/login` uses the existing page error boundary: actual or
 preparation failure directs to the public sign-in error page without protected content or raw upstream payloads.
 Invalid explicit process settings fail startup; missing callback entry is request-time preparation unavailability.
 Interruption/defects stay distinct from expected failures and must not become a successful default.
+
+The provider phase, after tenant resolution, has one five-second Effect deadline spanning discovery and request
+construction. Its private client transport combines Effect interruption with the client's signal, retaining manual
+redirect handling. Deadline expiry cancels pending transport and becomes safe `AuthenticationUnavailable`; caller
+interruption remains interruption. The client's own safety timeout cannot extend the enclosing deadline. This is
+an internal failure bound, not a product login-completion SLO or a timeout for filesystem tenant selection.
 
 The browser follows the root hop and therefore sees the ordinary missing-page experience on invalid-tenant login.
 Tests must assert the actual tenant-dependent response status and final presentation; a raw root 307 or error text

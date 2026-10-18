@@ -20,3 +20,19 @@ parents. The feature's always-empty session boundary is a real consumer contract
 
 Paths above are relative to `packages/frontend` except the repository-owned BDD row. See
 [HTTP contracts](initiation.md), [data model](../data-model.md), and the plan's evidence table for conditions/limits.
+
+The BDD row specifically includes `tests/bdd/support/{world,server}.ts` for explicit scenario-owned callback/HTTP
+settings, `steps/presentation.ts` for redirect-safe browser navigation, and `steps/README.md` / `features/README.md`
+for real-provider setup. Logical Host, random physical server port and registered callback authority are independent.
+Root/tenant rejection/diagnostic observations remain independent of provider readiness. These are integration
+fixtures and harness guarantees, not new product requirements or a reason to add configuration-presence tests.
+
+`.github/workflows/ci-bdd.yml` currently provides only Redis. Its planned environment contract adds an owned pinned
+Keycloak process, tracked realm import, bounded discovery readiness and unconditional cleanup for live initiation
+evidence. Schedule/main-only restrictions, existing Redis, independent smoke and report upload remain unchanged.
+Root README/authentication guidance must reflect these prerequisites. Validate actual workflow execution after
+implementation; no durable Vitest of workflow text is needed.
+
+The private provider child owns the narrow custom-fetch bridge, URL policy and one provider-phase deadline from
+[the HTTP contract](initiation.md). The public preparation API remains unchanged. Public-service properties cover
+URL policy; named examples cover cancelled transport, caller interruption, discovery redirects and issuer mismatch.

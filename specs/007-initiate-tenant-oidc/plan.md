@@ -148,6 +148,19 @@ S256/state/nonce and `max_age=0`, and keep the verifier server-only. Do not reso
 interpret `connection` as a vendor hint. Callback origins come from a process-owned alias-to-origin map, never
 Host/forwarded/query authority. Explicit loopback-only local HTTP is allowed by a named setting; HTTPS is default.
 
+Keep transport adaptation private in `authentication/provider.ts`. Supply the configured issuer to discovery,
+not a direct `.well-known` document shortcut that skips the pinned client's issuer comparison. Validate the actual
+outbound discovery URL and the returned authorization destination as well as the issuer/callback. Preserve the
+client's manual-redirect mode and reject discovery redirects; do not follow a target outside the validation boundary.
+The library's general `allowInsecureRequests` escape alone does not enforce the application's loopback restriction.
+
+After tenant resolution, put one five-second deadline around the entire provider-preparation Effect. Bridge the
+client with `Effect.tryPromise` and close over its interruption signal in the client's `customFetch`; combine that
+signal with the library's supplied signal using `AbortSignal.any`, forwarding other request options unchanged.
+Keep the library's own safety timeout; it cannot renew the enclosing deadline. Deadline expiry yields safe
+`AuthenticationUnavailable` after cancelling transport, while caller interruption remains interruption and defects
+remain defects. Do not add per-fetch application timers, retry machinery or a general HTTP service.
+
 There is deliberately no persistence sink. Context generated for preparation is discarded after the response;
 no in-memory replacement store, cookie, Redis client, namespace, or TTL is introduced. This flow cannot complete
 an accepted authentication round trip, and the public callback remains a denying fallback.
@@ -179,6 +192,24 @@ follow redirects internally with the wrong Host: preserve logical application au
 the hop, and do not forward external provider navigation back to Next. Add a narrow harness regression only if a
 new helper introduces a meaningful continuing guarantee. No BDD store clients or mock identity providers.
 
+The new success cases require real provider discovery. Update `tests/bdd/support/world.ts` and `server.ts` so each
+scenario explicitly supplies `OIDC_CALLBACK_ORIGINS_JSON` and `OIDC_ALLOW_INSECURE_LOOPBACK`; do not inherit a
+developer's callback map or rely on the stale `BDD_ALLOW_LOOPBACK_HTTP` variable. Default Keycloak scenario origins
+are `http://springfield.localhost:3000` and `http://shelbyville.localhost:3000`, matching the tracked realm's clients.
+Keep Next's random transport port and logical `example.test` request Hosts: neither determines callback authority.
+These scenarios stop at provider arrival, so fixed callback ports need not host a listener. Missing-map scenarios
+override the map explicitly. Negative tenant/root-routing and diagnostic checks must remain valid without provider
+availability; do not add a provider probe to every scenario's application startup.
+
+Update `features/README.md`, step guidance and relevant README/authentication instructions with local real-Keycloak
+prerequisites. Update `.github/workflows/ci-bdd.yml` to start the existing pinned Keycloak image after checkout,
+mount the tracked realm, and wait for successful realm discovery before the requirements suite. Use an owned,
+ephemeral container with bounded readiness, useful startup-failure diagnostics and unconditional owned-container
+cleanup. Provisioning/readiness belongs outside BDD product assertions; steps continue to observe the application
+and browser journey. Preserve nightly/main-only scheduling, manual dispatch restrictions, existing Redis service,
+report upload and independent smoke execution. This adds no Redis use to initiation, new provider topology,
+wildcard callback registration, CI cadence or PR BDD job.
+
 ### 5. Validate and hand off
 
 Follow [quickstart.md](quickstart.md) for browser, production HTTP, failures, and real exported telemetry.
@@ -207,6 +238,12 @@ Never turn randomness uniqueness sampling into a claim about cryptographic entro
 
 No durable persistence tests or real-Redis checks belong to #216 after this refinement. Those tests and failure
 cases move with the real persistence implementation to #217, rather than being weakened or simulated here.
+
+For the transport row, use public preparation outcomes with the real client: external HTTP is rejected even with
+the local switch enabled; a discovery redirect never fetches its destination; a stalled discovery is cancelled
+when the Effect test clock passes the deadline; caller cancellation produces an interrupted exit and no destination.
+Include a mismatched issuer document. URL-domain properties protect transport policy; these distinct failure modes
+are named examples. No retained telemetry assertions or test of workflow text/configuration presence is warranted.
 
 ## Validation and Completion Boundary
 

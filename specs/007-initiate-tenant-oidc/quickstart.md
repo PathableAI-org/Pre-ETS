@@ -32,7 +32,8 @@ Keycloak is started. Use actual `compose.yaml`, not historical prose claiming al
 
 ```sh
 docker compose up -d --wait keycloak
-curl -sS -o /dev/null -w '%{http_code}\n' \
+curl --fail --retry 20 --retry-connrefused --retry-all-errors --retry-delay 1 --max-time 5 \
+  -sS -o /dev/null -w '%{http_code}\n' \
   http://127.0.0.1:8080/realms/pre-ets/.well-known/openid-configuration
 docker compose --profile observability up -d --wait otel-lgtm
 ```
@@ -120,6 +121,11 @@ For static mode, request login with known/unknown/unresolvable Host values and f
 return-query values: selection and callback origin remain the configured tenant's. Do not treat root 307 as proof
 of static tenant selection; that assertion belongs to login/diagnostic work.
 
+The provider deadline is a five-second bound on preparation after tenant resolution. Controlled public-service
+tests must demonstrate cancellation of stalled discovery and distinguish timeout from caller interruption; ordinary
+provider refusal can fail sooner. The local HTTP switch must still reject external HTTP destinations and discovery
+redirects, rather than becoming a general TLS bypass. These tests observe preparation outcomes, not telemetry.
+
 ## Public routes and requirements BDD
 
 Direct `/auth/callback` and `/login-unavailable` remain public without initiation loops. Callback fallback grants
@@ -134,6 +140,24 @@ After adding the planned executable partial features, run:
 pnpm test:bdd
 pnpm test:bdd:checks
 ```
+
+The implementation must first update the BDD application environment: scenario-owned callback origins for both
+tracked clients and `OIDC_ALLOW_INSECURE_LOOPBACK=true` for local Keycloak. Do not rely on the harness's old
+`BDD_ALLOW_LOOPBACK_HTTP` or inherited machine OIDC settings. Its random physical Next port and logical
+`example.test` Host do not change the callback map: use the existing registered
+`http://springfield.localhost:3000` / `http://shelbyville.localhost:3000` origins. No callback listener is needed for
+these initiation scenarios; stop at provider arrival. Missing-map cases supply their own explicit map.
+
+For local successful-delegation BDD, start Keycloak and confirm realm discovery using the prerequisite commands
+above before running the suite. Provider setup/readiness is outside product steps. Independently exercise root
+routing, invalid tenants and diagnostics with provider unavailable: those outcomes must not become provider-dependent.
+
+For nightly execution, the implementation must update the existing main-only workflow to start an owned ephemeral
+Keycloak container from the Compose-pinned image, import the tracked realm after checkout, and wait for realm
+discovery before requirements execution. Confirm bounded readiness failure yields useful diagnostics and that
+cleanup runs even after failures. Keep the schedule, dispatch restrictions, Redis service, report preservation and
+independent smoke behavior. A workflow run after implementation is needed to verify this setup; local passing
+HTTP or dry discovery alone does not establish CI/provider readiness.
 
 Use the full existing suite's documented infrastructure prerequisites where still applicable; it does not make
 Redis a new initiation dependency. Root-delegation scenarios carry SESSION-001/004; login selection/failure carries

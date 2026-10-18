@@ -107,3 +107,48 @@ weakening generic status steps, or claiming a passing initiation slice verifies 
 
 No new unresolved design question blocks initiation. B6 comparison/tolerance, recoverable attempts, callback
 acceptance, actual session lookup/storage, positive-session tenant binding and provider compatibility remain later.
+
+## 7. Make real-provider BDD prerequisites explicit
+
+**Decision**: The implementation must supply scenario-owned callback origins and the named loopback switch to
+the owned Next process. Use the realm's existing fixed tenant `.localhost:3000` callback origins, retaining random
+Next transport ports and logical `example.test` Hosts. Provision the pinned real Keycloak image and wait for realm
+discovery outside product steps, both locally and in nightly CI. Stop initiation evidence before callback.
+
+**Rationale**: Current `tests/bdd/support/server.ts` sets neither proposed OIDC setting. Its historical
+`BDD_ALLOW_LOOPBACK_HTTP` is not the new setting. `.github/workflows/ci-bdd.yml` currently starts only Redis, while
+successful login preparation now needs discovery. Realm registrations already cover both fixed callbacks;
+there is no need to change them to match scenario transport ports. Root/tenant-failure/diagnostic evidence does
+not itself require a reachable provider.
+
+**Alternatives considered**: Inheriting a machine callback map makes evidence environment-dependent. Mock providers,
+wildcard callback registration and skipping active scenarios would weaken the intended boundary. A new PR BDD job
+or changed schedule is unrelated. Keep existing Redis service setup, independently owned smoke and report handling.
+
+Local sources: `tests/bdd/{support/server.ts,support/world.ts,steps/presentation.ts}`, `fixtures/tenant-config/`,
+`docker/keycloak/pre-ets-realm.json`, `compose.yaml`, `features/README.md`, `.github/workflows/ci-bdd.yml`.
+
+## 8. Own the narrow transport and cancellation boundary
+
+**Decision**: Keep a private per-preparation `customFetch` adapter. Validate the actual outbound discovery target,
+retain manual redirect handling and reject redirects. Apply the documented parsed-host HTTP policy independently
+of the client's broad insecure-HTTP escape. Pass the configured issuer to discovery, not a direct metadata URL.
+Use one five-second Effect deadline after tenant resolution; propagate its interruption signal through the private
+transport, combined with the library signal. Timeout becomes safe unavailability, while caller interruption and
+defects retain their separate meanings.
+
+**Rationale**: The pinned client supports custom fetch and a library timeout, but neither establishes the
+application's narrower HTTP policy or propagates an enclosing Effect interruption automatically. Its direct
+`.well-known` URL shortcut skips issuer comparison. Keeping the transport private avoids a speculative general
+HTTP service and needs no persistence interface or cache.
+
+**Alternatives considered**: Checking only the configured issuer leaves discovered destinations unchecked.
+Following redirects adds another validation surface. Racing a Promise without aborting underlying fetch leaves
+work alive. Per-fetch application timers can reset a whole-operation budget. Retain the client's safety timeout
+without allowing it to extend the enclosing deadline; use installed `Effect.timeoutOrElse` and `tryPromise` semantics.
+
+Sources: pinned [custom-fetch contract](https://github.com/panva/openid-client/blob/v6.8.8/docs/variables/customFetch.md),
+[discovery options](https://github.com/panva/openid-client/blob/v6.8.8/docs/interfaces/DiscoveryRequestOptions.md),
+[issuer comparison implementation](https://github.com/panva/openid-client/blob/v6.8.8/src/index.ts),
+and installed frontend `effect/dist/Effect.d.ts` (`tryPromise`, `timeoutOrElse`). These are design/API checks,
+not executed cancellation or provider evidence. Named failure examples and URL-domain properties are in the plan.

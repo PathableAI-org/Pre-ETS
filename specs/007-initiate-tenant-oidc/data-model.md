@@ -24,6 +24,8 @@ skip independent request-tenant resolution and session/tenant comparison before 
 Origins have no credentials, non-root path, query or fragment. Append fixed `/auth/callback`. The map selects
 callback transport, not tenant identity, and is never returned as tenant diagnostic configuration. No tenant
 file field, Redis URL/prefix, signing secret or TTL setting is introduced by this feature.
+The HTTP switch uses the exact parsed-host policy in [the initiation contract](contracts/initiation.md), not a
+general disable-TLS flag. No extra configuration knob or per-request timeout setting is introduced.
 
 ## Resolved login context
 
