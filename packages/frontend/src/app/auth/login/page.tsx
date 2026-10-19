@@ -1,4 +1,4 @@
-import { Effect, Result } from "effect"
+import { Effect } from "effect"
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
 
@@ -8,19 +8,20 @@ import { Runtime } from "../../../lib/runtime"
 
 export const dynamic = "force-dynamic"
 
+const redirectEffect = (destination: string) => Effect.sync(() => redirect(destination))
+
 export default async function LoginPage() {
   const host = (await headers()).get("host") ?? ""
-  const result = await Effect.gen(function*() {
+  return Effect.gen(function*() {
     const service = yield* AuthenticationService
     return yield* service.prepare({ host })
-  }).pipe(Effect.result, Runtime.runPromise)
-
-  if (Result.isFailure(result)) {
-    if (result.failure instanceof AuthenticationUnavailable) {
-      redirect("/login-unavailable")
-    }
-    httpErrorPage(result.failure)
-  }
-
-  redirect(result.success)
+  }).pipe(
+    Effect.catch((error) =>
+      error instanceof AuthenticationUnavailable ?
+        redirectEffect("/login-unavailable") :
+        Effect.sync(() => httpErrorPage(error))
+    ),
+    Effect.flatMap(redirectEffect),
+    Runtime.runPromise
+  )
 }

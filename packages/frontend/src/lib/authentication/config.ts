@@ -15,26 +15,36 @@ export const permittedUrl = (allowInsecureLoopback: boolean) =>
     ))
   )
 
-const rawSettings = Config.all({
-  allowInsecureLoopback: Config.Boolean("OIDC_ALLOW_INSECURE_LOOPBACK").pipe(Config.withDefault(false)),
-  callbackOrigins: Config.String("OIDC_CALLBACK_ORIGINS_JSON").pipe(Config.withDefault("{}"))
-})
-
-/** Process-only callback authority. The selected tenant file remains unchanged and non-secret. */
-export const AuthenticationConfig = Effect.gen(function*() {
-  const settings = yield* rawSettings
-  const origin = permittedUrl(settings.allowInsecureLoopback).pipe(
-    Schema.check(Schema.makeFilter((url) => url.href === `${url.origin}/` || "Callback authority must be an origin"))
-  )
-  const origins = Schema.fromJsonString(Schema.Record(Schema.String, origin))
-  const callbackOrigins = yield* Schema.decodeUnknownEffect(origins)(settings.callbackOrigins)
-  return { allowInsecureLoopback: settings.allowInsecureLoopback, callbackOrigins }
-}).pipe(Effect.mapError(() =>
+const invalidAuthenticationConfig = () =>
   new Config.ConfigError(
     new Schema.SchemaError(
-      new SchemaIssue.InvalidValue({
-        message: "Authentication process settings are invalid"
-      })
+      new SchemaIssue.InvalidValue({ message: "Authentication process settings are invalid" })
     )
   )
-))
+
+interface AuthenticationSettings {
+  readonly allowInsecureLoopback: boolean
+  readonly callbackOrigins: Readonly<Record<string, URL>>
+}
+
+/** Process-only callback authority. The selected tenant file remains unchanged and non-secret. */
+export const AuthenticationConfig: Config.Config<AuthenticationSettings> = Config.Boolean(
+  "OIDC_ALLOW_INSECURE_LOOPBACK"
+).pipe(
+  Config.withDefault(false),
+  Config.flatMap((allowInsecureLoopback) => {
+    const origin = permittedUrl(allowInsecureLoopback).pipe(
+      Schema.check(Schema.makeFilter((url) => url.href === `${url.origin}/` || "Callback authority must be an origin"))
+    )
+    const origins = Schema.fromJsonString(Schema.Record(Schema.String, origin))
+    return Config.String("OIDC_CALLBACK_ORIGINS_JSON").pipe(
+      Config.withDefault("{}"),
+      Config.mapEffect((raw) =>
+        Schema.decodeUnknownEffect(origins)(raw).pipe(
+          Effect.mapError(invalidAuthenticationConfig)
+        )
+      ),
+      Config.map((callbackOrigins) => ({ allowInsecureLoopback, callbackOrigins }))
+    )
+  })
+)

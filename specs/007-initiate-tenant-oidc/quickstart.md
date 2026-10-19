@@ -287,9 +287,8 @@ showed process tenant readiness; that was not classified as request lookup.
 An initial real callback probe exposed synthetic callback code/state markers in
 automatic `http.target` attributes (trace `69f037e4c390089b563bc9fa851d7ae5` and its
 proxy trace). This is a failing privacy observation, not acceptable final evidence.
-The implementation is correcting it at the existing instrumentation boundary and
-must verify fresh exported traces before marking T033 complete. Raw captures stay
-in owned temporary files and are removed after inspection; no telemetry tests are retained.
+Raw captures stayed in owned temporary files and were removed after inspection; no
+telemetry tests were retained.
 
 A later static-mode Chromium journey with an arbitrary logical Host and a fabricated
 application cookie reached the real Keycloak username form (HTTP 200), selected
@@ -301,10 +300,10 @@ sensitivity gaps: deterministic expectations now cover every A/B/A challenge/sta
 nonce, and rejected issuer/missing-map cases observe zero provider requests with
 otherwise matching discovery fixtures.
 
-### Final exported-telemetry result
+### Superseded exported-telemetry experiment
 
-After the privacy processor was added before the existing Vercel automatic processors,
-rebuilt and restarted the owned production app. Fresh known trace IDs:
+A later experiment added a direct OpenTelemetry SDK span processor before the Vercel
+automatic processors, then rebuilt and restarted the owned production app. Known trace IDs:
 
 | Request                                        | Trace ID                           | Actual result                                                                  |
 | ---------------------------------------------- | ---------------------------------- | ------------------------------------------------------------------------------ |
@@ -313,23 +312,27 @@ rebuilt and restarted the owned production app. Fresh known trace IDs:
 | Root/proxy with synthetic query/headers        | `21621621621621621621621621621623` | 307; no tenant/provider work; targets only `/`                                 |
 | Invalid-tenant login with synthetic query      | `21621621621621621621621621621624` | 404; preparation failure remains denied; target only `/auth/login`             |
 
-Inspected complete exported attributes/events/error data for these traces: no synthetic
+Inspection of complete exported attributes/events/error data for these traces found no synthetic
 code/state/cookie/Authorization probe markers or protocol query values remained.
-Span names and routing/error categories remained useful. One Vercel exporter/global
-Effect bridge is retained; no telemetry tests or second exporter were added. The
-previous collector-outage probe still demonstrates export failure does not grant access
-or prevent the expected routing outcome. No session/callback/freshness-success signal
-was claimed or observed.
+Span names and routing/error categories remained useful. Review rejected mutation of SDK
+spans outside the Effect telemetry boundary, so the processor was removed. These trace IDs
+characterize the removed experiment and are not evidence for the current revision.
 
-The final unused-code/audit commands report two informational type-only dependency
-recommendations for `@opentelemetry/api` and `@opentelemetry/sdk-trace-base`. Investigated
-installed `@effect/opentelemetry` metadata: both are its existing runtime peers, so they
-remain production dependencies. No dependency movement or warning suppression is needed.
+The current revision retains the existing single Vercel exporter and Effect global tracer
+bridge without direct SDK span access. The earlier automatic `http.target` query leak is
+therefore unresolved at the current instrumentation boundary. T033 is reopened;
+fresh exported-telemetry inspection is required after an approved Effect-aligned or
+platform configuration addresses that capture. The collector-outage probe still shows
+that export failure did not grant access or prevent the expected routing outcome, but it
+does not establish query confidentiality.
 
 ### Remaining completion gates
 
 - T022 remains unchecked because actual screen-reader execution was not performed;
   keyboard/focus/accessibility-tree evidence is recorded separately above.
+- T033 remains unchecked because direct SDK span mutation was removed during
+  review and automatic request-span query confidentiality is not established for the
+  current revision.
 - On 2026-10-19, the maintainer explicitly approved `allowInsecureRequests`.
   The frontend ESLint configuration allows only that named `openid-client` export,
   only in `src/lib/authentication/provider.ts`; the rule remains an error elsewhere.
@@ -339,21 +342,22 @@ remain production dependencies. No dependency movement or warning suppression is
   Nightly execution remains pending until this reaches main.
 
 FR-001/002/003/005/009 and SC-001/002/003/005 have bounded service, production HTTP
-and real-provider evidence above. FR-004/006 and SC-004 have public-resource/diagnostic
-and safe-telemetry evidence. FR-007 has denial and keyboard evidence with the stated
-AT limitation. FR-008 retains the existing sanitized tenant and Keycloak fixtures and
-explicit #217 save-before-redirect plus callback-recovery handoff. All downstream
+and real-provider evidence above. FR-004/006 and SC-004 retain public-resource and
+diagnostic evidence, but safe automatic telemetry is not established. FR-007 has denial
+and keyboard evidence with the stated AT limitation. FR-008 retains the existing sanitized
+tenant and Keycloak fixtures and explicit #217 save-before-redirect plus callback-recovery
+handoff. All downstream
 session, callback acceptance, signed-token freshness, Microsoft/broker and comprehensive
 application enforcement gaps remain open.
 
-Final post-remediation execution again passed 39 requirements scenarios / 482 steps,
+The pre-review post-remediation execution passed 39 requirements scenarios / 482 steps,
 1 smoke scenario / 7 steps and full root/workspace typechecking. Removed the owned
 frontend processes, Keycloak/LGTM containers and raw temporary protocol/trace captures;
 pre-existing services were preserved. Restored the unrelated pnpm workspace edit after
 the final package-manager command. Following the maintainer's approval, the optional
 `speckit.git.commit` post-hook is used with normal pre-commit protections to publish
-the implementation draft above #227. The sole remaining implementation checklist task
-is T022 (35/36 complete); actual screen-reader execution remains unverified.
+the implementation draft above #227. Review later reopened T033 in addition to T022;
+34/36 tasks remain complete.
 
 ### Draft publication validation (2026-10-19)
 
@@ -363,5 +367,5 @@ Lint, typecheck, build, all 214 frontend tests, unused-code, formatting, actionl
 the changed-code audit passed again before publication. Inspected the effective ESLint
 configuration to verify that the allowance applies only to the named export in the
 provider adapter and the rule remains enforced elsewhere. The real-provider/HTTP/
-browser/telemetry results above remain the executed 2026-10-18 evidence for this
-implementation.
+browser results above remain the executed 2026-10-18 evidence. The telemetry processor
+result is superseded as described above and does not apply to the current implementation.

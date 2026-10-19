@@ -27,7 +27,7 @@ export class AuthenticationService extends Context.Service<AuthenticationService
         const alias = yield* Effect.fromResult(tenant.getAlias(host))
         const config = yield* tenant.getConfigFromAlias(alias)
         const origin = Object.hasOwn(settings.callbackOrigins, alias) ? settings.callbackOrigins[alias] : undefined
-        if (origin === undefined) return yield* new AuthenticationUnavailable({})
+        if (origin === undefined) return yield* Effect.fail(new AuthenticationUnavailable({}))
         return yield* prepareProvider({
           allowInsecureLoopback: settings.allowInsecureLoopback,
           clientId: config.oidc.clientId,

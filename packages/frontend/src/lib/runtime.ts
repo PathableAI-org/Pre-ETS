@@ -5,7 +5,7 @@ import { ConfigProvider, Effect, Layer, ManagedRuntime } from "effect"
 
 import { AuthenticationService } from "./authentication.ts"
 import { ServerConfig } from "./config/index.ts"
-import { appLoggerLayer, privacySpanProcessor } from "./observability.ts"
+import { appLoggerLayer } from "./observability.ts"
 import { SessionService } from "./session.ts"
 import { TenantConfigService } from "./tenant.ts"
 
@@ -17,7 +17,6 @@ const ObservabilityLayer = Layer.unwrap(
   Effect.sync(() => {
     registerOTel({
       serviceName: OTEL_SERVICE_NAME,
-      spanProcessors: [privacySpanProcessor, "auto"],
       traceSampler: "always_on"
     })
     return OtelTracer.layerGlobal.pipe(
