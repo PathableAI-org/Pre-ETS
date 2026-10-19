@@ -16,6 +16,8 @@ Run `pnpm install` from the repository root. For a reproducible installation, us
 - `packages/frontend` (`@pathableai/pre-ets-frontend`): Next.js 16 App Router
   application with PathAble React components.
 - `packages/backend` (`@pathableai/pre-ets-backend`): independent Effect HTTP process.
+- `packages/domain` (`@pathableai/pre-ets-domain`): shared, host-independent Effect
+  schemas. Applications depend on it when they use those contracts.
 
 The frontend is an SSR-first Next.js app. Run
 `pnpm --filter @pathableai/pre-ets-frontend dev` or `pnpm dev:frontend` for
@@ -121,16 +123,16 @@ pnpm dev:frontend
 
 Open `http://localhost:3000/` for the welcome page.
 
-An Effect v4 backend is planned. Client workflows beyond this landing page are
-not implemented yet.
+The Effect v4 backend currently serves a health route. Client workflows beyond
+this landing page are not implemented yet.
 
 ## Effect developer setup
 
-Frontend and backend use the coordinated Effect pins in the named `effect`
-catalog in [`pnpm-workspace.yaml`](pnpm-workspace.yaml). Both workspaces enable
-the Effect language-service plugin and follow the Effect-first AI workflow; product
-ownership is unchanged (frontend owns Next/OIDC/session; backend owns the
-Effect REST domain layer).
+Frontend, backend, and domain use the coordinated Effect pins in the named
+`effect` catalog in [`pnpm-workspace.yaml`](pnpm-workspace.yaml). All three
+workspaces enable the Effect language-service plugin; product ownership is
+unchanged (frontend owns Next/OIDC/session, backend owns the Effect REST domain
+layer, and domain owns reusable schemas).
 
 Install dependencies from the repository root:
 
@@ -150,7 +152,7 @@ tag matching the installed Effect version (the example below matches the current
 
 ```sh
 mkdir -p ~/.local/share/effect
-git clone --depth 1 --branch effect@4.0.2 \
+git clone --depth 1 --branch effect@4.0.4 \
   https://github.com/Effect-TS/effect.git \
   ~/.local/share/effect/source
 ```

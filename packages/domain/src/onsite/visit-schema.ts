@@ -1,11 +1,11 @@
 import { Schema } from "effect"
 
-const VisitId = Schema.NonEmptyString.pipe(Schema.brand("@pathableai/pre-ets-backend/OnSiteVisit/Id"))
-const TenantId = Schema.NonEmptyString.pipe(Schema.brand("@pathableai/pre-ets-backend/OnSiteVisit/TenantId"))
+const VisitId = Schema.NonEmptyString.pipe(Schema.brand("@pathableai/pre-ets-domain/OnSiteVisit/Id"))
+const TenantId = Schema.NonEmptyString.pipe(Schema.brand("@pathableai/pre-ets-domain/OnSiteVisit/TenantId"))
 const ParticipantReference = Schema.NonEmptyString.pipe(
-  Schema.brand("@pathableai/pre-ets-backend/OnSiteVisit/ParticipantReference")
+  Schema.brand("@pathableai/pre-ets-domain/OnSiteVisit/ParticipantReference")
 )
-const CoachId = Schema.NonEmptyString.pipe(Schema.brand("@pathableai/pre-ets-backend/OnSiteVisit/CoachId"))
+const CoachId = Schema.NonEmptyString.pipe(Schema.brand("@pathableai/pre-ets-domain/OnSiteVisit/CoachId"))
 
 /**
  * A single on-site service visit, not a monthly report or a create-request payload.
