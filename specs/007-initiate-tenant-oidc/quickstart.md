@@ -210,3 +210,158 @@ Microsoft/broker compatibility and production ingress explicitly outstanding.
 
 Stop only owned processes; remove owned temporary captures/tenant fixtures/probes. Leave pre-existing Compose
 services running. Do not commit generated output, raw protocol captures or credentials.
+
+## Implementation baseline
+
+Implementation branch: `007-initiate-tenant-oidc-impl`, stacked on PR #227 branch
+`154-initiate-tenant-oidc` at `cb28548ad69868023bccc3148a25f994dbd7e726`.
+On 2026-10-18, refreshed `origin/main` to `a47ec63`; the linked session, tenant and security
+requirement directories and session context have no drift from planning baseline `9f83d3b`.
+The specification quality checklist has 16 checked items and no unchecked items.
+Installed the frozen dependency graph and only the planned `openid-client@6.8.8` addition;
+pnpm supply-chain verification passed. Restored the unrelated package-manager edit to
+`pnpm-workspace.yaml`. Existing Git/Docker/ESLint ignore policies cover generated artifacts;
+private workspaces do not publish npm packages.
+
+### Construction evidence
+
+- Root adapter property failed before implementation in an unusable tenant world
+  (seed `-621463101`); the eager layout returned tenant failure instead of delegation.
+  The implemented root/layout and login adapters pass their three focused suites
+  (10 tests/properties), including retained Proxy behavior.
+- Preparation properties and named failures were written before the real Layer;
+  the first run failed with the missing Layer. The implemented Layer passed 37
+  service tests before later validation refinements. Controlled transport is
+  construction evidence, separate from real provider execution.
+- The full frontend suite passed 213 tests in 11 files. Chromium harness checks
+  passed 2/2, including browser-native root/login 307s, logical Host preservation,
+  and an actual external destination. The old interception strategy reproduced a
+  DNS failure on a redirected app hop; the scoped browser proxy fixes that transport gap.
+- `actionlint .github/workflows/ci-bdd.yml` passed. Locally exercised an owned fresh
+  Keycloak startup/import/readiness sequence (ready on attempt 8), bounded failure
+  for a missing realm, diagnostic logs and owned-container removal. Chromium is
+  installed before the harness checks in CI because that regression uses a real browser.
+- The changed-code audit passed with four inherited root-harness complexity warnings
+  excluded by its existing gate. No new suppression or weakened gate was introduced.
+
+All successful commands are local evidence at the evolving implementation tree,
+not proof of a main-branch nightly run or downstream authentication completion.
+
+### Production HTTP, browser and provider evidence
+
+At the implementation tree on 2026-10-18 (Node `26.2.0`, pnpm `12.14.0`, production
+Next build, tracked Keycloak `26.8.1` synthetic realm):
+
+- Requirements execution passed **39 scenarios / 482 steps**, separately from dry
+  discovery. Production preview safeguard passed **1 scenario / 7 steps**. Scoped
+  requirements-BDD review against `origin/main` `a47ec6379` found no defects in
+  requirement tags, partial limits, independent expectations or HTTP/browser boundaries.
+- Host-mode raw A/B/A probes returned root **307 `/auth/login`**, then login **307**
+  with the independent Springfield/Shelbyville/Springfield client and callback.
+  Every provider request carried `max_age=0` and S256. Root and login were no-store
+  and issued no application/correlation cookie, including with fabricated cookies.
+- An invalid base Host retained root 307 then actual login 404. Existing BDD exercised
+  both modes' actual 404/500 matrix and ordinary missing-page browser comparison.
+  A separate unavailable-static-directory probe returned root 307 then login 500.
+- Callback, sign-in error and full-JSON diagnostic probes returned 200, no-store,
+  no redirect and no new cookie. BDD also passed these public routes while the
+  tenant's provider was unavailable; existing preview gating passed independently.
+- Static-mode probes used arbitrary/forged Host and forwarded authority and selected
+  Springfield's configured client. With the collector endpoint unreachable, root
+  and successful login still returned their expected 307s with no new cookie.
+- Invalid explicit callback-map and boolean settings rejected runtime startup;
+  synthetic sensitive input markers were absent from local startup logs.
+- Ad hoc Chromium keyboard navigation reached the public “Try again” link with Tab,
+  showed a solid 4px focus outline and followed Enter through root into login.
+  The browser accessibility tree exposed the error heading and named retry link.
+  **Actual screen-reader/assistive-technology execution remains unverified.** No public
+  error presentation was changed; keyboard/tree observations do not establish AT behavior.
+
+### Observability inspection and remediation
+
+Real exported root trace `43d3bf9d9e787bd48a48255ea41788ae` contained no tenant or
+provider work. Separate login trace `e8b6f9ee5c5e012c3eb31bf962f1eb01` contained tenant
+loading, `AuthenticationService.prepare` and real provider discovery. Local logs
+showed process tenant readiness; that was not classified as request lookup.
+
+An initial real callback probe exposed synthetic callback code/state markers in
+automatic `http.target` attributes (trace `69f037e4c390089b563bc9fa851d7ae5` and its
+proxy trace). This is a failing privacy observation, not acceptable final evidence.
+The implementation is correcting it at the existing instrumentation boundary and
+must verify fresh exported traces before marking T033 complete. Raw captures stay
+in owned temporary files and are removed after inspection; no telemetry tests are retained.
+
+A later static-mode Chromium journey with an arbitrary logical Host and a fabricated
+application cookie reached the real Keycloak username form (HTTP 200), selected
+`springfield-web`, retained the configured callback and `max_age=0`, and left only
+the supplied fabricated application cookie. It created no new application cookie.
+The strengthened final frontend suite passed **214 tests / 11 files**; 41 are
+public preparation service tests. Independent review found and corrected two test
+sensitivity gaps: deterministic expectations now cover every A/B/A challenge/state/
+nonce, and rejected issuer/missing-map cases observe zero provider requests with
+otherwise matching discovery fixtures.
+
+### Final exported-telemetry result
+
+After the privacy processor was added before the existing Vercel automatic processors,
+rebuilt and restarted the owned production app. Fresh known trace IDs:
+
+| Request                                        | Trace ID                           | Actual result                                                                  |
+| ---------------------------------------------- | ---------------------------------- | ------------------------------------------------------------------------------ |
+| Callback/proxy with synthetic code/state query | `21621621621621621621621621621621` | 200; all three `http.target` attributes contain only `/auth/callback`          |
+| Login with synthetic query                     | `21621621621621621621621621621622` | 307; tenant loading/preparation/discovery preserved; target only `/auth/login` |
+| Root/proxy with synthetic query/headers        | `21621621621621621621621621621623` | 307; no tenant/provider work; targets only `/`                                 |
+| Invalid-tenant login with synthetic query      | `21621621621621621621621621621624` | 404; preparation failure remains denied; target only `/auth/login`             |
+
+Inspected complete exported attributes/events/error data for these traces: no synthetic
+code/state/cookie/Authorization probe markers or protocol query values remained.
+Span names and routing/error categories remained useful. One Vercel exporter/global
+Effect bridge is retained; no telemetry tests or second exporter were added. The
+previous collector-outage probe still demonstrates export failure does not grant access
+or prevent the expected routing outcome. No session/callback/freshness-success signal
+was claimed or observed.
+
+The final unused-code/audit commands report two informational type-only dependency
+recommendations for `@opentelemetry/api` and `@opentelemetry/sdk-trace-base`. Investigated
+installed `@effect/opentelemetry` metadata: both are its existing runtime peers, so they
+remain production dependencies. No dependency movement or warning suppression is needed.
+
+### Remaining completion gates
+
+- T022 remains unchecked because actual screen-reader execution was not performed;
+  keyboard/focus/accessibility-tree evidence is recorded separately above.
+- On 2026-10-19, the maintainer explicitly approved `allowInsecureRequests`.
+  The frontend ESLint configuration allows only that named `openid-client` export,
+  only in `src/lib/authentication/provider.ts`; the rule remains an error elsewhere.
+  The explicit loopback-only transport checks remain in force. Full lint now passes.
+- The implementation is being published as a draft PR stacked on #227. No issue is
+  closed, requirement verification changed, or main-only workflow execution claimed.
+  Nightly execution remains pending until this reaches main.
+
+FR-001/002/003/005/009 and SC-001/002/003/005 have bounded service, production HTTP
+and real-provider evidence above. FR-004/006 and SC-004 have public-resource/diagnostic
+and safe-telemetry evidence. FR-007 has denial and keyboard evidence with the stated
+AT limitation. FR-008 retains the existing sanitized tenant and Keycloak fixtures and
+explicit #217 save-before-redirect plus callback-recovery handoff. All downstream
+session, callback acceptance, signed-token freshness, Microsoft/broker and comprehensive
+application enforcement gaps remain open.
+
+Final post-remediation execution again passed 39 requirements scenarios / 482 steps,
+1 smoke scenario / 7 steps and full root/workspace typechecking. Removed the owned
+frontend processes, Keycloak/LGTM containers and raw temporary protocol/trace captures;
+pre-existing services were preserved. Restored the unrelated pnpm workspace edit after
+the final package-manager command. Following the maintainer's approval, the optional
+`speckit.git.commit` post-hook is used with normal pre-commit protections to publish
+the implementation draft above #227. The sole remaining implementation checklist task
+is T022 (35/36 complete); actual screen-reader execution remains unverified.
+
+### Draft publication validation (2026-10-19)
+
+The publication change adds only the approved API-specific ESLint allowance and updates
+this evidence/task record. Authentication behavior and loopback validation are unchanged.
+Lint, typecheck, build, all 214 frontend tests, unused-code, formatting, actionlint and
+the changed-code audit passed again before publication. Inspected the effective ESLint
+configuration to verify that the allowance applies only to the named export in the
+provider adapter and the rule remains enforced elsewhere. The real-provider/HTTP/
+browser/telemetry results above remain the executed 2026-10-18 evidence for this
+implementation.

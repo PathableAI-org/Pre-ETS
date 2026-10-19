@@ -5,6 +5,13 @@ export class ForbiddenError extends Error {
   }
 }
 
+export class NotFoundError extends Error {
+  constructor() {
+    super("NEXT_HTTP_ERROR_FALLBACK;404")
+    this.name = "NotFoundError"
+  }
+}
+
 export class RedirectError extends Error {
   readonly url: string
 
@@ -24,6 +31,10 @@ export class UnauthorizedError extends Error {
 
 export function forbidden(): never {
   throw new ForbiddenError()
+}
+
+export function notFound(): never {
+  throw new NotFoundError()
 }
 
 export function redirect(url: string): never {

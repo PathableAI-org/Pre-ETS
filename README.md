@@ -89,13 +89,27 @@ for inspection, persistence, and reset commands.
 
 #### Frontend pages
 
-Redis and Keycloak are still defined in Compose. The frontend pages do not
-need them. Run `pnpm dev:frontend` and open `http://localhost:3000/` for the
-welcome page. `/auth/callback` renders the authentication-return fallback. The
-proxy forwards both routes with the incoming headers and leaves cookies and
-the response location unchanged. See `docs/authentication.md`. Optional local
-OpenTelemetry + Grafana uses Compose profile `observability` (service
-`otel-lgtm`); see `docs/observability.md`.
+The root asks the session-presence service before tenant lookup and redirects to
+`/auth/login`. That public page resolves the tenant and prepares an OIDC code request
+with PKCE, state, nonce and `max_age=0`, then redirects to the selected provider.
+Start Keycloak for the tracked synthetic tenant fixtures:
+
+```sh
+docker compose up -d --wait keycloak
+curl --fail http://127.0.0.1:8080/realms/pre-ets/.well-known/openid-configuration
+```
+
+Set `OIDC_CALLBACK_ORIGINS_JSON` and the local-only
+`OIDC_ALLOW_INSECURE_LOOPBACK=true` in the frontend environment as described in
+[authentication](docs/authentication.md). Then run `pnpm dev:frontend` and open
+`http://localhost:3000/`. The callback remains a denying fallback: this increment
+creates no recoverable attempt, application cookie or authenticated session. Redis
+is not used by initiation. Public diagnostics and the development preview remain
+usable without the provider. Requirements BDD needs the real Keycloak realm running;
+its main-only nightly/manual job provisions an owned provider after building.
+
+Optional local OpenTelemetry + Grafana uses Compose profile `observability`
+(service `otel-lgtm`); see [observability](docs/observability.md).
 
 ### Local tenant resolution
 
@@ -113,9 +127,9 @@ and `packages/frontend/.env.example`.
 pnpm dev:frontend
 ```
 
-Open `http://localhost:3000/` for the welcome page.
+Open `http://localhost:3000/` to begin tenant-specific OIDC initiation.
 
-An Effect v4 backend is planned. Client workflows beyond this landing page are
+An Effect v4 backend is planned. Authenticated client workflows are
 not implemented yet.
 
 ## Effect developer setup
