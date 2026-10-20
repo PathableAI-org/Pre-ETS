@@ -9,6 +9,7 @@ cookie names, provider-vendor claims, or an application-session representation.
 tenant file ─Schema─> ResolvedOidcIntegration
 server secret source ─Schema─> ResolvedClientAuthentication
 request host/query/cookie ─Schema─> CallbackRequest
+validated tenant + correlation + singular state ─> AttemptAddress
 Redis bytes ─Schema─> RecoverableAuthenticationAttempt
 openid-client verified claims ─Schema─> TrustedIdentity
 ```
@@ -34,6 +35,20 @@ verifier values are absent from this public result.
 A distinct, opaque, 32-byte random value encoded with unpadded base64url. Its Schema accepts only the generated
 shape before any store lookup. It is safe to disclose only as an opaque reference; possession has no authentication
 meaning. It is independent of the provider-visible OIDC state parameter.
+
+## AttemptAddress
+
+A private, deterministic address derived only after the callback boundary has independently established:
+
+- the canonical tenant alias selected from the request host;
+- the exact registered callback authority for that tenant;
+- one valid opaque browser correlation; and
+- exactly one well-formed OIDC `state` from an otherwise valid success or error callback shape.
+
+The storage key uses the configured namespace plus an unambiguous encoding or digest of tenant, correlation, and
+state. Correlation alone cannot address a record. A wrong tenant or authority, invalid correlation, malformed query,
+or missing/duplicate/wrong state never reaches `GETDEL` for the legitimate address and therefore cannot burn the
+original attempt.
 
 ## RecoverableAuthenticationAttempt
 
@@ -64,6 +79,7 @@ prepared → stored → atomically consumed → validated handoff
                     └─→ denied: exchange or signed-evidence failure
 
 stored → expired by Redis
+stored → unchanged: request cannot derive the exact tenant/correlation/state address
 ```
 
 There is no transition back from consumed to stored. A callback outcome after successful `GETDEL`, including a
@@ -72,12 +88,17 @@ retried because the record may already have been removed.
 
 ## CallbackRequest
 
-The public completion input contains only validated request-boundary data:
+The public completion input carries untrusted request-boundary data that the parent validates in order:
 
 - request host/authority used for independent tenant resolution;
 - the opaque correlation artifact from the named host-only cookie; and
 - an exact representation of callback query parameters that preserves absence and duplicates so contradictory
   success/error or duplicate security parameters can be rejected rather than silently collapsed.
+
+Before storage access, the parent independently resolves the tenant; compares the current authority to its exact
+registered callback authority; validates correlation form; and requires one state in a valid success or provider-
+error shape. Only that qualified request becomes an internal attempt address. A matching error/cancellation consumes
+once; later provider/exchange/identity failure also remains consumed.
 
 It does not contain a prepared identity or caller-selected tenant. The authentication service derives tenant and
 integration binding through its dependencies.
@@ -117,8 +138,10 @@ service boundary can distinguish categories needed to establish semantics.
 | Outcome | Examples | Trusted handoff |
 | --- | --- | --- |
 | trusted | one bound, current, successfully validated callback | One `TrustedIdentity` |
-| denied | invalid correlation, missing/consumed/expired attempt, mismatch, cancellation, malformed response, invalid evidence or missing claims | None |
-| unavailable | Redis/provider/credential operation cannot safely complete | None |
+| denied before consume | wrong tenant/authority, invalid correlation, malformed query, or missing/duplicate/wrong state | None; valid original remains usable |
+| denied at recovery | qualified address has no live record because it is missing, expired, or already consumed | None |
+| denied after consume | corrupt attempt, matching cancellation/error, invalid provider evidence, or missing claims | None; addressed attempt is single-use |
+| unavailable after readiness | Redis/provider/credential command cannot safely complete after process startup | None |
 | existing tenant HTTP error | callback host cannot select/read valid tenant configuration | None |
 
 Defects and interruption are not converted into these expected outcomes.

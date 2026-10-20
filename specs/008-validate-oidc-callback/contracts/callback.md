@@ -39,10 +39,14 @@ was consumed; the public authentication outcome does.
 
 ### Input rules
 
-- Resolve the request tenant from the callback host independently of initiation.
+- Resolve the canonical request tenant from the callback host independently of initiation and require its exact
+  registered callback authority.
 - Read the correlation cookie and the original query parameter multiplicity.
-- Reject missing/invalid correlation, duplicate security parameters, contradictory success/error shapes, mixed or
-  malformed callback values, and tenant/return/integration mismatches.
+- Before transaction storage, reject missing/invalid correlation, missing/duplicate/malformed state, duplicate
+  security parameters, contradictory success/error shapes, mixed or malformed callback values, and authority
+  mismatches. Only the validated tenant/correlation/state tuple may address an attempt.
+- A wrong tenant or authority, invalid correlation, or missing/duplicate/wrong state must not consume the valid
+  original attempt. A matching success or error/cancellation consumes once; later provider/exchange failure burns.
 - Never accept a query-supplied tenant, prepared identity or return destination as authoritative.
 
 ### Validated callback response
@@ -57,19 +61,35 @@ Until #218 supplies a session consumer, a successful `TrustedIdentity` is mapped
 - no redirect to protected content; and
 - no identity, provider claim, token, code, verifier, credential or transaction material.
 
-The 204 is an intermediate slice contract that makes actual callback success observable without disclosing
-identity. #218 replaces this adapter mapping with session creation; the public authentication service's
-trusted identity remains its handoff.
+The 204 is an intermediate slice contract that makes selection of the validated-success HTTP branch observable
+without disclosing identity. It cannot prove the tenant, issuer, subject, or `auth_time` fields. Those exact values
+are asserted at the public `AuthenticationService` boundary and combine with the HTTP outcome to establish the
+requirement. #218 replaces this adapter mapping with session creation; the public authentication service's trusted
+identity remains its handoff.
 
 ### Denied or unavailable response
 
 Expected invalid/missing/expired/replayed/mismatched transaction outcomes, provider cancellation/failure and invalid
 identity evidence produce no trusted handoff and no protected content. They use the existing safe public
 sign-in-failure experience without automatically starting `/auth/login`. Operational authentication unavailability
-also fails closed. Internal distinctions are not disclosed through raw provider or storage messages.
+after successful process startup also fails closed. Initial NodeRedis Layer acquisition failure prevents the whole
+frontend process from becoming ready, so no route-level response is promised until a fresh process starts after
+recovery. Internal distinctions are not disclosed through raw provider or storage messages.
 
 Tenant resolution/configuration still controls its existing 404/500 response. Callback public reachability is not
 callback acceptance and does not authorize content.
+
+## Readiness, rollout, and rollback
+
+Redis is a required process-readiness dependency. Eager shared-runtime acquisition failure keeps the entire frontend
+process out of service; a healthy sibling instance is unaffected, and recovery requires restart/recreation after
+Redis is reachable. After readiness, Redis command failure maps only the affected authentication request to safe
+unavailability.
+
+Mixed old/new versions may deny an in-flight round trip but cannot accept it incorrectly: the predecessor creates no
+new recoverable record/cookie, while the new callback requires its qualified versioned address. Rollback needs no
+migration. New keys and host-only callback-path cookies confer no identity or access, fail closed when unmatched, and
+expire within the bounded attempt lifetime.
 
 ## Query and navigation semantics
 
@@ -87,12 +107,22 @@ only IDs from the current `origin/main` baseline:
 - `@preets-session-003` for the trusted handoff prerequisite and denied session outcomes;
 - `@preets-security-001` only where the externally observed scenario actually supports the non-disclosure or
   server-only claim; and
-- `@preets-session-013` only for signed `auth_time` presence, not staleness.
+- `@preets-session-013` only if an actual callback scenario observably rejects missing signed `auth_time`, never on
+  the successful 204 as if it exposed the field. Otherwise retain that trace solely in public-service evidence; no
+  stale-time policy is claimed.
 
-BDD observes actual HTTP/browser behavior. Real Keycloak completion traverses the real provider and callback
-boundary, begins on instance A and returns to independently composed instance B. Prepared identities, a mock callback
-or direct service invocation cannot replace that scenario. Steps do not inspect Redis, serialized attempts, private
-modules, log/span payloads or credentials. Dry-run is discovery only, never evidence.
+BDD observes actual HTTP/browser behavior. Real Keycloak completion traverses the real provider and callback boundary
+under one exact registered tenant authority: `/`, `/auth/login`, and provider departure route to instance A, while
+`/auth/callback` on that same authority routes to independently composed instance B. Both receive the same Host. The
+harness proves A's host-only callback-path cookie reaches B and is not sent to another tenant authority. BDD asserts
+the empty 204, correlation clearing, and no session/protected output; it does not inspect identity fields. Prepared
+identities, a mock callback or direct service invocation cannot replace the real completion scenario. Steps do not
+inspect Redis, serialized attempts, private modules, log/span payloads or credentials. Dry-run is discovery only,
+never evidence.
+
+A provider-error callback constructed by the application harness is described as controlled public-HTTP evidence,
+not real provider cancellation. The latter is claimed only when the Keycloak UI actually emits it; otherwise it is
+recorded as unexecuted.
 
 The tracked Keycloak execution establishes Keycloak behavior only. Microsoft/broker behavior remains unexecuted;
 application sessions remain absent under #218; full callback presentation remains #154; and stale `auth_time`
