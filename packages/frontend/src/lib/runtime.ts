@@ -3,8 +3,10 @@ import { NodeServices } from "@effect/platform-node"
 import { registerOTel } from "@vercel/otel"
 import { ConfigProvider, Effect, Layer, ManagedRuntime } from "effect"
 
+import { AuthenticationService } from "./authentication.ts"
 import { ServerConfig } from "./config/index.ts"
 import { appLoggerLayer } from "./observability.ts"
+import { SessionService } from "./session.ts"
 import { TenantConfigService } from "./tenant.ts"
 
 const OTEL_SERVICE_NAME = "pre-ets-frontend"
@@ -36,7 +38,8 @@ const boot = () => {
 
     const runtime = ManagedRuntime.make(
       Layer.mergeAll(
-        TenantConfigService.layer(config),
+        AuthenticationService.layer.pipe(Layer.provideMerge(TenantConfigService.layer(config))),
+        SessionService.layer,
         LoggerLayer,
         ObservabilityLayer
       ).pipe(

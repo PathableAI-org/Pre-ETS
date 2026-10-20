@@ -10,8 +10,7 @@ When("a visitor requests the document at {string}", async function(this: AppWorl
   await requestSite(this, host)
 })
 When("a visitor requests {string} at {string}", async function(this: AppWorld, path: string, host: string) {
-  this.extraHeaders = { ...this.extraHeaders, "x-bdd-query": path }
-  await requestSite(this, host)
+  await requestSite(this, host, true, path)
 })
 Then("the response status is {int}", function(this: AppWorld, status: number) {
   assert.equal(this.response?.status, status)
@@ -30,4 +29,22 @@ Then("the response contains no fallback tenant", function(this: AppWorld) {
   assert.ok(this.response)
   assert.doesNotMatch(this.response.body, /Welcome to the Pre-ETS workspace|Springfield|Shelbyville/)
   assert.doesNotMatch(this.response.body, /"displayName"\s*:/)
+})
+
+Then("the response is not cacheable", function(this: AppWorld) {
+  assert.match(this.response?.headers["cache-control"] ?? "", /(?:^|[,\s])no-store(?:$|[,\s])/)
+})
+Then("the response issues no application or correlation cookie", function(this: AppWorld) {
+  assert.equal(this.response?.headers["set-cookie"], undefined)
+})
+Then("the response delegates to the same-origin login", function(this: AppWorld) {
+  assert.equal(this.response?.status, 307)
+  const destination = new URL(this.response.headers.location ?? "", "http://logical-application")
+  assert.equal(destination.origin, "http://logical-application")
+  assert.equal(destination.pathname, "/auth/login")
+  assert.equal(destination.search, "")
+})
+Then("the response contains no protected application content", function(this: AppWorld) {
+  assert.ok(this.response)
+  assert.doesNotMatch(this.response.body, /Welcome to the Pre-ETS workspace/)
 })
