@@ -19,7 +19,7 @@ permissions:
 
 jobs:
   upgrade:
-    uses: PathableAI-org/github-workflows/.github/workflows/speckit-upgrade.yml@d054e83ec066e54e7b795d7fa2256cf1248498eb
+    uses: PathableAI-org/github-workflows/.github/workflows/speckit-upgrade.yml@5b2e5ad3bc24d1765231da8dea52430157fe2a0a
     with:
       specify_version: ${{ inputs.specify_version }}
       add_paths: |
