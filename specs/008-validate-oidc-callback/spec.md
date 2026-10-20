@@ -27,9 +27,12 @@ instance receives the callback.
 validate real provider evidence, and produce a trustworthy identity for downstream session establishment.
 
 **Independent Test**: Begin authentication through one independently running application instance, complete the
-flow with the repository's real local provider, and deliver the callback to another instance. Observe one trusted
-user-and-tenant identity handoff at the actual callback boundary, while confirming that no authenticated application
-session or protected access is created.
+flow with the repository's real local provider, and deliver the callback to another instance under the same
+registered tenant authority. At the HTTP/browser boundary, observe the validated-success 204 response, cleared
+correlation cookie, and absence of an authenticated application session or protected content. Separately, at the
+public authentication-service boundary, prove that this accepted callback yields exactly the expected tenant,
+issuer, subject, and signed `auth_time`. Together these observations establish the trusted identity handoff without
+exposing identity through the 204 response.
 
 **Acceptance Scenarios**:
 
@@ -65,8 +68,9 @@ creates no authenticated application session, and reveals no protected or secret
    callback is requested, **Then** it is denied without substituting a tenant or restarting login automatically.
 3. **Given** a callback transaction that has already been consumed, **When** the callback is submitted again, **Then**
    the replay is denied and the first consumption cannot be repeated.
-4. **Given** two callbacks race to consume the same valid attempt, **When** both are processed, **Then** at most one
-   can produce a trusted identity handoff and all others are denied.
+4. **Given** two callbacks race to consume the same valid attempt while the callback dependencies are healthy,
+   **When** both are processed, **Then** exactly one produces a trusted identity handoff and all others are denied.
+   Under arbitrary operational failure, at most one handoff remains the safety invariant.
 
 ---
 
@@ -78,9 +82,11 @@ unauthenticated and do not receive protected content or another tenant's identit
 **Why this priority**: Cancellation and invalid provider responses are normal security-boundary outcomes and must be
 as safe as transaction mismatch or replay.
 
-**Independent Test**: Exercise provider cancellation/failure and responses with missing, invalid, or incorrectly
-bound signed identity evidence. Observe denial at the real callback boundary with no trusted identity handoff,
-authenticated application session, protected content, raw provider response, or secret disclosure.
+**Independent Test**: Deliver a controlled provider-error callback at the real public HTTP boundary and exercise
+responses with missing, invalid, or incorrectly bound signed identity evidence. Observe denial with no trusted
+identity handoff, authenticated application session, protected content, raw provider response, or secret disclosure.
+Claim real-provider cancellation only if the local provider UI actually emits it; otherwise record that evidence as
+unexecuted.
 
 **Acceptance Scenarios**:
 
@@ -128,9 +134,11 @@ These are feature-local acceptance statements derived from the accepted durable 
   tokens, the proof verifier, raw provider payloads, trusted identity, or other secret material. Sources:
   SECURITY-001 AC1–2 and SESSION-002 AC1.
 - **FR-003**: The callback MUST independently resolve and validate its request tenant, recover the attempt, and
-  confirm that the request tenant, configured integration, callback authority, browser correlation, and recovered
-  attempt all belong to the same login. No fallback tenant is permitted. Sources: SESSION-002 AC1–2 and the
-  constitution's tenant-isolation principle.
+  confirm that the request tenant, configured integration, callback authority, browser correlation, singular
+  provider state, and recovered attempt all belong to the same login. Host/tenant, exact callback authority, query
+  shape, and singular state MUST be validated before one-time consumption is attempted. A wrong tenant, authority,
+  missing/duplicate/wrong state, or malformed callback MUST NOT consume an otherwise valid attempt. No fallback
+  tenant is permitted. Sources: SESSION-002 AC1–2 and the constitution's tenant-isolation principle.
 - **FR-004**: Recovery and consumption of an authentication attempt MUST be atomic and one-time. Missing, invalid,
   expired, consumed, or concurrently replayed attempts MUST NOT produce a trusted identity handoff. Source: the
   approved S2-C transaction lifecycle and SESSION-003 AC2 prerequisite.
@@ -208,19 +216,26 @@ not create active Gherkin, step bindings, or runtime evidence. Use the repositor
    listed as entirely absent, while callback validation and session establishment remain outside that initiation
    feature. Preserve lowercase requirement tags and feature-level `@partial`.
 2. **Add `tenant-oidc-callback.feature`.** Use feature-level `@partial` and only lowercase IDs from the accepted
-   requirements. Tag tenant/provider completion with `@preets-session-002`; tag trusted identity and denied-session
-   outcomes with `@preets-session-003`; add `@preets-security-001` only where the scenario directly observes the
-   non-secret/server-only contract; add `@preets-session-013` only to the bounded signed-`auth_time` observation.
+   requirements. Tag tenant/provider completion with `@preets-session-002`; tag the bounded validated-success and
+   denied-session outcomes with `@preets-session-003` only as the HTTP/browser portion of composite evidence; add
+   `@preets-security-001` only where the scenario directly observes the non-secret/server-only contract. Add
+   `@preets-session-013` to BDD only if an actual callback scenario observably rejects missing signed `auth_time`;
+   otherwise retain that trace solely in public-service evidence, never on a 204 that cannot expose the field.
    Cover:
    - a complete real Keycloak round trip through the actual callback boundary, initiated on one application
      instance and returned to another;
    - cross-tenant and correlation/transaction mismatch;
    - missing, invalid, and expired transaction recovery;
    - first consumption followed by replay, plus a concurrent-consumption case at the responsible boundary;
-   - provider failure and visitor cancellation;
-   - invalid signed identity evidence and missing signed `auth_time`, without inventing a staleness threshold;
-   - successful validation yielding a trusted user/tenant handoff while no application session or protected access
-     exists.
+   - an application-handled controlled provider-error callback at the public HTTP boundary; add real Keycloak
+     cancellation evidence only when the provider UI actually emits that response, otherwise record real-provider
+     cancellation as unexecuted;
+   - invalid signed identity evidence and missing signed `auth_time` only where the actual callback harness can
+     attribute the public rejection; otherwise retain the exact public-service evidence and record the BDD limit,
+     without inventing a staleness threshold;
+   - successful validation producing the bounded empty 204, clearing correlation, and yielding no application
+     session or protected access. Exact trusted tenant/issuer/subject/`auth_time` values remain public-service
+     evidence and are not inspected through the 204 response.
 
 Real provider completion must observe application outcomes at the actual callback boundary; prepared identities or
 mocked callbacks alone cannot establish that claim. Protocol and atomic-consumption properties may use focused
@@ -247,13 +262,17 @@ Record Microsoft and broker-chain scenarios as unexecuted limitations until actu
 ### Measurable Outcomes
 
 - **SC-001**: In every exercised valid local-provider round trip, including initiation and callback on different
-  running application instances, the actual callback boundary produces exactly one trusted handoff bound to the
-  expected user and tenant and produces zero authenticated application sessions.
+  running application instances under one registered tenant authority, the HTTP/browser boundary produces one
+  validated-success 204, clears correlation, and produces zero authenticated application sessions or protected
+  content; corresponding public `AuthenticationService` evidence produces exactly one handoff with the expected
+  tenant, issuer, subject, and signed `auth_time`.
 - **SC-002**: One hundred percent of exercised missing, invalid, expired, mismatched, cross-tenant, cancelled,
   provider-failed, and invalid-identity cases produce no trusted identity handoff, no authenticated application
   session, and no protected content.
-- **SC-003**: After one callback consumes an attempt, one hundred percent of exercised sequential and concurrent
-  replays produce no additional trusted identity handoff.
+- **SC-003**: In every healthy exercised race for one valid attempt, exactly one callback produces a trusted
+  identity handoff and all other consumers are denied. After that consumption, one hundred percent of exercised
+  sequential replays produce no additional handoff; under arbitrary operational failure, at most one handoff is the
+  retained safety invariant.
 - **SC-004**: Browser-visible and diagnostic observations across every exercised success and rejection path contain
   zero credentials, tokens, proof verifiers, raw provider payloads, or protected application content.
 - **SC-005**: Every new or changed requirements-BDD scenario inherits or carries at least one applicable lowercase

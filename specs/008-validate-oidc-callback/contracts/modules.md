@@ -25,9 +25,47 @@ provider payloads, tokens, URLs containing callback parameters, credentials or e
 continues to preserve the existing tenant 404/500 distinction. Defects and interruption remain outside the typed
 expected-error channel.
 
-`prepare` persists the attempt before it succeeds. `complete` independently resolves the request tenant, validates
-correlation syntax, atomically consumes one attempt, checks all binding/expiry rules, validates the provider
-response, and returns one provider-neutral trusted identity. It never creates an application session.
+`prepare` persists the attempt before it succeeds. `complete` independently resolves the request tenant and validates
+exact authority, callback shape, singular state, and correlation syntax before it derives an attempt address. It then
+atomically consumes one attempt, checks all binding/expiry rules, validates the provider response, and returns one
+provider-neutral trusted identity. A request that cannot derive the exact address does not consume the valid original.
+It never creates an application session.
+
+## Parent-owned test construction
+
+`authentication.ts` also owns one explicitly test-only construction seam. The planning-level shape is:
+
+```ts
+interface AuthenticationTestOptions {
+  readonly tenantConfiguration: ReadonlyArray<AuthenticationTenantFixture>
+  readonly credentialValues: Readonly<Record<string, string>>
+  readonly redis: Layer.Layer<Redis.Redis>
+  readonly clock: Clock.Clock
+  readonly random: Random.Random
+  readonly transport?: typeof fetch
+  readonly transactionPrefix: string
+}
+
+interface AuthenticationTestHarness {
+  readonly layer: Layer.Layer<AuthenticationService>
+  readonly fixtures: AuthenticationRedisFixtureSetup
+}
+
+declare const makeAuthenticationTestHarness: (
+  options: AuthenticationTestOptions,
+) => AuthenticationTestHarness
+```
+
+Exact installed types may adjust the syntax, but not the boundary: this is a closed parent factory over ordinary
+platform/test inputs. It composes the real private transaction, credential, and provider children. Controlled HTTP
+transport still exercises openid-client and the real provider child; callers cannot inject `TrustedIdentity` or a
+completed provider result. The fixture handle may reserve an address or seed bytes under the unique test prefix only
+to arrange collision/corruption cases. Its methods accept semantic setup descriptors owned by the parent and return
+no raw key or encoded payload. Tests assert the public service result and never assert key/codec shape.
+
+No private child Context service, codec, stored-attempt type, key builder, or provider result is exported. External
+tests import this seam from `authentication.ts` and never import `authentication/*`. Production consumers receive the
+normal live Layer/service rather than the fixture handle.
 
 ## Private ownership tree
 
@@ -58,6 +96,9 @@ authentication.ts
 - Hide supplied Redis requirements with `Layer.provide`; do not merge them into the authentication output graph.
 - Compose the authentication Layer only in `src/lib/runtime.ts`, retaining the single existing `ManagedRuntime`.
 - Never construct a runtime or long-lived Redis/provider client per request.
+- Build the production Redis Layer eagerly as part of the shared runtime. Initial acquisition failure prevents the
+  whole frontend process from becoming ready; only command failures after readiness become typed authentication
+  unavailability. Recovery from initial failure requires process restart/recreation.
 - Use `Effect.gen` for inline route/runtime orchestration, named `Effect.fn` for meaningful public boundaries and
   `Effect.fnUntraced` for reusable helpers that do not merit spans. Use `return yield*` for terminal failure paths.
 - Decode untrusted environment, callback and Redis data with Schema at entry. Do not re-decode validated internal
@@ -74,16 +115,18 @@ interface AuthenticationTransactions {
   ) => Effect.Effect<StoredAttemptReference, TransactionUnavailable>
 
   readonly consume: (
-    correlation: BrowserCorrelation,
+    address: AttemptAddress,
   ) => Effect.Effect<RecoverableAuthenticationAttempt, AttemptUnavailable | TransactionUnavailable>
 }
 ```
 
 Production behavior:
 
-- use the configured namespace and a distinct generated correlation key;
+- derive an address from canonical tenant alias, distinct generated correlation, and expected OIDC state only after
+  the parent validates exact authority and query shape;
 - create with atomic `SET ... NX PX ...`, with bounded collision handling;
 - consume with one `GETDEL`, Schema-decode the returned bytes once, and check explicit expiry with the Effect clock;
+- never access storage when tenant/authority/correlation/query/state cannot derive the exact address;
 - never retry an ambiguous consume;
 - consume corrupt or mismatched bytes without restoration; and
 - retain no process-memory fallback.
@@ -91,6 +134,10 @@ Production behavior:
 The implementation may use `Redis.Redis.send` for these Redis commands. It must add `redis@6.3.0` as a direct
 frontend dependency because it is a peer of `@effect/platform-node`; the current transitive lock resolution is not
 ownership. Do not build a parallel generic Redis service if pinned declarations meet the atomic-command contract.
+
+Named public-service and real-Redis evidence must prove that wrong tenant, authority, or state leaves the original
+address consumable by the later valid callback. A matching success or provider error/cancellation consumes once;
+post-consume provider/exchange failure does not restore it.
 
 ## Private provider capability
 

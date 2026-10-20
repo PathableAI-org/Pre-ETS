@@ -31,7 +31,9 @@
 
 ## Notes
 
-- Validation passed on the first review iteration with no clarification markers.
+- Validation passed again after the first independent critique remediation, with no clarification markers. The
+  specification now separates HTTP/browser 204 evidence from exact public-service identity evidence and makes
+  pre-consume tenant/authority/query/state qualification explicit.
 - OIDC concepts, tenant boundaries, callback evidence, and the real local provider are observable contract and
   evidence constraints from accepted requirements; the specification leaves storage, cookie shape, libraries,
   framework structure, and secret-provider implementation open.

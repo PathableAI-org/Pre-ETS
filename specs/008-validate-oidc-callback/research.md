@@ -40,8 +40,10 @@ types. Creating Redis or OIDC clients inside operations would make cleanup and c
 **Decision**: Add exact `redis@6.3.0` as a direct frontend dependency. Use
 `@effect/platform-node/NodeRedis` as the scoped production Layer and consume only
 `effect/persistence/Redis.Redis` in the private transaction adapter. Create with `SET key payload NX PX ttlMillis` and
-consume with one atomic `GETDEL key`. Do not use `GET` followed by `DEL`. Use a Lua script only if implementation-time
-contract review discovers a necessary conditional compare-and-delete that `GETDEL` cannot satisfy.
+consume with one atomic `GETDEL key`. The key is derived from the canonical tenant alias, opaque browser correlation,
+and expected OIDC state after all three have been independently validated; it is not addressed by correlation alone.
+Do not use `GET` followed by `DEL`. Use a Lua script only if implementation-time contract review discovers a
+necessary conditional compare-and-delete that `GETDEL` cannot satisfy.
 
 **Rationale**: Exact `@effect/platform-node@4.0.5` exports `NodeRedis.layer`/`layerConfig`; exact `effect@4.0.5` exports
 the generic Redis service with `send` and script support. The Node Layer connects and closes its client within scope.
@@ -61,11 +63,12 @@ the NodeRedis barrel export, Layer result, `Redis.send`, `RedisError`, Layer com
 ## 4. Store a short-lived attempt; give the browser only opaque correlation
 
 **Decision**: Generate a distinct 32-byte base64url correlation reference. Persist a versioned Schema-encoded attempt
-under the configured `OIDC_TX_KEY_PREFIX` before returning the provider redirect. The record contains only the
-tenant/provider/return binding, state, nonce and PKCE verifier required to validate one callback. It contains no token,
-resolved client credential or application-session identity. Use a default 600-second transaction lifetime, configurable
-for isolated runtime evidence through a validated positive `OIDC_TX_TTL_SECONDS`. Store both an explicit application-
-clock expiry and a Redis TTL.
+under the configured `OIDC_TX_KEY_PREFIX` before returning the provider redirect. Derive its storage address from the
+canonical tenant alias, opaque correlation, and expected OIDC state using an unambiguous encoding or digest. The
+record contains only the tenant/provider/return binding, state, nonce and PKCE verifier required to validate one
+callback. It contains no token, resolved client credential or application-session identity. Use a default 600-second
+transaction lifetime, configurable for isolated runtime evidence through a validated positive
+`OIDC_TX_TTL_SECONDS`. Store both an explicit application-clock expiry and a Redis TTL.
 
 The route writes only the opaque reference in a host-only cookie: no `Domain`, `HttpOnly`, `SameSite=Lax`,
 `Path=/auth/callback`, `Max-Age` aligned with the attempt, and `Secure` except for the explicitly permitted loopback
@@ -75,32 +78,43 @@ state, nonce, provider evidence, identity or access.
 **Rationale**: Redis TTL provides server-clock cleanup and cross-instance availability. Explicit expiry checked with
 the Effect clock fails closed if stale bytes remain and makes service behavior deterministic under `TestClock`.
 `SET NX` prevents overwrite; retrying one fresh reference on a collision is bounded and does not claim entropy quality.
-A separate reference keeps provider-visible state distinct from application correlation.
+A separate reference keeps provider-visible state distinct from application correlation; both values plus the
+independently resolved tenant are required to address the attempt.
 
 **Alternatives considered**: State alone as the cookie/key would collapse two independent bindings. A signed or
 encrypted browser transaction would add key rotation and put more context in the browser without a requirement.
 Persisting tokens or resolved secrets would widen the sensitive-data surface. An unbounded or application-session-
 lifetime attempt contradicts short-lived single use.
 
-## 5. Consume before provider validation and never retry an ambiguous consume
+## 5. Validate the callback address before consume; never retry an ambiguous consume
 
-**Decision**: Callback processing independently resolves the request tenant, validates correlation syntax, atomically
-consumes the addressed record, Schema-decodes it, checks expiry and every tenant/provider/return binding, then performs
-provider validation. A matching cancellation, provider failure or later validation failure burns the one-time attempt.
-Malformed stored bytes are consumed and rejected. Missing/expired/replayed attempts share a safe no-handoff outcome.
-Invalid correlation is rejected before Redis so it cannot name or consume an unrelated attempt.
+**Decision**: Callback processing first validates the request boundary without touching transaction storage. It
+independently resolves the canonical tenant, validates the exact current authority against that tenant's registered
+callback authority, preserves and validates query multiplicity, requires exactly one well-formed `state`, validates
+the opaque correlation syntax, and rejects mixed or malformed success/error shapes. Only then does it derive the
+tenant/correlation/state storage address and atomically `GETDEL` that record. A wrong tenant or authority, invalid
+correlation, or missing/duplicate/wrong state therefore cannot consume the valid attempt stored at its original
+address.
+
+After consume, the owner Schema-decodes the record, checks explicit expiry and every tenant/provider/return binding,
+then performs provider validation. A matching success or error/cancellation response has crossed the addressing
+boundary and consumes once; provider refusal, code exchange failure, or later signed-evidence failure burns that
+one-time attempt. Malformed stored bytes are consumed and rejected. Missing/expired/replayed attempts share a safe
+no-handoff outcome.
 
 Do not retry `GETDEL` after timeout or an ambiguous Redis transport failure: the record may already be gone. Fail
 closed. If an initiation write succeeds but its response is lost, issue neither redirect nor cookie; the unreachable
 record expires normally.
 
-**Rationale**: Consumption before exchange gives at-most-once recovery under races across instances. Safe denial is
-more important than differentiating missing, expired and replayed state to the browser. Schema decoding treats Redis
-bytes as untrusted at their actual persistence boundary.
+**Rationale**: Address validation before `GETDEL` prevents an unqualified cross-tenant or forged-state request from
+destroying a legitimate login. Consumption before exchange still gives at-most-once recovery under races across
+instances. Safe denial is more important than differentiating missing, expired and replayed state to the browser.
+Schema decoding treats Redis bytes as untrusted at their actual persistence boundary.
 
-**Alternatives considered**: Validation followed by deletion permits concurrent recovery. Retrying an ambiguous
-consume could disguise the result and does not restore one-time state. Returning raw Redis or decoding failures would
-leak internal data and couple the route to storage.
+**Alternatives considered**: Correlation-only addressing allows a wrong tenant or wrong state to burn a valid
+attempt. Full provider validation followed by deletion permits concurrent recovery. Retrying an ambiguous consume
+could disguise the result and does not restore one-time state. Returning raw Redis or decoding failures would leak
+internal data and couple the route to storage.
 
 ## 6. Use openid-client for the complete protocol boundary, without inventing freshness policy
 
@@ -162,13 +176,37 @@ mapping with session creation. Existing comprehensive callback/error presentatio
 another recoverable state transition. Returning identity JSON or putting it in a redirect/query leaks trusted data.
 Redirecting both success and denial to the same page would make the actual callback success unobservable.
 
-## 9. Separate service, real-adapter, framework and workflow evidence
+## 9. Expose one parent-owned deterministic construction seam
 
-**Decision**: Test the real `AuthenticationService` through its public parent with fresh deterministic dependency
-Layers. Use properties for binding invariants and named examples for protocol boundaries. Use real Redis with two
-independent scoped client/service graphs for cross-instance, TTL and race claims. Use ordinary Vitest for Next adapter
-mapping. Use requirements BDD only for actual HTTP/browser outcomes and real Keycloak completion; BDD never connects
-to Redis or imports private modules. Keep log/span/exporter/secret-in-log inspection manual.
+**Decision**: `authentication.ts` exports a test-only parent factory that returns an `AuthenticationService` Layer
+from one closed `AuthenticationTestOptions` ordinary-value bundle. The bundle admits only current platform inputs:
+deterministic tenant/configuration and credential values, clock/random inputs, a generic Redis Layer, and an optional
+controlled HTTP transport. It does not expose private child Context services, stored-attempt types, codecs, keys, or
+provider results. The parent factory composes the real transaction, credential and provider children internally; a
+controlled transport therefore still traverses openid-client and the real provider child instead of injecting a
+prepared identity.
+
+For integration setup that must create a collision or malformed Redis value, the same parent entry returns a
+strictly fixture-scoped handle that can seed bytes or reserve an address within the caller's unique prefix. Those
+operations are setup/diagnostic support only: tests assert the resulting public service outcome and never treat key
+format, encoded bytes, or fixture inspection as a product contract. External tests import `authentication.ts`, not
+`authentication/*`; ordinary production consumers receive only the service and current public value types.
+
+**Rationale**: The seam makes deterministic semantic evidence possible without breaking recursive ownership. It
+also distinguishes a controlled transport around the real protocol child from a stubbed identity, and keeps raw
+Redis fixture needs behind the owning parent.
+
+**Alternatives considered**: Exporting private Context services or importing child files from external tests breaks
+recursive module isolation. Injecting a completed provider result would bypass the protocol boundary. Asserting raw
+Redis layout would turn a fixture mechanism into a product promise.
+
+## 10. Separate service, real-adapter, framework and workflow evidence
+
+**Decision**: Test the real `AuthenticationService` through its public parent factory with a fresh deterministic
+world for every case. Use properties for binding invariants and named examples for protocol boundaries. Use real
+Redis with two independent scoped client/service graphs for cross-instance, TTL and race claims. Use ordinary Vitest
+for Next adapter mapping. Use requirements BDD only for actual HTTP/browser outcomes and real Keycloak completion;
+BDD never connects to Redis or imports private modules. Keep log/span/exporter/secret-in-log inspection manual.
 
 **Rationale**: Deterministic services prove the contract in supplied worlds; only Redis proves real atomicity/expiry;
 only the OIDC client and real provider prove protocol completion; only HTTP/browser evidence proves route/cookie and
@@ -178,11 +216,14 @@ visible outcomes. No one layer is asked to prove another's mechanics.
 replace real Keycloak completion. Browser scenarios that inspect Redis or private JSON would bind requirements to an
 implementation. Durable telemetry assertions violate repository policy.
 
-## 10. Extend the existing BDD harness without turning setup into product assertions
+## 11. Extend the existing BDD harness without changing browser authority
 
 **Decision**: Give each scenario a unique `OIDC_TX_KEY_PREFIX`, spawn two independently running production Next
-processes when cross-instance evidence needs them, and extend the owned browser proxy from authority-to-one-port into
-an explicit authority-to-instance mapping. Initiate on A and route the registered callback authority to B. Automate the
+processes when cross-instance evidence needs them, and keep one exact registered tenant public authority throughout
+the browser round trip. Extend the owned proxy to route `/`, `/auth/login`, and provider departure to instance A,
+then route `/auth/callback` for that same authority to independently composed instance B by path/phase. Both processes
+receive the same Host; Keycloak remains the external provider authority. Add harness evidence that A's host-only,
+callback-path cookie reaches B and is not sent when the browser addresses a different tenant authority. Automate the
 tracked Keycloak `demo` login only for real completion. Capture callback URL/correlation at the HTTP/browser boundary
 for mismatch, expiry, replay and racing requests; do not read Redis in Cucumber steps.
 
@@ -193,22 +234,56 @@ completion scenario. Missing signed `auth_time` is rejected at the service bound
 profile can produce a standards-valid no-`auth_time` response without a mock provider, may also receive HTTP/browser
 evidence; the plan does not weaken the claim or fabricate provider behavior when it cannot.
 
-**Rationale**: The harness already separates logical callback authority from random transport ports. Generalizing its
-owned mapping produces genuine cross-instance HTTP evidence while preserving provider traffic. Product assertions stay
-in steps; readiness and process management stay in support/CI.
+A cancellation is called real Keycloak cancellation only when the provider UI actually emits the error callback.
+Otherwise the HTTP scenario is named an application-handled controlled provider-error callback at the real public
+boundary, and the validation record lists real-provider cancellation as unexecuted.
+
+**Rationale**: The harness already separates logical callback authority from random transport ports. Path/phase
+routing under one authority produces genuine cross-instance HTTP evidence without weakening the host-only cookie.
+Product assertions stay in steps; readiness and process management stay in support/CI.
 
 **Alternatives considered**: Sticky sessions evade the requirement. A mock identity provider cannot establish real
 completion. Reading Redis from BDD would move the observation below the application boundary. Skipping scenarios under
 `@partial` is forbidden.
 
-## 11. Validation and known limits
+## 12. Treat Redis acquisition as process readiness
+
+**Decision**: Redis is required for process readiness in this slice. The existing `src/instrumentation.ts` import
+boots the one shared `ManagedRuntime`, whose boot effect resolves its Layers; failure to acquire `NodeRedis.layer`
+prevents that process from becoming ready or serving any route.
+The launcher/orchestrator must keep the instance out of service and restart/recreate it after Redis connectivity is
+restored. Only Redis command failures after successful startup map to typed authentication unavailability at
+`/auth/login` or `/auth/callback`; the design does not claim unrelated public routes survive initial Redis failure.
+
+The readiness/startup evidence starts a production frontend with Redis unreachable and proves the process never
+passes its existing port/readiness gate, then restores Redis and starts a fresh process successfully. Runtime evidence
+separately interrupts Redis after readiness and proves authentication routes fail closed without handoff or session.
+The blast radius of initial acquisition failure is the whole frontend process because the shared runtime is a host
+dependency; healthy sibling instances remain independently serviceable.
+
+Mixed-version rollout is safe but may interrupt in-flight login: the predecessor does not create a recoverable key or
+cookie, while the new version uses a versioned record and derived address. An old callback cannot complete a new
+attempt, and a new callback denies an old attempt. Rollback leaves only short-lived versioned keys and host-only
+callback-path cookies; neither grants identity or access, unknown/missing records fail closed, and both expire within
+the bounded attempt lifetime. Roll forward or rollback requires no data migration.
+
+**Rationale**: This matches eager scoped Layer acquisition and states its true blast radius instead of promising
+route-level degradation before a runtime exists. Short-lived, non-authoritative attempt data makes restart and
+rollback safe.
+
+**Alternatives considered**: A lazy reconnectable resource could preserve public routes during initial outage but
+adds lifecycle and state machinery not required by #217. Pretending eager `NodeRedis.layer` is lazy would make the
+availability contract false.
+
+## 13. Validation and known limits
 
 **Decision**: Validate focused service/adapter tests, full frontend Vitest, Gherkin lint/format/discovery, production
 requirements BDD, and repository typecheck/build/lint/unused/format gates. Use manual ad hoc inspection for actual logs,
 spans, exporter data and secret handling. Record revision, Keycloak version, two-instance arrangement, Redis version,
 and limitations.
 
-**Limits retained by design**: Keycloak evidence does not establish Microsoft or broker compatibility. Confidential
+**Limits retained by design**: Keycloak evidence does not establish Microsoft or broker compatibility. Real provider
+cancellation remains unexecuted unless the Keycloak UI actually emits it. Confidential
 client protocol behavior has focused controlled evidence unless a real confidential integration is available. #218
 still owns the application session; #154 owns complete application integration/presentation; #158 still owns stale
 `auth_time` comparison, tolerance and unsupported-provider policy. No static check is runtime proof.
