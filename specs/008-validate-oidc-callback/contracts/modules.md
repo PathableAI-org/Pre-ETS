@@ -104,8 +104,11 @@ authentication.ts
 - Public service interfaces are readonly and operations expose success, typed expected errors and requirements.
 - Production Layers acquire resource-owning clients and dependencies. `NodeRedis.layer` supplies the scoped
   `effect/persistence/Redis` service to the private transaction adapter. Construct it with node-redis
-  `disableOfflineQueue: true` so commands submitted while disconnected/reconnecting reject instead of being queued
-  for later execution.
+  `disableOfflineQueue: true`, a server-owned `pingInterval` of 1,000 ms, and `socket.socketTimeout` of 5,000 ms so
+  commands submitted while disconnected/reconnecting reject instead of being queued and a stalled-open connection
+  is closed rather than leaving pending authentication work unbounded. The response-aware health interval keeps a
+  healthy idle socket active and is strictly shorter than the inactivity timeout. Environment-derived options must
+  not override these policies.
 - Hide supplied Redis requirements with `Layer.provide`; do not merge them into the authentication output graph.
 - Compose the authentication Layer only in `src/lib/runtime.ts`, retaining the single existing `ManagedRuntime`.
 - Never construct a runtime or long-lived Redis/provider client per request.
@@ -115,10 +118,13 @@ authentication.ts
   `runtime.runPromise(...)` call in boot orchestration before the instrumentation import completes, and dispose the
   partially acquired runtime on failure. Recovery from initial failure requires process restart/recreation.
 - Do not put an application timeout around `Redis.send`/`GETDEL`. The pinned generic service accepts no per-command
-  abort signal, so returning on an Effect deadline could leave an uncancelled command able to delete later.
+  abort signal, so returning on an Effect deadline could leave an uncancelled command able to delete later. The
+  node-redis socket timeout is the bound because it destroys the transport and rejects its pending queue.
 - Distinguish Redis failure points. A command rejected before send becomes typed unavailability and cannot later
-  execute. A disconnect after send is ambiguous, is not retried, and may already have consumed. A later new request
-  may succeed once the client reconnects.
+  execute. A disconnect or socket timeout after send is ambiguous, is not retried, may already have consumed, and
+  clears correlation. Ordinary disconnect recovery may permit a later new request once the client reconnects; the
+  pinned NodeRedis strategy stops on `SocketTimeoutError`, so a stalled-socket timeout requires process/runtime
+  restart or recreation.
 - Use `Effect.gen` for inline route/runtime orchestration, named `Effect.fn` for meaningful public boundaries and
   `Effect.fnUntraced` for reusable helpers that do not merit spans. Use `return yield*` for terminal failure paths.
 - Decode untrusted environment, callback and Redis data with Schema at entry. Do not re-decode validated internal
@@ -181,9 +187,12 @@ Preparation receives the already validated tenant integration and resolved clien
 - private protocol material for the attempt: state, nonce and PKCE verifier plus normalized provider/return binding.
 
 Completion receives only validated/recovered values from the parent. It uses `authorizationCodeGrant` with the PKCE
-verifier, expected state and expected nonce and requires an ID token. It returns signed claims only after the OIDC
-library has completed response, code-exchange, issuer, audience, signature and nonce checks. A Schema then requires
-nonempty `sub` and integer `auth_time` and projects the result into `TrustedIdentity`.
+verifier, expected state and expected nonce and requires an ID token. Before completion it calls
+`enableNonRepudiationChecks(config)` on the discovered configuration so openid-client cryptographically validates the
+ID-token JWS signature against the provider's `jwks_uri`. JWKS retrieval uses the existing controlled fetch and
+provider-operation deadline. It returns signed claims only after the OIDC library has completed response,
+code-exchange, issuer, audience, signature and nonce checks. A Schema then requires nonempty `sub` and integer
+`auth_time` and projects the result into `TrustedIdentity`.
 
 Do not pass a new `maxAge` comparison: `max_age=0` remains an initiation request parameter, while #158 owns the
 staleness comparison and clock tolerance. Preserve transport redirect rejection, interruption propagation and the
@@ -216,14 +225,18 @@ The planning checkout has no `packages/frontend/node_modules`. Implementation ca
 from the ahead-of-pin local Effect checkout. After installation, verify at minimum:
 
 1. the `@effect/platform-node/NodeRedis` barrel and `layer(options?: NodeRedisClientOptions)` signature at 4.0.5;
-2. node-redis 6.3.0's `disableOfflineQueue` option and its pre-send offline rejection behavior;
+2. node-redis 6.3.0's `disableOfflineQueue`, `pingInterval`, and `socket.socketTimeout` options; response-aware PING
+   sequencing; pre-send offline rejection; stalled-socket destruction; pending-command rejection; and
+   `SocketTimeoutError` reconnect behavior;
 3. `effect/persistence/Redis` service, `send`, errors and Layer requirements at 4.0.5, including the absence of a
    safely cancellable per-command timeout/abort input;
 4. scoped finalization and hidden Layer requirements in the composed type graph;
-5. openid-client grant/check/client-auth signatures at 6.8.8; and
+5. openid-client grant/check/client-auth signatures at 6.8.8, including `enableNonRepudiationChecks`, its `jwks_uri`
+   requirement, and its use of the configured transport/deadline for JWKS retrieval; and
 6. Next Route Handler cookie and redirect declarations at 16.4.2.
 
 Exact tag source at `effect@4.0.5` and `redis@6.3.0` supports these planning decisions, including option pass-through,
-pre-enqueue offline rejection, disconnect queue flushing, and the generic service's non-cancellable send shape.
+pre-enqueue offline rejection, socket-timeout destruction, pending-command queue flushing, and the generic service's
+non-cancellable send shape.
 Installed locked declarations remain the implementation gate; a mismatch stops the implementation rather than
 licensing a parallel Redis abstraction.

@@ -17,9 +17,9 @@ only an opaque correlation cookie, and atomically consume the short-lived attemp
 tenant, exact authority, query shape, singular state, and correlation form qualify its derived storage address.
 The existing public authentication module orchestrates private transaction, credential and provider children. Its
 production Layer uses the scoped `@effect/platform-node/NodeRedis` adapter behind `effect/persistence/Redis`, while
-the provider child uses openid-client to validate the response, code exchange, issuer, audience, signature, nonce,
-subject and signed `auth_time` presence. Success is a provider-neutral trusted tenant/user handoff; it is not an
-application session or authorization grant.
+the provider child enables openid-client non-repudiation checks and validates the response, code exchange, issuer,
+audience, cryptographic ID-token signature, nonce, subject and signed `auth_time` presence. Success is a provider-
+neutral trusted tenant/user handoff; it is not an application session or authorization grant.
 
 Replace the login and callback pages with Node Route Handlers so initiation can set and callback can preserve or clear
 the correlation cookie through the one shared `ManagedRuntime`. Reject initiation before delegation when its
@@ -39,9 +39,10 @@ application outcomes, never observability payloads or private Redis representati
 **Primary Dependencies**: Existing Next.js 16.4.2, React 19.3.1, Effect and `@effect/platform-node` 4.0.5,
 `@effect/vitest`, openid-client 6.8.8 and PathAble React. Add exact `redis@6.3.0` as a direct frontend dependency
 because it is a platform peer. Use `@effect/platform-node/NodeRedis` to provide `effect/persistence/Redis`; do not
-invent another generic Redis abstraction. Construct the Layer with node-redis `disableOfflineQueue: true`; pinned
-Effect 4.0.5 and node-redis 6.3.0 tag source confirms the option pass-through and pre-enqueue offline rejection
-behavior.
+invent another generic Redis abstraction. Construct the Layer with node-redis `disableOfflineQueue: true`, a
+server-owned `pingInterval` of 1,000 ms, and `socket.socketTimeout` of 5,000 ms; pinned Effect 4.0.5 and node-redis
+6.3.0 source confirms option pass-through, response-aware health PING scheduling, pre-enqueue offline rejection,
+socket-timeout destruction, and pending-command rejection.
 
 **Storage**: Redis 8.10.2 in the tracked Compose stack. Store one versioned Schema-encoded authentication attempt
 under `OIDC_TX_KEY_PREFIX` at an address derived from canonical tenant alias, opaque correlation, and OIDC state with
@@ -63,19 +64,22 @@ profile and CI service topology.
 **Project Type**: Frontend authentication orchestration, persistence adapter, Node HTTP routes, and requirements BDD.
 
 **Performance Goals**: No new product SLO. Keep the existing bounded provider-operation deadline; callback storage
-uses one atomic consume round trip and no application retries after an ambiguous consume. Do not add an application
-timeout to generic `Redis.send`: its pinned signature cannot safely cancel the underlying command, so such a timeout
-could return before later deletion. Transaction lifetime is a security/recovery bound, not a response-latency or
-`auth_time` freshness claim.
+uses one atomic consume round trip and no application retries after an ambiguous consume. Bound a stalled-open Redis
+transport with the server-owned 5,000 ms node-redis socket timeout, which closes the socket and rejects pending
+commands. Do not add an application timeout to generic `Redis.send`: its pinned signature cannot safely cancel the
+underlying command, so such a timeout could return before later deletion. Transaction lifetime is a security/recovery
+bound, not a response-latency or `auth_time` freshness claim.
 
 **Constraints**: Preserve recursive module isolation, one host-owned ManagedRuntime, Effect interruption/defect
 semantics, tenant 404/500 distinctions, private/no-store responses, server-only confidential credentials, no session
 creation/protected access, no invented `auth_time` staleness threshold, and no BDD inspection of Redis or private
 modules. Initial NodeRedis Layer acquisition and malformed explicit credential/TTL configuration are fail-fast
 dependencies of whole-process readiness. After startup, commands rejected before send map to authentication
-unavailability and cannot run later; an in-flight disconnect is ambiguous, is never retried, and may have consumed.
-`packages/frontend/node_modules` is absent during planning, so implementation must verify installed locked
-declarations rather than assuming ahead-of-pin local APIs.
+unavailability and cannot run later; an in-flight disconnect or socket timeout is ambiguous, is never retried, may
+have consumed, and clears correlation. The pinned NodeRedis strategy stops reconnecting after `SocketTimeoutError`, so
+recovery from a stalled socket requires process/runtime restart or recreation. `packages/frontend/node_modules` is
+absent during planning, so implementation must verify installed locked declarations rather than assuming ahead-of-pin
+local APIs.
 
 **Scale/Scope**: Two distinguishable tenants, public and confidential client contract paths, multiple frontend
 instances sharing one Redis namespace, and one-time callback races. Runtime provider evidence is Keycloak only.
@@ -161,9 +165,13 @@ Do not create a runtime per request or expose provider/store mechanics.
 Install the locked workspace and inspect exact installed Effect 4.0.5, openid-client 6.8.8 and Next 16.4.2
 declarations listed in the quickstart. Add exact `redis@6.3.0` to frontend dependencies and update the root lockfile.
 Confirm `NodeRedis` supplies the generic persistence Redis service with scoped connect/close behavior and that raw
-`SET NX PX`/`GETDEL` commands are representable. Verify `NodeRedis.layer` passes `disableOfflineQueue: true` to
-node-redis 6.3.0; reconnecting commands reject before enqueue/send; and generic `Redis.send` exposes no per-command
-abort or timeout option. Exact tag source was inspected at `effect@4.0.5` for
+`SET NX PX`/`GETDEL` commands are representable. Verify `NodeRedis.layer` passes `disableOfflineQueue: true`,
+`pingInterval: 1_000`, and `socket.socketTimeout: 5_000` to node-redis 6.3.0; the next health PING is scheduled only
+after the preceding one settles; reconnecting commands reject before enqueue/send; a stalled-open socket is destroyed
+and pending commands reject; `SocketTimeoutError` stops the pinned default reconnect strategy; and generic
+`Redis.send` exposes no per-command abort or timeout option. Also verify openid-client 6.8.8 exports
+`enableNonRepudiationChecks`, requires `jwks_uri`, and uses the configured fetch and deadline for JWKS retrieval. Exact
+tag source was inspected at `effect@4.0.5` for
 `packages/platform/node/src/NodeRedis.ts` and `packages/effect/src/persistence/Redis.ts`, and at `redis@6.3.0` for
 `packages/client/lib/client/index.ts`. Those sources support the design, but the installed lock remains authoritative.
 If installed declarations contradict them, stop at the narrow contract mismatch rather than importing from the local
@@ -193,17 +201,21 @@ whose selected nonempty reference is absent from a valid map receives request-le
 Keep secret values out of attempt records, public service values, errors, diagnostics and application output. Do not
 add a general secrets platform, vendor SDK or new tenant-file secret field.
 
-Build `NodeRedis.layer({ ...connectionOptions, disableOfflineQueue: true })` eagerly at the host boundary so
-environment-derived options cannot re-enable offline queueing, and supply it privately into authentication using
-Layer composition. Keep resource acquisition/release in Layers and retain
+Build
+`NodeRedis.layer({ ...connectionOptions, pingInterval: 1_000, socket: { ...connectionSocketOptions, socketTimeout: 5_000 }, disableOfflineQueue: true })`
+eagerly at the host boundary so environment-derived options cannot re-enable offline queueing or remove the finite
+stall bound, and supply it privately into authentication using Layer composition. Keep resource acquisition/release
+in Layers and retain
 exactly one application ManagedRuntime. Replace the current synchronous `runtime.runSync(...)` layer-resolution probe
 in `src/lib/runtime.ts` with `runtime.runPromise(...)`, awaited by boot orchestration before
 `src/instrumentation.ts` finishes importing the runtime. This asynchronous execution must resolve the NodeRedis Layer;
 dispose the partially acquired runtime if the awaited probe fails. Failure prevents process readiness and all route
 serving; the launcher restarts/recreates the process after Redis recovers. After startup, a command submitted while
 reconnecting rejects before send and becomes typed route-level authentication unavailability without later
-execution. If the connection drops after send, the result is ambiguous, the callback denies without retry, and the
-attempt may already be consumed. A later new request may succeed after reconnect.
+execution. If the connection drops or the socket timeout closes a stalled connection after send, the result is
+ambiguous, the callback denies and clears correlation without retry, and the attempt may already be consumed. An
+ordinary disconnect may reconnect for a later new request; `SocketTimeoutError` requires process/runtime restart or
+recreation under the pinned default strategy.
 
 ### 3. Evolve provider preparation and callback validation behind the public parent
 
@@ -233,9 +245,11 @@ proceed without a secret. A confidential client's nonempty reference must select
 at Layer acquisition; absence becomes request-level `AuthenticationUnavailable`, while a malformed explicit source
 could not reach this operation because it prevented readiness.
 
-Call `authorizationCodeGrant` with PKCE verifier, expected state, expected nonce and required ID token. Accept claims
-only after library response/exchange/signature/issuer/audience/nonce validation, then Schema-require nonempty `sub`
-and integer signed `auth_time`. Do not pass a new `maxAge` comparison or define clock tolerance. Project only tenant,
+Call `enableNonRepudiationChecks(config)` on the discovered openid-client configuration before
+`authorizationCodeGrant` with PKCE verifier, expected state, expected nonce and required ID token. Keep JWKS retrieval
+inside the existing controlled transport and provider-operation deadline. Accept claims only after library
+response/exchange/cryptographic-signature/issuer/audience/nonce validation, then Schema-require nonempty `sub` and
+integer signed `auth_time`. Do not pass a new `maxAge` comparison or define clock tolerance. Project only tenant,
 issuer, subject and authentication time into `TrustedIdentity`; no tokens/raw claims/session/access.
 
 Use consumer-inward Effect design throughout: readonly public interface, typed expected errors and requirements,
@@ -257,8 +271,10 @@ unavailability to the safe public sign-in failure without restarting login; reta
 not apply when initial NodeRedis acquisition prevented the process from becoming ready. Keep Next navigation
 semantics outside broad catches. The inbound browser callback URL necessarily carries `code` and `state`, or provider
 error parameters. Consume those inputs without copying them into application-produced response bodies, headers or
-redirect locations, cookies, diagnostics, retained application state, or application-controlled telemetry. HTTP
-tests inspect the application's output; they do not assert that their own inbound request lacked callback material.
+redirect locations, cookies, diagnostics, post-callback application state, or application-controlled telemetry. The
+private live attempt retains only its pre-callback expected state, nonce, and PKCE verifier until actual consumption;
+this is the bounded exception required for a later valid return. HTTP tests inspect the application's output; they do
+not assert that their own inbound request lacked callback material.
 
 ### 5. Build durable semantic evidence below BDD
 
@@ -301,11 +317,17 @@ typed unavailability, and does not execute later after Redis recovers; the origi
 by a later new request after reconnection. Separately exercise or deterministically fault an in-flight disconnect and
 prove the service never retries: the outcome is denied/unavailable and the attempt may be either consumed or still
 present, but it can never produce two handoffs. Do not use an Effect timeout around `GETDEL` as outage evidence.
+Through a controlled TCP fault proxy, also keep an established Redis connection open while withholding replies. Prove
+the node-redis socket timeout closes the connection and fails the pending request within the configured bound, maps
+the possibly sent consume to ambiguous denial with correlation clearing, never retries it, and requires process/
+runtime restart or recreation before recovery. Do not claim that same process can serve a later request after
+`SocketTimeoutError` under the pinned default reconnect strategy.
 
-Controlled OIDC transport at the public service boundary covers focused signature/issuer/audience/nonce/exchange/
-claim failures through the real provider child, but never substitutes for real Keycloak completion. Route tests cover
-real response status/redirect, cookie attributes/preservation/clearing, pre-storage authority/query/state rejection,
-caching, tenant failures and no session/protected output without asserting implementation calls. Add a login route
+Controlled OIDC transport at the public service boundary covers focused cryptographic-signature/issuer/audience/
+nonce/exchange/claim failures through the real provider child with `enableNonRepudiationChecks` active, including
+JWKS retrieval through the controlled fetch/deadline, but never substitutes for real Keycloak completion. Route tests
+cover real response status/redirect, cookie attributes/preservation/clearing, pre-storage authority/query/state
+rejection, caching, tenant failures and no session/protected output without asserting implementation calls. Add a login route
 case where the request resolves a tenant but its Host differs from the configured callback Host; it must produce no
 provider redirect, transaction, or cookie. Add an invalid-then-valid callback case using the browser's resulting
 cookie state, proving a pre-consumption denial does not sabotage the legitimate provider return.
@@ -368,23 +390,23 @@ provider, Microsoft/broker and possibly real confidential-provider behavior are 
 
 ## Semantic Evidence Map
 
-| Requirement / BDD claim                                                            | Strongest supporting lower boundary                                                                                                                                                               | Limitation                                                                                                                             |
-| ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| Initiation creates recoverable safe correlation, not a session                     | Public AuthenticationService plus login Route Handler tests, including incompatible request/callback Host rejection                                                                               | Does not prove provider completion                                                                                                     |
-| Real tenant callback begun on A completes on B                                     | One-authority, path/phase-routed HTTP/browser BDD proves 204/terminal cookie clearing/no session; public service proves exact identity; real Redis proves cross-instance recovery                 | Composite evidence; Keycloak only; Microsoft/broker unexecuted                                                                         |
-| Callback parameters are consumed without application re-emission or retention      | Route/BDD assertions over application-produced body, headers/redirect locations and cookies; public-service state outcomes; manual inspection of application diagnostics and controlled telemetry | `code`, `state` and provider errors necessarily transit the inbound browser callback URL; no claim is made that the request lacks them |
-| Tenant/state/attempt/provider/return mismatch never hands off or burns valid state | Public-service binding/disposition properties and later-valid callback; real Redis wrong-address then valid-consume case; invalid-then-valid browser scenario proves correlation preservation     | Properties use controlled dependencies, not another real provider                                                                      |
-| Missing, invalid and expired recovery deny                                         | Public-service named cases; real Redis server-TTL integration; HTTP/browser scenarios                                                                                                             | BDD does not inspect Redis; expiry timing is bounded harness behavior                                                                  |
-| Replay and concurrent callbacks select one winner                                  | Healthy real Redis two-client race and callback HTTP race each require exactly one winner plus denial of all others; failure properties retain at-most-one                                        | Not a throughput/load guarantee                                                                                                        |
-| Existing qualified transaction address is never overwritten                        | Real Redis collision fixture plus parent `prepare` regeneration and successful callback using the reserved original                                                                               | Does not claim global correlation uniqueness                                                                                           |
-| Transaction lifetime is bounded and safely configured                              | Layer-acquisition configuration tests plus application/server-clock expiry evidence at 1/default/600 seconds                                                                                      | Transaction TTL is not #158 `auth_time` freshness policy                                                                               |
-| Provider error/cancellation burns attempt and denies                               | Public-service protocol cases; controlled provider-error callback at public HTTP boundary; real Keycloak cancellation only if UI emits it                                                         | Controlled error is not provider-produced cancellation; real cancellation may remain unexecuted                                        |
-| Issuer/audience/signature/nonce/exchange/required claims are trusted               | openid-client through public-service controlled transport plus real Keycloak common completion                                                                                                    | Not every invalid token can safely be produced by tracked Keycloak                                                                     |
-| Signed `auth_time` is present                                                      | Real Keycloak success plus focused missing-claim rejection                                                                                                                                        | No staleness comparison/tolerance; exact missing claim may lack real-provider BDD                                                      |
-| Confidential credential remains server-only with defined configuration lifecycle   | Layer-acquisition absent/malformed map cases; public-service public/missing-reference paths; HTTP non-disclosure outcomes; manual runtime inspection                                              | Real confidential provider unexecuted unless separately configured; malformed explicit map prevents whole-process readiness            |
-| Success creates no app session or protected access                                 | Callback Route Handler test and HTTP/browser BDD                                                                                                                                                  | #218 owns session creation; #154 owns complete presentation                                                                            |
-| Initial Redis outage prevents readiness; post-start outage fails auth closed       | Awaited asynchronous ManagedRuntime healthy/outage startup probes; exact declaration gate; real reconnect rejection/no-later-execution and recovery evidence; in-flight no-retry case             | Initial blast radius is the whole process; restart/recreation is required; in-flight consume may have executed                         |
-| Logs/traces do not expose sensitive values                                         | Manual/ad hoc inspection of actual runtime/exported data                                                                                                                                          | No durable telemetry assertion by policy                                                                                               |
+| Requirement / BDD claim                                                            | Strongest supporting lower boundary                                                                                                                                                               | Limitation                                                                                                                                   |
+| ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| Initiation creates recoverable safe correlation, not a session                     | Public AuthenticationService plus login Route Handler tests, including incompatible request/callback Host rejection                                                                               | Does not prove provider completion                                                                                                           |
+| Real tenant callback begun on A completes on B                                     | One-authority, path/phase-routed HTTP/browser BDD proves 204/terminal cookie clearing/no session; public service proves exact identity; real Redis proves cross-instance recovery                 | Composite evidence; Keycloak only; Microsoft/broker unexecuted                                                                               |
+| Callback parameters are consumed without application re-emission or retention      | Route/BDD assertions over application-produced body, headers/redirect locations and cookies; public-service state outcomes; manual inspection of application diagnostics and controlled telemetry | The live unconsumed attempt retains only its original expected state/nonce/verifier; inbound callback values necessarily transit the request |
+| Tenant/state/attempt/provider/return mismatch never hands off or burns valid state | Public-service binding/disposition properties and later-valid callback; real Redis wrong-address then valid-consume case; invalid-then-valid browser scenario proves correlation preservation     | Properties use controlled dependencies, not another real provider                                                                            |
+| Missing, invalid and expired recovery deny                                         | Public-service named cases; real Redis server-TTL integration; HTTP/browser scenarios                                                                                                             | BDD does not inspect Redis; expiry timing is bounded harness behavior                                                                        |
+| Replay and concurrent callbacks select one winner                                  | Healthy real Redis two-client race and callback HTTP race each require exactly one winner plus denial of all others; failure properties retain at-most-one                                        | Not a throughput/load guarantee                                                                                                              |
+| Existing qualified transaction address is never overwritten                        | Real Redis collision fixture plus parent `prepare` regeneration and successful callback using the reserved original                                                                               | Does not claim global correlation uniqueness                                                                                                 |
+| Transaction lifetime is bounded and safely configured                              | Layer-acquisition configuration tests plus application/server-clock expiry evidence at 1/default/600 seconds                                                                                      | Transaction TTL is not #158 `auth_time` freshness policy                                                                                     |
+| Provider error/cancellation burns attempt and denies                               | Public-service protocol cases; controlled provider-error callback at public HTTP boundary; real Keycloak cancellation only if UI emits it                                                         | Controlled error is not provider-produced cancellation; real cancellation may remain unexecuted                                              |
+| Issuer/audience/cryptographic signature/nonce/exchange/required claims are trusted | openid-client with non-repudiation enabled through public-service controlled transport plus real Keycloak common completion                                                                       | Not every invalid token can safely be produced by tracked Keycloak                                                                           |
+| Signed `auth_time` is present                                                      | Real Keycloak success plus focused missing-claim rejection                                                                                                                                        | No staleness comparison/tolerance; exact missing claim may lack real-provider BDD                                                            |
+| Confidential credential remains server-only with defined configuration lifecycle   | Layer-acquisition absent/malformed map cases; public-service public/missing-reference paths; HTTP non-disclosure outcomes; manual runtime inspection                                              | Real confidential provider unexecuted unless separately configured; malformed explicit map prevents whole-process readiness                  |
+| Success creates no app session or protected access                                 | Callback Route Handler test and HTTP/browser BDD                                                                                                                                                  | #218 owns session creation; #154 owns complete presentation                                                                                  |
+| Initial Redis outage prevents readiness; post-start outage fails auth closed       | Awaited runtime startup probes; declaration gate; reconnect rejection/no-later-execution; in-flight no-retry; stalled-open TCP proxy proving socket-close bound and no retry                      | Initial failure and `SocketTimeoutError` require restart/recreation; an ambiguous consume may have executed                                  |
+| Logs/traces do not expose sensitive values                                         | Manual/ad hoc inspection of actual runtime/exported data                                                                                                                                          | No durable telemetry assertion by policy                                                                                                     |
 
 ## Complexity Tracking
 

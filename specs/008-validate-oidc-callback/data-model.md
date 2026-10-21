@@ -78,7 +78,9 @@ consumption.
 | created and expiry instants         | Enforces the bounded application-clock lifetime                | `expiresAt` is after creation and not after the selected TTL |
 
 The record contains no resolved credential, authorization code, access/refresh/ID token, raw provider response,
-trusted identity, or application-session state. Redis also applies its own TTL to the record.
+trusted identity, or application-session state. Its expected state, nonce, and PKCE verifier are the bounded private
+exception to the no-retained-verifier rule: they exist only while the attempt remains unconsumed and are required to
+validate the original provider return. Redis also applies its own TTL to the record.
 
 ### Lifecycle
 
@@ -97,9 +99,11 @@ provider denial or downstream validation failure, burns the attempt. An ambiguou
 retried because the record may already have been removed.
 
 If the Redis client rejects a command before sending it while disconnected or reconnecting, the attempt remains
-unchanged and the command cannot execute after reconnection. If the connection drops after send, consumption is
-ambiguous: Redis may have removed the record before the reply was lost. The parent never retries that operation; a
-later, new callback request may use the recovered client, subject to whether the one-time record remains.
+unchanged and the command cannot execute after reconnection. If the connection drops or the configured socket timeout
+closes a stalled-open connection after send, consumption is ambiguous: Redis may have removed the record before the
+reply was lost. The parent never retries that operation and clears correlation. An ordinary disconnect may reconnect
+for a later new request, subject to whether the one-time record remains; the pinned NodeRedis strategy requires
+process/runtime restart or recreation after `SocketTimeoutError`.
 
 ## CallbackRequest
 
@@ -119,8 +123,9 @@ once; later provider/exchange/identity failure also remains consumed.
 
 It does not contain a prepared identity or caller-selected tenant. The authentication service derives tenant and
 integration binding through its dependencies. After consumption, callback input is not copied into response bodies,
-response headers or redirect locations, cookies, diagnostics, retained application state, or application-controlled
-telemetry.
+response headers or redirect locations, cookies, diagnostics, post-callback application state, or application-
+controlled telemetry. Preserving an unconsumed attempt after an unqualified callback retains only the attempt's
+original expected state, nonce, and PKCE verifier; it does not persist the rejected callback input.
 
 ## CorrelationDisposition
 

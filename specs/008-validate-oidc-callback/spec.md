@@ -118,9 +118,13 @@ unexecuted.
   responses.
 - The provider refuses the request, the visitor cancels, code exchange fails, or signed identity evidence is
   absent, invalid, or bound to a different transaction or tenant.
+- Redis remains connected but stops returning replies. Authentication must fail within the configured transport
+  stall bound; a possibly sent consume is ambiguous, is never retried, and cannot produce a second handoff.
 - The inbound browser callback URL necessarily carries `code`, `state`, or provider error parameters. The application
   must consume them without re-emitting them in response bodies, response headers or redirect locations, cookies,
-  diagnostic JSON, retained application state, or application-controlled telemetry.
+  diagnostic JSON, post-callback application state, or application-controlled telemetry. The bounded, unconsumed
+  recoverable attempt is not a copy of callback input and retains only the protocol material needed for the original
+  valid return.
 - Successful validation is followed by a downstream consumer failure. The validated identity still does not itself
   become an authenticated application session or grant protected access.
 - Public callback access must retain normal tenant resolution and configuration validation. It must not use a
@@ -157,7 +161,8 @@ These are feature-local acceptance statements derived from the accepted durable 
   transaction lifecycle and SESSION-003 AC2 prerequisite.
 - **FR-005**: For a successful provider response, validation MUST establish transaction integrity and validate the
   authorization response, authorization-code exchange, signed identity evidence, issuer/client binding, audience,
-  signature, nonce, and required identity claims before producing a trusted identity handoff. Sources:
+  cryptographic signature against the configured provider's keys, nonce, and required identity claims before
+  producing a trusted identity handoff. Sources:
   SESSION-002 AC1–2 and SESSION-003 AC1 prerequisite.
 - **FR-006**: A trusted identity handoff MUST identify the validated user and originating tenant and MUST be usable by
   #218's later session-creation consumer without coupling application policy to a provider vendor. It MUST NOT be an
@@ -181,9 +186,11 @@ These are feature-local acceptance statements derived from the accepted durable 
   and SESSION-002 AC1.
 - **FR-011**: The inbound callback URL necessarily transports the authorization `code`, `state`, or provider error
   parameters. The application MUST consume those values without re-emitting them in response bodies, response
-  headers or redirect locations, cookies, diagnostics, retained application state, or application-controlled
-  telemetry. Application-produced callback outcomes MUST NOT expose protected content, access or identity tokens,
-  credentials, proof verifiers, raw provider payloads, or other secret transaction material. BDD inspects
+  headers or redirect locations, cookies, diagnostics, post-callback application state, or application-controlled
+  telemetry. The only permitted retained proof verifier is inside the bounded, short-lived, unconsumed recoverable
+  attempt required by FR-001/FR-003; it MUST NOT be exposed outside that private record and MUST NOT remain after
+  actual consumption. Application-produced callback outcomes MUST NOT expose protected content, access or identity
+  tokens, credentials, proof verifiers, raw provider payloads, or other secret transaction material. BDD inspects
   application output, not the absence of protocol parameters from its own inbound request. Durable application-
   controlled telemetry claims require separate manual/runtime inspection. Sources: SECURITY-001 and repository
   observability-testing policy.
@@ -293,11 +300,13 @@ Record Microsoft and broker-chain scenarios as unexecuted limitations until actu
   sequential replays produce no additional handoff; under arbitrary operational failure, at most one handoff is the
   retained safety invariant.
 - **SC-004**: Across every exercised success and rejection path, application-produced response bodies, response
-  headers and redirect locations, correlation-cookie issuance/preservation/clearing, diagnostics, retained
+  headers and redirect locations, correlation-cookie issuance/preservation/clearing, diagnostics, post-callback
   application state, and application-controlled telemetry contain zero credentials, tokens, proof verifiers, raw
-  provider payloads, inbound callback parameters, or protected content. This criterion does not claim `code`,
-  `state`, or provider error parameters are absent from the inbound browser callback URL that carries them to the
-  application.
+  provider payloads, inbound callback parameters, or protected content. The one explicit exception is the private,
+  bounded, short-lived, unconsumed recoverable attempt, which retains its expected state, nonce, and PKCE verifier so
+  an invalid pre-consumption callback does not sabotage the original valid return; those values disappear on actual
+  consumption. This criterion does not claim `code`, `state`, or provider error parameters are absent from the
+  inbound browser callback URL that carries them to the application.
 - **SC-005**: Every new or changed requirements-BDD scenario inherits or carries at least one applicable lowercase
   requirement-ID tag, all callback-validation scenarios declare the feature's partial limits, and runtime execution
   records the tested revision, provider, instance arrangement, and unexecuted compatibility limitations.

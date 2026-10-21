@@ -45,22 +45,34 @@ and expected OIDC state after all three have been independently validated; it is
 Do not use `GET` followed by `DEL`. Use a Lua script only if implementation-time contract review discovers a
 necessary conditional compare-and-delete that `GETDEL` cannot satisfy.
 
-Construct `NodeRedis.layer({ ...connectionOptions, disableOfflineQueue: true })` so environment-derived options
-cannot override the policy. Exact pinned source confirms the Layer passes its options to `redis.createClient`;
-node-redis 6.3.0 rejects `sendCommand` with `ClientOfflineError` before enqueue when the socket is open but
-reconnecting/not ready and offline queueing is disabled (and rejects a closed socket with `ClientClosedError`). The
-platform adapter maps either failure to `RedisError`. A command rejected before enqueue/send becomes typed
-authentication unavailability and cannot execute later. The client may reconnect under NodeRedis's post-ready
-strategy, and a later new request may then succeed.
+Construct
+`NodeRedis.layer({ ...connectionOptions, pingInterval: 1_000, socket: { ...connectionSocketOptions, socketTimeout: 5_000 }, disableOfflineQueue: true })`
+so environment-derived options cannot override either policy. Exact pinned source confirms the Layer passes its
+options to `redis.createClient`; node-redis 6.3.0 rejects `sendCommand` with `ClientOfflineError` before enqueue when
+the socket is open but reconnecting/not ready and offline queueing is disabled (and rejects a closed socket with
+`ClientClosedError`). It also applies `socket.setTimeout(socketTimeout)` and destroys a stalled-open socket with
+`SocketTimeoutError`, which flushes and rejects pending commands rather than merely returning from the calling
+Effect. The platform adapter maps those failures to `RedisError`. A command rejected before enqueue/send becomes
+typed authentication unavailability and cannot execute later. A socket timeout after send is an ambiguous consume:
+deny, clear correlation, and never retry it. The pinned NodeRedis default reconnect strategy stops on
+`SocketTimeoutError`, so recovery from this stall requires process restart/recreation; ordinary post-ready
+disconnects may reconnect and allow a later new request.
+
+The socket timeout is an inactivity timer rather than a per-command response deadline. Configure node-redis's
+1,000 ms `pingInterval`, strictly below the 5,000 ms socket timeout, so a healthy idle connection keeps receiving
+responses. A peer that remains open but stops replying leaves the health command pending and is closed by the socket
+timer. Do not configure periodic writes without response-aware sequencing; node-redis schedules the next PING only
+after the preceding PING settles.
 
 **Rationale**: Exact `@effect/platform-node@4.0.5` exports `NodeRedis.layer`/`layerConfig`; exact `effect@4.0.5` exports
 the generic Redis service with `send` and script support. The Node Layer connects and closes its client within scope.
 The generic `Redis.send` signature exposes only command plus string arguments, and the platform implementation wraps
 `client.sendCommand` with `Effect.tryPromise`; it does not expose node-redis per-command abort or timeout options.
 Therefore this design adds no Effect timeout around `GETDEL`: returning early from an uncancelable/queued command could
-allow a later deletion after the route already failed. Disabling the offline queue removes that queued-command case.
-An in-flight disconnect remains ambiguous because Redis may have executed the command before the reply was lost; it
-is never retried, and the callback denies whether the record remains or was consumed.
+allow a later deletion after the route already failed. Disabling the offline queue removes that queued-command case,
+while the socket-level timeout closes the transport and fails its pending queue. An in-flight disconnect or socket
+timeout remains ambiguous because Redis may have executed the command before the reply was lost; it is never retried,
+and the callback denies whether the record remains or was consumed.
 `redis` is a platform-node peer (`>=5 <7`), and the current lock resolution of 6.3.0 is not a substitute for a direct
 runtime declaration. Redis 8.10.2 in Compose supports `GETDEL`.
 
@@ -75,10 +87,11 @@ and
 [`packages/effect/src/persistence/Redis.ts`](https://github.com/Effect-TS/effect/blob/effect%404.0.5/packages/effect/src/persistence/Redis.ts),
 and at `redis@6.3.0` in
 [`packages/client/lib/client/index.ts`](https://github.com/redis/node-redis/blob/redis%406.3.0/packages/client/lib/client/index.ts).
-They establish the Layer option pass-through, pre-enqueue `disableOfflineQueue` rejection, generic `Redis.send`
-limitation, reconnect behavior, disconnect queue flushing, and error mapping above. The implementation checkout must
-still install its lock and verify those same installed declarations, the NodeRedis barrel/Layer result, Layer
-composition, and final type graph before coding; do not substitute the ahead-of-pin Effect checkout.
+They establish the Layer option pass-through, response-aware `pingInterval`, `socketTimeout`-driven socket
+destruction, pre-enqueue `disableOfflineQueue` rejection, generic `Redis.send` limitation, reconnect behavior,
+pending-command queue flushing, and error mapping above. The implementation checkout must still install its lock and
+verify those same installed declarations, the NodeRedis barrel/Layer result, Layer composition, and final type graph
+before coding; do not substitute the ahead-of-pin Effect checkout.
 
 ## 4. Store a short-lived attempt; give the browser only opaque correlation
 
@@ -137,11 +150,14 @@ preserve when no matching record was consumed or when failure is known to preced
 an ambiguous in-flight consume. It does not expose the private storage reason.
 
 Do not add an application timeout around `GETDEL` or retry it after an ambiguous Redis transport failure: the pinned
-generic Redis service cannot pass a cancel signal or safely prove removal from node-redis's command lifecycle. A
-command rejected before send while disconnected/reconnecting is typed unavailable and cannot execute later because
-the offline queue is disabled. A command already sent when the connection drops may have consumed the record; deny
-without retry. After reconnection, only a later new request may issue a new command. If an initiation write succeeds
-but its response is lost, issue neither redirect nor cookie; the unreachable record expires normally.
+generic Redis service cannot pass a cancel signal or safely prove removal from node-redis's command lifecycle. Use the
+configured node-redis socket timeout as the transport-level stall bound because it closes the socket and fails pending
+commands. A command rejected before send while disconnected/reconnecting is typed unavailable and cannot execute
+later because the offline queue is disabled. A command already sent when the connection drops or times out may have
+consumed the record; deny, clear correlation, and do not retry. An ordinary reconnect may serve only a later new
+request; a `SocketTimeoutError` requires process restart/recreation under the pinned NodeRedis strategy. If an
+initiation write succeeds but its response is lost, issue neither redirect nor cookie; the unreachable record expires
+normally.
 
 **Rationale**: Address validation before `GETDEL` prevents an unqualified cross-tenant or forged-state request from
 destroying a legitimate login. Consumption before exchange still gives at-most-once recovery under races across
@@ -159,10 +175,13 @@ decoding failures would leak internal data and couple the route to storage.
 **Decision**: Refactor the private provider child so initiation returns both the public destination and private
 attempt material. Completion rediscovers/configures the selected provider, then calls pinned
 `openid-client@6.8.8` `authorizationCodeGrant` with the recovered PKCE verifier, expected state and expected nonce,
-requiring an ID token. Use only claims returned after the library's authorization-response, code-exchange, signature,
-issuer, audience and nonce validation. Schema-decode the verified claim view and require nonempty `sub` plus an integer
-`auth_time`. Return only provider-neutral trusted facts: tenant alias, issuer, subject and signed authentication time.
-Do not return or retain authorization codes, access/refresh/ID tokens or raw claims.
+requiring an ID token. After discovery and before completion, call `enableNonRepudiationChecks(config)` so the grant
+cryptographically validates the ID-token JWS signature against the provider's `jwks_uri`; JWKS retrieval must use the
+same controlled fetch and enclosing provider-operation deadline. Use only claims returned after the library's
+authorization-response, code-exchange, issuer, audience, signature and nonce validation. Schema-decode the verified
+claim view and require nonempty `sub` plus an integer `auth_time`. Return only provider-neutral trusted facts: tenant
+alias, issuer, subject and signed authentication time. Do not return or retain authorization codes, access/refresh/ID
+tokens or raw claims.
 
 Do not pass an application-selected `maxAge` comparison until #158 decides transaction-time comparison and clock
 tolerance. The request continues to send `max_age=0`; this slice only requires that the verified signed claims contain
@@ -177,8 +196,10 @@ issuer without assuming email, display-name or vendor claims.
 freshness comparison before the tolerance policy exists. Treating a redirect, new correlation reference or unsigned
 claim as freshness is explicitly disallowed. Fetching UserInfo is unnecessary for the current identity contract.
 
-Primary API sources: pinned openid-client authorization-code example and `authorizationCodeGrant` /
-`AuthorizationCodeGrantChecks` documentation for 6.8.8.
+Primary API sources: pinned openid-client authorization-code example and `authorizationCodeGrant`,
+`AuthorizationCodeGrantChecks`, and `enableNonRepudiationChecks` declarations/source for 6.8.8. Installed declaration
+verification must confirm the non-repudiation API, its `jwks_uri` requirement, and use of the configured fetch/deadline
+before implementation proceeds.
 
 ## 7. Resolve confidential credentials through one private server-only boundary
 
@@ -214,8 +235,10 @@ implementation.
 
 The browser necessarily delivers `code`, `state`, or provider error parameters in the inbound callback URL. Consume
 them as request input, then never copy them into application response bodies, response headers or redirect locations,
-cookies, diagnostics, retained application state, or application-controlled telemetry. BDD may capture its own
-inbound URL transiently to construct a negative request, but asserts non-re-emission only from application output.
+cookies, diagnostics, post-callback application state, or application-controlled telemetry. Preserving the private,
+unconsumed attempt after an unqualified callback retains only its original expected state, nonce, and PKCE verifier;
+it does not copy the rejected callback input. BDD may capture its own inbound URL transiently to construct a negative
+request, but asserts non-re-emission only from application output.
 
 **Rationale**: Route Handlers own response cookies and headers without starting another runtime. A 204 gives the
 intermediate slice an observable successful callback boundary without exposing identity; #218 replaces this temporary
@@ -280,11 +303,12 @@ browser by the original valid provider return, asserting that the first response
 second can complete. Do not read Redis in Cucumber steps.
 
 The callback feature remains feature-level `@partial` with current lowercase requirement IDs. Real Keycloak proves
-the common successful completion path. Focused controlled-transport public-service tests cover signature/audience/
-nonce/claim failures that the tracked provider cannot safely synthesize; they supplement rather than replace the real
-completion scenario. Missing signed `auth_time` is rejected at the service boundary and, if the tracked Keycloak
-profile can produce a standards-valid no-`auth_time` response without a mock provider, may also receive HTTP/browser
-evidence; the plan does not weaken the claim or fabricate provider behavior when it cannot.
+the common successful completion path with non-repudiation checks enabled. Focused controlled-transport public-service
+tests cover cryptographic-signature/audience/nonce/claim failures that the tracked provider cannot safely synthesize;
+they supplement rather than replace the real completion scenario. Missing signed `auth_time` is rejected at the
+service boundary and, if the tracked Keycloak profile can produce a standards-valid no-`auth_time` response without a
+mock provider, may also receive HTTP/browser evidence; the plan does not weaken the claim or fabricate provider
+behavior when it cannot.
 
 A cancellation is called real Keycloak cancellation only when the provider UI actually emits the error callback.
 Otherwise the HTTP scenario is named an application-handled controlled provider-error callback at the real public
@@ -309,16 +333,21 @@ The launcher/orchestrator must keep the instance out of service and restart/recr
 restored. Only Redis command failures after successful startup map to typed authentication unavailability at
 `/auth/login` or `/auth/callback`; the design does not claim unrelated public routes survive initial Redis failure.
 
-After readiness, the node-redis client may reconnect, but `disableOfflineQueue: true` makes a new command submitted
-while disconnected/reconnecting reject before send; it maps to typed unavailability and is not executed after
-recovery. A command whose connection fails after it was sent is ambiguous, is not retried, and may have consumed the
-attempt. A later new request may succeed after the client emits ready again. There is no application `GETDEL` timeout
-because the pinned generic service cannot safely cancel its underlying Promise.
+After readiness, the node-redis client may reconnect after an ordinary disconnect, but `disableOfflineQueue: true`
+makes a new command submitted while disconnected/reconnecting reject before send; it maps to typed unavailability
+and is not executed after recovery. The configured 5,000 ms socket timeout closes a stalled-open connection and
+rejects pending commands. A command whose connection fails or times out after it was sent is ambiguous, is not
+retried, may have consumed the attempt, and clears correlation. Under the pinned NodeRedis reconnect strategy,
+`SocketTimeoutError` stops reconnection, so a fresh process/runtime is required after that failure; only ordinary
+disconnect recovery permits a later new request after the client emits ready. There is no application `GETDEL`
+timeout because the pinned generic service cannot safely cancel its underlying Promise.
 
 The readiness/startup evidence starts a production frontend with Redis unreachable and proves the process never
 passes its existing port/readiness gate, then restores Redis and starts a fresh process whose awaited asynchronous
 probe completes and which becomes ready. Runtime evidence separately interrupts Redis after readiness and proves
-authentication routes fail closed without handoff or session.
+authentication routes fail closed without handoff or session. A controlled TCP fault proxy also keeps the connection
+open while withholding replies, proving the transport closes it and fails the pending callback within the configured
+socket bound, no consume retry occurs, correlation clears, and recovery requires process restart/recreation.
 The blast radius of initial acquisition failure is the whole frontend process because the shared runtime is a host
 dependency; healthy sibling instances remain independently serviceable.
 

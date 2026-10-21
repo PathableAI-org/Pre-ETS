@@ -75,7 +75,11 @@ Until #218 supplies a session consumer, a successful `TrustedIdentity` is mapped
 - no redirect to protected content; and
 - no identity, provider claim, token, verifier, credential or transaction material; and
 - no re-emission of inbound `code`, `state`, or provider error parameters in the response body, response headers or
-  redirect location, cookies, diagnostics, retained application state, or application-controlled telemetry.
+  redirect location, cookies, diagnostics, post-callback application state, or application-controlled telemetry.
+
+The private, bounded, unconsumed recoverable attempt is the sole retention exception: it contains the expected state,
+nonce, and PKCE verifier required for the original valid return and is removed on actual consumption. None of those
+values enters browser-visible output, diagnostics, telemetry, or post-callback state.
 
 The 204 is an intermediate slice contract that makes selection of the validated-success HTTP branch observable
 without disclosing identity. It cannot prove the tenant, issuer, subject, or `auth_time` fields. Those exact values
@@ -91,8 +95,11 @@ sign-in-failure experience without automatically starting `/auth/login`. Operati
 after successful process startup also fails closed. Initial NodeRedis Layer acquisition failure prevents the whole
 frontend process from becoming ready, so no route-level response is promised until a fresh process starts after
 recovery. A Redis command rejected before send while disconnected/reconnecting cannot execute after recovery. An
-in-flight disconnect is ambiguous, is never retried, and may already have consumed the attempt; a later new request
-may succeed after reconnection. Internal distinctions are not disclosed through raw provider or storage messages.
+in-flight disconnect or socket timeout is ambiguous, is never retried, may already have consumed the attempt, and
+clears correlation. Ordinary disconnect recovery may permit a later new request after reconnection. A stalled-open
+connection is closed by the configured node-redis socket timeout; the pinned NodeRedis strategy stops reconnecting on
+`SocketTimeoutError`, so recovery then requires process/runtime restart or recreation. Internal distinctions are not
+disclosed through raw provider or storage messages.
 
 Safe public denial does not imply cookie deletion. Pre-consumption and no-record outcomes preserve correlation;
 terminal or ambiguous-consume outcomes clear it according to the service-returned disposition. A browser that first
@@ -108,8 +115,10 @@ Redis is a required process-readiness dependency. Boot must await `ManagedRuntim
 instrumentation import completes; the existing synchronous resolution probe cannot acquire the asynchronous
 NodeRedis Layer. Eager shared-runtime acquisition failure keeps the entire frontend process out of service; a healthy
 sibling instance is unaffected, and recovery requires restart/recreation after Redis is reachable. After readiness,
-Redis command failure maps only the affected authentication request to safe unavailability. A malformed explicitly
-supplied credential map or invalid transaction TTL also prevents readiness.
+Redis command failure maps the affected authentication request to safe unavailability. The production client uses
+`disableOfflineQueue: true`, a response-aware 1,000 ms health PING interval, and a 5,000 ms socket inactivity timeout;
+a socket timeout also makes the process/runtime unhealthy until restart/recreation under the pinned reconnect
+strategy. A malformed explicitly supplied credential map or invalid transaction TTL also prevents readiness.
 An absent credential-map variable is a valid empty map; public clients need no selected secret. A confidential tenant
 whose nonempty reference is absent from a valid map receives request-level authentication unavailability.
 
