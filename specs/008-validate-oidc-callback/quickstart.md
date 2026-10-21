@@ -13,10 +13,13 @@ pnpm install --frozen-lockfile
 pnpm --filter @pathableai/pre-ets-frontend exec tsc --version
 ```
 
-Before coding, inspect the installed 4.0.5 declarations for `@effect/platform-node/NodeRedis` and
-`effect/persistence/Redis`. Confirm the scoped Layer result/requirements, raw-command `send` shape, error types and
-finalization. Also inspect installed openid-client 6.8.8 grant/check/client-auth declarations and Next 16.4.2 Route
-Handler cookie/redirect declarations. The local Effect checkout is useful guidance but is not the product pin.
+Before coding, inspect the installed 4.0.5 declarations/source for `@effect/platform-node/NodeRedis` and
+`effect/persistence/Redis`, plus node-redis 6.3.0. Confirm the scoped Layer result/requirements, Layer option
+pass-through, `disableOfflineQueue` pre-send rejection behavior, raw-command `send` shape, lack of a cancellable
+per-command deadline/abort input, errors and finalization. Also inspect installed openid-client 6.8.8
+grant/check/client-auth declarations and Next 16.4.2 Route Handler cookie/redirect declarations. Exact tag source at
+`effect@4.0.5` and `redis@6.3.0` supports the plan, but installed locked declarations are the implementation gate;
+stop on a contract mismatch rather than adding a parallel Redis abstraction.
 
 Confirm `packages/frontend/package.json` directly declares exact `redis@6.3.0`; its lockfile presence as an Effect
 peer is insufficient.
@@ -44,6 +47,10 @@ The suite should establish:
 - cancellation, provider error, mixed/duplicate callback parameters, exchange/signature/issuer/audience/nonce failure,
   missing subject and missing signed `auth_time` deny;
 - a matching failed callback consumes the attempt;
+- inbound `code`, `state`, and provider-error values are consumed without being retained in service state or copied
+  into safe errors (their presence in the inbound callback request is expected);
+- absent credential configuration is an empty map, public clients need no selected secret, and a confidential tenant
+  with an unresolved nonempty reference receives request-level `AuthenticationUnavailable`;
 - expected typed denials/unavailability remain distinct from defects and interruption; and
 - no success type contains tokens, raw claims, credentials or application-session authority.
 
@@ -68,9 +75,17 @@ scoped NodeRedis client/service/runtime graphs, not two handles to one in-memory
 - instance A creates and independently composed instance B consumes;
 - a healthy bounded race yields exactly one successful winner and denies every other consumer; replay yields none;
 - a wrong-tenant or wrong-state callback does not consume the record, and the later valid callback succeeds;
-- `SET NX` cannot overwrite an existing correlation;
+- an existing qualified tenant/correlation/state address is not overwritten; the parent regenerates the entire
+  prepared attempt within its bounded retry, and the reserved original remains usable by its valid callback;
 - malformed bytes are consumed and safely denied; and
 - Redis server-clock expiry makes the attempt unrecoverable.
+
+Construct the production adapter with `disableOfflineQueue: true`. After readiness, force a known
+disconnected/reconnecting state and prove a consume submitted then rejects before send, maps to typed unavailability,
+does not execute after recovery, and leaves the original usable by a later valid callback after reconnection. Also
+exercise or deterministically fault an in-flight disconnect: do not retry, accept that the record may be consumed or
+present, and require that no second handoff is possible. Do not wrap `GETDEL` in an Effect timeout; the pinned generic
+Redis service cannot cancel that underlying command safely.
 
 For collision or malformed-byte setup, use only the fixture-scoped handle returned by the parent factory under the
 unique prefix. For real TTL evidence, use a short test-specific TTL and poll `PTTL`/`EXISTS` only as fixture
@@ -90,7 +105,9 @@ pnpm --filter @pathableai/pre-ets-frontend test:unit
 Assert actual adapter outcomes: login/callback status and redirect, private/no-store response, exact cookie security
 attributes and clearing, query multiplicity mapping, pre-storage tenant/authority/state rejection, existing tenant
 404/500, safe denial with no automatic login loop, empty successful callback 204, and absence of application-session/
-protected content. Do not assert runtime construction, private calls, Redis keys/JSON, provider objects or Next
+protected content. Assert that application-produced response bodies, headers/redirect locations and cookies do not
+re-emit inbound `code`, `state`, or provider error values. Do not assert those values were absent from the test's own
+inbound request, or assert runtime construction, private calls, Redis keys/JSON, provider objects or Next
 implementation internals.
 
 ## 5. Requirement-backed HTTP/browser evidence
@@ -117,10 +134,13 @@ pnpm test:bdd
 ```
 
 The feature-level `@partial` scenarios cover real completion as a validated-success 204 with correlation cleared and
-no session/protected content; cross-tenant/transaction mismatch; missing/invalid/expired recovery; replay; a healthy
-race with exactly one 204 winner and all others denied; and an application-handled controlled provider-error callback.
+no session/protected content or application re-emission of callback parameters; cross-tenant/transaction mismatch;
+missing/invalid/expired recovery; replay; a healthy race with exactly one 204 winner and all others denied; and an
+application-handled controlled provider-error callback.
 The browser does not inspect exact identity fields; public-service evidence proves tenant/issuer/subject/`auth_time`.
-Capture callback URLs/cookies only at HTTP/browser boundaries for controlled negative requests. Use a short per-
+Callback parameters necessarily appear in the inbound browser URL; inspect only application-produced output when
+asserting non-disclosure. Capture callback URLs/cookies only transiently at HTTP/browser boundaries for controlled
+negative requests. Use a short per-
 scenario transaction TTL for expiry, wait for the public callback to deny, and do not inspect Redis.
 
 Real Keycloak must establish the common completion path. Controlled-transport public-service tests may establish
@@ -135,10 +155,19 @@ controlled public-HTTP provider-error scenario and record real-provider cancella
 ## 6. Readiness and rollback evidence
 
 With Redis deliberately unreachable, start a fresh production frontend and assert that it never passes the existing
-port/readiness gate and serves no routes. Restore Redis, start a new process, and assert it becomes ready. Then stop or
-isolate Redis after readiness and assert `/auth/login` and `/auth/callback` map command failure to safe authentication
-unavailability with no handoff/session. Do not claim public-route survival during initial acquisition failure; its
-blast radius is the whole process and recovery requires restart/recreation.
+port/readiness gate and serves no routes. Restore Redis, start a new process, and assert it becomes ready. Repeat the
+startup boundary for configuration: absent `OIDC_CLIENT_SECRETS_JSON` is valid and becomes an empty map; malformed
+explicit JSON or an invalid map entry fails readiness without echo; absent TTL uses 600 seconds; valid integer
+boundaries 1 and 600 acquire;
+and zero, negative, fractional, nonnumeric, greater-than-600 and overflow-shaped TTL values fail readiness. Public
+clients need no secret; a confidential tenant whose nonempty reference is absent from a valid map reaches only
+request-level authentication unavailability.
+
+Then stop or isolate Redis after readiness. Prove a command rejected before send maps `/auth/login` or
+`/auth/callback` to safe authentication unavailability, never executes after reconnection, and permits a later new
+request to succeed when the client is ready. Prove an in-flight disconnect is not retried and may have consumed. Do
+not claim public-route survival during initial acquisition failure; its blast radius is the whole process and
+recovery requires restart/recreation.
 
 Exercise or assess one mixed-version transition in each direction. Old/new callback incompatibility may deny an
 in-flight login but must never accept it. Confirm rollback needs no migration and that new versioned keys plus host-

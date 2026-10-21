@@ -31,6 +31,13 @@
 
 ## Notes
 
+- Validation passed after the second independent critique remediation. The specification now limits callback
+  non-disclosure to application-produced output, retention, diagnostics, and application-controlled telemetry while
+  acknowledging that callback parameters necessarily transit the inbound browser URL.
+- Planning artifacts now define the exact offline-queue-disabled Redis failure model, credential-map startup/request
+  boundaries, the 600-second shorten-only TTL configuration, and qualified-address collision regeneration without
+  claiming global correlation uniqueness. These remain design decisions rather than implementation details in the
+  stakeholder specification.
 - Validation passed again after the first independent critique remediation, with no clarification markers. The
   specification now separates HTTP/browser 204 evidence from exact public-service identity evidence and makes
   pre-consume tenant/authority/query/state qualification explicit.
