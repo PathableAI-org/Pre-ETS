@@ -29,7 +29,7 @@ frontend production output into `.next`. After a production build,
 port; an invalid value prevents startup. The backend binds to `127.0.0.1` and
 stops on process shutdown. `/healthz` reports process liveness only: it does
 not check the database or establish readiness for domain requests. The backend
-does not yet expose visit endpoints.
+does not expose visit endpoints by default.
 
 The synthetic on-site create route is disabled by default. For local development
 only, apply the backend Flyway migrations to an isolated Postgres database, set
