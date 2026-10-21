@@ -111,3 +111,6 @@ jobs:
       - name: Run frontend unit tests
         if: needs.changes.outputs.code == 'true'
         run: pnpm --filter @pathableai/pre-ets-frontend test:unit
+      - name: Run domain schema tests
+        if: needs.changes.outputs.code == 'true'
+        run: pnpm --filter @pathableai/pre-ets-domain test

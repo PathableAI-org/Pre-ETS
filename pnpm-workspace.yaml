@@ -39,4 +39,3 @@ minimumReleaseAgeExclude:
   - "fallow-type-aware@3.33.1"
   - "fallow@3.33.1"
   - "prettier@3.9.10"
-  - effect@4.0.3
