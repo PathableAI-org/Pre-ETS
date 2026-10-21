@@ -9,14 +9,21 @@ openid-client 6.8.8 and Next 16.4.2 declarations before choosing imports or cons
 routes and external tests import this parent, never `lib/authentication/*`.
 
 ```ts
+type CorrelationDisposition = "preserve" | "clear"
+
+interface CallbackExpectedFailure {
+  readonly reason: AuthenticationDenied | AuthenticationUnavailable | HttpError
+  readonly correlationDisposition: CorrelationDisposition
+}
+
 interface AuthenticationService {
   readonly prepare: (
-    input: PrepareAuthenticationInput,
+    input: PrepareAuthenticationInput
   ) => Effect.Effect<PreparedAuthentication, AuthenticationUnavailable | HttpError>
 
   readonly complete: (
-    input: CompleteAuthenticationInput,
-  ) => Effect.Effect<TrustedIdentity, AuthenticationDenied | AuthenticationUnavailable | HttpError>
+    input: CompleteAuthenticationInput
+  ) => Effect.Effect<TrustedIdentity, CallbackExpectedFailure>
 }
 ```
 
@@ -25,11 +32,15 @@ provider payloads, tokens, URLs containing callback parameters, credentials or e
 continues to preserve the existing tenant 404/500 distinction. Defects and interruption remain outside the typed
 expected-error channel.
 
-`prepare` persists the attempt before it succeeds. `complete` independently resolves the request tenant and validates
-exact authority, callback shape, singular state, and correlation syntax before it derives an attempt address. It then
-atomically consumes one attempt, checks all binding/expiry rules, validates the provider response, and returns one
-provider-neutral trusted identity. A request that cannot derive the exact address does not consume the valid original.
-It never creates an application session.
+`prepare` resolves the tenant, normalizes the request Host, and requires it to equal the configured callback URL's
+Host before provider delegation, transaction creation, or correlation issuance. It then persists the attempt before
+it succeeds. `complete` independently resolves the request tenant and validates exact authority, callback shape,
+singular state, and correlation syntax before it derives an attempt address. It then atomically consumes one attempt,
+checks all binding/expiry rules, validates the provider response, and returns one provider-neutral trusted identity.
+A request that cannot derive the exact address does not consume the valid original. Expected completion failures
+carry only the route's safe correlation disposition: preserve when no matching attempt was consumed or failure is
+known to precede send, and clear after consume or an ambiguous in-flight consume. The wrapper exposes no private
+storage reason. The service never creates an application session.
 
 ## Parent-owned test construction
 
@@ -52,7 +63,7 @@ interface AuthenticationTestHarness {
 }
 
 declare const makeAuthenticationTestHarness: (
-  options: AuthenticationTestOptions,
+  options: AuthenticationTestOptions
 ) => AuthenticationTestHarness
 ```
 
@@ -100,7 +111,9 @@ authentication.ts
 - Never construct a runtime or long-lived Redis/provider client per request.
 - Build the production Redis Layer eagerly as part of the shared runtime. Initial acquisition failure prevents the
   whole frontend process from becoming ready; only command failures after readiness become typed authentication
-  unavailability. Recovery from initial failure requires process restart/recreation.
+  unavailability. Replace the current `runtime.runSync(...)` layer-resolution probe with an awaited
+  `runtime.runPromise(...)` call in boot orchestration before the instrumentation import completes, and dispose the
+  partially acquired runtime on failure. Recovery from initial failure requires process restart/recreation.
 - Do not put an application timeout around `Redis.send`/`GETDEL`. The pinned generic service accepts no per-command
   abort signal, so returning on an Effect deadline could leave an uncancelled command able to delete later.
 - Distinguish Redis failure points. A command rejected before send becomes typed unavailability and cannot later
@@ -118,11 +131,11 @@ The authentication parent consumes one private transaction capability with seman
 ```ts
 interface AuthenticationTransactions {
   readonly create: (
-    attempt: NewAuthenticationAttempt,
+    attempt: NewAuthenticationAttempt
   ) => Effect.Effect<StoredAttemptReference, TransactionUnavailable>
 
   readonly consume: (
-    address: AttemptAddress,
+    address: AttemptAddress
   ) => Effect.Effect<RecoverableAuthenticationAttempt, AttemptUnavailable | TransactionUnavailable>
 }
 ```
@@ -140,6 +153,11 @@ Production behavior:
 - never retry an ambiguous consume;
 - consume corrupt or mismatched bytes without restoration; and
 - retain no process-memory fallback.
+
+The parent maps transaction outcomes to correlation disposition without exposing them to the route: invalid or
+unqualified input, a missing qualified address, and a command rejected before send preserve the cookie; actual
+consume and an ambiguous in-flight consume clear it. This preserves the browser side of the same later-valid-callback
+guarantee established for the server attempt.
 
 The implementation may use `Redis.Redis.send` for these Redis commands. It must add `redis@6.3.0` as a direct
 frontend dependency because it is a peer of `@effect/platform-node`; the current transitive lock resolution is not
@@ -185,9 +203,12 @@ no secret. The value must not enter attempt persistence, diagnostics, callback o
 
 ## Route dependency contract
 
-`/auth/login` and `/auth/callback` are Node Route Handlers because they must write or clear the correlation cookie.
+`/auth/login` and `/auth/callback` are Node Route Handlers because they must write, preserve, or clear the correlation
+cookie.
 They call the shared runtime and public authentication parent only. They do not import Effect Redis/OIDC services,
-private authentication children, or construct their own Layer/runtime.
+private authentication children, or construct their own Layer/runtime. Login emits no redirect or cookie when the
+normalized request Host differs from the configured callback Host. Callback applies the public completion contract's
+correlation disposition: omit deletion on preserve and expire the matching host/path cookie on clear.
 
 ## Verification gate for installed declarations
 
