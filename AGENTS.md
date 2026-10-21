@@ -10,11 +10,27 @@
   changes. Read only the linked reference relevant to the task.
 - Apply the shared strict TypeScript settings to all code, including non-Effect code.
 
+## Module boundaries
+
+- Modules isolate logic recursively. Use a public entry such as `lib/tenant.ts` with
+  private child modules under `lib/tenant/`, for example `lib/tenant/config.ts`.
+  Only the owning parent imports its children. Sibling modules and external tests
+  use the parent's public interface; they must not import a sibling's children.
+- Re-export child capabilities through the parent only when a current consumer needs
+  them. Follow the same boundary rule when a child decomposes into further modules.
+- Introduce modules and capabilities for actual behavior, not speculative future
+  consumers. In particular, defer a secrets module/provider contract until there is
+  a real secret to read.
+
 ## Testing guidance
 
 Before designing or changing tests, read [Testing as evidence](docs/engineering/testing/README.md).
 For property tests, also read [Property-based testing](docs/engineering/testing/property-based-testing.md).
 Choose evidence for a named expectation and the boundary responsible for it; do not add tests solely for coverage.
+
+Verify observability manually or with temporary agent probes, inspecting real logs
+and exported OTel data. Do not retain durable tests of log output, spans, attributes,
+telemetry payloads, or exporter behavior. Keep durable tests focused on application outcomes.
 
 Before authoring or reviewing requirements BDD, step definitions, or supporting helpers, read
 [Requirements-backed BDD](docs/engineering/testing/requirements-bdd.md). Inspect the referenced requirements
@@ -30,9 +46,17 @@ Before designing or modifying Effect code in `packages/frontend`,
 read [Effect agent guidance](docs/engineering/effect-guidance.md) and the target
 workspace's `AGENTS.md`: [frontend](packages/frontend/AGENTS.md),
 [backend](packages/backend/AGENTS.md). This explicit routing also applies when an
-agent starts at the repository root. Consult relevant [upstream Effect documentation](https://effect.website/docs/)
-and source matching the target workspace's installed version, then verify APIs
-against its installed declarations before using examples.
+agent starts at the repository root. Locate the available Effect v4 checkout,
+read its `LLMS.md`, then only the linked examples/source relevant to the task.
+The local discovery path and source precedence are in the Effect guide. Verify
+APIs against the target workspace's installed declarations; a local checkout may
+be ahead of the product pins. Use external documentation only to fill local gaps.
+
+These Effect conventions apply to Effect workflows, not every file in the repository.
+Keep pure TypeScript, React/UI, Next.js adapters, and root tooling idiomatic to their
+own boundaries. Do not add Effect dependencies, services, or wrappers merely to
+imitate library examples. Reusable Effect generators use `Effect.fn` for useful
+tracing boundaries or `Effect.fnUntraced` otherwise; inline programs use `Effect.gen`.
 
 Product Effect pins are coordinated in the named `effect` catalog in
 [`pnpm-workspace.yaml`](pnpm-workspace.yaml), including `@effect/platform-node`.

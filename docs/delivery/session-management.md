@@ -77,17 +77,84 @@ Historical assertions can inform semantic regression choices, but must be assess
 contracts before reuse. [Session-state notes](../session-state.md), the historical capability ledger, and old
 SSO/rollout behavior do not prescribe the new implementation or establish its safety.
 
+## Shared-component ownership and handoff (2026-10-17)
+
+#153 owns construction of reusable tenant/OIDC/session capabilities, their public consumer contracts, real service/store lifecycle/race/outage evidence, and bounded reference application consumers. #154 owns comprehensive application integration of those same components: default protection across pages/handlers/actions/new resources, independent request-tenant enforcement, user-facing outcomes, and application-wide/multi-instance HTTP evidence. Shared files and components do not imply duplicate implementation or identical completion claims.
+
+The #153 children deliver reusable schema/configuration (#215), OIDC initiation/transaction (#216), callback validation
+(#217), shared session creation/read/record/cookie contract (#218), a reference enforcement consumer and
+protected-action fixture (#219), authoritative renewal/expiration/policy adoption (#220), and invalidation/outage
+behavior (#221). #154 extends these retained fixtures and components rather than rebuilding them.
+
+The session contract makes usable identity/deadline/effective warning policy, no usable session, and storage/service
+failure observable to consumers. Absent/expired/invalidated state cannot yield usable identity; failures cannot silently
+create replacement sessions or grant access. Known causes may inform recovery, but no cause-retention mechanism is
+required solely for freshness selection. Exact API/representation remains an implementation choice.
+
+#153 child completion rests on their service/store and bounded reference evidence. #154 later supplies comprehensive application enforcement and cross-instance HTTP renewal/expiry evidence; these downstream requirements do not block #153 construction closure. #155/#156 extend activity/logout/warning coordination, #157 recovery, and #158 completed provider freshness. Existing native containment and start dependencies remain unchanged. Remaining B6 clock/comparison/provider gates apply only to affected implementation.
+
+Maintainer expressly requested these ownership/evidence refinements on 2026-10-17. Existing approval/publication history
+is retained; local plan refinements await repository PR review and do not claim behavioral verification.
+
+## B6 decision update (2026-10-17)
+
+The maintainer selected fresh provider authentication for every login without a valid application session,
+including first-time visits, automatic entry, and explicit recovery. Valid application sessions remain reusable.
+SESSION-004 and SESSION-013 contain the working refinement pending Git/PR approval. Prior-expiration recognition
+is no longer needed to select freshness after old records disappear; no retention mechanism is required solely
+for that choice. This supersedes recognition-as-a-freshness-selection-gate language in the baseline and quoted
+issue drafts below, preserving their historical approval/publication records.
+
+B6 remains open for freshness comparison/clock tolerance, provider/broker support, and unsupported-provider
+handling. The request/evidence baseline below is selected; detailed validation remains gated. S1 initiation/callback and S2 identity/removal work retain those affected protocol/provider gates.
+Server Action HTTP 401/recovery and running-tab modal behavior remain unchanged. Verification must add first-time
+entry with existing SSO/no old application record, retain removed-record expiry cases, and preserve valid-session
+reuse. No executed freshness evidence has been assessed or claimed.
+
+### B6 protocol baseline (2026-10-17)
+
+The maintainer selected the OIDC protocol baseline on 2026-10-17: every login without a valid
+application session requests `max_age=0`; the callback validates the signed ID token and its `auth_time`
+as evidence of a fresh authentication event before creating an authenticated application session. Missing
+or stale freshness evidence is rejected. A redirect, a new session ID, or `prompt=login` alone is not proof.
+The comparison with the authentication transaction and allowed clock tolerance remain to be specified;
+provider/broker support and unsupported-provider handling remain open. No tolerance value or provider
+compatibility is approved or verified by this selection. Protocol source:
+[OIDC Core authorization request](https://openid.net/specs/openid-connect-core-1_0.html#AuthRequest) and
+[ID token validation](https://openid.net/specs/openid-connect-core-1_0.html#IDTokenValidation).
+
+### B6 provider-neutral compatibility evidence (2026-10-17)
+
+The maintainer requires provider-neutral, standards-based OIDC integration driven by tenant configuration,
+without designing application behavior around a particular vendor. Microsoft identity integration is a
+first-class compatibility test scenario. The existing repository Docker Compose Keycloak service and tracked
+realm are the current development/test environment; no additional identity stack is introduced.
+
+Run the same initiation, callback validation, `max_age=0` / signed-ID-token `auth_time` freshness, existing-SSO,
+missing/stale evidence, failure/cancellation, tenant-isolation, and session-establishment expectations against
+each supported integration. Provider-specific setup belongs in configuration and test fixtures rather than
+provider-specific application policy. Passing local Keycloak scenarios does not establish Microsoft behavior
+or universal OIDC-provider compatibility. Microsoft scenarios remain explicitly outstanding until executed
+against a real Microsoft integration; no Microsoft environment access or successful execution is claimed.
+The exact Microsoft product/tenant and any direct-versus-broker topology are not yet established. Relevant
+broker chains require their own freshness evidence before compatibility is claimed. Clock tolerance and
+unsupported-provider handling remain open B6 decisions.
+
+Source: maintainer direction on 2026-10-17. Repository inspection confirmed the Keycloak service in
+[compose.yaml](../../compose.yaml) and its tracked realm in
+[docker/keycloak/pre-ets-realm.json](../../docker/keycloak/pre-ets-realm.json); containers were not started or assessed.
+
 ## Blockers and decisions
 
-| ID | Affected work                                               | Current disposition                                                                                                                                                                                                                                                                                                                                                                       |
-| -- | ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| B0 | All SESSION criteria / S1–S6                                | Resolved: accepted requirements and prior decompositions are recorded in PRs #114/#151/#185. This changed execution proposal still needs renewed PR approval.                                                                                                                                                                                                                             |
-| B1 | SESSION-001 / S1                                            | Resolved in PR #185: default frontend protection, explicit public exceptions, public assets without protected information, and diagnostics without session creation. Engineering chooses enforcement.                                                                                                                                                                                     |
-| B2 | SESSION-004/007/012 / S1, S5                                | Resolved in PR #185: fresh page entry starts tenant OIDC; expired/missing-record Server Actions return HTTP 401 with explicit recovery; running tabs conceal content with a blocking modal. No recognition-retention duration is adopted.                                                                                                                                                 |
-| B3 | SESSION-006 / S2                                            | Resolved in PR #185: distributed session storage without affinity; no arbitrary application-value representation or capacity obligation.                                                                                                                                                                                                                                                  |
-| B4 | SESSION-008/009/011 / S2–S4                                 | Resolved in PR #185: omitted timeout is 30 minutes; warning defaults to five minutes before expiry except default disabling at a five-minute timeout; explicit 0 disables warning. Reject invalid settings. Adopt current timeout/warning policy on qualifying authoritative refresh; deliberate requests and meaningful input qualify, movement/background traffic do not.               |
-| B5 | SESSION-009/010/011/012 / S3, S4, S5 browser increment      | Decide communication delay, synchronization latency, and suspended/resumed protection before affected browser implementation/evidence. Isolation and server authority are required. S5 Server Action recovery is independent of this browser gate. Heartbeat/connection-loss input behavior belongs to a separate pending requirement.                                                    |
-| B6 | SESSION-013 and expired SESSION-004 / S6, S1/S2 composition | Resolve freshness request/response semantics, clock tolerance, broker/provider support, failure behavior, and recognition after old-state removal before implementing affected freshness behavior. Start this design before session-record and callback decisions are committed; selected implementation follows resolution. No retention period or protocol semantics are invented here. |
+| ID | Affected work                                          | Current disposition                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| -- | ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| B0 | All SESSION criteria / S1–S6                           | Resolved: accepted requirements and prior decompositions are recorded in PRs #114/#151/#185. This changed execution proposal still needs renewed PR approval.                                                                                                                                                                                                                                                                                             |
+| B1 | SESSION-001 / S1                                       | Resolved in PR #185: default frontend protection, explicit public exceptions, public assets without protected information, and diagnostics without session creation. Engineering chooses enforcement.                                                                                                                                                                                                                                                     |
+| B2 | SESSION-004/007/012 / S1, S5                           | Resolved in PR #185: fresh page entry starts tenant OIDC; expired/missing-record Server Actions return HTTP 401 with explicit recovery; running tabs conceal content with a blocking modal. No recognition-retention duration is adopted.                                                                                                                                                                                                                 |
+| B3 | SESSION-006 / S2                                       | Resolved in PR #185: distributed session storage without affinity; no arbitrary application-value representation or capacity obligation.                                                                                                                                                                                                                                                                                                                  |
+| B4 | SESSION-008/009/011 / S2–S4                            | Resolved in PR #185: omitted timeout is 30 minutes; warning defaults to five minutes before expiry except default disabling at a five-minute timeout; explicit 0 disables warning. Reject invalid settings. Adopt current timeout/warning policy on qualifying authoritative refresh; deliberate requests and meaningful input qualify, movement/background traffic do not.                                                                               |
+| B5 | SESSION-009/010/011/012 / S3, S4, S5 browser increment | Decide communication delay, synchronization latency, and suspended/resumed protection before affected browser implementation/evidence. Isolation and server authority are required. S5 Server Action recovery is independent of this browser gate. Heartbeat/connection-loss input behavior belongs to a separate pending requirement.                                                                                                                    |
+| B6 | SESSION-013 and SESSION-004 / S6, S1/S2 composition    | Partly resolved by maintainer on 2026-10-17: every login without a valid application session requires fresh authentication, including first-time visits; prior-expiration recognition is unnecessary solely to select freshness. Protocol baseline: `max_age=0` and validated signed-ID-token `auth_time`; comparison/clock tolerance, provider/broker support, and unsupported-provider handling remain open. Working refinement awaits Git/PR approval. |
 
 B5/B6 design can proceed independently. Partial increments can merge with explicit limits; final shipping requires
 their affected gates and evidence. Engineering experiments do not approve unresolved product policy.
@@ -211,6 +278,10 @@ The existing body remains approved at PR #185; the following is a draft revision
 **Delivery references:** https://github.com/PathableAI-org/Pre-ETS/issues/154
 
 ### S2 — Share session identity and authoritative idle state across instances
+
+The maintainer-authorized [seven PR steps](session-management-s2-steps.md) record the 2026-10-17 subdivision
+under #153, including coordinated S1 authentication work and verified publication identities. The supplement
+preserves this plan's prior approval history and remains draft pending repository review.
 
 **Outcome:** Share session identity and authoritative idle state across instances.
 

@@ -16,8 +16,10 @@ Read the root [AGENTS.md](../../AGENTS.md) before changing this workspace.
 
 This workspace is Effect-first for agents. Before designing or modifying Effect
 code, read [Effect agent guidance](../../docs/engineering/effect-guidance.md),
-consult relevant [upstream Effect documentation](https://effect.website/docs/), and verify APIs
-against this workspace's installed Effect types. Product pins come from the named
+then the local Effect v4 checkout's `LLMS.md` and relevant linked examples/source.
+Verify APIs against this workspace's installed Effect types. Keep React components,
+pure transformations, and Next.js host adapters idiomatic; execute application Effects
+through the host's shared runtime. Product pins come from the named
 `effect` catalog in [`pnpm-workspace.yaml`](../../pnpm-workspace.yaml).
 
 Own presentation, tenant configuration, OIDC orchestration, and temporary

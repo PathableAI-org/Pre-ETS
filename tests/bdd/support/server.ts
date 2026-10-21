@@ -11,7 +11,7 @@ import { sessionCookieHeader } from "./fixtures.ts"
 import { listenOnLoopback } from "./listen.ts"
 
 const frontend = path.resolve("packages/frontend")
-export async function requestSite(world: AppWorld, host: string, document = true): Promise<void> {
+export async function requestSite(world: AppWorld, host: string, document = true, requestPath = "/"): Promise<void> {
   await startSite(world)
   world.response = await new Promise((resolve, reject) => {
     const request = http.get({
@@ -23,7 +23,7 @@ export async function requestSite(world: AppWorld, host: string, document = true
         ...(document ? { Accept: "text/html", "sec-fetch-dest": "document" } : { Accept: "application/json" })
       },
       hostname: "127.0.0.1",
-      path: world.extraHeaders["x-bdd-query"] ?? "/",
+      path: requestPath,
       port: world.port
     }, (response) => {
       let body = ""
@@ -102,17 +102,11 @@ function signalProcessGroup(pid: number, signal: NodeJS.Signals): void {
 function siteEnv(world: AppWorld): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {
     ...process.env,
-    BDD_ALLOW_LOOPBACK_HTTP: "1",
     NEXT_TELEMETRY_DISABLED: "1",
     NODE_ENV: world.runtime,
-    OIDC_CLIENT_SECRETS_JSON: "{}",
-    OIDC_TX_KEY_PREFIX: `${world.keyPrefix}oidc:`,
-    OIDC_TX_SIGNING_SECRET: Buffer.from(world.signingSecret).toString("base64url"),
+    OIDC_ALLOW_INSECURE_LOOPBACK: String(world.allowInsecureLoopback),
+    OIDC_CALLBACK_ORIGINS_JSON: JSON.stringify(world.callbackOrigins),
     REDIS_URL: world.redisUrl,
-    SESSION_KEY_PREFIX: world.keyPrefix,
-    SESSION_SIGNING_SECRET: Buffer.from(world.signingSecret).toString("base64url"),
-    SESSION_STORE_TIMEOUT_MS: "2000",
-    SESSION_TTL_SECONDS: "86400",
     TENANT_CONFIG_DIR: world.directory,
     TENANT_CONFIG_RECORDS_JSON: "",
     TENANT_LOCAL_CONFIG_JSON: "",

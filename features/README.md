@@ -1,7 +1,7 @@
 # Requirements BDD
 
 Executable acceptance scenarios live under [`tests/bdd/requirements/`](../tests/bdd/requirements/).
-They observe a running Next.js application over HTTP and in Chromium for missing-page presentation.
+They observe a running Next.js application over HTTP and in Chromium for missing-page presentation and real-provider delegation.
 Tests never connect to Redis or other backing services directly; Compose (or CI services) may still run for the app process.
 
 Before authoring or reviewing scenarios and their steps, read
@@ -14,8 +14,16 @@ scenarios remain in the [migration ledger](TRACEABILITY.md) (not an active runne
 
 ## Run
 
-From the repository root, with Redis available when the app needs it (the runner never manages
-Compose):
+From the repository root, start the tracked Keycloak realm and wait for discovery before successful initiation
+scenarios. The runner never manages Compose. Redis may run for other application capabilities; initiation itself
+does not use it:
+
+```sh
+docker compose up -d keycloak
+curl --fail http://127.0.0.1:8080/realms/pre-ets/.well-known/openid-configuration
+```
+
+Install Chromium before runtime scenarios and the browser-routing harness checks:
 
 ```sh
 pnpm test:bdd:dry
@@ -24,8 +32,12 @@ pnpm test:bdd
 ```
 
 `REDIS_URL` defaults to `redis://127.0.0.1:6379` for the owned Next process. Each scenario owns a
-temporary tenant directory and random session signing material. Cleanup removes only that
-scenario's resources.
+temporary tenant directory and explicit callback origins/loopback permission. Cleanup removes only that
+scenario's resources. The registered `http://springfield.localhost:3000` and
+`http://shelbyville.localhost:3000` callback origins do not follow Next's random transport port or logical
+`example.test` request Hosts. Success scenarios require the tracked real Keycloak clients. They stop at
+provider arrival; callback validation, recoverable correlation, stored sessions and verified freshness remain
+incomplete. Diagnostics, raw root routing and tenant rejection need no reachable provider.
 
 | Command                | Evidence                                                                              |
 | ---------------------- | ------------------------------------------------------------------------------------- |
@@ -43,13 +55,16 @@ Optional `@development` selects `next dev`; otherwise scenarios use production `
 Dependency tags such as `@redis` are not required—the app receives `REDIS_URL`
 whenever the harness starts it.
 
-Steps use HTTP for status/content claims and Chromium for missing-page presentation.
+Steps use unfollowed HTTP for status/content claims: root 307 is separate from the tenant-dependent login
+response. Chromium follows native redirects through a scoped proxy that preserves application Hosts and leaves
+external provider destinations intact; it establishes missing-page presentation and real provider arrival.
 Permission-denial scenarios require a non-root user and a filesystem that enforces Unix permissions;
 the setup checks that access is actually denied before asserting an application response.
 See [step guidance](../tests/bdd/steps/README.md).
 
-CI runs discovery separately and executes the runtime suite on relevant PRs, main, and manual
-dispatch. Real-Keycloak E2E stays manual.
+CI provisions the pinned real Keycloak realm with bounded readiness and cleanup. It runs requirements BDD
+and the production safeguard smoke nightly at 06:17 UTC on `main`.
+Manual dispatch is also restricted to `main`; there is no CI dry-run job. Real-Keycloak E2E stays manual.
 
 ## Gherkin linting and formatting
 
