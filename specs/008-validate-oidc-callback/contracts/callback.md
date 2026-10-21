@@ -8,6 +8,9 @@ access to #218.
 ### Success
 
 - Independently resolve the request tenant through the public authentication service.
+- Normalize the request Host and require it to match the configured callback URL's Host before provider delegation
+  or transaction creation. Do not mint correlation on an alternate host where the host-only cookie cannot reach the
+  callback.
 - Create the recoverable attempt before issuing browser correlation or provider delegation.
 - Return the existing temporary provider redirect (HTTP 307) and one opaque correlation cookie.
 - Cookie attributes: host-only (no `Domain`), `HttpOnly`, `SameSite=Lax`, `Path=/auth/callback`, `Max-Age` aligned to
@@ -19,6 +22,8 @@ access to #218.
 ### Expected failure
 
 - Tenant selection/read/schema failures retain their existing real 404/500 distinction.
+- A tenant-resolving initiation Host that differs from the configured callback Host fails safely before provider
+  delegation, transaction creation, or correlation issuance.
 - Authentication/transaction/provider unavailability maps to the existing safe sign-in-failure presentation.
 - A failed preparation emits neither a usable provider redirect nor a correlation cookie. A persisted record whose
   response is lost is unreachable and expires; it is not recovered through another browser identifier.
@@ -32,9 +37,13 @@ The cookie value is the opaque `BrowserCorrelation` only. Its name is an adapter
 implementation and tested through HTTP behavior. It is not the provider `state`, a bearer identity, a serialized
 attempt or an application-session cookie.
 
-The callback clears it using matching host/path semantics on every response where it can address the artifact,
-including success, denial and expected unavailability. Cookie deletion does not determine whether the server record
-was consumed; the public authentication outcome does.
+The callback's public service result includes a safe correlation disposition, independent of the public failure
+presentation. Preserve the cookie when the callback is unqualified, no matching live record is found, or a Redis
+command is known to have failed before send/consume. This includes missing, malformed, duplicate, or wrong state,
+tenant/authority/query/correlation rejection, and qualified lookup miss; preserving the cookie lets a later valid
+provider return recover the original attempt. Clear it with matching host/path semantics after a matching record was
+consumed, on success, or after an ambiguous in-flight consume that may have deleted it. The disposition exposes no
+Redis key, payload, provider material, or private failure reason.
 
 ## `GET /auth/callback`
 
@@ -85,15 +94,22 @@ recovery. A Redis command rejected before send while disconnected/reconnecting c
 in-flight disconnect is ambiguous, is never retried, and may already have consumed the attempt; a later new request
 may succeed after reconnection. Internal distinctions are not disclosed through raw provider or storage messages.
 
+Safe public denial does not imply cookie deletion. Pre-consumption and no-record outcomes preserve correlation;
+terminal or ambiguous-consume outcomes clear it according to the service-returned disposition. A browser that first
+submits an invalid or wrong-state callback must retain the artifact and be able to complete the later valid provider
+return while the original attempt remains live.
+
 Tenant resolution/configuration still controls its existing 404/500 response. Callback public reachability is not
 callback acceptance and does not authorize content.
 
 ## Readiness, rollout, and rollback
 
-Redis is a required process-readiness dependency. Eager shared-runtime acquisition failure keeps the entire frontend
-process out of service; a healthy sibling instance is unaffected, and recovery requires restart/recreation after
-Redis is reachable. After readiness, Redis command failure maps only the affected authentication request to safe
-unavailability. A malformed explicitly supplied credential map or invalid transaction TTL also prevents readiness.
+Redis is a required process-readiness dependency. Boot must await `ManagedRuntime.runPromise(...)` before the
+instrumentation import completes; the existing synchronous resolution probe cannot acquire the asynchronous
+NodeRedis Layer. Eager shared-runtime acquisition failure keeps the entire frontend process out of service; a healthy
+sibling instance is unaffected, and recovery requires restart/recreation after Redis is reachable. After readiness,
+Redis command failure maps only the affected authentication request to safe unavailability. A malformed explicitly
+supplied credential map or invalid transaction TTL also prevents readiness.
 An absent credential-map variable is a valid empty map; public clients need no selected secret. A confidential tenant
 whose nonempty reference is absent from a valid map receives request-level authentication unavailability.
 
@@ -110,8 +126,9 @@ expire within the bounded attempt lifetime.
 
 Use a Route Handler redirect/response rather than catching Next navigation sentinels. Preserve exact query
 multiplicity until validation. Do not construct callback URLs from untrusted forwarded headers. Continue using the
-process-owned alias-to-origin mapping selected by the tenant configuration and compare recovered normalized return
-authority to the current request.
+process-owned alias-to-origin mapping selected by the tenant configuration. Compare the normalized initiation Host
+to the configured callback Host before delegation, and compare recovered normalized return authority to the current
+callback request.
 
 ## Requirements BDD contract
 
@@ -130,10 +147,13 @@ BDD observes actual HTTP/browser behavior. Real Keycloak completion traverses th
 under one exact registered tenant authority: `/`, `/auth/login`, and provider departure route to instance A, while
 `/auth/callback` on that same authority routes to independently composed instance B. Both receive the same Host. The
 harness proves A's host-only callback-path cookie reaches B and is not sent to another tenant authority. BDD asserts
-the empty 204, correlation clearing, no re-emission of callback parameters in application-produced output, and no
-session/protected output. It does not inspect identity fields or claim its own inbound request lacked callback
-parameters. Prepared identities, a mock callback or direct service invocation cannot replace the real completion
-scenario. Steps do not
+the empty 204, terminal correlation clearing, no re-emission of callback parameters in application-produced output,
+and no session/protected output. It also exercises an invalid or wrong-state callback followed in the same browser by
+the original valid provider return, proving the first response preserves correlation and the second can complete.
+Focused HTTP route evidence separately proves that a tenant-resolving initiation Host incompatible with its
+configured callback Host produces no provider redirect, transaction, or cookie. BDD does not inspect identity fields
+or claim its own inbound request lacked callback parameters. Prepared identities, a mock callback or direct service
+invocation cannot replace the real completion scenario. Steps do not
 inspect Redis, serialized attempts, private modules, log/span payloads or credentials. Dry-run is discovery only,
 never evidence.
 

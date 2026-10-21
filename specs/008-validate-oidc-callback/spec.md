@@ -11,7 +11,7 @@
 **Issue and scope**: [#217](https://github.com/PathableAI-org/Pre-ETS/issues/217) is S2-C, a native child of
 [#153](https://github.com/PathableAI-org/Pre-ETS/issues/153) under
 [#152](https://github.com/PathableAI-org/Pre-ETS/issues/152). Its start prerequisite, #216, is complete on the
-inspected `origin/main` baseline `b514237d5ffc49180ad683a5cfe77b808cc19c5c`. This feature connects the
+inspected `origin/main` baseline `1d3aef273cfb3ae57f84b4517a0c33a25aeaa81a`. This feature connects the
 already-delivered tenant OIDC initiation to trustworthy callback validation. It does not create an authenticated
 application session, grant protected access, or complete application-wide callback/error integration.
 
@@ -71,6 +71,9 @@ creates no authenticated application session, and reveals no protected or secret
 4. **Given** two callbacks race to consume the same valid attempt while the callback dependencies are healthy,
    **When** both are processed, **Then** exactly one produces a trusted identity handoff and all others are denied.
    Under arbitrary operational failure, at most one handoff remains the safety invariant.
+5. **Given** a browser still holds a valid recoverable attempt, **When** an unqualified callback with missing,
+   malformed, duplicate, or wrong state is denied before the attempt is consumed, **Then** the browser correlation
+   is preserved and the later valid provider callback can still complete the original attempt.
 
 ---
 
@@ -104,6 +107,9 @@ unexecuted.
 ### Edge Cases
 
 - The login is initiated on one application instance and returned to another without client affinity.
+- A request resolves a tenant on a host that differs from that tenant's configured callback host. Initiation must
+  fail before provider delegation and before creating browser correlation rather than issuing an unusable host-only
+  cookie.
 - Two tenants use distinguishable provider/client configurations and their callbacks are interleaved.
 - A browser sends a valid transaction reference on the wrong tenant host or a callback for one tenant is directed
   to another tenant's callback boundary.
@@ -130,7 +136,9 @@ These are feature-local acceptance statements derived from the accepted durable 
 `origin/main` baseline. They do not create new durable requirement IDs or resolve the open B6 policies.
 
 - **FR-001**: Before redirecting the browser to the provider, the system MUST make the tenant-bound authentication
-  attempt recoverable across the provider round trip and across independently running application instances.
+  attempt recoverable across the provider round trip and across independently running application instances. The
+  normalized initiation host MUST match the configured callback host before provider delegation or correlation
+  issuance so the host-only artifact can reach the callback; an incompatible host MUST fail preparation.
   Sources: SESSION-002 AC1–2 and the approved S2-C handoff from #216.
 - **FR-002**: Browser correlation MUST identify the originating attempt without exposing provider credentials,
   tokens, the proof verifier, raw provider payloads, trusted identity, or other secret material. Sources:
@@ -140,7 +148,9 @@ These are feature-local acceptance statements derived from the accepted durable 
   provider state, and recovered attempt all belong to the same login. Host/tenant, exact callback authority, query
   shape, and singular state MUST be validated before one-time consumption is attempted. A wrong tenant, authority,
   missing/duplicate/wrong state, or malformed callback MUST NOT consume an otherwise valid attempt. No fallback
-  tenant is permitted. Sources: SESSION-002 AC1–2 and the constitution's tenant-isolation principle.
+  tenant is permitted. A callback known not to have consumed the attempt MUST preserve the browser correlation so a
+  later valid provider return can still recover it. Sources: SESSION-002 AC1–2 and the constitution's tenant-
+  isolation principle.
 - **FR-004**: Recovery and consumption of an authentication attempt MUST be atomic and one-time. Missing, invalid,
   expired, consumed, or concurrently replayed attempts MUST NOT produce a trusted identity handoff. Creating a new
   attempt MUST NOT replace an already recoverable attempt at the same qualified address. Source: the approved S2-C
@@ -189,25 +199,25 @@ These are feature-local acceptance statements derived from the accepted durable 
 
 ### External contract expectations
 
-| Boundary | Expected observable contract | Partial limit |
-| --- | --- | --- |
-| Authentication initiation | Creates a recoverable, tenant-bound attempt before provider delegation and gives the browser only safe correlation state | Does not create an authenticated application session or prove provider completion |
-| Cross-instance round trip | An attempt begun through one running instance can be recovered and consumed by another | Does not establish #218's distributed application-session record or cookie contract |
-| Public callback request | Independently resolves the request tenant and validates correlation, transaction, provider response, signed identity evidence, and tenant binding | Public reachability is not acceptance; comprehensive callback/error presentation belongs to #154 |
-| Attempt consumption | Exactly one valid consumer can obtain a trusted identity handoff; expiry, invalidity, races, and replay fail closed | Representation, storage technology, and cleanup mechanism remain implementation choices |
-| Trusted identity handoff | Carries only validated user and tenant identity needed by a downstream session consumer | Is not an application session, cookie, authorization decision, or grant of protected access |
-| Provider failure or cancellation | Produces a denied authentication outcome with no usable trusted identity | Exact user-facing presentation and recovery composition remain #154/#157 work |
-| Freshness evidence | Validates signed `auth_time` presence and preserves `max_age=0` request-side evidence | Staleness comparison, tolerance, broker/provider support, and unsupported-provider policy remain #158/B6 work |
-| Configuration and secrets | Supports the accepted public/confidential tenant contract with any credential resolved server-side and never disclosed | No vendor-specific secret backend, provider policy, or diagnostic redaction contract is introduced |
+| Boundary                         | Expected observable contract                                                                                                                      | Partial limit                                                                                                 |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Authentication initiation        | Creates a recoverable, tenant-bound attempt before provider delegation and gives the browser only safe correlation state                          | Does not create an authenticated application session or prove provider completion                             |
+| Cross-instance round trip        | An attempt begun through one running instance can be recovered and consumed by another                                                            | Does not establish #218's distributed application-session record or cookie contract                           |
+| Public callback request          | Independently resolves the request tenant and validates correlation, transaction, provider response, signed identity evidence, and tenant binding | Public reachability is not acceptance; comprehensive callback/error presentation belongs to #154              |
+| Attempt consumption              | Exactly one valid consumer can obtain a trusted identity handoff; expiry, invalidity, races, and replay fail closed                               | Representation, storage technology, and cleanup mechanism remain implementation choices                       |
+| Trusted identity handoff         | Carries only validated user and tenant identity needed by a downstream session consumer                                                           | Is not an application session, cookie, authorization decision, or grant of protected access                   |
+| Provider failure or cancellation | Produces a denied authentication outcome with no usable trusted identity                                                                          | Exact user-facing presentation and recovery composition remain #154/#157 work                                 |
+| Freshness evidence               | Validates signed `auth_time` presence and preserves `max_age=0` request-side evidence                                                             | Staleness comparison, tolerance, broker/provider support, and unsupported-provider policy remain #158/B6 work |
+| Configuration and secrets        | Supports the accepted public/confidential tenant contract with any credential resolved server-side and never disclosed                            | No vendor-specific secret backend, provider policy, or diagnostic redaction contract is introduced            |
 
 ### Relevant requirements and partial contribution
 
-| Durable requirement | Contribution targeted here | Remaining after this feature |
-| --- | --- | --- |
-| [PREETS-SESSION-002](../../docs/requirements/session/PREETS-SESSION-002.md) AC1–3 | Complete the tenant-specific provider round trip, including recoverable correlation and callback validation, without a local credential experience | Real Microsoft and relevant broker-chain compatibility remain unexecuted; application-wide composition remains #154 |
-| [PREETS-SESSION-003](../../docs/requirements/session/PREETS-SESSION-003.md) AC1–2 | Produce trusted user/tenant identity and prove rejected callbacks cannot create a session; this is a validated-identity prerequisite only | #218 creates the authenticated application session; later protected access completes AC1–3 |
-| [PREETS-SECURITY-001](../../docs/requirements/security/PREETS-SECURITY-001.md) AC1–3 | Preserve non-secret tenant/diagnostic configuration and separate any required client credential behind a server-only vendor-neutral boundary | External producer/content-control limits and any concrete secret provider integration remain outside this feature |
-| [PREETS-SESSION-013](../../docs/requirements/session/PREETS-SESSION-013.md) selected baseline | Validate signed `auth_time` presence alongside the already-delivered `max_age=0` request | Comparison to the login transaction, clock tolerance, provider/broker support, stale handling policy, recovery, and new-session establishment remain #158/B6 |
+| Durable requirement                                                                           | Contribution targeted here                                                                                                                         | Remaining after this feature                                                                                                                                 |
+| --------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [PREETS-SESSION-002](../../docs/requirements/session/PREETS-SESSION-002.md) AC1–3             | Complete the tenant-specific provider round trip, including recoverable correlation and callback validation, without a local credential experience | Real Microsoft and relevant broker-chain compatibility remain unexecuted; application-wide composition remains #154                                          |
+| [PREETS-SESSION-003](../../docs/requirements/session/PREETS-SESSION-003.md) AC1–2             | Produce trusted user/tenant identity and prove rejected callbacks cannot create a session; this is a validated-identity prerequisite only          | #218 creates the authenticated application session; later protected access completes AC1–3                                                                   |
+| [PREETS-SECURITY-001](../../docs/requirements/security/PREETS-SECURITY-001.md) AC1–3          | Preserve non-secret tenant/diagnostic configuration and separate any required client credential behind a server-only vendor-neutral boundary       | External producer/content-control limits and any concrete secret provider integration remain outside this feature                                            |
+| [PREETS-SESSION-013](../../docs/requirements/session/PREETS-SESSION-013.md) selected baseline | Validate signed `auth_time` presence alongside the already-delivered `max_age=0` request                                                           | Comparison to the login transaction, clock tolerance, provider/broker support, stale handling policy, recovery, and new-session establishment remain #158/B6 |
 
 ### Expected requirements BDD changes
 
@@ -232,6 +242,8 @@ not create active Gherkin, step bindings, or runtime evidence. Use the repositor
    - a complete real Keycloak round trip through the actual callback boundary, initiated on one application
      instance and returned to another;
    - cross-tenant and correlation/transaction mismatch;
+   - an invalid or wrong-state callback followed in the same browser by the original valid provider callback,
+     proving that pre-consumption denial preserves correlation as well as the server attempt;
    - missing, invalid, and expired transaction recovery;
    - first consumption followed by replay, plus a concurrent-consumption case at the responsible boundary;
    - an application-handled controlled provider-error callback at the public HTTP boundary; add real Keycloak
@@ -281,13 +293,17 @@ Record Microsoft and broker-chain scenarios as unexecuted limitations until actu
   sequential replays produce no additional handoff; under arbitrary operational failure, at most one handoff is the
   retained safety invariant.
 - **SC-004**: Across every exercised success and rejection path, application-produced response bodies, response
-  headers and redirect locations, cookies other than opaque correlation clearing, diagnostics, retained application
-  state, and application-controlled telemetry contain zero credentials, tokens, proof verifiers, raw provider
-  payloads, inbound callback parameters, or protected content. This criterion does not claim `code`, `state`, or
-  provider error parameters are absent from the inbound browser callback URL that carries them to the application.
+  headers and redirect locations, correlation-cookie issuance/preservation/clearing, diagnostics, retained
+  application state, and application-controlled telemetry contain zero credentials, tokens, proof verifiers, raw
+  provider payloads, inbound callback parameters, or protected content. This criterion does not claim `code`,
+  `state`, or provider error parameters are absent from the inbound browser callback URL that carries them to the
+  application.
 - **SC-005**: Every new or changed requirements-BDD scenario inherits or carries at least one applicable lowercase
   requirement-ID tag, all callback-validation scenarios declare the feature's partial limits, and runtime execution
   records the tested revision, provider, instance arrangement, and unexecuted compatibility limitations.
+- **SC-006**: Every exercised callback rejected before a matching attempt is consumed leaves both the valid attempt
+  and browser correlation usable by the later valid provider return; every terminal matched outcome clears the
+  correlation artifact.
 
 ## Assumptions
 

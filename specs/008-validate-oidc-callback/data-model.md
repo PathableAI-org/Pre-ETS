@@ -21,11 +21,11 @@ they do not repeatedly decode them.
 
 The public result of beginning an authentication attempt.
 
-| Field | Meaning | Exposure |
-| --- | --- | --- |
-| `destination` | Validated authorization endpoint URL | Browser redirect target |
-| `correlation` | Opaque reference to the persisted attempt | Browser cookie only |
-| `expiresAt` | Application-clock expiry used to align the cookie | Route adapter only |
+| Field         | Meaning                                           | Exposure                |
+| ------------- | ------------------------------------------------- | ----------------------- |
+| `destination` | Validated authorization endpoint URL              | Browser redirect target |
+| `correlation` | Opaque reference to the persisted attempt         | Browser cookie only     |
+| `expiresAt`   | Application-clock expiry used to align the cookie | Route adapter only      |
 
 It is not an identity, authenticated session, access grant, or provider response. Private state, nonce and PKCE
 verifier values are absent from this public result.
@@ -35,6 +35,10 @@ reserved, the failed candidate never replaces that record. The parent discards t
 correlation, state, nonce, verifier and destination—and regenerates all protocol material within a bounded retry.
 Retry exhaustion returns no prepared result. This is a non-overwrite guarantee for one qualified address, not a
 claim that correlation values are globally unique.
+
+Before those steps, preparation normalizes the request Host and the configured callback URL's Host after tenant
+resolution. They must match exactly. An incompatible initiation host yields no prepared result, provider delegation,
+transaction, or browser correlation because a host-only cookie issued there could not reach the configured callback.
 
 ## BrowserCorrelation
 
@@ -61,17 +65,17 @@ original attempt.
 A versioned, short-lived record encoded by the private transaction child and decoded immediately after atomic
 consumption.
 
-| Semantic field | Purpose | Invariant |
-| --- | --- | --- |
-| format version | Supports explicit decode failure rather than guessed migration | One recognized current version |
-| correlation binding | Detects an incorrectly addressed or corrupted record | Equals the validated lookup reference |
-| tenant alias | Binds initiation to the independently resolved callback tenant | Exact canonical alias match |
-| provider issuer/client identity | Binds the attempt to the selected tenant integration | Equals re-resolved configuration |
-| callback authority and redirect URI | Prevents moving the callback to another return boundary | Exact normalized match |
-| OIDC state | Validates authorization response integrity | Exact expected value |
-| OIDC nonce | Binds signed identity evidence | Exact expected value |
-| PKCE verifier | Proves the code exchange belongs to initiation | Never browser-visible |
-| created and expiry instants | Enforces the bounded application-clock lifetime | `expiresAt` is after creation and not after the selected TTL |
+| Semantic field                      | Purpose                                                        | Invariant                                                    |
+| ----------------------------------- | -------------------------------------------------------------- | ------------------------------------------------------------ |
+| format version                      | Supports explicit decode failure rather than guessed migration | One recognized current version                               |
+| correlation binding                 | Detects an incorrectly addressed or corrupted record           | Equals the validated lookup reference                        |
+| tenant alias                        | Binds initiation to the independently resolved callback tenant | Exact canonical alias match                                  |
+| provider issuer/client identity     | Binds the attempt to the selected tenant integration           | Equals re-resolved configuration                             |
+| callback authority and redirect URI | Prevents moving the callback to another return boundary        | Exact normalized match                                       |
+| OIDC state                          | Validates authorization response integrity                     | Exact expected value                                         |
+| OIDC nonce                          | Binds signed identity evidence                                 | Exact expected value                                         |
+| PKCE verifier                       | Proves the code exchange belongs to initiation                 | Never browser-visible                                        |
+| created and expiry instants         | Enforces the bounded application-clock lifetime                | `expiresAt` is after creation and not after the selected TTL |
 
 The record contains no resolved credential, authorization code, access/refresh/ID token, raw provider response,
 trusted identity, or application-session state. Redis also applies its own TTL to the record.
@@ -118,6 +122,15 @@ integration binding through its dependencies. After consumption, callback input 
 response headers or redirect locations, cookies, diagnostics, retained application state, or application-controlled
 telemetry.
 
+## CorrelationDisposition
+
+A safe public route decision with exactly two values: `preserve` or `clear`. It reveals no store address, provider
+material, or private failure reason. The parent selects `preserve` when validation cannot qualify a matching attempt,
+when a qualified lookup finds no live record, or when a Redis command is known to have failed before send/consume.
+It selects `clear` after actual consume, successful completion, or an ambiguous in-flight consume that may have
+deleted the record. The route omits cookie deletion for `preserve` and expires the matching host/path cookie for
+`clear`.
+
 ## TransactionLifetime
 
 The production transaction lifetime defaults to 600 seconds. An explicit override is accepted only when it decodes
@@ -149,12 +162,12 @@ map; a missing selected reference makes only that authentication request unavail
 
 The public success value handed to the later #218 session consumer.
 
-| Field | Source | Guarantee |
-| --- | --- | --- |
-| tenant alias | independently resolved tenant plus recovered binding | Belongs to the completed attempt |
-| issuer | openid-client validated signed identity evidence | Matches the configured provider |
-| subject | required nonempty `sub` claim after protocol validation | Identifies the user within the issuer |
-| authenticated at | required integer `auth_time` after protocol validation | Presence only; no stale-time judgment |
+| Field            | Source                                                  | Guarantee                             |
+| ---------------- | ------------------------------------------------------- | ------------------------------------- |
+| tenant alias     | independently resolved tenant plus recovered binding    | Belongs to the completed attempt      |
+| issuer           | openid-client validated signed identity evidence        | Matches the configured provider       |
+| subject          | required nonempty `sub` claim after protocol validation | Identifies the user within the issuer |
+| authenticated at | required integer `auth_time` after protocol validation  | Presence only; no stale-time judgment |
 
 The type is provider-neutral and contains no token, raw claim map, email/display-name assumption, credential,
 authorization decision, application-session identifier or protected data. Its existence proves callback validation,
@@ -166,14 +179,14 @@ The public service separates expected denials from operational unavailability an
 Route adapters may intentionally present several denial reasons through one safe outcome, but tests at the public
 service boundary can distinguish categories needed to establish semantics.
 
-| Outcome | Examples | Trusted handoff |
-| --- | --- | --- |
-| trusted | one bound, current, successfully validated callback | One `TrustedIdentity` |
-| denied before consume | wrong tenant/authority, invalid correlation, malformed query, or missing/duplicate/wrong state | None; valid original remains usable |
-| denied at recovery | qualified address has no live record because it is missing, expired, or already consumed | None |
-| denied after consume | corrupt attempt, matching cancellation/error, invalid provider evidence, or missing claims | None; addressed attempt is single-use |
-| unavailable after readiness | Redis/provider/credential command cannot safely complete after process startup, including a Redis command rejected before send or a confidential client's missing selected secret | None; rejected-before-send commands cannot later execute, while an in-flight disconnect may already have consumed |
-| existing tenant HTTP error | callback host cannot select/read valid tenant configuration | None |
-| unavailable process startup | initial Redis acquisition, malformed explicit credential map, or invalid transaction TTL | No route serving; restart/recreation after corrected dependencies/configuration |
+| Outcome                     | Examples                                                                                                                                                                          | Trusted handoff                                                                                                   | Correlation disposition                                                               |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| trusted                     | one bound, current, successfully validated callback                                                                                                                               | One `TrustedIdentity`                                                                                             | Clear                                                                                 |
+| denied before consume       | wrong tenant/authority, invalid correlation, malformed query, or missing/duplicate/wrong state                                                                                    | None; valid original remains usable                                                                               | Preserve                                                                              |
+| denied at recovery          | qualified address has no live record because it is missing, expired, wrong-state, or already consumed                                                                             | None                                                                                                              | Preserve; the cookie expires on its bounded Max-Age if no valid return remains        |
+| denied after consume        | corrupt attempt, matching cancellation/error, invalid provider evidence, or missing claims                                                                                        | None; addressed attempt is single-use                                                                             | Clear                                                                                 |
+| unavailable after readiness | Redis/provider/credential command cannot safely complete after process startup, including a Redis command rejected before send or a confidential client's missing selected secret | None; rejected-before-send commands cannot later execute, while an in-flight disconnect may already have consumed | Preserve when known before send/consume; clear when consume is ambiguous or completed |
+| existing tenant HTTP error  | callback host cannot select/read valid tenant configuration                                                                                                                       | None                                                                                                              | Preserve when the cookie is present and addressable by the route                      |
+| unavailable process startup | initial Redis acquisition, malformed explicit credential map, or invalid transaction TTL                                                                                          | No route serving; restart/recreation after corrected dependencies/configuration                                   | No response                                                                           |
 
 Defects and interruption are not converted into these expected outcomes.

@@ -1,7 +1,7 @@
 # Research and decisions: recoverable OIDC callback validation
 
 **Date**: 2026-10-20. Proposed #217 / S2-C design only; no implementation or runtime evidence is claimed.
-The inspected requirement baseline is `origin/main` at `b514237d5ffc49180ad683a5cfe77b808cc19c5c`.
+The inspected requirement baseline is `origin/main` at `1d3aef273cfb3ae57f84b4517a0c33a25aeaa81a`.
 
 ## 1. Keep callback work inside the public authentication module
 
@@ -96,8 +96,12 @@ lifetime is a recovery/security bound and is unrelated to #158's `auth_time` com
 
 The route writes only the opaque reference in a host-only cookie: no `Domain`, `HttpOnly`, `SameSite=Lax`,
 `Path=/auth/callback`, `Max-Age` aligned with the attempt, and `Secure` except for the explicitly permitted loopback
-HTTP profile. Clear it on every callback response that can address it. Possession locates an attempt but never proves
-state, nonce, provider evidence, identity or access.
+HTTP profile. Before provider delegation or cookie issuance, normalize the initiation Host and require it to equal
+the configured callback URL's Host; an incompatible host fails preparation instead of creating a cookie that cannot
+reach the callback. Preserve correlation when callback qualification fails or a storage command is known to have
+failed before consuming a matching attempt. Clear it after a matching attempt is consumed, on successful completion,
+or when an in-flight consume is ambiguous and may have removed the attempt. Possession locates an attempt but never
+proves state, nonce, provider evidence, identity or access.
 
 **Rationale**: Redis TTL provides server-clock cleanup and cross-instance availability. Explicit expiry checked with
 the Effect clock fails closed if stale bytes remain and makes service behavior deterministic under `TestClock`.
@@ -128,7 +132,9 @@ After consume, the owner Schema-decodes the record, checks explicit expiry and e
 then performs provider validation. A matching success or error/cancellation response has crossed the addressing
 boundary and consumes once; provider refusal, code exchange failure, or later signed-evidence failure burns that
 one-time attempt. Malformed stored bytes are consumed and rejected. Missing/expired/replayed attempts share a safe
-no-handoff outcome.
+no-handoff outcome. The public completion contract also returns the safe correlation disposition needed by the route:
+preserve when no matching record was consumed or when failure is known to precede send; clear after actual consume or
+an ambiguous in-flight consume. It does not expose the private storage reason.
 
 Do not add an application timeout around `GETDEL` or retry it after an ambiguous Redis transport failure: the pinned
 generic Redis service cannot pass a cancel signal or safely prove removal from node-redis's command lifecycle. A
@@ -199,10 +205,12 @@ prematurely decide deferred cloud infrastructure.
 
 **Decision**: Replace the login and callback pages at their exact segments with Node Route Handlers; Next does not
 allow `page.tsx` and `route.ts` at the same segment. Login maps a prepared result to provider HTTP 307 plus correlation
-cookie. Callback reads Host, query and cookie, invokes the shared Runtime, clears correlation, and maps trusted handoff
-to a bounded 204 response with no application session or protected body. Expected denial/unavailability goes to the
-existing safe public sign-in-failure experience without automatic restart. Tenant 404/500 and no-store behavior remain
-distinct. Verify exact installed Next 16.4.2 cookie, redirect and `notFound` behavior before implementation.
+cookie only after the resolved initiation Host matches the configured callback Host. Callback reads Host, query and
+cookie, invokes the shared Runtime, applies the returned preserve/clear correlation disposition, and maps trusted
+handoff to a bounded 204 response with no application session or protected body. Expected denial/unavailability goes
+to the existing safe public sign-in-failure experience without automatic restart. Tenant 404/500 and no-store
+behavior remain distinct. Verify exact installed Next 16.4.2 cookie, redirect and `notFound` behavior before
+implementation.
 
 The browser necessarily delivers `code`, `state`, or provider error parameters in the inbound callback URL. Consume
 them as request input, then never copy them into application response bodies, response headers or redirect locations,
@@ -267,7 +275,9 @@ then route `/auth/callback` for that same authority to independently composed in
 receive the same Host; Keycloak remains the external provider authority. Add harness evidence that A's host-only,
 callback-path cookie reaches B and is not sent when the browser addresses a different tenant authority. Automate the
 tracked Keycloak `demo` login only for real completion. Capture callback URL/correlation at the HTTP/browser boundary
-for mismatch, expiry, replay and racing requests; do not read Redis in Cucumber steps.
+for mismatch, expiry, replay and racing requests. Include an invalid or wrong-state callback followed in the same
+browser by the original valid provider return, asserting that the first response preserves correlation and the
+second can complete. Do not read Redis in Cucumber steps.
 
 The callback feature remains feature-level `@partial` with current lowercase requirement IDs. Real Keycloak proves
 the common successful completion path. Focused controlled-transport public-service tests cover signature/audience/
@@ -291,8 +301,10 @@ completion. Reading Redis from BDD would move the observation below the applicat
 ## 12. Treat Redis acquisition as process readiness
 
 **Decision**: Redis is required for process readiness in this slice. The existing `src/instrumentation.ts` import
-boots the one shared `ManagedRuntime`, whose boot effect resolves its Layers; failure to acquire `NodeRedis.layer`
-prevents that process from becoming ready or serving any route.
+boots the one shared `ManagedRuntime`. Replace the current synchronous `runtime.runSync(...)` resolution probe with
+`runtime.runPromise(...)` and await it in boot orchestration before the instrumentation import completes, because
+`NodeRedis.layer` performs asynchronous connection acquisition. Dispose the partially acquired runtime if boot fails.
+Failure to acquire `NodeRedis.layer` prevents that process from becoming ready or serving any route.
 The launcher/orchestrator must keep the instance out of service and restart/recreate it after Redis connectivity is
 restored. Only Redis command failures after successful startup map to typed authentication unavailability at
 `/auth/login` or `/auth/callback`; the design does not claim unrelated public routes survive initial Redis failure.
@@ -304,8 +316,9 @@ attempt. A later new request may succeed after the client emits ready again. The
 because the pinned generic service cannot safely cancel its underlying Promise.
 
 The readiness/startup evidence starts a production frontend with Redis unreachable and proves the process never
-passes its existing port/readiness gate, then restores Redis and starts a fresh process successfully. Runtime evidence
-separately interrupts Redis after readiness and proves authentication routes fail closed without handoff or session.
+passes its existing port/readiness gate, then restores Redis and starts a fresh process whose awaited asynchronous
+probe completes and which becomes ready. Runtime evidence separately interrupts Redis after readiness and proves
+authentication routes fail closed without handoff or session.
 The blast radius of initial acquisition failure is the whole frontend process because the shared runtime is a host
 dependency; healthy sibling instances remain independently serviceable.
 
@@ -319,7 +332,8 @@ attempt, and a new callback denies an old attempt. Rollback leaves only short-li
 callback-path cookies; neither grants identity or access, unknown/missing records fail closed, and both expire within
 the bounded attempt lifetime. Roll forward or rollback requires no data migration.
 
-**Rationale**: This matches eager scoped Layer acquisition and states its true blast radius instead of promising
+**Rationale**: Awaiting the ManagedRuntime's asynchronous execution is what actually resolves the NodeRedis Layer;
+the existing synchronous probe cannot acquire it. This states the true startup blast radius instead of promising
 route-level degradation before a runtime exists. Short-lived, non-authoritative attempt data makes restart and
 rollback safe.
 

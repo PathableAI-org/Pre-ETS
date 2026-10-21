@@ -38,11 +38,15 @@ pnpm --filter @pathableai/pre-ets-frontend test:unit -- tests/lib/authentication
 
 The suite should establish:
 
+- prepare rejects a tenant-resolving request Host that differs from the configured callback Host before provider
+  delegation, transaction creation, or correlation issuance;
 - prepare persists before success and returns only destination/opaque browser correlation;
 - complete returns the exact expected provider-neutral tenant/issuer/subject/`auth_time` handoff;
 - mismatch of tenant, correlation, provider/client, callback authority, state, nonce or verifier never hands off;
 - wrong tenant/authority and missing/duplicate/wrong state are rejected before storage and leave the later valid
   callback usable;
+- completion returns only the safe `preserve`/`clear` correlation disposition needed by the route: known
+  pre-consumption/no-record failures preserve, actual or ambiguous consume clears, and private causes remain hidden;
 - missing, invalid, expired, corrupt, consumed and replayed attempts deny;
 - cancellation, provider error, mixed/duplicate callback parameters, exchange/signature/issuer/audience/nonce failure,
   missing subject and missing signed `auth_time` deny;
@@ -103,12 +107,14 @@ pnpm --filter @pathableai/pre-ets-frontend test:unit
 ```
 
 Assert actual adapter outcomes: login/callback status and redirect, private/no-store response, exact cookie security
-attributes and clearing, query multiplicity mapping, pre-storage tenant/authority/state rejection, existing tenant
-404/500, safe denial with no automatic login loop, empty successful callback 204, and absence of application-session/
-protected content. Assert that application-produced response bodies, headers/redirect locations and cookies do not
-re-emit inbound `code`, `state`, or provider error values. Do not assert those values were absent from the test's own
-inbound request, or assert runtime construction, private calls, Redis keys/JSON, provider objects or Next
-implementation internals.
+attributes/preservation/clearing, query multiplicity mapping, pre-storage tenant/authority/state rejection, existing
+tenant 404/500, safe denial with no automatic login loop, empty successful callback 204, and absence of application-
+session/protected content. Include a tenant-resolving login Host that differs from the configured callback Host and
+assert no provider redirect, transaction, or cookie. Submit an invalid or wrong-state callback, carry the browser's
+resulting cookies into the original valid callback, and assert the first denial preserves correlation and the second
+completes. Assert that application-produced response bodies, headers/redirect locations and cookies do not re-emit
+inbound `code`, `state`, or provider error values. Do not assert those values were absent from the test's own inbound
+request, or assert private calls, Redis keys/JSON, provider objects or Next implementation internals.
 
 ## 5. Requirement-backed HTTP/browser evidence
 
@@ -136,7 +142,9 @@ pnpm test:bdd
 The feature-level `@partial` scenarios cover real completion as a validated-success 204 with correlation cleared and
 no session/protected content or application re-emission of callback parameters; cross-tenant/transaction mismatch;
 missing/invalid/expired recovery; replay; a healthy race with exactly one 204 winner and all others denied; and an
-application-handled controlled provider-error callback.
+application-handled controlled provider-error callback. They also submit an invalid or wrong-state callback followed
+in the same browser by the original valid provider return, asserting that pre-consumption denial preserves the
+browser correlation and the valid return completes while the attempt remains live.
 The browser does not inspect exact identity fields; public-service evidence proves tenant/issuer/subject/`auth_time`.
 Callback parameters necessarily appear in the inbound browser URL; inspect only application-produced output when
 asserting non-disclosure. Capture callback URLs/cookies only transiently at HTTP/browser boundaries for controlled
@@ -154,11 +162,13 @@ controlled public-HTTP provider-error scenario and record real-provider cancella
 
 ## 6. Readiness and rollback evidence
 
-With Redis deliberately unreachable, start a fresh production frontend and assert that it never passes the existing
-port/readiness gate and serves no routes. Restore Redis, start a new process, and assert it becomes ready. Repeat the
-startup boundary for configuration: absent `OIDC_CLIENT_SECRETS_JSON` is valid and becomes an empty map; malformed
-explicit JSON or an invalid map entry fails readiness without echo; absent TTL uses 600 seconds; valid integer
-boundaries 1 and 600 acquire;
+Replace the existing synchronous runtime resolution probe with `runtime.runPromise(...)` and await it before the
+instrumentation import completes. With Redis deliberately unreachable, start a fresh production frontend and assert
+that the awaited probe fails and the process never passes the existing port/readiness gate or serves routes. Restore
+Redis, start a new process, and assert the same awaited probe completes and the process becomes ready. Retain both
+cases so the check cannot pass without actually resolving asynchronous Layers. Repeat the startup boundary for
+configuration: absent `OIDC_CLIENT_SECRETS_JSON` is valid and becomes an empty map; malformed explicit JSON or an
+invalid map entry fails readiness without echo; absent TTL uses 600 seconds; valid integer boundaries 1 and 600 acquire;
 and zero, negative, fractional, nonnumeric, greater-than-600 and overflow-shaped TTL values fail readiness. Public
 clients need no secret; a confidential tenant whose nonempty reference is absent from a valid map reaches only
 request-level authentication unavailability.
