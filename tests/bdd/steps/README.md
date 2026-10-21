@@ -18,3 +18,16 @@ hooks.
 
 See [requirements BDD commands](../../../features/README.md). Historical Spec Kit dispositions remain
 in the [migration ledger](../../../features/TRACEABILITY.md).
+
+Initiation scenarios use the real tracked Keycloak realm; start it and wait for realm discovery before running
+success scenarios. Each world supplies its own `OIDC_CALLBACK_ORIGINS_JSON` and `OIDC_ALLOW_INSECURE_LOOPBACK`
+settings. Registered tenant `.localhost:3000` callbacks are independent of logical `example.test` request Hosts
+and the random Next transport port. No callback listener is required because the evidence stops at provider arrival.
+
+`authentication.ts` owns provider destination/protocol and public sign-in observations. Raw HTTP stays unfollowed:
+assert root delegation first, then explicitly request `/auth/login` for tenant/provider status. Generic status
+assertions always inspect the actual most recent response. `support/browser.ts` owns a scoped browser proxy;
+each application redirect reaches the owned process with its logical Host, while external requests keep their
+real destination. Native Chromium redirects bypass Playwright route interception, so no `route.fetch` redirect
+following is used. Missing-page comparison and provider arrival share this transport. The harness regression
+requires Chromium and local loopback sockets. None of this proves production ingress or callback acceptance.

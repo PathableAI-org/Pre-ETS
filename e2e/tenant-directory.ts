@@ -21,12 +21,9 @@ export function prepareTenantDirectory(): string {
   fs.writeFileSync(
     path.join(directory, "springfield.json"),
     JSON.stringify({
-      config: {
-        displayName: "Local Demo",
-        idleTimeoutMinutes: 5,
-        oidc: { clientAuth: "public", clientId: "springfield-web", issuer: "http://127.0.0.1:8080/realms/pre-ets" }
-      },
-      slug: "springfield"
+      displayName: "Local Demo",
+      idleTimeoutMinutes: 5,
+      oidc: { clientAuth: "public", clientId: "springfield-web", issuer: "http://127.0.0.1:8080/realms/pre-ets" }
     })
   )
   return directory

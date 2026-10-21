@@ -2,6 +2,9 @@ import { fileURLToPath } from "node:url"
 import { defineConfig } from "vitest/config"
 
 export default defineConfig({
+  oxc: {
+    jsx: { runtime: "automatic" }
+  },
   resolve: {
     alias: {
       "next/headers": fileURLToPath(new URL("./tests/unit/next-headers-stub.ts", import.meta.url)),
@@ -13,6 +16,7 @@ export default defineConfig({
     environment: "node",
     globals: false,
     include: ["tests/**/*.test.ts"],
+    server: { deps: { inline: ["@pathableai/react", "@pathableai/styles"] } },
     setupFiles: ["./tests/unit/tenant-config-dir-setup.ts"]
   }
 })

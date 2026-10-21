@@ -24,6 +24,6 @@
     "effect": "catalog:effect"
   },
   "devDependencies": {
-    "vitest": "5.0.4"
+    "vitest": "5.0.5"
   }
 }

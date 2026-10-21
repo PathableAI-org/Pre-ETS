@@ -20,5 +20,14 @@ export default defineConfig([
     }
   },
   reactHooks.configs.flat.recommended,
-  nextPlugin.configs.recommended
+  nextPlugin.configs.recommended,
+  {
+    files: ["src/lib/authentication/provider.ts"],
+    rules: {
+      // Maintainer-approved local HTTP opt-in; the adapter still enforces loopback-only URLs.
+      "@typescript-eslint/no-deprecated": ["error", {
+        allow: [{ from: "package", name: "allowInsecureRequests", package: "openid-client" }]
+      }]
+    }
+  }
 ])

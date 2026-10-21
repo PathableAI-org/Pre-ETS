@@ -10,7 +10,10 @@
   "timezone": "America/New_York",
   "automerge": true,
   "automergeType": "pr",
-  "platformAutomerge": true,
+  "automergeStrategy": "squash",
+  // Let Renovate wait for all checks, including those not required by GitHub.
+  "platformAutomerge": false,
+  "ignoreTests": false,
   "enabledManagers": [
     "npm",
     "github-actions",
@@ -52,17 +55,16 @@
       "addLabels": ["javascript", "pnpm"],
     },
     {
-      "description": "Keep Effect and @effect/* catalog updates coordinated and subject to review.",
+      "description": "Keep Effect and @effect/* catalog updates coordinated.",
       "matchManagers": ["npm"],
       "matchUpdateTypes": ["minor", "patch", "digest", "pin", "pinDigest"],
       "matchPackageNames": ["effect", "/^@effect\\//"],
       "groupName": "effect ecosystem",
       "groupSlug": "effect-ecosystem",
-      "automerge": false,
       "addLabels": ["javascript", "pnpm", "effect"],
     },
     {
-      "description": "Keep React / Next stack non-majors together for regression triage; never auto-merge.",
+      "description": "Keep React / Next stack non-majors together for regression triage.",
       "matchManagers": ["npm"],
       "matchUpdateTypes": ["minor", "patch", "digest", "pin", "pinDigest"],
       "matchPackageNames": [
@@ -75,17 +77,15 @@
       ],
       "groupName": "react next stack",
       "groupSlug": "react-next-stack",
-      "automerge": false,
       "addLabels": ["javascript", "pnpm", "framework"],
     },
     {
-      "description": "Coordinate OpenTelemetry SDK, instrumentation, semantic conventions, and Next.js integration updates; never auto-merge.",
+      "description": "Coordinate OpenTelemetry SDK, instrumentation, semantic conventions, and Next.js integration updates.",
       "matchManagers": ["npm"],
       "matchUpdateTypes": ["minor", "patch", "digest", "pin", "pinDigest"],
       "matchPackageNames": ["/^@opentelemetry\\//", "@vercel/otel"],
       "groupName": "opentelemetry stack",
       "groupSlug": "opentelemetry-stack",
-      "automerge": false,
       "addLabels": ["javascript", "pnpm", "observability"],
     },
     {
@@ -135,7 +135,7 @@
       "addLabels": ["javascript", "pnpm", "tooling"],
     },
     {
-      "description": "Group non-major test and e2e runner updates; never auto-merge (CI / runner coupling).",
+      "description": "Group non-major test and e2e runner updates for CI / runner compatibility.",
       "matchManagers": ["npm"],
       "matchUpdateTypes": ["minor", "patch", "digest", "pin", "pinDigest"],
       "matchPackageNames": [
@@ -151,17 +151,15 @@
       ],
       "groupName": "test and e2e",
       "groupSlug": "test-and-e2e",
-      "automerge": false,
       "addLabels": ["javascript", "pnpm", "test"],
     },
     {
-      "description": "Keep PathAble React non-majors on their own PR; never auto-merge (special / private dependency).",
+      "description": "Keep PathAble React non-majors on their own PR (special / private dependency).",
       "matchManagers": ["npm"],
       "matchUpdateTypes": ["minor", "patch", "digest", "pin", "pinDigest"],
       "matchPackageNames": ["@pathableai/react"],
       "groupName": "pathable react",
       "groupSlug": "pathable-react",
-      "automerge": false,
       "addLabels": ["javascript", "pnpm", "pathable"],
     },
     {
@@ -177,7 +175,6 @@
       "matchPackageNames": ["vite", "vitest", "/^@vitest\\//", "/^@vitejs\\//"],
       "groupName": "vite vitest stack",
       "groupSlug": "vite-vitest-stack",
-      "automerge": false,
       "addLabels": ["javascript", "pnpm", "test", "major"],
     },
     {
@@ -209,7 +206,6 @@
       "groupName": "node runtime",
       "groupSlug": "node-runtime",
       "separateMajorMinor": false,
-      "automerge": false,
       "addLabels": ["javascript", "node"],
     },
     {
@@ -218,11 +214,6 @@
       "matchDepTypes": ["engines"],
       "matchPackageNames": ["node"],
       "rangeStrategy": "replace",
-    },
-    {
-      "description": "Never auto-merge major version upgrades.",
-      "matchUpdateTypes": ["major"],
-      "automerge": false,
     },
     {
       "description": "Defer TypeScript major upgrades until typescript-eslint supports them.",

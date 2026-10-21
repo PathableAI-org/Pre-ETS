@@ -97,13 +97,27 @@ for inspection, persistence, and reset commands.
 
 #### Frontend pages
 
-Redis and Keycloak are still defined in Compose. The frontend pages do not
-need them. Run `pnpm dev:frontend` and open `http://localhost:3000/` for the
-welcome page. `/auth/callback` renders the authentication-return fallback. The
-proxy forwards both routes with the incoming headers and leaves cookies and
-the response location unchanged. See `docs/authentication.md`. Optional local
-OpenTelemetry + Grafana uses Compose profile `observability` (service
-`otel-lgtm`); see `docs/observability.md`.
+The root asks the session-presence service before tenant lookup and redirects to
+`/auth/login`. That public page resolves the tenant and prepares an OIDC code request
+with PKCE, state, nonce and `max_age=0`, then redirects to the selected provider.
+Start Keycloak for the tracked synthetic tenant fixtures:
+
+```sh
+docker compose up -d --wait keycloak
+curl --fail http://127.0.0.1:8080/realms/pre-ets/.well-known/openid-configuration
+```
+
+Set `OIDC_CALLBACK_ORIGINS_JSON` and the local-only
+`OIDC_ALLOW_INSECURE_LOOPBACK=true` in the frontend environment as described in
+[authentication](docs/authentication.md). Then run `pnpm dev:frontend` and open
+`http://localhost:3000/`. The callback remains a denying fallback: this increment
+creates no recoverable attempt, application cookie or authenticated session. Redis
+is not used by initiation. Public diagnostics and the development preview remain
+usable without the provider. Requirements BDD needs the real Keycloak realm running;
+its main-only nightly/manual job provisions an owned provider after building.
+
+Optional local OpenTelemetry + Grafana uses Compose profile `observability`
+(service `otel-lgtm`); see [observability](docs/observability.md).
 
 ### Local tenant resolution
 
@@ -121,10 +135,10 @@ and `packages/frontend/.env.example`.
 pnpm dev:frontend
 ```
 
-Open `http://localhost:3000/` for the welcome page.
+Open `http://localhost:3000/` to begin tenant-specific OIDC initiation.
 
-The Effect v4 backend currently serves a health route. Client workflows beyond
-this landing page are not implemented yet.
+The Effect v4 backend currently exposes a liveness route. Authenticated client
+workflows are not implemented yet.
 
 ## Effect developer setup
 
@@ -140,21 +154,23 @@ Install dependencies from the repository root:
 pnpm install --frozen-lockfile
 ```
 
-Read the [upstream Effect documentation](https://effect.website/docs/) relevant
-to your change and check examples against the target workspace's installed Effect
-declarations. The installed declarations and repository contracts are authoritative
-when documentation differs. See [Effect agent guidance](docs/engineering/effect-guidance.md)
-for source precedence and coding boundaries.
+Read the available local Effect v4 checkout's `LLMS.md`, then its task-relevant linked
+examples/source. A common local path is `~/.local/share/effect-solutions/effect-v4`.
+Check its revision and verify APIs against the owning workspace's installed Effect
+declarations/source: a local checkout may be ahead of the installed version. Use
+official external documentation only for local gaps. See
+[Effect agent guidance](docs/engineering/effect-guidance.md) for source precedence,
+the topic index, and conventions covering Effect and non-Effect application code.
 
-Optionally clone Effect source for local examples and API reference, selecting the
-tag matching the installed Effect version (the example below matches the current
-`effect` catalog):
+If no suitable checkout is available, optionally clone source at the tag matching
+the installed frontend Effect version:
 
 ```sh
-mkdir -p ~/.local/share/effect
-git clone --depth 1 --branch effect@4.0.4 \
+effect_tag="effect@$(node -p "require('./packages/frontend/node_modules/effect/package.json').version")"
+mkdir -p ~/.local/share/effect-solutions
+git clone --depth 1 --branch "$effect_tag" \
   https://github.com/Effect-TS/effect.git \
-  ~/.local/share/effect/source
+  ~/.local/share/effect-solutions/effect-v4
 ```
 
 If that directory already exists, inspect it or choose a different location rather
@@ -257,17 +273,19 @@ yet installed remain inactive until
 those dependencies exist. Node pins, Node types, and package engines are grouped.
 
 Updates run outside office hours in America/New_York, with lockfile maintenance
-on Saturdays between midnight and 4 a.m. The policy enables PR/platform automerge
-for eligible updates; Effect, React/Next, PathAble, tests, Node, OpenTelemetry,
-and major upgrades require review. TypeScript major upgrades are disabled pending
-lint compatibility.
+on Saturdays between midnight and 4 a.m. All Renovate PRs, including major upgrades
+and lockfile maintenance, are eligible for squash automerge after checks pass.
+Renovate performs the merge on a subsequent run after the branch is up to date
+and all reported checks pass (`platformAutomerge: false`, `ignoreTests: false`),
+including checks that GitHub does not require. TypeScript major upgrades remain
+disabled pending lint compatibility.
 
 Non-major ESLint updates include TypeScript, `typescript-eslint`, ESLint plugins,
 and `globals` so the compiler and lint integrations can be reviewed together.
 The `typescript-eslint` umbrella package owns its matching parser and plugin
 versions. dprint and its plugins, Prettier and its plugins, and Git hook tooling
 have separate update groups. OpenTelemetry SDKs, instrumentation, semantic
-conventions, and the Next.js integration form a reviewed runtime group;
+conventions, and the Next.js integration form a coordinated runtime group;
 `@effect/opentelemetry` remains in the Effect group. React/Next and Vite/Vitest
 retain their existing groups, including Vitest companion packages.
 
@@ -297,11 +315,12 @@ automatically removes versions no longer resolved by the written lockfile; it do
 not remove exceptions just because their releases have aged. Keep the existing
 lockfile when updating dependencies and let pnpm regenerate it.
 
-The Renovate GitHub App must have access to this repository. Platform automerge
-also requires GitHub repository support and permission, and follows configured
-branch protections and required checks. This tooling setup does not enable the
-App, change GitHub settings, or establish CI/required checks. Configuration alone
-does not activate Renovate or guarantee validated automatic merges.
+The Renovate GitHub App must have access and merge permission for this repository.
+Renovate-managed automerge respects branch rules and does not require GitHub's
+repository auto-merge setting. Keep CI and required-check rules configured;
+Renovate's [automerge documentation](https://docs.renovatebot.com/key-concepts/automerge/)
+describes merge prerequisites and troubleshooting. The policy takes effect once
+`renovate.json` is merged into the default branch.
 
 Validate configuration without adding Renovate as a project dependency. The command
 pins a mature validator release so validation is reproducible:
@@ -380,38 +399,29 @@ Fallow’s hook installer. Builds and full typechecks remain separate checks.
 
 ## Continuous integration
 
-CI is split across four workflows that run on every pull request, pushes to
-`main`, and manual dispatch:
+Quality, Build, and Fallow run on every pull request, pushes to `main`, and manual dispatch.
+BDD runs nightly at 06:17 UTC on `main` and can also be dispatched manually on `main`.
 
-| Workflow                           | Required check names           | Role                                      |
-| ---------------------------------- | ------------------------------ | ----------------------------------------- |
-| `.github/workflows/ci-quality.yml` | **CI / Quality**               | Formatting, lint, types, frontend Vitest  |
-| `.github/workflows/ci-build.yml`   | **CI / Build**                 | Package builds and backend greeting smoke |
-| `.github/workflows/ci-bdd.yml`     | **CI / BDD Dry**, **CI / BDD** | Cucumber discovery; full suite when gated |
-| `.github/workflows/ci-fallow.yml`  | **CI / Fallow**                | Unused code and new-finding audit         |
+| Workflow                           | Check name       | Role                                                    |
+| ---------------------------------- | ---------------- | ------------------------------------------------------- |
+| `.github/workflows/ci-quality.yml` | **CI / Quality** | Formatting, lint, types, frontend Vitest                |
+| `.github/workflows/ci-build.yml`   | **CI / Build**   | Package builds, backend HTTP tests and health smoke     |
+| `.github/workflows/ci-bdd.yml`     | **CI / BDD**     | Nightly requirements BDD and production safeguard smoke |
+| `.github/workflows/ci-fallow.yml`  | **CI / Fallow**  | Unused code and new-finding audit                       |
 
 Shared install steps live in `.github/actions/setup-node-pnpm`.
 
-On pull requests, each workflow detects changed paths with `dorny/paths-filter`
-and skips expensive install/work when those paths are irrelevant. The named
-checks still run and report success when skipped so required status checks are
-not blocked. Pushes to `main` and `workflow_dispatch` always run the full work
-for Quality, Build, BDD Dry, and Fallow.
+On pull requests, Quality, Build, and Fallow detect changed paths with `dorny/paths-filter`
+and skip expensive install/work when those paths are irrelevant. The named checks still run
+and report success when skipped so required status checks are not blocked. Pushes to `main`
+and `workflow_dispatch` always run the full work for those three workflows.
 
-Examples:
-
-- Specs-only Speckit PR (`specs/**`, `.specify/**`) → required checks succeed
-  without install/build/Cucumber.
-- Acceptance changes touching `features/` or `tests/bdd/` → **CI / BDD Dry** and
-  **CI / BDD** (plus Quality when format/code paths match).
-- Implementation PR changing `packages/` → Quality, Build, and Fallow run.
-
-**CI / BDD** builds the frontend, installs Chromium, and runs the capability suite
-(`pnpm test:bdd`) on relevant pull requests, pushes to `main`, and manual dispatch.
-Application, production-server and development-server partitions run serially; a failed partition
-still allows later partitions to report. **CI / BDD Dry** reports discovery separately.
+**CI / BDD** runs harness checks, installs Chromium, builds the frontend, and executes
+`pnpm exec cucumber-js --config cucumber.mjs` followed by `pnpm test:bdd:smoke`. After a
+successful build, the smoke check still runs if requirements scenarios fail, unless the job
+is cancelled. A failure in either suite fails the job. It runs only on `main`, without path
+filtering, and preserves runtime reports and failure diagnostics. There is no CI dry-run job.
 See [BDD commands and evidence](features/README.md). Sign-in browser specs are described in `e2e/README.md`.
-Branch-protection settings are managed separately from this refactor.
 
 CI uses the pinned Node and pnpm versions, a frozen lockfile, and pnpm store caching.
 `HUSKY=0` skips local hook installation; CI invokes the full checks directly and
@@ -423,9 +433,8 @@ check still runs. Missing nonempty base references are errors. Audit warnings ar
 advisory; failures and runtime errors fail the job.
 
 The `Main CI checks` repository ruleset must require **CI / Quality**,
-**CI / Build**, **CI / Fallow**, and **CI / BDD Dry**, plus an up-to-date branch,
-before merging into `main`. Do **not** require **CI / BDD** on pull requests.
-After changing workflows, update that ruleset’s required checks to match.
+**CI / Build**, and **CI / Fallow**, plus an up-to-date branch,
+before merging into `main`. BDD checks are not required for merging.
 Organization rules continue to require pull requests and squash merges. GitHub
 automerge remains disabled.
 
@@ -451,6 +460,14 @@ mandatory for every change.
 Commit shared scripts, templates, skills, extension configuration, and the
 constitution. Keep the current-feature pointer, local extension overrides, and
 regenerable composition cache out of version control.
+
+The [Upgrade Spec Kit workflow](.github/workflows/speckit-upgrade.yml) checks for
+the latest stable release every Monday at 14:00 UTC. It upgrades installed
+integrations and extensions, then opens or refreshes `automation/speckit-upgrade`
+with changes to `.specify/`, `.agents/skills/`, and `.cursor/skills/`. Review the
+generated diff for overwritten local customizations before merging. Use **Run
+workflow** in GitHub Actions to check immediately or supply a specific release
+tag through `specify_version`.
 
 ## Durable requirements
 
