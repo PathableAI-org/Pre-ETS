@@ -1,6 +1,10 @@
-import { Config, Effect, Layer, Logger, References } from "effect"
+import { OtelTracer } from "@effect/opentelemetry"
+import { registerOTel } from "@vercel/otel"
+import { Config, Effect, Layer, Logger, Option, References } from "effect"
 
 import { AppEnv } from "./config/env.ts"
+import { OtelConfig } from "./config/index.ts"
+import { nodeHttpClientInstrumentation } from "./observability/http.ts"
 
 const DEFAULT_LOG_LEVEL = "Info" as const
 
@@ -31,3 +35,31 @@ export const appLoggerLayer = (): Layer.Layer<never> =>
       )
     })
   )
+
+const DEFAULT_OTEL_SERVICE_NAME = "pre-ets-frontend"
+
+let otelRegistered = false
+
+const registerGlobalOtel = (serviceName: string): void => {
+  if (otelRegistered) return
+  otelRegistered = true
+  registerOTel({
+    instrumentations: [nodeHttpClientInstrumentation],
+    serviceName,
+    traceSampler: "always_on"
+  })
+}
+
+/**
+ * Installs the global OpenTelemetry SDK and Effect tracer bridge when an OTLP
+ * endpoint is configured and the SDK is not disabled. Otherwise the process
+ * keeps the default noop tracer.
+ */
+export const observabilityLayer = Layer.unwrap(
+  Effect.gen(function*() {
+    const otel = yield* OtelConfig
+    if (otel.disabled || Option.isNone(otel.endpoint)) return Layer.empty
+    registerGlobalOtel(otel.serviceName.pipe(Option.getOrElse(() => DEFAULT_OTEL_SERVICE_NAME)))
+    return OtelTracer.layerGlobal
+  })
+)

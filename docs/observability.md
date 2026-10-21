@@ -5,47 +5,54 @@ Traces-only instrumentation for the **Next.js Node server**
 `packages/backend` instrumentation are out of scope for this increment.
 
 **HTTP + export**: During ManagedRuntime boot (loaded from Next
-`instrumentation.ts`), the app **always** calls `registerOTel` and installs the
-Effect global Tracer bridge. `@vercel/otel` is the sole OTLP exporter and
-auto-instruments request spans on any Next Node route. Endpoint, headers,
-protocol, and `OTEL_SDK_DISABLED` are left to the process environment /
-`@vercel/otel`.
+`instrumentation.ts`), optional OTEL config decides whether tracing starts.
+`OTEL_SDK_DISABLED=true`, or no OTLP endpoint, leaves the default noop tracer
+in place: no SDK, no client patch, and no Effect bridge. When an endpoint is
+set, `@vercel/otel` is the sole OTLP exporter. The observability module patches
+Node `http`/`https` and `fetch` and records client spans without query strings.
+Next.js still emits the server span through the global tracer.
 
-**Effect bridge**: `@effect/opentelemetry` `OtelTracer.layerGlobal` is always
-installed on the frontend `ManagedRuntime` so Effect spans share the global
-provider — no second exporter. Use `Effect.withSpan` only at logical boundaries
-when needed.
+**Effect bridge**: `@effect/opentelemetry` `OtelTracer.layerGlobal` is installed
+on the frontend `ManagedRuntime` only when export is enabled, so Effect spans
+share that global provider. There is no second exporter. Use `Effect.withSpan`
+only at logical boundaries when needed.
 
 ## Verification
 
 Default local URL base: **`http://127.0.0.1:3000`**.
 
-Any Next Node request produces an auto-instrumented HTTP span when the SDK is
-not disabled. For a quick check, hit the app root (redirect/401 is fine) or any
-other route and search Tempo for service `pre-ets-frontend`.
+Any Next Node request produces a server span when an OTLP endpoint is
+configured and the SDK is not disabled. For a quick check, hit the app root
+(redirect/401 is fine) or any other route and search Tempo for service
+`pre-ets-frontend`. Outbound client spans use the same trace and omit query
+strings from the span name and `http.url`.
 
 ## Environment variables
 
-Standard OTEL env vars (not part of `ServerConfig`). App code does not validate them.
+Optional OTEL settings live in frontend `OtelConfig`, not `ServerConfig`. None
+are required. A missing or blank value is unset. Endpoint strings are not
+validated.
 
-| Variable                      | Role                                                                                     |
-| ----------------------------- | ---------------------------------------------------------------------------------------- |
-| `OTEL_SDK_DISABLED`           | **Off switch** — set `true` so `@vercel/otel` does not start exporters/instrumentation   |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP base URL when the SDK is enabled (e.g. `http://127.0.0.1:4318`)                     |
-| `OTEL_SERVICE_NAME`           | Resource `service.name` (app passes `pre-ets-frontend`; SDK may honor this env when set) |
-| `OTEL_EXPORTER_OTLP_HEADERS`  | Optional SDK-read headers for authenticated collectors                                   |
+| Variable                             | Role                                                                               |
+| ------------------------------------ | ---------------------------------------------------------------------------------- |
+| `OTEL_SDK_DISABLED`                  | **Off switch** — `true` skips the SDK, client patch, and Effect bridge             |
+| `OTEL_EXPORTER_OTLP_ENDPOINT`        | OTLP base URL. Either this or the traces endpoint turns export on                  |
+| `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | Traces URL. Wins over the base endpoint when both are set                          |
+| `OTEL_SERVICE_NAME`                  | Resource `service.name`. Defaults to `pre-ets-frontend` when export is on          |
+| `OTEL_EXPORTER_OTLP_HEADERS`         | Optional collector headers. Do not print them. Headers alone do not turn export on |
+| `OTEL_EXPORTER_OTLP_TRACES_HEADERS`  | Optional traces-specific headers. Same rule as the base headers                    |
+| `OTEL_EXPORTER_OTLP_PROTOCOL`        | Optional OTLP protocol. Protocol alone does not turn export on                     |
+| `OTEL_EXPORTER_OTLP_TRACES_PROTOCOL` | Optional traces protocol. Same rule as the base protocol                           |
 
-Quiet local without a collector: set `OTEL_SDK_DISABLED=true`.
-
-If the SDK is enabled and no endpoint is set, `@vercel/otel` defaults export to
-`http://localhost:4318/v1/traces`. See `packages/frontend/.env.example` and
-`specs/006-otel-observability/contracts/otlp-export.md`.
+Quiet local without a collector: leave the endpoint unset, or set
+`OTEL_SDK_DISABLED=true`. An unset endpoint does **not** export to
+`http://localhost:4318/v1/traces`.
 
 ### Precedence (boot)
 
-1. ManagedRuntime boot always calls `registerOTel` + installs `OtelTracer.layerGlobal`.
-2. If `OTEL_SDK_DISABLED` is set (non-empty), `@vercel/otel` returns immediately — no export.
-3. Otherwise the SDK applies endpoint / headers / protocol from the environment.
+1. `OTEL_SDK_DISABLED=true` skips all OTEL setup, even if an endpoint is present.
+2. If neither endpoint variable is set, setup is skipped and the default noop tracer stays in place.
+3. Otherwise ManagedRuntime calls `registerOTel` with the query-free client instrumentation and installs `OtelTracer.layerGlobal`. `@vercel/otel` applies headers, protocol, and its exporter from the environment.
 
 ### Startup policy after a successful boot
 
@@ -56,8 +63,8 @@ never with header values printed by app code.
 
 ## Required span attributes
 
-Each **auto-instrumented HTTP request span** should identify method, route
-template, and status/outcome when Next emits them (accepted key names):
+Each **Next.js HTTP request span** should identify method, route template,
+and status/outcome when Next emits them (accepted key names):
 
 - Method: `http.request.method` or `http.method`
 - Route: `http.route` or `next.route`
@@ -65,6 +72,8 @@ template, and status/outcome when Next emits them (accepted key names):
 
 Do **not** configure `@vercel/otel` `attributesFromHeaders` to map Authorization,
 Cookie, or other secrets. Do **not** put secrets on `Effect.withSpan` attributes.
+Client spans omit the query string, fragment, and userinfo from the span name,
+`http.url`, and `resource.name`.
 Confirm with a manual Tempo sample review.
 
 ## Local Grafana / OTLP
@@ -89,7 +98,7 @@ OTEL_SERVICE_NAME=pre-ets-frontend \
 pnpm --filter @pathableai/pre-ets-frontend dev
 ```
 
-Quiet local (no collector):
+Quiet local (no collector): omit `OTEL_EXPORTER_OTLP_ENDPOINT`, or set the off switch:
 
 ```sh
 OTEL_SDK_DISABLED=true \
@@ -113,8 +122,8 @@ docker compose --profile observability stop otel-lgtm
 
 Same instrumentation. Point `OTEL_EXPORTER_OTLP_ENDPOINT` (and optional
 `OTEL_EXPORTER_OTLP_HEADERS`) at any OTLP/HTTP-compatible collector. No SaaS is
-mandated. Trust the environment and SDK for endpoint correctness. Use
-`OTEL_SDK_DISABLED` only when export must stay off.
+mandated. Trust the environment and SDK for endpoint correctness. Leave the
+endpoint unset, or set `OTEL_SDK_DISABLED=true`, when export must stay off.
 
 ### Second-endpoint / headers switch (SC-004)
 
