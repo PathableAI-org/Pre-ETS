@@ -13,7 +13,8 @@ access to #218.
 - Cookie attributes: host-only (no `Domain`), `HttpOnly`, `SameSite=Lax`, `Path=/auth/callback`, `Max-Age` aligned to
   the attempt lifetime, and `Secure` except in the explicitly permitted loopback HTTP profile.
 - Preserve `Cache-Control: private, no-store` behavior and return no protected content, identity, token, verifier,
-  nonce, provider state, raw provider payload or application session.
+  raw provider payload or application session. The provider redirect necessarily carries generated OIDC protocol
+  parameters such as `state`, nonce and code challenge; none is copied into the response body or correlation cookie.
 
 ### Expected failure
 
@@ -39,6 +40,10 @@ was consumed; the public authentication outcome does.
 
 ### Input rules
 
+The inbound browser callback URL necessarily carries `code` and `state`, or provider error parameters. These are
+untrusted transient inputs. The application consumes them at this boundary; no contract claims that they are absent
+from the request itself.
+
 - Resolve the canonical request tenant from the callback host independently of initiation and require its exact
   registered callback authority.
 - Read the correlation cookie and the original query parameter multiplicity.
@@ -59,7 +64,9 @@ Until #218 supplies a session consumer, a successful `TrustedIdentity` is mapped
 - private/no-store caching;
 - no application-session cookie;
 - no redirect to protected content; and
-- no identity, provider claim, token, code, verifier, credential or transaction material.
+- no identity, provider claim, token, verifier, credential or transaction material; and
+- no re-emission of inbound `code`, `state`, or provider error parameters in the response body, response headers or
+  redirect location, cookies, diagnostics, retained application state, or application-controlled telemetry.
 
 The 204 is an intermediate slice contract that makes selection of the validated-success HTTP branch observable
 without disclosing identity. It cannot prove the tenant, issuer, subject, or `auth_time` fields. Those exact values
@@ -74,7 +81,9 @@ identity evidence produce no trusted handoff and no protected content. They use 
 sign-in-failure experience without automatically starting `/auth/login`. Operational authentication unavailability
 after successful process startup also fails closed. Initial NodeRedis Layer acquisition failure prevents the whole
 frontend process from becoming ready, so no route-level response is promised until a fresh process starts after
-recovery. Internal distinctions are not disclosed through raw provider or storage messages.
+recovery. A Redis command rejected before send while disconnected/reconnecting cannot execute after recovery. An
+in-flight disconnect is ambiguous, is never retried, and may already have consumed the attempt; a later new request
+may succeed after reconnection. Internal distinctions are not disclosed through raw provider or storage messages.
 
 Tenant resolution/configuration still controls its existing 404/500 response. Callback public reachability is not
 callback acceptance and does not authorize content.
@@ -84,7 +93,13 @@ callback acceptance and does not authorize content.
 Redis is a required process-readiness dependency. Eager shared-runtime acquisition failure keeps the entire frontend
 process out of service; a healthy sibling instance is unaffected, and recovery requires restart/recreation after
 Redis is reachable. After readiness, Redis command failure maps only the affected authentication request to safe
-unavailability.
+unavailability. A malformed explicitly supplied credential map or invalid transaction TTL also prevents readiness.
+An absent credential-map variable is a valid empty map; public clients need no selected secret. A confidential tenant
+whose nonempty reference is absent from a valid map receives request-level authentication unavailability.
+
+The transaction lifetime defaults to 600 seconds. An explicit override may shorten it only and must be an integer
+from 1 through 600 inclusive; all other shapes fail readiness. This recovery-artifact lifetime is independent of
+#158's signed-`auth_time` freshness policy.
 
 Mixed old/new versions may deny an in-flight round trip but cannot accept it incorrectly: the predecessor creates no
 new recoverable record/cookie, while the new callback requires its qualified versioned address. Rollback needs no
@@ -115,8 +130,10 @@ BDD observes actual HTTP/browser behavior. Real Keycloak completion traverses th
 under one exact registered tenant authority: `/`, `/auth/login`, and provider departure route to instance A, while
 `/auth/callback` on that same authority routes to independently composed instance B. Both receive the same Host. The
 harness proves A's host-only callback-path cookie reaches B and is not sent to another tenant authority. BDD asserts
-the empty 204, correlation clearing, and no session/protected output; it does not inspect identity fields. Prepared
-identities, a mock callback or direct service invocation cannot replace the real completion scenario. Steps do not
+the empty 204, correlation clearing, no re-emission of callback parameters in application-produced output, and no
+session/protected output. It does not inspect identity fields or claim its own inbound request lacked callback
+parameters. Prepared identities, a mock callback or direct service invocation cannot replace the real completion
+scenario. Steps do not
 inspect Redis, serialized attempts, private modules, log/span payloads or credentials. Dry-run is discovery only,
 never evidence.
 

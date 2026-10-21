@@ -92,13 +92,20 @@ authentication.ts
 
 - Public service interfaces are readonly and operations expose success, typed expected errors and requirements.
 - Production Layers acquire resource-owning clients and dependencies. `NodeRedis.layer` supplies the scoped
-  `effect/persistence/Redis` service to the private transaction adapter.
+  `effect/persistence/Redis` service to the private transaction adapter. Construct it with node-redis
+  `disableOfflineQueue: true` so commands submitted while disconnected/reconnecting reject instead of being queued
+  for later execution.
 - Hide supplied Redis requirements with `Layer.provide`; do not merge them into the authentication output graph.
 - Compose the authentication Layer only in `src/lib/runtime.ts`, retaining the single existing `ManagedRuntime`.
 - Never construct a runtime or long-lived Redis/provider client per request.
 - Build the production Redis Layer eagerly as part of the shared runtime. Initial acquisition failure prevents the
   whole frontend process from becoming ready; only command failures after readiness become typed authentication
   unavailability. Recovery from initial failure requires process restart/recreation.
+- Do not put an application timeout around `Redis.send`/`GETDEL`. The pinned generic service accepts no per-command
+  abort signal, so returning on an Effect deadline could leave an uncancelled command able to delete later.
+- Distinguish Redis failure points. A command rejected before send becomes typed unavailability and cannot later
+  execute. A disconnect after send is ambiguous, is not retried, and may already have consumed. A later new request
+  may succeed once the client reconnects.
 - Use `Effect.gen` for inline route/runtime orchestration, named `Effect.fn` for meaningful public boundaries and
   `Effect.fnUntraced` for reusable helpers that do not merit spans. Use `return yield*` for terminal failure paths.
 - Decode untrusted environment, callback and Redis data with Schema at entry. Do not re-decode validated internal
@@ -124,7 +131,10 @@ Production behavior:
 
 - derive an address from canonical tenant alias, distinct generated correlation, and expected OIDC state only after
   the parent validates exact authority and query shape;
-- create with atomic `SET ... NX PX ...`, with bounded collision handling;
+- create with atomic `SET ... NX PX ...` and report non-overwrite when the exact qualified address already exists;
+- let the parent handle collision by discarding and regenerating the complete correlation/state/nonce/verifier/
+  destination candidate within a bounded retry before exposing any redirect or cookie; never replace the reserved
+  original and never claim global correlation uniqueness;
 - consume with one `GETDEL`, Schema-decode the returned bytes once, and check explicit expiry with the Effect clock;
 - never access storage when tenant/authority/correlation/query/state cannot derive the exact address;
 - never retry an ambiguous consume;
@@ -137,7 +147,13 @@ ownership. Do not build a parallel generic Redis service if pinned declarations 
 
 Named public-service and real-Redis evidence must prove that wrong tenant, authority, or state leaves the original
 address consumable by the later valid callback. A matching success or provider error/cancellation consumes once;
-post-consume provider/exchange failure does not restore it.
+post-consume provider/exchange failure does not restore it. Collision evidence must prove the reserved original
+remains callback-usable after a later preparation candidate collides.
+
+The transaction configuration is decoded once at Layer acquisition. Absent `OIDC_TX_TTL_SECONDS` means 600 seconds.
+An explicit value must be a base-10 integer from 1 through 600 inclusive; conversion occurs only after validation and
+cannot exceed 600,000 milliseconds. Zero, negative, fractional, nonnumeric, greater-than-600 and overflow-shaped
+values prevent process readiness. The TTL controls recovery artifacts only and is not #158 `auth_time` freshness.
 
 ## Private provider capability
 
@@ -158,9 +174,11 @@ single provider-operation deadline from the predecessor design.
 ## Private credential capability
 
 Credential resolution exists because confidential callback exchange is now a real consumer. Production reads one
-server-only, vendor-neutral `OIDC_CLIENT_SECRETS_JSON` mapping from configured non-secret references to values,
-Schema-decodes it once, and exposes only the selected private value to parent orchestration. A malformed setting or
-missing selected reference becomes generic authentication unavailability without echoing source data.
+server-only, vendor-neutral `OIDC_CLIENT_SECRETS_JSON` mapping from configured non-secret references to values and
+Schema-decodes it once at Layer acquisition. Absence decodes to the valid empty map. A malformed explicitly supplied
+mapping prevents whole-process readiness without echoing source data. Public clients require no selected secret. A
+confidential tenant with a nonempty reference absent from the valid map receives request-level
+`AuthenticationUnavailable`.
 
 This is not a general secrets platform and adds no cloud-vendor SDK or new tenant-file field. Public clients require
 no secret. The value must not enter attempt persistence, diagnostics, callback output, public errors or browser data.
@@ -176,8 +194,15 @@ private authentication children, or construct their own Layer/runtime.
 The planning checkout has no `packages/frontend/node_modules`. Implementation cannot infer installed declarations
 from the ahead-of-pin local Effect checkout. After installation, verify at minimum:
 
-1. the `@effect/platform-node/NodeRedis` barrel and Layer signature at 4.0.5;
-2. `effect/persistence/Redis` service, `send`, errors and Layer requirements at 4.0.5;
-3. scoped finalization and hidden Layer requirements in the composed type graph;
-4. openid-client grant/check/client-auth signatures at 6.8.8; and
-5. Next Route Handler cookie and redirect declarations at 16.4.2.
+1. the `@effect/platform-node/NodeRedis` barrel and `layer(options?: NodeRedisClientOptions)` signature at 4.0.5;
+2. node-redis 6.3.0's `disableOfflineQueue` option and its pre-send offline rejection behavior;
+3. `effect/persistence/Redis` service, `send`, errors and Layer requirements at 4.0.5, including the absence of a
+   safely cancellable per-command timeout/abort input;
+4. scoped finalization and hidden Layer requirements in the composed type graph;
+5. openid-client grant/check/client-auth signatures at 6.8.8; and
+6. Next Route Handler cookie and redirect declarations at 16.4.2.
+
+Exact tag source at `effect@4.0.5` and `redis@6.3.0` supports these planning decisions, including option pass-through,
+pre-enqueue offline rejection, disconnect queue flushing, and the generic service's non-cancellable send shape.
+Installed locked declarations remain the implementation gate; a mismatch stops the implementation rather than
+licensing a parallel Redis abstraction.

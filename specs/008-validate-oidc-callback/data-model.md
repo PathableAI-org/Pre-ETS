@@ -30,6 +30,12 @@ The public result of beginning an authentication attempt.
 It is not an identity, authenticated session, access grant, or provider response. Private state, nonce and PKCE
 verifier values are absent from this public result.
 
+Preparation exposes nothing until persistence succeeds. If its qualified tenant/correlation/state address is already
+reserved, the failed candidate never replaces that record. The parent discards the entire candidate—including
+correlation, state, nonce, verifier and destination—and regenerates all protocol material within a bounded retry.
+Retry exhaustion returns no prepared result. This is a non-overwrite guarantee for one qualified address, not a
+claim that correlation values are globally unique.
+
 ## BrowserCorrelation
 
 A distinct, opaque, 32-byte random value encoded with unpadded base64url. Its Schema accepts only the generated
@@ -86,9 +92,16 @@ There is no transition back from consumed to stored. A callback outcome after su
 provider denial or downstream validation failure, burns the attempt. An ambiguous consume transport failure is not
 retried because the record may already have been removed.
 
+If the Redis client rejects a command before sending it while disconnected or reconnecting, the attempt remains
+unchanged and the command cannot execute after reconnection. If the connection drops after send, consumption is
+ambiguous: Redis may have removed the record before the reply was lost. The parent never retries that operation; a
+later, new callback request may use the recovered client, subject to whether the one-time record remains.
+
 ## CallbackRequest
 
-The public completion input carries untrusted request-boundary data that the parent validates in order:
+The public completion input carries untrusted request-boundary data that the parent validates in order. The inbound
+browser URL necessarily transports `code` and `state`, or provider error parameters; they are transient input, not
+evidence that the application emitted or retained those values:
 
 - request host/authority used for independent tenant resolution;
 - the opaque correlation artifact from the named host-only cookie; and
@@ -101,7 +114,20 @@ error shape. Only that qualified request becomes an internal attempt address. A 
 once; later provider/exchange/identity failure also remains consumed.
 
 It does not contain a prepared identity or caller-selected tenant. The authentication service derives tenant and
-integration binding through its dependencies.
+integration binding through its dependencies. After consumption, callback input is not copied into response bodies,
+response headers or redirect locations, cookies, diagnostics, retained application state, or application-controlled
+telemetry.
+
+## TransactionLifetime
+
+The production transaction lifetime defaults to 600 seconds. An explicit override is accepted only when it decodes
+at Layer acquisition as a base-10 integer from 1 through 600 inclusive, so configuration can shorten but never extend
+the accepted lifetime. Conversion occurs only after validation and is bounded at 600,000 milliseconds. Zero,
+negative, fractional, nonnumeric, greater-than-600 and overflow-shaped input prevents process readiness without
+echoing the supplied value.
+
+This lifetime bounds recovery artifacts and their aligned cookie. It is independent of the signed `auth_time` value
+and does not define the freshness comparison or tolerance deferred to #158.
 
 ## ResolvedClientAuthentication
 
@@ -113,6 +139,11 @@ A private server-only discriminated value:
 
 The value is passed directly from the private credential child to the private provider child under parent
 orchestration. It is never persisted in the attempt or returned through public types, diagnostics, URLs or cookies.
+
+The credential source is decoded once at Layer acquisition. An absent `OIDC_CLIENT_SECRETS_JSON` is the valid empty
+map. A malformed explicitly supplied value prevents the whole process from becoming ready and is not echoed. Public
+clients need no selected secret. For a confidential tenant, the nonempty reference must resolve in the already-valid
+map; a missing selected reference makes only that authentication request unavailable.
 
 ## TrustedIdentity
 
@@ -141,7 +172,8 @@ service boundary can distinguish categories needed to establish semantics.
 | denied before consume | wrong tenant/authority, invalid correlation, malformed query, or missing/duplicate/wrong state | None; valid original remains usable |
 | denied at recovery | qualified address has no live record because it is missing, expired, or already consumed | None |
 | denied after consume | corrupt attempt, matching cancellation/error, invalid provider evidence, or missing claims | None; addressed attempt is single-use |
-| unavailable after readiness | Redis/provider/credential command cannot safely complete after process startup | None |
+| unavailable after readiness | Redis/provider/credential command cannot safely complete after process startup, including a Redis command rejected before send or a confidential client's missing selected secret | None; rejected-before-send commands cannot later execute, while an in-flight disconnect may already have consumed |
 | existing tenant HTTP error | callback host cannot select/read valid tenant configuration | None |
+| unavailable process startup | initial Redis acquisition, malformed explicit credential map, or invalid transaction TTL | No route serving; restart/recreation after corrected dependencies/configuration |
 
 Defects and interruption are not converted into these expected outcomes.

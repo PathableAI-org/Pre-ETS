@@ -43,7 +43,7 @@ exposing identity through the 204 response.
    application session is created and no protected application content is granted by this feature.
 3. **Given** a public or confidential client configuration accepted for the resolved tenant, **When** a valid
    callback is completed, **Then** the same tenant-configured OIDC contract is honored without exposing credentials,
-   tokens, the verifier, or raw provider payloads to the browser or diagnostics.
+   tokens, the verifier, or raw provider payloads through application-produced output or diagnostics.
 
 ---
 
@@ -84,7 +84,8 @@ as safe as transaction mismatch or replay.
 
 **Independent Test**: Deliver a controlled provider-error callback at the real public HTTP boundary and exercise
 responses with missing, invalid, or incorrectly bound signed identity evidence. Observe denial with no trusted
-identity handoff, authenticated application session, protected content, raw provider response, or secret disclosure.
+identity handoff, authenticated application session, protected content, application re-emission of the provider
+response, or secret disclosure.
 Claim real-provider cancellation only if the local provider UI actually emits it; otherwise record that evidence as
 unexecuted.
 
@@ -111,8 +112,9 @@ unexecuted.
   responses.
 - The provider refuses the request, the visitor cancels, code exchange fails, or signed identity evidence is
   absent, invalid, or bound to a different transaction or tenant.
-- A callback carries unsolicited parameters or raw provider values that must not appear in user-visible output,
-  diagnostic JSON, credentials, logs, or retained application state.
+- The inbound browser callback URL necessarily carries `code`, `state`, or provider error parameters. The application
+  must consume them without re-emitting them in response bodies, response headers or redirect locations, cookies,
+  diagnostic JSON, retained application state, or application-controlled telemetry.
 - Successful validation is followed by a downstream consumer failure. The validated identity still does not itself
   become an authenticated application session or grant protected access.
 - Public callback access must retain normal tenant resolution and configuration validation. It must not use a
@@ -140,8 +142,9 @@ These are feature-local acceptance statements derived from the accepted durable 
   missing/duplicate/wrong state, or malformed callback MUST NOT consume an otherwise valid attempt. No fallback
   tenant is permitted. Sources: SESSION-002 AC1–2 and the constitution's tenant-isolation principle.
 - **FR-004**: Recovery and consumption of an authentication attempt MUST be atomic and one-time. Missing, invalid,
-  expired, consumed, or concurrently replayed attempts MUST NOT produce a trusted identity handoff. Source: the
-  approved S2-C transaction lifecycle and SESSION-003 AC2 prerequisite.
+  expired, consumed, or concurrently replayed attempts MUST NOT produce a trusted identity handoff. Creating a new
+  attempt MUST NOT replace an already recoverable attempt at the same qualified address. Source: the approved S2-C
+  transaction lifecycle and SESSION-003 AC2 prerequisite.
 - **FR-005**: For a successful provider response, validation MUST establish transaction integrity and validate the
   authorization response, authorization-code exchange, signed identity evidence, issuer/client binding, audience,
   signature, nonce, and required identity claims before producing a trusted identity handoff. Sources:
@@ -166,10 +169,14 @@ These are feature-local acceptance statements derived from the accepted durable 
   credential, it MUST be resolved only through a vendor-neutral server-only boundary and MUST NOT appear in tenant
   configuration, browser-visible artifacts, callback output, or diagnostic responses. Sources: SECURITY-001 AC1–3
   and SESSION-002 AC1.
-- **FR-011**: Callback outcomes MUST NOT expose protected content, raw provider payloads, authorization codes,
-  access or identity tokens, credentials, proof verifiers, or other secret transaction material. Any durable
-  observability claim requires separate manual/runtime inspection and is not established by BDD assertions.
-  Sources: SECURITY-001 and repository observability-testing policy.
+- **FR-011**: The inbound callback URL necessarily transports the authorization `code`, `state`, or provider error
+  parameters. The application MUST consume those values without re-emitting them in response bodies, response
+  headers or redirect locations, cookies, diagnostics, retained application state, or application-controlled
+  telemetry. Application-produced callback outcomes MUST NOT expose protected content, access or identity tokens,
+  credentials, proof verifiers, raw provider payloads, or other secret transaction material. BDD inspects
+  application output, not the absence of protocol parameters from its own inbound request. Durable application-
+  controlled telemetry claims require separate manual/runtime inspection. Sources: SECURITY-001 and repository
+  observability-testing policy.
 - **FR-012**: The implementation increment MUST revise the existing requirement-backed initiation BDD so it no
   longer claims the absence of all correlation state after `/auth/login`, while continuing to prove that initiation
   creates no authenticated application session or protected access. Source: #216-to-#217 observable handoff.
@@ -273,8 +280,11 @@ Record Microsoft and broker-chain scenarios as unexecuted limitations until actu
   identity handoff and all other consumers are denied. After that consumption, one hundred percent of exercised
   sequential replays produce no additional handoff; under arbitrary operational failure, at most one handoff is the
   retained safety invariant.
-- **SC-004**: Browser-visible and diagnostic observations across every exercised success and rejection path contain
-  zero credentials, tokens, proof verifiers, raw provider payloads, or protected application content.
+- **SC-004**: Across every exercised success and rejection path, application-produced response bodies, response
+  headers and redirect locations, cookies other than opaque correlation clearing, diagnostics, retained application
+  state, and application-controlled telemetry contain zero credentials, tokens, proof verifiers, raw provider
+  payloads, inbound callback parameters, or protected content. This criterion does not claim `code`, `state`, or
+  provider error parameters are absent from the inbound browser callback URL that carries them to the application.
 - **SC-005**: Every new or changed requirements-BDD scenario inherits or carries at least one applicable lowercase
   requirement-ID tag, all callback-validation scenarios declare the feature's partial limits, and runtime execution
   records the tested revision, provider, instance arrangement, and unexecuted compatibility limitations.
