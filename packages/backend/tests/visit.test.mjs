@@ -144,6 +144,39 @@ test("cannot direct local visit writes to a remote database", () => {
   assert.doesNotMatch(`${result.stdout}${result.stderr}`, /synthetic-secret/u)
 })
 
+test("cannot override the local database host through connection parameters", () => {
+  const result = spawnSync(process.execPath, ["dist/main.js"], {
+    cwd: new URL("../", import.meta.url),
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      BACKEND_DATABASE_URL: "postgresql://127.0.0.1/synthetic_test?host=remote.invalid",
+      BACKEND_ENABLE_DEV_VISIT_WRITE: "true",
+      NODE_ENV: "development"
+    },
+    timeout: 5000
+  })
+  assert.equal(result.status, 1)
+  assert.match(`${result.stdout}${result.stderr}`, /BACKEND_DATABASE_URL must name a local PostgreSQL server/u)
+})
+
+test("client error events do not terminate the backend", async () => {
+  const connect = Client.prototype.connect
+  Client.prototype.connect = async function() {
+    this.emit("error", new Error("Synthetic socket failure"))
+    throw new Error("Synthetic socket failure")
+  }
+  try {
+    await withDatabaseServer("postgresql://127.0.0.1/synthetic_test", async (url) => {
+      const response = await create(url, openVisit)
+      assert.equal(response.status, 500)
+      assert.deepEqual(await response.json(), { error: "Could not save visit" })
+    })
+  } finally {
+    Client.prototype.connect = connect
+  }
+})
+
 test("a connection failure responds 500 without returning database details", async () => {
   await withDatabaseServer("postgresql://synthetic-user:synthetic-secret@127.0.0.1:1/synthetic_test", async (url) => {
     const response = await create(url, openVisit)

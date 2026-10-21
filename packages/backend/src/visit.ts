@@ -28,6 +28,7 @@ export const VisitStoreLive = Layer.effect(
     if (
       !["postgres:", "postgresql:"].includes(localUrl.protocol)
       || !["127.0.0.1", "localhost"].includes(localUrl.hostname)
+      || localUrl.searchParams.has("host")
     ) {
       return yield* Effect.fail(new Error("BACKEND_DATABASE_URL must name a local PostgreSQL server"))
     }
@@ -35,6 +36,9 @@ export const VisitStoreLive = Layer.effect(
     return VisitStore.of({
       insert: Effect.fn("VisitStore.insert")(function*(visit: typeof CreateOnSiteVisit.Type) {
         const client = new Client({ connectionString: Redacted.value(databaseUrl) })
+        client.on("error", () => {
+          process.stderr.write("Local on-site visit database connection failed\n")
+        })
         const result = yield* Effect.tryPromise({
           catch: () => new VisitSaveError({}),
           try: async () => {
