@@ -15,11 +15,14 @@ pnpm --filter @pathableai/pre-ets-frontend exec tsc --version
 
 Before coding, inspect the installed 4.0.5 declarations/source for `@effect/platform-node/NodeRedis` and
 `effect/persistence/Redis`, plus node-redis 6.3.0. Confirm the scoped Layer result/requirements, Layer option
-pass-through, `disableOfflineQueue` pre-send rejection behavior, raw-command `send` shape, lack of a cancellable
-per-command deadline/abort input, errors and finalization. Also inspect installed openid-client 6.8.8
-grant/check/client-auth declarations and Next 16.4.2 Route Handler cookie/redirect declarations. Exact tag source at
-`effect@4.0.5` and `redis@6.3.0` supports the plan, but installed locked declarations are the implementation gate;
-stop on a contract mismatch rather than adding a parallel Redis abstraction.
+pass-through, `disableOfflineQueue` pre-send rejection, response-aware `pingInterval` scheduling,
+`socket.socketTimeout`, stalled-socket destruction, pending-command rejection, `SocketTimeoutError` reconnect
+behavior, raw-command `send` shape, lack of a cancellable per-command deadline/abort input, errors and finalization.
+Also inspect installed openid-client 6.8.8 grant/check/client-auth
+declarations and source for `enableNonRepudiationChecks`, its `jwks_uri` requirement, and its use of the configured
+fetch/deadline for JWKS retrieval, plus Next 16.4.2 Route Handler cookie/redirect declarations. Exact pinned source
+supports the plan, but installed locked declarations are the implementation gate; stop on a contract mismatch rather
+than adding a parallel Redis abstraction.
 
 Confirm `packages/frontend/package.json` directly declares exact `redis@6.3.0`; its lockfile presence as an Effect
 peer is insufficient.
@@ -48,8 +51,10 @@ The suite should establish:
 - completion returns only the safe `preserve`/`clear` correlation disposition needed by the route: known
   pre-consumption/no-record failures preserve, actual or ambiguous consume clears, and private causes remain hidden;
 - missing, invalid, expired, corrupt, consumed and replayed attempts deny;
-- cancellation, provider error, mixed/duplicate callback parameters, exchange/signature/issuer/audience/nonce failure,
-  missing subject and missing signed `auth_time` deny;
+- cancellation, provider error, mixed/duplicate callback parameters, exchange/issuer/audience/nonce failure, missing
+  subject and missing signed `auth_time` deny;
+- with `enableNonRepudiationChecks` active, an invalid ID-token signature denies and JWKS retrieval stays inside the
+  controlled transport and provider-operation deadline;
 - a matching failed callback consumes the attempt;
 - inbound `code`, `state`, and provider-error values are consumed without being retained in service state or copied
   into safe errors (their presence in the inbound callback request is expected);
@@ -84,12 +89,20 @@ scoped NodeRedis client/service/runtime graphs, not two handles to one in-memory
 - malformed bytes are consumed and safely denied; and
 - Redis server-clock expiry makes the attempt unrecoverable.
 
-Construct the production adapter with `disableOfflineQueue: true`. After readiness, force a known
+Construct the production adapter with `disableOfflineQueue: true`, `pingInterval: 1_000`, and
+`socket.socketTimeout: 5_000`. First prove a healthy idle connection stays ready beyond the socket timeout because
+node-redis schedules each health PING only after the prior response. After readiness, force a known
 disconnected/reconnecting state and prove a consume submitted then rejects before send, maps to typed unavailability,
 does not execute after recovery, and leaves the original usable by a later valid callback after reconnection. Also
 exercise or deterministically fault an in-flight disconnect: do not retry, accept that the record may be consumed or
 present, and require that no second handoff is possible. Do not wrap `GETDEL` in an Effect timeout; the pinned generic
 Redis service cannot cancel that underlying command safely.
+
+Route an established client connection through a controlled TCP fault proxy that keeps the socket open while
+withholding replies. Submit a consume and prove the node-redis socket timeout closes the transport and fails the
+pending request within the configured bound; treat the possibly sent consume as ambiguous, clear correlation, and
+never retry it. Confirm the pinned NodeRedis strategy does not reconnect after `SocketTimeoutError` and a fresh
+process/runtime is required. This is transport-failure evidence, not an Effect timeout around `GETDEL`.
 
 For collision or malformed-byte setup, use only the fixture-scoped handle returned by the parent factory under the
 unique prefix. For real TTL evidence, use a short test-specific TTL and poll `PTTL`/`EXISTS` only as fixture
@@ -151,11 +164,11 @@ asserting non-disclosure. Capture callback URLs/cookies only transiently at HTTP
 negative requests. Use a short per-
 scenario transaction TTL for expiry, wait for the public callback to deny, and do not inspect Redis.
 
-Real Keycloak must establish the common completion path. Controlled-transport public-service tests may establish
-focused invalid signature/audience/nonce/claim outcomes that the tracked realm cannot safely synthesize, but cannot
-replace the real flow. If tracked Keycloak cannot emit a standards-valid signed token without `auth_time`, keep that
-exact negative claim at the public OIDC-client/service boundary and explicitly record the HTTP/browser limitation;
-do not substitute a prepared identity or mock callback.
+Real Keycloak must establish the common completion path with non-repudiation checks enabled. Controlled-transport
+public-service tests may establish focused invalid signature/audience/nonce/claim outcomes that the tracked realm
+cannot safely synthesize, but cannot replace the real flow. If tracked Keycloak cannot emit a standards-valid signed
+token without `auth_time`, keep that exact negative claim at the public OIDC-client/service boundary and explicitly
+record the HTTP/browser limitation; do not substitute a prepared identity or mock callback.
 
 Call a cancellation real Keycloak cancellation only if the provider UI actually emits it. Otherwise retain the
 controlled public-HTTP provider-error scenario and record real-provider cancellation as unexecuted.
@@ -175,9 +188,11 @@ request-level authentication unavailability.
 
 Then stop or isolate Redis after readiness. Prove a command rejected before send maps `/auth/login` or
 `/auth/callback` to safe authentication unavailability, never executes after reconnection, and permits a later new
-request to succeed when the client is ready. Prove an in-flight disconnect is not retried and may have consumed. Do
-not claim public-route survival during initial acquisition failure; its blast radius is the whole process and
-recovery requires restart/recreation.
+request to succeed after an ordinary reconnect when the client is ready. Prove an in-flight disconnect is not retried
+and may have consumed. Separately prove a stalled-open connection hits the configured socket timeout, fails its
+pending request, is treated as ambiguous with no retry, and leaves the process/runtime requiring restart or
+recreation because the pinned strategy stops reconnecting on `SocketTimeoutError`. Do not claim public-route survival
+during initial acquisition failure; its blast radius is the whole process and recovery requires restart/recreation.
 
 Exercise or assess one mixed-version transition in each direction. Old/new callback incompatibility may deny an
 in-flight login but must never accept it. Confirm rollback needs no migration and that new versioned keys plus host-
