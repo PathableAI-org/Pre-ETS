@@ -1,9 +1,9 @@
 import { OtelTracer, Resource } from "@effect/opentelemetry"
-import { NodeServices } from "@effect/platform-node"
+import { NodeRedis, NodeServices } from "@effect/platform-node"
 import { registerOTel } from "@vercel/otel"
 import { ConfigProvider, Effect, Layer, ManagedRuntime } from "effect"
 
-import { AuthenticationService } from "./authentication.ts"
+import { makeAuthenticationTestHarness } from "./authentication.ts"
 import { ServerConfig } from "./config/index.ts"
 import { appLoggerLayer } from "./observability.ts"
 import { SessionService } from "./session.ts"
@@ -38,7 +38,16 @@ const boot = () => {
 
     const runtime = ManagedRuntime.make(
       Layer.mergeAll(
-        AuthenticationService.layer.pipe(Layer.provideMerge(TenantConfigService.layer(config))),
+        makeAuthenticationTestHarness({
+          redis: NodeRedis.layer({
+            disableOfflineQueue: true,
+            pingInterval: 1_000,
+            socket: { socketTimeout: 5_000 },
+            url: process.env.REDIS_URL ?? "redis://127.0.0.1:6379"
+          })
+        }).layer.pipe(
+          Layer.provideMerge(TenantConfigService.layer(config))
+        ),
         SessionService.layer,
         LoggerLayer,
         ObservabilityLayer
@@ -48,8 +57,14 @@ const boot = () => {
       )
     )
 
-    // Running this effect also makes sure that the layers get resolved
-    runtime.runSync(Effect.logDebug("Runtime started"))
+    // Awaiting this probe eagerly acquires asynchronous layers, including Redis,
+    // before instrumentation declares the process ready.
+    yield* Effect.tryPromise({
+      catch: (cause) => cause,
+      try: () => runtime.runPromise(Effect.logDebug("Runtime started"))
+    }).pipe(
+      Effect.tapError(() => Effect.promise(() => runtime.dispose()))
+    )
 
     return runtime
   }).pipe(

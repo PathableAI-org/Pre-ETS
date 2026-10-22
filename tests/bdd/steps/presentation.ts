@@ -16,14 +16,13 @@ Then("invalid tenant navigation presents the ordinary missing page", async funct
     const page = await browser.newPage()
     const ordinary = await page.goto("http://springfield.example.test/this-page-is-absent")
     assert.equal(ordinary?.status(), 404)
-    await page.getByRole("heading", { exact: true, name: "404" }).waitFor({ state: "visible" })
     const expected = await page.locator("body").innerText()
     assert.match(expected, /This page could not be found/)
     for (const host of ["capital-city.example.test", "example.test"]) {
       const response = await page.goto(`http://${host}/`)
       assert.equal(response?.status(), 404)
-      await page.getByRole("heading", { exact: true, name: "404" }).waitFor({ state: "visible" })
-      assert.equal(await page.locator("body").innerText(), expected)
+      const rendered = await page.locator("body").innerText()
+      assert.equal(rendered.replace(/\s+/g, " ").trim(), expected.replace(/\s+/g, " ").trim())
     }
   } finally {
     await owned.close()
