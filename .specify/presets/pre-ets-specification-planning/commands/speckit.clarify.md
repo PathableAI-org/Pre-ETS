@@ -22,8 +22,9 @@ within that authorized scope.
   limitations remain aligned.
 - Never edit requirements, delivery plans, or GitHub issues from this command.
 
-The readiness result covers both feature artifacts. Recommend `$speckit-plan` only when
-the behavioral contract and feature verification obligations are sufficiently clear.
+The readiness result covers both feature artifacts. When the behavioral contract and
+feature verification obligations are sufficiently clear, hand the specification branch
+to `$speckit-stack` for its pull request. Do not start `$speckit-plan` on that branch.
 
 {CORE_TEMPLATE}
 
@@ -31,4 +32,5 @@ the behavioral contract and feature verification obligations are sufficiently cl
 
 Report whether `spec.md` and `verification.md` remain aligned, identify any authority
 blocker separately from ordinary clarification coverage, and never describe a proposed
-source change as already approved.
+source change as already approved. Clarification remains on the specification pull
+request. The next step is `$speckit-stack`, not `$speckit-plan` on this branch.

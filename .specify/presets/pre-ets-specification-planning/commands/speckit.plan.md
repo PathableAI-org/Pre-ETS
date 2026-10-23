@@ -102,4 +102,7 @@ Do not report planning complete until the five design phases are explicit,
 `contracts/modules.md` covers every affected public module, proposed external APIs were
 checked against installed declarations, module evidence is claim-based, and
 `quickstart.md` operationalizes the approved feature verification plan. No unresolved
-product decision may be hidden as an implementation assumption.
+product decision may be hidden as an implementation assumption. Follow
+`docs/engineering/git-workflow.md`: `$speckit-stack` opens the engineering-plan pull
+request from the specification branch. Generate tasks only after it adds the
+implementation branch.
