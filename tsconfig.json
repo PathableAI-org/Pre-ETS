@@ -12,7 +12,6 @@
     ]
   },
   "include": [
-    "tests/**/*.ts",
-    "e2e/**/*.ts"
+    "tests/**/*.ts"
   ]
 }

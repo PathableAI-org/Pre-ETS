@@ -35,7 +35,6 @@ jobs:
             fallow:
               - 'packages/**'
               - 'tests/**'
-              - 'e2e/**'
               - '*.js'
               - '*.mjs'
               - 'eslint.config.js'

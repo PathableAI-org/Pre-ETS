@@ -64,8 +64,8 @@ executed or assessed as satisfaction evidence for this plan.
   [authentication notes](../authentication.md) describe a welcome page and callback fallback. There is no live
   on-site UI or authenticated record workflow in this tree. Tenant-context code does not establish authenticated
   coach identity or backend authority.
-- The [active BDD features](../../tests/bdd/requirements/) cover tenant behavior, while
-  [E2E](../../e2e/README.md) has no browser specs. Reuse the owned-process/fixture patterns from
+- The [active BDD features](../../tests/bdd/requirements/) cover tenant behavior.
+  Reuse the owned-process/fixture patterns from
   [BDD support](../../tests/bdd/support/), extending lifecycle ownership to the backend and real domain store.
   Existing tenant tests and diagnostic responses do not establish any service-record criteria.
 - [PR #146](https://github.com/PathableAI-org/Pre-ETS/pull/146), **feat(frontend): add local on-site report prototype**,

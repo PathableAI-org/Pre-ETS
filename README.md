@@ -243,12 +243,12 @@ and failing if any scope fails. Each workspace owns its `.fallowrc.json` and loc
 `pnpm --filter @pathableai/pre-ets-frontend fallow:unused`.
 
 The root configuration excludes `packages/**` and owns repository-level tests,
-E2E/BDD support, and tooling. The backend configuration uses `src/main.ts` as its
+BDD support, and tooling. The backend configuration uses `src/main.ts` as its
 runtime root and follows its import of the `src/index.ts` application routes.
 Frontend production code counts as live only when reachable from
 Next.js framework entry points, including routes, layouts, proxy, and instrumentation.
 Library files, ordinary helpers under `app`, and server-action modules must be
-imported by reachable app code. Imports from unit tests or repository E2E/BDD
+imported by reachable app code. Imports from unit tests or repository BDD
 fixtures do not establish frontend production liveness.
 
 Frontend production mode applies only to dead-code analysis, so audit health and
@@ -423,7 +423,7 @@ and `workflow_dispatch` always run the full work for those three workflows.
 successful build, the smoke check still runs if requirements scenarios fail, unless the job
 is cancelled. A failure in either suite fails the job. It runs only on `main`, without path
 filtering, and preserves runtime reports and failure diagnostics. There is no CI dry-run job.
-See [BDD commands and evidence](features/README.md). Sign-in browser specs are described in `e2e/README.md`.
+See [BDD commands and evidence](features/README.md).
 
 CI uses the pinned Node and pnpm versions, a frozen lockfile, and pnpm store caching.
 `HUSKY=0` skips local hook installation; CI invokes the full checks directly and
@@ -502,7 +502,14 @@ See [Testing as evidence](docs/engineering/testing/README.md) for choosing meani
 verification and [Property-based testing](docs/engineering/testing/property-based-testing.md)
 for designing properties and using fast-check with project examples.
 
-## Browser E2E tests
+## End-to-end tests
 
-Run `pnpm test:e2e` after starting the Compose stack. See the
-[E2E guide](e2e/README.md) for setup, debugging, and coverage boundaries.
+Requirements BDD scenarios under [`tests/bdd/requirements/`](tests/bdd/requirements/) observe the
+running application through HTTP and Chromium. Real Keycloak is provisioned and exercised by
+`pnpm test:bdd` and the nightly [`CI / BDD`](.github/workflows/ci-bdd.yml) job.
+Run `pnpm test:bdd:dry` to validate feature discovery, then follow the
+[BDD commands guide](features/README.md) for provider and environment setup.
+
+The `playwright` library drives Chromium inside Cucumber steps; it is not invoked
+through a separate Playwright Test runner. BDD replaces the old `pnpm test:e2e`
+command, which has been removed.
