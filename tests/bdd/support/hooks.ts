@@ -10,7 +10,7 @@ Before(function(this: AppWorld, { pickle }) {
   this.runtime = pickle.tags.some((tag) => tag.name === "@development") ? "development" : "production"
 })
 After({ timeout: 30000 }, async function(this: AppWorld, { result }) {
-  if (result?.status === Status.FAILED) this.attach(this.logs, "text/plain")
+  if (result?.status === Status.FAILED) this.attach(`${this.logs}\n${this.secondaryLogs}`, "text/plain")
   try {
     await stopSite(this)
   } finally {

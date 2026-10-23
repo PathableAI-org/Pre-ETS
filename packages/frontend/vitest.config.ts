@@ -14,6 +14,7 @@ export default defineConfig({
   },
   test: {
     environment: "node",
+    exclude: ["tests/integration/**"],
     globals: false,
     include: ["tests/**/*.test.ts"],
     server: { deps: { inline: ["@pathableai/react", "@pathableai/styles"] } },
