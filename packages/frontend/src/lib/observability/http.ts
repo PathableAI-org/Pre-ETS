@@ -185,22 +185,45 @@ const resolvedHostname = (hostname: null | string | undefined): string => {
 
 const portSuffix = (port: string | undefined): string => port === undefined || port === "" ? "" : `:${port}`
 
+/** A request target is not an authority. `//host/...` and absolute URLs stay on the connection host. */
+const requestPathname = (target: string): string => {
+  const withoutFragment = target.split("#", 1)[0] ?? ""
+  const withoutQuery = withoutFragment.split("?", 1)[0] ?? ""
+  if (withoutQuery.startsWith("/") && !withoutQuery.startsWith("//")) return withoutQuery
+  return `/${encodeURIComponent(withoutQuery)}`
+}
+
+const spanUrl = (
+  protocol: string,
+  hostname: string,
+  port: string | undefined,
+  target: string
+): undefined | URL => {
+  try {
+    const url = new URL(`${protocol}//${hostForUrl(hostname)}${portSuffix(port)}/`)
+    const connectionHost = url.hostname
+    url.pathname = requestPathname(target)
+    url.search = ""
+    url.hash = ""
+    if (url.hostname !== connectionHost) return undefined
+    return url
+  } catch {
+    return undefined
+  }
+}
+
 const urlFromRequestOptions = (options: Http.RequestOptions, protocol: "http:" | "https:"): undefined | URL => {
   if (options.socketPath !== undefined) return undefined
   const port = explicitPort(options.port)
   const located = missingHostname(options.hostname)
     ? hostFromHeader(options.host, port)
     : { hostname: options.hostname, port }
-  try {
-    return new URL(
-      options.path ?? "/",
-      `${schemeFor(options.protocol, protocol)}//${hostForUrl(resolvedHostname(located.hostname))}${
-        portSuffix(located.port)
-      }/`
-    )
-  } catch {
-    return undefined
-  }
+  return spanUrl(
+    schemeFor(options.protocol, protocol),
+    resolvedHostname(located.hostname),
+    located.port,
+    options.path ?? "/"
+  )
 }
 
 const urlFromInput = (input: string | URL): undefined | URL => {
@@ -230,11 +253,7 @@ const effectiveHttpUrl = (base: URL, options: Http.RequestOptions): undefined | 
   const hostname = selectedText(options.hostname, base.hostname)
   const port = selectedPort(options.port, base.port)
   const path = options.path ?? `${base.pathname}${base.search}`
-  try {
-    return new URL(path, `${protocol}//${hostForUrl(hostname)}${portSuffix(port)}/`)
-  } catch {
-    return undefined
-  }
+  return spanUrl(protocol, hostname, port, path)
 }
 
 const callbackAt = (value: unknown): ((response: Http.IncomingMessage) => void) | undefined =>

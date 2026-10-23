@@ -265,4 +265,46 @@ describe("node HTTP client instrumentation", () => {
     expect(namedFailure?.attributes["error.type"]).toBe("Error")
     expect(JSON.stringify(namedFailure?.attributes)).not.toContain("secret")
   })
+
+  it("does not let a protocol-relative path replace the connection host", async () => {
+    const server = await listen("127.0.0.1")
+    nodeHttpClientInstrumentation.setTracerProvider(provider)
+    nodeHttpClientInstrumentation.enable()
+    const target = "//localhost/probe?token=secret"
+    await new Promise<void>((resolve, reject) => {
+      const request = http.request({
+        hostname: "127.0.0.1",
+        path: target,
+        port: server.port
+      }, (response) => {
+        response.resume()
+        resolve()
+      })
+      request.on("error", reject)
+      request.end()
+    })
+    const optionsRaw = server.take()
+    await new Promise<void>((resolve, reject) => {
+      const request = http.request(`http://127.0.0.1:${String(server.port)}/original`, {
+        path: target
+      }, (response) => {
+        response.resume()
+        resolve()
+      })
+      request.on("error", reject)
+      request.end()
+    })
+    const fromUrl = await server.take()
+    const fromOptions = await optionsRaw
+    server.server.close()
+    const recorded = `http://127.0.0.1:${String(server.port)}/${encodeURIComponent("//localhost/probe")}`
+    expect(fromOptions.url).toBe(target)
+    expect(headerValues(fromOptions.rawHeaders, "traceparent")).toEqual([])
+    expect(spans[0]?.attributes["http.url"]).toBe(recorded)
+    expect(spans[0]?.attributes["net.peer.name"]).toBe("127.0.0.1")
+    expect(fromUrl.url).toBe(target)
+    expect(headerValues(fromUrl.rawHeaders, "traceparent")).toEqual([])
+    expect(spans[1]?.attributes["http.url"]).toBe(recorded)
+    expect(spans[1]?.attributes["net.peer.name"]).toBe("127.0.0.1")
+  })
 })
