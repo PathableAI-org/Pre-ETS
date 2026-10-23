@@ -26,6 +26,12 @@ const recordBrowserResponse = async (response: {
   }
 }
 
+const belongsToApplicationHost = (domain: string, host: string): boolean => {
+  const hostname = new URL(`http://${host}`).hostname.toLowerCase()
+  const owner = domain.replace(/^\./, "").toLowerCase()
+  return owner.length > 0 && (hostname === owner || hostname.endsWith(`.${owner}`))
+}
+
 const signIn = async (page: Page): Promise<void> => {
   await page.getByRole("textbox", { name: /username|email/i }).fill("demo")
   await page.getByRole("textbox", { exact: true, name: "Password" }).fill("demo")
@@ -146,7 +152,9 @@ When("the visitor completes real provider sign-in across two application instanc
     const callbackResponse = page.waitForResponse((response) => new URL(response.url()).pathname === "/auth/callback")
     await signIn(page)
     this.response = await recordBrowserResponse(await callbackResponse)
-    this.browserCookieNames = (await context.cookies()).map((cookie) => cookie.name)
+    this.browserCookieNames = (await context.cookies())
+      .filter((cookie) => belongsToApplicationHost(cookie.domain, host))
+      .map((cookie) => cookie.name)
   } finally {
     await owned.close()
   }
