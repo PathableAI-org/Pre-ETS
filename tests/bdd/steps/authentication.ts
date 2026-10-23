@@ -1,14 +1,73 @@
-import { Given, Then } from "@cucumber/cucumber"
+import type { Page } from "playwright"
+
+import { Given, Then, When } from "@cucumber/cucumber"
 import assert from "node:assert/strict"
 import fs from "node:fs/promises"
 import path from "node:path"
+import { setTimeout as delay } from "node:timers/promises"
 
 import type { AppWorld } from "../support/world.ts"
 
 import { applicationBrowser } from "../support/browser.ts"
+import { requestInstance, requestSite, startSecondSite } from "../support/server.ts"
+
+type RecordedResponse = NonNullable<AppWorld["response"]>
+
+const recordBrowserResponse = async (response: {
+  allHeaders: () => Promise<Record<string, string>>
+  status: () => number
+  text: () => Promise<string>
+}): Promise<RecordedResponse> => {
+  const status = response.status()
+  return {
+    body: status === 204 ? "" : await response.text(),
+    headers: await response.allHeaders(),
+    status
+  }
+}
+
+const belongsToApplicationHost = (domain: string, host: string): boolean => {
+  const hostname = new URL(`http://${host}`).hostname.toLowerCase()
+  const owner = domain.replace(/^\./, "").toLowerCase()
+  return owner.length > 0 && (hostname === owner || hostname.endsWith(`.${owner}`))
+}
+
+const signIn = async (page: Page): Promise<void> => {
+  await page.getByRole("textbox", { name: /username|email/i }).fill("demo")
+  await page.getByRole("textbox", { exact: true, name: "Password" }).fill("demo")
+  await page.getByRole("button", { name: /sign in/i }).click({ noWaitAfter: true })
+}
+
+const waitForCapturedCallback = async (
+  callbacks: readonly { readonly cookie: string; readonly url: string }[]
+) => {
+  for (let attempt = 0; attempt < 50; attempt++) {
+    const callback = callbacks[0]
+    if (callback !== undefined) return callback
+    await delay(100)
+  }
+  throw new Error("Provider callback was not captured")
+}
+
+const captureProviderReturn = async (world: AppWorld, host: string) => {
+  await startSecondSite(world)
+  const owned = await applicationBrowser(world.port, [host], world.secondaryPort, true)
+  try {
+    const context = await owned.browser.newContext()
+    const page = await context.newPage()
+    await page.goto(`http://${host}/`)
+    await signIn(page)
+    return await waitForCapturedCallback(owned.callbacks)
+  } finally {
+    await owned.close()
+  }
+}
 
 Given("the visitor supplies application cookie {string}", function(this: AppWorld, cookie: string) {
   this.cookie = cookie
+})
+Given("the recoverable authentication lifetime is {int} second", function(this: AppWorld, seconds: number) {
+  this.transactionTtlSeconds = seconds
 })
 Given("Springfield preparation has {string}", async function(this: AppWorld, failure: string) {
   if (failure === "no callback origin") {
@@ -78,4 +137,148 @@ Then("browser entry at {string} reaches public sign-in failure", async function(
   } finally {
     await owned.close()
   }
+})
+
+When("the visitor completes real provider sign-in across two application instances at {string}", async function(
+  this: AppWorld,
+  host: string
+) {
+  await startSecondSite(this)
+  const owned = await applicationBrowser(this.port, [host], this.secondaryPort)
+  try {
+    const context = await owned.browser.newContext()
+    const page = await context.newPage()
+    await page.goto(`http://${host}/`)
+    const callbackResponse = page.waitForResponse((response) => new URL(response.url()).pathname === "/auth/callback")
+    await signIn(page)
+    this.response = await recordBrowserResponse(await callbackResponse)
+    this.browserCookieNames = (await context.cookies())
+      .filter((cookie) => belongsToApplicationHost(cookie.domain, host))
+      .map((cookie) => cookie.name)
+  } finally {
+    await owned.close()
+  }
+})
+
+When("the visitor submits a matching controlled provider denial at {string}", async function(
+  this: AppWorld,
+  host: string
+) {
+  await requestSite(this, host, true, "/auth/login")
+  assert.equal(this.response?.status, 307)
+  const destination = new URL(this.response.headers.location ?? "")
+  const state = destination.searchParams.get("state")
+  assert.ok(state)
+  const cookie = (this.response.headers["set-cookie"] ?? "").split(";", 1)[0]
+  assert.ok(cookie)
+  assert.match(cookie, /^oidc-correlation=/)
+  this.response = await requestInstance(
+    this,
+    this.port,
+    host,
+    `/auth/callback?error=access_denied&error_description=controlled-private-value&state=${encodeURIComponent(state)}`,
+    true,
+    cookie
+  )
+})
+
+When("the visitor submits a wrong-state callback before the captured valid return at {string}", async function(
+  this: AppWorld,
+  host: string
+) {
+  const captured = await captureProviderReturn(this, host)
+  const valid = new URL(captured.url)
+  const wrong = new URL(valid)
+  wrong.searchParams.set("state", "wrong-state")
+  const premature = await requestInstance(
+    this,
+    this.port,
+    host,
+    `${wrong.pathname}${wrong.search}`,
+    true,
+    captured.cookie
+  )
+  assert.equal(premature.status, 200)
+  assert.equal(premature.headers["set-cookie"], undefined)
+  this.response = await requestInstance(
+    this,
+    this.secondaryPort,
+    host,
+    `${valid.pathname}${valid.search}`,
+    true,
+    captured.cookie
+  )
+})
+
+When("the captured Springfield return is first submitted to Shelbyville and then Springfield", async function(
+  this: AppWorld
+) {
+  const captured = await captureProviderReturn(this, "springfield.localhost:3000")
+  const valid = new URL(captured.url)
+  const mismatch = await requestInstance(
+    this,
+    this.port,
+    "shelbyville.localhost:3000",
+    `${valid.pathname}${valid.search}`,
+    true,
+    captured.cookie
+  )
+  assert.equal(mismatch.status, 200)
+  assert.equal(mismatch.headers["set-cookie"], undefined)
+  this.response = await requestInstance(
+    this,
+    this.secondaryPort,
+    "springfield.localhost:3000",
+    `${valid.pathname}${valid.search}`,
+    true,
+    captured.cookie
+  )
+})
+
+When("two application instances race the same captured valid return at {string}", async function(
+  this: AppWorld,
+  host: string
+) {
+  const captured = await captureProviderReturn(this, host)
+  const valid = new URL(captured.url)
+  const requestPath = `${valid.pathname}${valid.search}`
+  this.callbackRaceResponses = await Promise.all([
+    requestInstance(this, this.port, host, requestPath, true, captured.cookie),
+    requestInstance(this, this.secondaryPort, host, requestPath, true, captured.cookie)
+  ])
+  this.response = this.callbackRaceResponses.find((response) => response.status === 204)
+  this.replayResponse = await requestInstance(this, this.port, host, requestPath, true, captured.cookie)
+})
+
+When("the visitor submits the captured provider return after it expires at {string}", async function(
+  this: AppWorld,
+  host: string
+) {
+  const captured = await captureProviderReturn(this, host)
+  await delay((this.transactionTtlSeconds + 1) * 1_000)
+  const valid = new URL(captured.url)
+  this.response = await requestInstance(
+    this,
+    this.secondaryPort,
+    host,
+    `${valid.pathname}${valid.search}`,
+    true,
+    captured.cookie
+  )
+})
+
+Then("the callback clears correlation and creates no application session", function(this: AppWorld) {
+  assert.equal(this.browserCookieNames.includes("oidc-correlation"), false)
+  assert.equal(this.browserCookieNames.some((name) => /session/i.test(name)), false)
+  const cookie = this.response?.headers["set-cookie"] ?? ""
+  for (const header of cookie.split("\n")) {
+    assert.doesNotMatch(header, /(?:^|;\s*)(?:pathable-)?session=/i)
+  }
+})
+
+Then("exactly one raced callback succeeds and replay is denied", function(this: AppWorld) {
+  assert.deepEqual(this.callbackRaceResponses.map((response) => response.status).sort(), [200, 204])
+  assert.equal(this.callbackRaceResponses.filter((response) => response.status === 204).length, 1)
+  assert.equal(this.callbackRaceResponses.find((response) => response.status === 204)?.body, "")
+  assert.equal(this.replayResponse?.status, 200)
 })

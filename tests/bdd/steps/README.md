@@ -7,7 +7,7 @@ Feature-level `@partial` limits evidence scope; it does not permit pending or fa
 
 Steps interact with the owned Next.js process over HTTP and a real Chromium browser for
 missing-page presentation. They must not open Redis clients, session stores, or mock identity
-providers. `http.ts` owns generic requests and responses, and `tenant.ts` owns tenant
+providers. Redis is observed only through application outcomes. `http.ts` owns generic requests and responses, and `tenant.ts` owns tenant
 configuration setup and tenant-specific observations. `presentation.ts` compares rendered missing-page
 content after navigation; browser requests preserve the logical Host header while routing to the
 owned loopback process, so this does not establish infrastructure ingress behavior.
@@ -19,15 +19,18 @@ hooks.
 See [requirements BDD commands](../../../features/README.md). Historical Spec Kit dispositions remain
 in the [migration ledger](../../../features/TRACEABILITY.md).
 
-Initiation scenarios use the real tracked Keycloak realm; start it and wait for realm discovery before running
-success scenarios. Each world supplies its own `OIDC_CALLBACK_ORIGINS_JSON` and `OIDC_ALLOW_INSECURE_LOOPBACK`
-settings. Registered tenant `.localhost:3000` callbacks are independent of logical `example.test` request Hosts
-and the random Next transport port. No callback listener is required because the evidence stops at provider arrival.
+Initiation and successful callback scenarios use the real tracked Keycloak realm; start Redis and Keycloak and wait
+for both before running them. Each world supplies its own `OIDC_CALLBACK_ORIGINS_JSON`,
+`OIDC_ALLOW_INSECURE_LOOPBACK`, and `OIDC_TX_KEY_PREFIX`. Registered tenant `.localhost:3000` callbacks are
+independent of random Next transport ports. Callback scenarios run two independently composed production Next
+processes behind the same logical authority: provider departure uses instance A and `/auth/callback` uses instance B.
+The host-only, callback-path cookie crosses those instances through the browser without being sent to another tenant.
 
 `authentication.ts` owns provider destination/protocol and public sign-in observations. Raw HTTP stays unfollowed:
 assert root delegation first, then explicitly request `/auth/login` for tenant/provider status. Generic status
 assertions always inspect the actual most recent response. `support/browser.ts` owns a scoped browser proxy;
 each application redirect reaches the owned process with its logical Host, while external requests keep their
-real destination. Native Chromium redirects bypass Playwright route interception, so no `route.fetch` redirect
-following is used. Missing-page comparison and provider arrival share this transport. The harness regression
-requires Chromium and local loopback sockets. None of this proves production ingress or callback acceptance.
+real destination. The proxy can capture a real provider return before delivery for wrong-state, cross-tenant, race,
+expiry, and replay requests; steps retain callback URLs and cookies only for the scenario and never inspect Redis.
+Missing-page comparison, provider arrival, and callback delivery share this transport. The harness regression
+requires Chromium, local loopback sockets, Redis, and Keycloak. None of this proves production ingress behavior.
