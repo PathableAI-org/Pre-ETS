@@ -24,6 +24,22 @@ const invalidCredentialConfig = () =>
     )
   )
 
+const supportedSecretMethod = (
+  methods: readonly string[] | undefined
+): "client_secret_basic" | "client_secret_post" | undefined => {
+  // Omitted metadata means client_secret_basic, the OpenID Connect default.
+  const advertised = methods === undefined || methods.length === 0 ? ["client_secret_basic"] : methods
+  const selected = advertised.find((method) => method === "client_secret_basic" || method === "client_secret_post")
+  return selected === "client_secret_basic" || selected === "client_secret_post" ? selected : undefined
+}
+
+const confidentialAuthentication = (secret: string): oidc.ClientAuth => (metadata, client, body, headers) => {
+  const method = supportedSecretMethod(metadata.token_endpoint_auth_methods_supported)
+  if (method === undefined) throw new Error("Confidential client authentication method is unsupported")
+  const authenticate = method === "client_secret_basic" ? oidc.ClientSecretBasic(secret) : oidc.ClientSecretPost(secret)
+  authenticate(metadata, client, body, headers)
+}
+
 const ClientCredentialConfig = Config.String("OIDC_CLIENT_SECRETS_JSON").pipe(
   Config.withDefault("{}"),
   Config.mapEffect((raw) =>
@@ -48,7 +64,7 @@ export class ClientCredentials extends Context.Service<ClientCredentials, {
         }
         const secret = Object.hasOwn(values, request.clientSecretRef) ? values[request.clientSecretRef] : undefined
         if (secret === undefined) return yield* new ClientCredentialUnavailable({})
-        return { method: oidc.ClientSecretPost(secret), mode: "confidential" } as const
+        return { method: confidentialAuthentication(secret), mode: "confidential" } as const
       })
       return ClientCredentials.of({ resolve })
     })

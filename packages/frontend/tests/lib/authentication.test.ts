@@ -78,13 +78,14 @@ const withWorld = <A, E, R>(program: Effect.Effect<A, E, AuthenticationService |
   )
 }
 
-const metadata = (issuer = "https://provider.test") =>
+const metadata = (issuer = "https://provider.test", methods?: readonly string[]) =>
   Response.json({
     authorization_endpoint: `${issuer}/authorize`,
     id_token_signing_alg_values_supported: ["RS256"],
     issuer,
     jwks_uri: `${issuer}/jwks`,
-    token_endpoint: `${issuer}/token`
+    token_endpoint: `${issuer}/token`,
+    ...(methods === undefined ? {} : { token_endpoint_auth_methods_supported: methods })
   })
 
 const withFetch = <A, E, R>(transport: typeof globalThis.fetch, program: Effect.Effect<A, E, R>) =>
@@ -152,6 +153,58 @@ const completionTransport = (
     default:
       return Promise.reject(new Error(`Unexpected provider URL: ${url.href}`))
   }
+}
+
+const requestUrl = (input: RequestInfo | URL): URL =>
+  new URL(typeof input === "string" || input instanceof URL ? input : input.url)
+
+const bodyText = (body: BodyInit | null | undefined): string => {
+  if (typeof body === "string") return body
+  if (body instanceof URLSearchParams) return body.toString()
+  return ""
+}
+
+const authorizationText = (headers: HeadersInit | undefined): string => new Headers(headers).get("authorization") ?? ""
+
+const confidentialSecret = "controlled-secret"
+
+const confidentialOptions = {
+  clientAuth: "confidential" as const,
+  credentialMap: JSON.stringify({ "alpha-secret": confidentialSecret })
+}
+
+const confidentialProvider = (
+  methods: readonly string[] | undefined,
+  readNonce: () => string,
+  onToken?: (request: { authorization: string; body: string }) => void,
+  observed?: string[]
+): typeof fetch =>
+async (input, init) => {
+  const url = requestUrl(input)
+  observed?.push(url.href, bodyText(init?.body), authorizationText(init?.headers))
+  if (url.pathname === "/token") {
+    onToken?.({ authorization: authorizationText(init?.headers), body: bodyText(init?.body) })
+  }
+  if (url.pathname === "/.well-known/openid-configuration") return metadata("https://provider.test", methods)
+  return completionTransport(readNonce)(input)
+}
+
+const expectConfidentialWire = (
+  request: undefined | { authorization: string; body: string },
+  wire: string,
+  secret: string
+) => {
+  if (request === undefined) throw new Error("Missing token request")
+  if (wire !== "basic") {
+    expect(request.authorization).toBe("")
+    expect(request.body).toContain(`client_secret=${secret}`)
+    return
+  }
+  const decoded = Buffer.from(request.authorization.slice("Basic ".length), "base64").toString()
+  const separator = decoded.indexOf(":")
+  expect(decodeURIComponent(decoded.slice(0, separator))).toBe("alpha-client")
+  expect(decodeURIComponent(decoded.slice(separator + 1))).toBe(secret)
+  expect(request.body).not.toContain(secret)
 }
 
 const expectCallbackFailure = (
@@ -508,6 +561,68 @@ describe("AuthenticationService completion", () => {
           AuthenticationUnavailable
         )
       }))
+    )
+  })
+
+  it.effect.each([
+    { label: "omitted supported methods", methods: undefined, wire: "basic" },
+    { label: "advertised basic", methods: ["client_secret_basic"], wire: "basic" },
+    { label: "advertised post", methods: ["client_secret_post"], wire: "post" },
+    { label: "server-preferred post", methods: ["client_secret_post", "client_secret_basic"], wire: "post" }
+  ])("exchanges a confidential code using $label", ({ methods, wire }) => {
+    let nonce = ""
+    const tokenRequests: { authorization: string; body: string }[] = []
+    return withFetch(
+      confidentialProvider(methods, () => nonce, (request) => {
+        tokenRequests.push(request)
+      }),
+      withWorld(
+        Effect.gen(function*() {
+          const authentication = yield* AuthenticationService
+          const prepared = yield* authentication.prepare({ host: "alpha.example.test" })
+          expect(JSON.stringify(prepared)).not.toContain(confidentialSecret)
+          const destination = new URL(prepared.destination)
+          nonce = destination.searchParams.get("nonce") ?? ""
+          const state = destination.searchParams.get("state") ?? ""
+          const identity = yield* authentication.complete({
+            correlation: prepared.correlation,
+            host: "alpha.example.test",
+            query: [["code", "controlled-code"], ["state", state]]
+          })
+          expect(identity.subject).toBe("subject-1")
+          expect(JSON.stringify(identity)).not.toContain(confidentialSecret)
+          expectConfidentialWire(tokenRequests[0], wire, confidentialSecret)
+        }),
+        confidentialOptions
+      )
+    )
+  })
+
+  it.effect("does not send a confidential secret when the provider supports neither secret method", () => {
+    let nonce = ""
+    const observed: string[] = []
+    return withFetch(
+      confidentialProvider(["private_key_jwt"], () => nonce, undefined, observed),
+      withWorld(
+        Effect.gen(function*() {
+          const authentication = yield* AuthenticationService
+          const prepared = yield* authentication.prepare({ host: "alpha.example.test" })
+          const destination = new URL(prepared.destination)
+          nonce = destination.searchParams.get("nonce") ?? ""
+          const state = destination.searchParams.get("state") ?? ""
+          expectCallbackFailure(
+            yield* authentication.complete({
+              correlation: prepared.correlation,
+              host: "alpha.example.test",
+              query: [["code", "controlled-code"], ["state", state]]
+            }).pipe(Effect.result),
+            "clear",
+            AuthenticationUnavailable
+          )
+          expect(observed.join("\n")).not.toContain(confidentialSecret)
+        }),
+        confidentialOptions
+      )
     )
   })
 })

@@ -146,7 +146,7 @@ When("the visitor completes real provider sign-in across two application instanc
     const callbackResponse = page.waitForResponse((response) => new URL(response.url()).pathname === "/auth/callback")
     await signIn(page)
     this.response = await recordBrowserResponse(await callbackResponse)
-    this.browserCookieNames = (await context.cookies(`http://${host}/auth/callback`)).map((cookie) => cookie.name)
+    this.browserCookieNames = (await context.cookies()).map((cookie) => cookie.name)
   } finally {
     await owned.close()
   }
@@ -263,7 +263,9 @@ Then("the callback clears correlation and creates no application session", funct
   assert.equal(this.browserCookieNames.includes("oidc-correlation"), false)
   assert.equal(this.browserCookieNames.some((name) => /session/i.test(name)), false)
   const cookie = this.response?.headers["set-cookie"] ?? ""
-  assert.doesNotMatch(cookie, /(?:^|;\s*)(?:pathable-)?session=/i)
+  for (const header of cookie.split("\n")) {
+    assert.doesNotMatch(header, /(?:^|;\s*)(?:pathable-)?session=/i)
+  }
 })
 
 Then("exactly one raced callback succeeds and replay is denied", function(this: AppWorld) {
