@@ -116,17 +116,19 @@ Stable cross-feature invariants can also justify E2E workflows.
 
 Run commands from the repository root. Use the linked guides for infrastructure, isolation, and cleanup requirements.
 
-| Suite                        | Entry point                                            | Evidence and execution reference                                                                                                                                                                                                 |
-| ---------------------------- | ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Frontend Vitest              | `pnpm --filter @pathableai/pre-ets-frontend test:unit` | [Workspace script](../../../packages/frontend/package.json), [configuration](../../../packages/frontend/vitest.config.ts), and [tests](../../../packages/frontend/tests/unit); inspect each test's doubles and real dependencies |
-| Requirements BDD             | `pnpm test:bdd`                                        | Actual HTTP responses and Chromium missing-page presentation from an owned Next process; scenarios under [`tests/bdd/requirements/`](../../../tests/bdd/requirements/)                                                           |
-| Playwright real-Keycloak E2E | `pnpm test:e2e`                                        | Real login and recovery journeys; [E2E setup and limits](../../../e2e/README.md)                                                                                                                                                 |
+| Suite                        | Entry point                                            | Evidence and execution reference                                                                                                                                                                                                         |
+| ---------------------------- | ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Frontend Vitest              | `pnpm --filter @pathableai/pre-ets-frontend test:unit` | [Workspace script](../../../packages/frontend/package.json), [configuration](../../../packages/frontend/vitest.config.ts), and [tests](../../../packages/frontend/tests/unit); inspect each test's doubles and real dependencies         |
+| Domain schema Vitest         | `pnpm --filter @pathableai/pre-ets-domain test`        | [Workspace script](../../../packages/domain/package.json) and [Visit schema tests](../../../packages/domain/tests/visit-schema.test.ts) using `TestSchema`; these cover record shape, not authorization or persistence                   |
+| Backend HTTP smoke           | `pnpm --filter @pathableai/pre-ets-backend test`       | [Workspace script](../../../packages/backend/package.json) builds and runs [Node tests](../../../packages/backend/tests/server.test.mjs) for import-safe startup, port validation, liveness, and listener cleanup; no domain persistence |
+| Requirements BDD             | `pnpm test:bdd`                                        | Actual HTTP responses and Chromium missing-page presentation from an owned Next process; scenarios under [`tests/bdd/requirements/`](../../../tests/bdd/requirements/)                                                                   |
+| Playwright real-Keycloak E2E | `pnpm test:e2e`                                        | Real login and recovery journeys; [E2E setup and limits](../../../e2e/README.md)                                                                                                                                                         |
 
 [Requirements BDD commands](../../../features/README.md) is the authoritative Cucumber execution guide.
 Its dry-run command validates discovery, not runtime behavior. [Step guidance](../../../tests/bdd/steps/README.md)
 explains HTTP and browser ownership; the [historical migration ledger](../../../features/TRACEABILITY.md) records retired
-Spec Kit dispositions and is not an active runner. The backend currently has no dedicated test script; do not imply a
-frontend test validates backend behavior.
+Spec Kit dispositions and is not an active runner. The backend HTTP smoke suite does not validate domain behavior or
+persistence; do not imply a frontend test validates backend behavior.
 
 For Effect behavior, follow [Effect development guidance](../effect-guidance.md): deterministic test Layers can
 isolate dependencies, but a simulated adapter does not establish the real adapter's semantics.

@@ -11,6 +11,7 @@
     "lint": "eslint \"*.js\" \"*.mjs\" tests e2e --max-warnings=0 && pnpm --filter \"./packages/*\" run lint && pnpm lint:gherkin",
     "lint:fix": "eslint \"*.js\" \"*.mjs\" tests e2e --max-warnings=0 --fix && pnpm --filter \"./packages/*\" run lint:fix && pnpm lint:gherkin",
     "fallow": "fallow",
+    "check:health": "pnpm --include-workspace-root --no-bail run --parallel fallow:health",
     "check:unused": "pnpm --include-workspace-root --no-bail run --parallel fallow:unused",
     "format:check": "dprint check \"*\" .github docs tests e2e && pnpm --filter \"./packages/*\" run format:check && pnpm format:gherkin:check",
     "format:write": "dprint fmt \"*\" .github docs tests e2e && pnpm --filter \"./packages/*\" run format:write && pnpm format:gherkin:write",
@@ -25,6 +26,7 @@
     "lint:gherkin": "gherkin-lint --config .gherkin-lintrc \"tests/bdd/requirements/**/*.feature\"",
     "format:gherkin:check": "prettier --no-config --no-editorconfig --plugin prettier-plugin-gherkin --tab-width 2 --end-of-line lf --print-width 120 --check \"tests/bdd/requirements/**/*.feature\"",
     "format:gherkin:write": "prettier --no-config --no-editorconfig --plugin prettier-plugin-gherkin --tab-width 2 --end-of-line lf --print-width 120 --write \"tests/bdd/requirements/**/*.feature\"",
+    "fallow:health": "fallow health --complexity",
     "fallow:unused": "fallow dead-code",
     "fallow:audit": "fallow audit --gate new-only --gate-marker root"
   },
@@ -35,16 +37,16 @@
   "devDependencies": {
     "@cucumber/cucumber": "13.3.0",
     "@dprint/json": "0.25.2",
-    "@dprint/markdown": "0.26.0",
+    "@dprint/markdown": "0.27.1",
     "@dprint/typescript": "0.96.1",
     "@effect/language-service": "0.87.5",
     "@eslint/js": "10.0.1",
     "@playwright/test": "1.64.1",
     "@types/node": "26.6.5",
-    "dprint": "0.64.0",
+    "dprint": "0.64.1",
     "dprint-plugin-yaml": "0.6.0",
     "eslint": "10.13.0",
-    "eslint-plugin-perfectionist": "5.12.1",
+    "eslint-plugin-perfectionist": "5.13.0",
     "fallow": "3.34.1",
     "gherkin-refine": "1.4.3",
     "globals": "17.13.0",
@@ -54,9 +56,9 @@
     "prettier": "3.9.10",
     "prettier-plugin-gherkin": "4.0.0",
     "typescript": "6.0.3",
-    "typescript-eslint": "8.71.2"
+    "typescript-eslint": "8.72.0"
   },
-  "packageManager": "pnpm@12.14.0",
+  "packageManager": "pnpm@12.15.0",
   "engines": {
     "node": ">=26"
   }

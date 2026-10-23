@@ -48,7 +48,7 @@ services:
       start_period: 10s
 
   flyway:
-    image: redgate/flyway:13.10.3
+    image: redgate/flyway:13.11.1
     profiles: ["tools"]
     depends_on:
       postgres:

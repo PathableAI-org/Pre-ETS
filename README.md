@@ -15,14 +15,22 @@ Run `pnpm install` from the repository root. For a reproducible installation, us
 
 - `packages/frontend` (`@pathableai/pre-ets-frontend`): Next.js 16 App Router
   application with PathAble React components.
-- `packages/backend` (`@pathableai/pre-ets-backend`): future backend process.
+- `packages/backend` (`@pathableai/pre-ets-backend`): independent Effect HTTP process.
+- `packages/domain` (`@pathableai/pre-ets-domain`): shared, host-independent Effect
+  schemas. Applications depend on it when they use those contracts.
 
 The frontend is an SSR-first Next.js app. Run
 `pnpm --filter @pathableai/pre-ets-frontend dev` or `pnpm dev:frontend` for
 local development. `pnpm build` compiles the backend into `dist` and emits the
 frontend production output into `.next`. After a production build,
-`pnpm start:frontend` serves that Next.js output; `pnpm start:backend` still
-prints a greeting and exits.
+`pnpm start:frontend` serves that Next.js output. After building, run
+`pnpm start:backend` to serve `GET http://127.0.0.1:3001/healthz` (HTTP 200,
+`ok`). Set `BACKEND_PORT` to an integer from 1 to 65535 to change the local
+port; an invalid value prevents startup. The backend binds to `127.0.0.1` and
+stops on process shutdown. `/healthz` reports process liveness only: it does
+not check the database or establish readiness for domain requests. The backend
+does not yet expose visit endpoints.
+
 All packages are private; the npm scope identifies ownership, not publication.
 
 ### On-site progress report feedback prototype
@@ -129,16 +137,16 @@ pnpm dev:frontend
 
 Open `http://localhost:3000/` to begin tenant-specific OIDC initiation.
 
-An Effect v4 backend is planned. Authenticated client workflows are
-not implemented yet.
+The Effect v4 backend currently exposes a liveness route. Authenticated client
+workflows are not implemented yet.
 
 ## Effect developer setup
 
-Frontend and backend use the coordinated Effect pins in the named `effect`
-catalog in [`pnpm-workspace.yaml`](pnpm-workspace.yaml). Both workspaces enable
-the Effect language-service plugin and follow the Effect-first AI workflow; product
-ownership is unchanged (frontend owns Next/OIDC/session; backend owns the
-Effect REST domain layer).
+Frontend, backend, and domain use the coordinated Effect pins in the named
+`effect` catalog in [`pnpm-workspace.yaml`](pnpm-workspace.yaml). All three
+workspaces enable the Effect language-service plugin; product ownership is
+unchanged (frontend owns Next/OIDC/session, backend owns the Effect REST domain
+layer, and domain owns reusable schemas).
 
 Install dependencies from the repository root:
 
@@ -233,8 +241,8 @@ and failing if any scope fails. Each workspace owns its `.fallowrc.json` and loc
 `pnpm --filter @pathableai/pre-ets-frontend fallow:unused`.
 
 The root configuration excludes `packages/**` and owns repository-level tests,
-E2E/BDD support, and tooling. The backend configuration uses `src/index.ts` as its
-runtime root and retains the existing `@effect/platform-node` dependency exception.
+E2E/BDD support, and tooling. The backend configuration uses `src/main.ts` as its
+runtime root and follows its import of the `src/index.ts` application routes.
 Frontend production code counts as live only when reachable from
 Next.js framework entry points, including routes, layouts, proxy, and instrumentation.
 Library files, ordinary helpers under `app`, and server-action modules must be
@@ -340,6 +348,12 @@ quotes, no optional semicolons, and no TypeScript trailing commas. ESLint and
 Perfectionist own sorting; dprint preserves import and export order. After code
 changes, run `pnpm lint:fix`, then `pnpm format:write`, and verify both checks.
 
+On Windows, Git's `core.autocrlf=true` may check out tracked LF files with CRLF
+endings. In that case, `pnpm format:check` can report "Text differed by line
+endings" even for untouched files. Use an LF-preserving checkout for the full
+check; `pnpm exec dprint check <changed-file>` can help distinguish changes to
+your files from this checkout issue. Do not commit unrelated line-ending churn.
+
 The CLI and TypeScript/JavaScript, JSON/JSONC, Markdown, and YAML plugins are
 pinned in pnpm and updated through Renovate’s lint-and-format group. Formatting
 loads plugins from installed dependencies without fetching plugin versions. pnpm
@@ -391,7 +405,7 @@ BDD runs nightly at 06:17 UTC on `main` and can also be dispatched manually on `
 | Workflow                           | Check name       | Role                                                    |
 | ---------------------------------- | ---------------- | ------------------------------------------------------- |
 | `.github/workflows/ci-quality.yml` | **CI / Quality** | Formatting, lint, types, frontend Vitest                |
-| `.github/workflows/ci-build.yml`   | **CI / Build**   | Package builds and backend greeting smoke               |
+| `.github/workflows/ci-build.yml`   | **CI / Build**   | Package builds, backend HTTP tests and health smoke     |
 | `.github/workflows/ci-bdd.yml`     | **CI / BDD**     | Nightly requirements BDD and production safeguard smoke |
 | `.github/workflows/ci-fallow.yml`  | **CI / Fallow**  | Unused code and new-finding audit                       |
 

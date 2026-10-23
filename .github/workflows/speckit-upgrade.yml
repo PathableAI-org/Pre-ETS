@@ -25,4 +25,3 @@ jobs:
       add_paths: |
         .specify/
         .agents/skills/
-        .cursor/skills/

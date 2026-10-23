@@ -1,0 +1,17 @@
+{
+  "$schema": "./node_modules/fallow/schema.json",
+  "minimumVersion": "3.34.1",
+  "health": {
+    "maxCyclomatic": 10,
+    "maxCognitive": 10,
+    "maxCrap": 30,
+    "maxUnitSize": 60,
+    "suggestInlineSuppression": false
+  },
+  "rules": {
+    "complexity-cyclomatic": "error",
+    "complexity-cognitive": "error",
+    "complexity-crap": "error",
+    "require-suppression-reason": "error"
+  }
+}

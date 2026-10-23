@@ -1,5 +1,3 @@
-import { Console, Effect } from "effect"
+import { HttpRouter, HttpServerResponse } from "effect/http"
 
-Console.log("Hello from backend").pipe(
-  Effect.runSync
-)
+export const appLayer = HttpRouter.add("GET", "/healthz", HttpServerResponse.text("ok"))

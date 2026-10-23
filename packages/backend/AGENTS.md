@@ -28,3 +28,4 @@ From the repository root, run:
 - `pnpm --filter @pathableai/pre-ets-backend lint`
 - `pnpm --filter @pathableai/pre-ets-backend typecheck`
 - `pnpm --filter @pathableai/pre-ets-backend build`
+- `pnpm --filter @pathableai/pre-ets-backend test`
