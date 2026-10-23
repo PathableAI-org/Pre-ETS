@@ -100,21 +100,23 @@ for inspection, persistence, and reset commands.
 The root asks the session-presence service before tenant lookup and redirects to
 `/auth/login`. That public page resolves the tenant and prepares an OIDC code request
 with PKCE, state, nonce and `max_age=0`, then redirects to the selected provider.
-Start Keycloak for the tracked synthetic tenant fixtures:
+Start Redis and Keycloak for the tracked synthetic tenant fixtures:
 
 ```sh
-docker compose up -d --wait keycloak
+docker compose up -d --wait redis keycloak
 curl --fail http://127.0.0.1:8080/realms/pre-ets/.well-known/openid-configuration
 ```
 
 Set `OIDC_CALLBACK_ORIGINS_JSON` and the local-only
 `OIDC_ALLOW_INSECURE_LOOPBACK=true` in the frontend environment as described in
 [authentication](docs/authentication.md). Then run `pnpm dev:frontend` and open
-`http://localhost:3000/`. The callback remains a denying fallback: this increment
-creates no recoverable attempt, application cookie or authenticated session. Redis
-is not used by initiation. Public diagnostics and the development preview remain
-usable without the provider. Requirements BDD needs the real Keycloak realm running;
-its main-only nightly/manual job provisions an owned provider after building.
+`http://localhost:3000/`. Login stores a bounded, one-time recovery attempt in Redis
+before redirect and writes only an opaque callback-path correlation cookie. A validated
+callback returns an empty 204 and clears correlation; it still creates no authenticated
+application session or protected access. Public diagnostics and the development preview
+remain independent of provider availability, but production frontend readiness now
+requires Redis. Requirements BDD needs both Redis and the real Keycloak realm; its
+main-only nightly/manual job provisions both dependencies after building.
 
 Optional local OpenTelemetry + Grafana uses Compose profile `observability`
 (service `otel-lgtm`); see [observability](docs/observability.md).
