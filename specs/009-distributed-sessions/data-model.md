@@ -4,7 +4,10 @@
 
 This model is frontend-owned transient session state. It is not a durable user, tenant, authorization, or business
 record. The browser holds only an opaque bearer reference; Redis holds the strict versioned record. Provider tokens,
-credentials, callback parameters, and arbitrary application values are excluded.
+credentials, callback parameters, and arbitrary application values are excluded. The issuer, subject, and tenant
+association are sensitive transient identity metadata even when all fixtures are synthetic; their inclusion in the
+server-held record does not authorize copying the encoded payload into logs, traces, errors, screenshots, or retained
+verification output.
 
 ## Trusted establishment input
 
@@ -59,6 +62,11 @@ interface StoredSessionV1 {
 The record has no refresh timestamp, absolute maximum lifetime, invalidation tombstone, provider token, credential,
 callback evidence, authorization roles, arbitrary value map, or durable domain data.
 
+Application code and verification tooling must treat the encoded record as opaque outside the owning session module.
+Operational inspection is limited to safe metadata such as owned-key counts and TTLs, or public-result comparisons
+using synthetic identities. Production Redis transport, access control, encryption, backup, and retention settings
+remain deployment-owned controls; this feature neither weakens nor substitutes for them.
+
 ## Public read model
 
 ```ts
@@ -112,5 +120,6 @@ Any Redis/codec inability to determine or persist state --> SessionServiceUnavai
 - Redis `PX` is derived from the validated idle interval used to create the authoritative deadline.
 - Test/manual runs use unique `SESSION_KEY_PREFIX` values and remove only their owned keys.
 - `FLUSHALL` is forbidden on shared Redis.
+- Raw encoded records and their identity fields are not retained in test output, screenshots, logs, or trace evidence.
 - The telemetry identifier expires with the record and is not retained separately by application storage. Exported
   trace retention is controlled by the configured observability system, not this session model.

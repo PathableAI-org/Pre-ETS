@@ -108,12 +108,15 @@ packages/frontend/
     └── unit/
         └── authentication-entry.test.ts # callback response/cookie mapping
 
-tests/integration/
-└── session-callback-keycloak.test.ts    # real Keycloak callback plus independent public session client
-
 tests/bdd/
 ├── requirements/tenant-oidc-callback.feature # remove superseded no-session success assertion; no issue-only expansion
 └── steps/authentication.ts                    # keep assertions within current-main requirement authority
+
+tests/support/oidc/
+└── harness.ts                     # runner-neutral real-Keycloak browser/process fixture extracted from BDD support
+
+e2e/
+└── session-establishment.spec.ts  # issue-level real callback, cookie, and independent public-session read
 ```
 
 **Structure Decision**: Preserve the frontend workspace and extend the existing `lib/session.ts` parent. Put record
@@ -163,18 +166,25 @@ Evidence follows consumer → claim → violation → boundary → limitation:
   for reference validation, initial deadline/policy, public outcome separation, strict decoding, and non-disclosure.
 - A real Redis integration creates through client/runtime A and reads through independently scoped client/runtime B,
   then exercises missing/expired/deleted records and controlled unavailability. This is the smallest boundary that can
-  establish shared-store semantics and transport failure.
+  establish shared-store semantics and that a real adapter outage becomes `SessionServiceUnavailable`.
 - Callback adapter tests establish cookie attributes and no-cookie failure mapping without retesting private Redis
-  commands. A retained root integration test reuses the real-Keycloak browser/process harness, then reads the issued
-  reference through an independently scoped public `SessionService`; a fabricated identity alone is insufficient for
-  V-001.
+  commands. The post-authentication storage-failure case injects a trusted authentication result and
+  `SessionServiceUnavailable`; paired with the real-adapter outage test, it proves V-007 without claiming that a
+  whole-Redis outage can preserve OIDC transaction recovery through the same shared Redis Layer.
+- An issue-level Playwright spec under the established `e2e/` runner completes a real-Keycloak callback, inspects the
+  issued cookie, and reads the reference through an independently scoped public `SessionService`. Extract only the
+  runner-neutral Keycloak/browser/process fixture required by both Playwright and Cucumber from `tests/bdd/support/`
+  into `tests/support/oidc/`; do not create a second provider harness or put issue-only assertions in requirements BDD.
+  A fabricated identity alone is insufficient for V-001.
 - Requirements-backed BDD is not expanded to issue-only distinctions. Because this slice has no protected read that
   externally exposes user/tenant binding, the new successful-establishment BDD claim is deferred to #219/#154 rather
   than adding a diagnostic endpoint. Existing callback scenarios retain only assertions justified by current-main
   requirements, carry `@preets-session-003`/`@partial` where applicable, and drop the superseded success-path
   “creates no application session” assertion.
 - Span/attribute/exporter behavior has no durable assertion. Manual or temporary inspection of live Tempo data supplies
-  complementary observability evidence.
+  complementary observability evidence. The temporary independent-reader probe composes the existing
+  `observabilityLayer`, its Config/Node host dependencies, and a scoped runtime; disposing that runtime flushes its
+  read span before Tempo inspection.
 
 ### Phase 4 — Implementation architecture
 
@@ -193,13 +203,16 @@ Evidence follows consumer → claim → violation → boundary → limitation:
 4. Create `Effect.fn("SessionService.establish")` and `Effect.fn("SessionService.read")` tracing boundaries. After a
    successful write or usable decode, call the installed `Effect.annotateCurrentSpan("session.id", telemetryId)` API.
    Do not annotate rejected authentication, failed writes, malformed/missing/expired reads, or errors with a successful
-   session identifier. Never attach the cookie, derived Redis key, identity claims, provider values, or credentials.
+   session identifier. Never attach the cookie, derived Redis key, encoded record, identity claims, provider values, or
+   credentials to logs, traces, errors, screenshots, or retained output. Treat issuer, subject, and tenant association
+   as sensitive transient identity metadata even though they are required in the server-held record.
 5. In the callback Route Handler, call `AuthenticationService.complete`; only its success branch loads the same tenant
    configuration by trusted alias, derives current effective policy, and calls `SessionService.establish`. On success,
    clear the correlation cookie and set `pathable-session` with `HttpOnly`, `SameSite=Lax`, `Path=/`, no `Domain`, a
    `Secure` value consistent with the existing loopback rule, and lifetime bounded by the initial idle deadline. On
    failure, clear correlation after its prior consumption, reuse the private/no-store safe return, and set no session
-   cookie.
+   cookie. That existing page states that sign-in could not continue and links the user back to the application entry to
+   try again; this is the accepted fail-closed interim experience. Richer outage/recovery behavior remains #221/#158.
 6. In `runtime.ts`, construct one `NodeRedis.layer` with the existing URL, offline-queue, ping, and socket-timeout
    settings, then supply that same Layer value to both authentication and `SessionService.layer`. Preserve eager runtime
    acquisition/readiness and host disposal.
@@ -215,6 +228,17 @@ into an implementation-aware run guide with exact local-service, test, real-call
 record steps. Module tests do not replace the composed manual feature procedure.
 
 The execution order is: public-service scenarios → real Redis independent-client scenarios → callback adapter and
-real-provider composition → applicable BDD regression without issue-only assertions → live browser/cookie/store
-inspection → Tempo `session.id` correlation and secrecy inspection → cleanup → repository quality gates. Evidence must
-name the exercised revision and limitations; generated artifacts or passing static checks are not runtime proof.
+real-provider Playwright composition → applicable BDD regression without issue-only assertions → live
+browser/cookie/store inspection → instrumented independent-reader probe → Tempo `session.id` correlation and secrecy
+inspection → cleanup → repository quality gates. Evidence must name the exercised revision and limitations;
+generated artifacts or passing static checks are not runtime proof.
+
+### Deployment and rollback
+
+This construction slice requires no data migration or feature flag. If callback/session behavior regresses after
+deployment, redeploy the prior application revision. Do not bulk-delete Redis or flush a shared database: records created
+by the reverted revision are bounded by their TTL, and the prior application remains fail closed because it does not
+consume the new cookie as authenticated state. Confirm that the prior callback behavior is restored and that stale
+`pathable-session` cookies cannot grant access. If targeted cleanup is operationally required, remove only keys under a
+validated deployment-owned session prefix and record the action. Introduce a feature flag only if the deployment
+environment cannot roll back code safely enough; no current requirement justifies one by default.

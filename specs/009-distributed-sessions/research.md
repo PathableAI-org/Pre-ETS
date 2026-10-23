@@ -121,6 +121,39 @@ resource scope and readiness in the existing `ManagedRuntime`.
 
 ## Evidence and observability
 
+### Decision: Use the established Playwright runner for issue-level real-provider composition
+
+**Rationale**: The repository has a Playwright `e2e/` runner and a real-Keycloak browser/process fixture currently
+owned by Cucumber support. The planned provider/session assertion is issue-level evidence rather than requirements BDD,
+so it belongs in `e2e/session-establishment.spec.ts`. Extracting only runner-neutral fixture mechanics into
+`tests/support/oidc/` lets Playwright and Cucumber share the real provider setup without duplicating a harness or placing
+issue-only assertions under requirement tags.
+
+**Alternatives considered**:
+
+- Add `tests/integration/session-callback-keycloak.test.ts` under a new root Node test runner: rejected because that
+  runner/directory does not exist and the current real-provider harness is not a reusable root `node:test` fixture.
+- Add cookie/store assertions to the existing Cucumber feature: rejected because issue #218 does not supply
+  current-main requirements authority for those assertions.
+- Build a second Playwright/Keycloak harness: rejected because it duplicates existing browser/process ownership.
+
+### Decision: Pair real-adapter outage evidence with callback failure mapping
+
+**Rationale**: OIDC transactions and sessions intentionally share one production Redis Layer. A whole-store outage
+therefore prevents callback transaction recovery before a trusted identity exists; it cannot demonstrate the narrower
+post-authentication session-write failure by itself. A real-Redis `SessionService` outage test establishes that adapter
+failure becomes `SessionServiceUnavailable`, while a callback adapter scenario injects that typed failure after a
+trusted authentication result and establishes the no-cookie safe response. Their claims compose without pretending one
+scenario exercised a boundary it could not reach.
+
+**Alternatives considered**:
+
+- Stop shared Redis during the real callback: rejected because authentication transaction consumption fails first.
+- Add a second production Redis client solely to make the test isolatable: rejected because it changes runtime
+  architecture for evidence rather than product need.
+- Add a session-prefix-specific Redis ACL/fault seam: viable only if reviewers require one fully composed failure case;
+  the paired evidence is smaller and already covers the distinct uncertainties.
+
 ### Decision: Defer new successful-establishment requirements BDD until binding is observable
 
 **Rationale**: Current-main PREETS-SESSION-003 authorizes successful establishment and rejection, but this construction
@@ -141,7 +174,9 @@ diagnostic product contract.
 **Rationale**: A random UUID stored with the session lets successful establishment and later usable reads annotate
 their existing Effect spans with the same opt-in `session.id`. It cannot authenticate or retrieve the session and is not
 returned to the browser or public service consumer. This supports the approved manual trace correlation without
-exposing the cookie or derived Redis key.
+exposing the cookie or derived Redis key. The temporary independent reader must compose the existing
+`observabilityLayer` and its Config/Node host dependencies, then dispose its scoped runtime to flush the read span before
+Tempo inspection.
 
 **Alternatives considered**:
 

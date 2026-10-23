@@ -48,6 +48,9 @@ If tenant policy cannot be loaded after trusted completion, or session persisten
 - Clear `oidc-correlation`, because the authentication transaction has already been consumed.
 - Reuse the existing generic private/no-store authentication-return presentation; do not expose whether configuration,
   Redis transport, encoding, or an ambiguous write caused the failure.
+- Preserve its existing message that sign-in could not continue and its link back to the application entry so the user
+  can try again. This is the accepted interim recovery affordance; richer outage and recovery behavior remains
+  #221/#158 rather than expanding this callback contract.
 - Do not retry the full callback, silently create a replacement, or treat the outcome as anonymous success.
 - A failed/ambiguous session write must not annotate a span with a successful-session `session.id`.
 

@@ -9,10 +9,11 @@ This guide operationalizes [verification.md](verification.md) for the implementa
 | ----- | --------------------------------------------------- | ----------------------------------------------------- | ------------------------------------------------------------------ |
 | 1     | Public `SessionService` scenarios                   | V-003, V-005, V-006 and fail-closed portions of V-007 | Test command/result and exercised revision                         |
 | 2     | Independent real-Redis clients                      | V-003–V-007                                           | Integration command/result, Redis version, owned prefix, cleanup   |
-| 3     | Callback adapter and real-provider composition      | V-001–V-003, V-007, V-008                             | Test/runtime result without cookie/token values                    |
-| 4     | Requirements BDD regression                         | Current-main PREETS-SESSION-003 assertions only       | Runtime result and explicit partial limitation                     |
-| 5     | Manual browser + second public client + live traces | V-001–V-004, V-008; complementary telemetry           | Redacted observation record with trace IDs, presence/equality only |
-| 6     | Repository quality gates                            | Static/build quality, not runtime claims              | Command results                                                    |
+| 3     | Callback adapter mapping                            | V-001, V-002, V-007, V-008                            | Test result for trusted/rejected/session-failure mappings          |
+| 4     | Real-provider Playwright composition                | V-001–V-004, V-008                                    | Browser/runtime result without cookie/token values                 |
+| 5     | Requirements BDD regression                         | Current-main PREETS-SESSION-003 assertions only       | Runtime result and explicit partial limitation                     |
+| 6     | Manual browser + second public client + live traces | V-001–V-004, V-008; complementary telemetry           | Redacted observation record with trace IDs, presence/equality only |
+| 7     | Repository quality gates                            | Static/build quality, not runtime claims              | Command results                                                    |
 
 Do not repeat the complete behavior matrix at every layer. A public-service fake does not prove Redis; Redis does not
 prove provider/callback composition; telemetry does not prove the cookie or stored record.
@@ -27,11 +28,20 @@ prove provider/callback composition; telemetry does not prove the cookie or stor
   explicit callback origin, and loopback allowance. Use no real tenant, user, credential, PHI, or client data.
 - A unique owned session prefix and OIDC transaction prefix for the run, for example
   `preets:manual:session:<random-uuid>:` and `preets:manual:oidc:<random-uuid>:`. Do not reuse a shared prefix.
-- Current-main requirements baseline `f43cbef2f426bf59cf2bade4cc2534231676b4cc` for any requirements BDD review.
+- Reviewed requirements baseline `f43cbef2f426bf59cf2bade4cc2534231676b4cc`. Before requirements BDD work, fetch
+  actual `origin/main`, record its SHA, and compare the cited requirement and BDD-governance files with this baseline.
+  If they changed, stop for authority reconciliation rather than treating the historical SHA as current main.
 
 From the repository root:
 
 ```sh
+git fetch origin main
+git rev-parse origin/main
+git diff --exit-code f43cbef2f426bf59cf2bade4cc2534231676b4cc..origin/main -- \
+  docs/requirements/session/PREETS-SESSION-003.md \
+  docs/requirements/session/PREETS-SESSION-006.md \
+  docs/requirements/session/PREETS-SESSION-008.md \
+  docs/engineering/testing/requirements-bdd.md
 pnpm install --frozen-lockfile
 pnpm exec playwright install chromium
 docker compose --profile observability up -d --wait redis keycloak otel-lgtm
@@ -94,7 +104,8 @@ unavailable-store condition, restore readiness afterward, and remove only owned 
 
 Record the command, revision, Redis image/version, pass/fail, and cleanup. Do not retain the reference, raw Redis key,
 record payload, or telemetry identifier. This evidence establishes the real adapter, not independently running Next
-request recognition.
+request recognition. Its controlled unavailable-store scenario proves that an actual adapter failure becomes
+`SessionServiceUnavailable`; it does not claim cookie behavior or a completed real-provider callback.
 
 ## 3. Callback and real-provider composition
 
@@ -106,17 +117,23 @@ pnpm --filter @pathableai/pre-ets-frontend test:unit -- authentication-entry.tes
 
 It must establish that session creation is invoked only for trusted completion, the policy belongs to the trusted
 tenant, the cookie is written only after successful establishment, correlation clearing is preserved, and store/tenant
-failure produces the existing private safe response with no session cookie.
+failure produces the existing private safe response with no session cookie. For the post-authentication store-failure
+case, supply a trusted authentication result and inject `SessionServiceUnavailable`. Pair this mapping result with the
+real-adapter outage from section 2 for V-007. Do not stop the shared Redis instance and claim the callback reached
+session establishment: authentication transaction recovery uses that same dependency and would fail first.
 
-Then run the retained real-provider callback/session composition evidence required by the implementation. The root
-integration test reuses the repository's Keycloak browser/process harness, but its second independently scoped client
-uses only the public `SessionService`; it must not import `lib/session/codec.ts` or `lib/session/store.ts`:
+Then run the retained real-provider callback/session composition evidence required by the implementation through the
+repository's established Playwright runner. `e2e/session-establishment.spec.ts` must reuse a runner-neutral
+Keycloak/browser/process fixture extracted from `tests/bdd/support/` into `tests/support/oidc/`; Cucumber and Playwright
+must not maintain parallel provider harnesses. Its second independently scoped client uses only the public
+`SessionService` and must not import `lib/session/codec.ts` or `lib/session/store.ts`:
 
 ```sh
-node --test tests/integration/session-callback-keycloak.test.ts
+pnpm test:e2e -- session-establishment.spec.ts
 ```
 
-This test carries issue-level V-001/V-002/V-003/V-004/V-008 evidence without becoming a requirements BDD feature. Run
+This Playwright spec carries issue-level V-001/V-002/V-003/V-004/V-008 evidence without becoming a requirements BDD
+feature. Run
 the BDD harness and scenarios separately for their bounded current-main assertions and fixture regressions:
 
 ```sh
@@ -169,10 +186,14 @@ pnpm dev:frontend
 
 5. Use a second independently scoped Node process/runtime connected to the same Redis URL and prefix. A temporary probe
    may be created under `packages/frontend/tests/manual/` only for this run; it must import `SessionService` from
-   `src/lib/session.ts`, provide a fresh `NodeRedis.layer`, accept the captured reference without echoing it, call
-   `read`, and print only safe synthetic identity/tenant/deadline/warning comparisons. It must not import private session
-   children, decode Redis directly, or print the reference/key/record/telemetry ID.
-6. Run the probe through the installed frontend Vitest configuration, then delete it before completing the run:
+   `src/lib/session.ts`, provide a fresh `NodeRedis.layer`, and compose the existing `observabilityLayer`,
+   `NodeServices.layer`, and environment ConfigProvider into one scoped `ManagedRuntime`. Use
+   `OTEL_SERVICE_NAME=pre-ets-frontend-session-probe` so the independent process is distinguishable in Tempo. Accept the
+   captured reference without echoing it, call `read`, and print only safe synthetic identity/tenant/deadline/warning
+   comparisons. It must not import private session children, decode Redis directly, or print the reference, key,
+   encoded record, or telemetry ID.
+6. Run the probe through the installed frontend Vitest configuration. Its finalizer must dispose the scoped runtime so
+   the batch span processor flushes before Tempo inspection. Then delete the probe before completing the run:
 
 ```sh
 pnpm --filter @pathableai/pre-ets-frontend exec vitest run tests/manual/session-read.probe.test.ts --config vitest.integration.config.ts
@@ -180,13 +201,17 @@ pnpm --filter @pathableai/pre-ets-frontend exec vitest run tests/manual/session-
 
 Confirm the second client returns `UsableSession` with the expected synthetic issuer/subject, exact tenant alias,
 authoritative initial deadline, and effective warning lead. Record comparisons, not sensitive/raw values. The probe
-and any local input file are temporary instrumentation and must not be committed.
+and any local input file are temporary instrumentation and must not be committed. Wait up to approximately 30 seconds
+after disposal for collector ingestion before treating a missing trace as inconclusive.
 
 ### Rejection and fail-closed observation
 
 7. In a separate fresh browser context, execute a rejected authentication return through the same boundary. Confirm no
-   `pathable-session` cookie and no usable session result. Where safe, execute the controlled store-failure procedure
-   from the real-adapter integration and confirm no cookie/replacement; restore Redis readiness before continuing.
+   `pathable-session` cookie and no usable session result. For session-store failure, retain the paired evidence from
+   sections 2 and 3: real adapter unavailability produces `SessionServiceUnavailable`, and callback mapping of that
+   typed failure produces the existing safe page with no cookie or replacement. The page must continue to state that
+   sign-in could not continue and provide its existing link back to the application entry so the user can try again.
+   Richer outage/recovery behavior remains #221/#158.
 
 ## 5. Live OpenTelemetry verification
 
@@ -194,8 +219,9 @@ Allow up to approximately 30 seconds after each request for batch export. Use th
 when available:
 
 1. Call `list_datasources`; select the returned Tempo UID (normally `tempo`).
-2. Search traces with `{ resource.service.name = "pre-ets-frontend" }` over the recorded time window.
-3. Fetch the successful callback trace and the traced second-client/reference read.
+2. Search traces with `{ resource.service.name = "pre-ets-frontend" }` and then
+   `{ resource.service.name = "pre-ets-frontend-session-probe" }` over the recorded time window.
+3. Fetch the successful callback trace and the independent probe's traced public-session read.
 4. Inspect the session establishment/read spans and confirm:
 
    - the successful establishment span contains `session.id`;
@@ -231,7 +257,19 @@ docker compose stop keycloak redis
 
 5. Record cleanup success and any skipped observation caused by readiness/export failure.
 
-## 7. Repository quality gates
+## 7. Deployment rollback check
+
+No migration or default feature flag is planned. For a rollback exercise or an actual regression:
+
+1. Redeploy the prior application revision and confirm its callback behavior is restored.
+2. Do not flush Redis or bulk-delete shared state. Allow new session records to expire by TTL; if targeted cleanup is
+   required, validate the deployment-owned `SESSION_KEY_PREFIX` and remove only keys beneath it.
+3. Confirm the prior application does not treat a remaining `pathable-session` cookie as authenticated state and that
+   the cookie cannot grant protected access.
+4. Record the revision transition, observed callback result, any owned-prefix cleanup, and limitations. Add a feature
+   flag only if the deployment environment cannot provide a sufficiently safe code rollback.
+
+## 8. Repository quality gates
 
 From the repository root, after feature-specific runtime evidence:
 
@@ -252,6 +290,7 @@ session workflow. Do not add suppressions or commit generated output.
 Revision:
 Date/time and environment:
 Node/pnpm and service image versions:
+Current origin/main requirements baseline:
 Safe synthetic tenant/user and effective policy:
 Owned prefixes (names only; no keys/values):
 
@@ -268,6 +307,7 @@ Tempo query and trace IDs:
 session.id presence/equality (value omitted):
 Telemetry secrecy review:
 Cleanup:
+Rollback check (when exercised):
 Commands and pass/fail:
 Limitations/unexecuted claims:
 ```
