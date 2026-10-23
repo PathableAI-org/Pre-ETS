@@ -8,7 +8,7 @@
 
 **Input**: User description: "https://github.com/PathableAI-org/Pre-ETS/issues/218"
 
-## User Scenarios & Testing *(mandatory)*
+## User Scenarios & Testing _(mandatory)_
 
 ### User Story 1 - Establish a Tenant-Bound Session (Priority: P1)
 
@@ -18,20 +18,25 @@ application session bound to my authenticated identity and the tenant where auth
 **Why this priority**: A trusted callback must become a reusable application session before any later protected
 application integration can rely on it.
 
-**Independent Test**: Complete a real validated callback through the bounded reference consumer and observe that it
-creates a tenant-bound session, derives its initial idle deadline and warning policy, and issues the session cookie.
+**Independent Test**: Complete a real validated callback whose authentication event has been confirmed fresh through
+the bounded reference consumer and observe that it creates a tenant-bound session, derives its initial idle deadline
+and warning policy, and issues the session cookie. A trusted result without that confirmation creates neither.
 
 **Acceptance Scenarios**:
 
-1. **Given** a callback has successfully produced a trusted user and authentication tenant and the tenant has a valid
-   effective session policy, **When** the reference consumer establishes the application session, **Then** the session
-   is bound to that user and tenant, has an authoritative initial idle deadline derived from the effective timeout,
-   retains the effective warning policy, and the browser receives a host-only session cookie.
+1. **Given** a callback has successfully produced a trusted user and authentication tenant, freshness of that
+   authentication event has been confirmed, and the tenant has a valid effective session policy, **When** the reference
+   consumer establishes the application session, **Then** the session is bound to that user and tenant, has an
+   authoritative initial idle deadline derived from the effective timeout, retains the effective warning policy, and
+   the browser receives a host-only session cookie.
 2. **Given** authentication is failed or rejected, **When** the callback reaches the reference consumer, **Then** no
    authenticated application session is established and no authenticated session cookie is issued.
-3. **Given** a valid callback but an unavailable session store, **When** session establishment is attempted, **Then**
-   the failure is observable as a service failure and neither a usable session nor a successful session cookie is
-   produced.
+3. **Given** a callback produced a trusted user and authentication tenant but freshness of that authentication event
+   has not been confirmed, **When** the reference consumer handles the result, **Then** no application session is
+   established and no authenticated session cookie is issued.
+4. **Given** a valid callback whose freshness has been confirmed but an unavailable session store, **When** session
+   establishment is attempted, **Then** the failure is observable as a service failure and neither a usable session nor
+   a successful session cookie is produced.
 
 ---
 
@@ -80,8 +85,11 @@ conditions and confirm that only the usable outcome exposes identity and policy.
 
 ### Edge Cases
 
-- A valid callback reaches session establishment while the distributed store is unavailable: establishment fails
-  closed and does not issue a successful authenticated-session cookie.
+- A trusted callback result lacks freshness confirmation: the reference consumer does not create a session or issue
+  a cookie. This feature does not choose the authentication-time comparison or clock tolerance used for that
+  confirmation.
+- A freshness-confirmed callback reaches session establishment while the distributed store is unavailable:
+  establishment fails closed and does not issue a successful authenticated-session cookie.
 - A cookie is absent, malformed, or references no available record: the consumer receives no usable session and no
   identity or policy.
 - A session is already expired or invalidated when read: it cannot yield usable identity even when the precise cause is
@@ -93,12 +101,13 @@ conditions and confirm that only the usable outcome exposes identity and policy.
 - Independent clients read the same usable session without a lifecycle change: each client receives the same
   consumer-visible identity and policy state.
 
-## Requirements *(mandatory)*
+## Requirements _(mandatory)_
 
 ### Functional Requirements
 
-- **FR-001**: The feature MUST establish an authenticated application session only from a callback outcome that has
-  already been successfully validated as trusted.
+- **FR-001**: The feature MUST establish an authenticated application session, and issue its cookie, only after a
+  callback outcome has been successfully validated as trusted and freshness of that authentication event has been
+  confirmed. A trusted identity alone is not authority to create the session.
 - **FR-002**: A newly established session MUST be bound to the authenticated user and the tenant under which
   authentication occurred.
 - **FR-003**: Failed or rejected authentication MUST NOT establish an authenticated application session or issue an
@@ -134,7 +143,8 @@ conditions and confirm that only the usable outcome exposes identity and policy.
 ### Key Entities
 
 - **Trusted Authentication Result**: The successfully validated user identity and authentication tenant supplied by
-  the callback capability; failed or rejected results contain no authority to create a session.
+  the callback capability. It does not by itself confirm that the authentication event is fresh. Failed, rejected, or
+  freshness-unconfirmed results contain no authority to create a session.
 - **Application Session**: Transient authenticated state associated with one user, one authentication tenant, one
   authoritative idle deadline, and one effective warning policy.
 - **Session Reference**: The browser-held value used to identify server-held session state. Its exact representation is
@@ -144,12 +154,13 @@ conditions and confirm that only the usable outcome exposes identity and policy.
 - **Session Read Outcome**: One of usable session, no usable session, or session service failure. Identity and policy
   are present only for the usable outcome.
 
-## Success Criteria *(mandatory)*
+## Success Criteria _(mandatory)_
 
 ### Measurable Outcomes
 
-- **SC-001**: In every exercised successful real-callback case, exactly one usable application session is established
-  for the validated user and tenant, with a corresponding host-only session cookie.
+- **SC-001**: In every exercised confirmed-fresh real-callback case, exactly one usable application session is
+  established for the validated user and tenant, with a corresponding host-only session cookie. A trusted result whose
+  freshness is unconfirmed is not a successful case and produces neither a session nor a cookie.
 - **SC-002**: In 100% of exercised failed or rejected authentication cases, no authenticated application session and
   no authenticated-session cookie are produced.
 - **SC-003**: Two independent clients reading each exercised usable session report identical user, tenant, authoritative
@@ -165,8 +176,11 @@ conditions and confirm that only the usable outcome exposes identity and policy.
 
 - Issue #215 supplies valid effective timeout and warning-policy values; this feature consumes those values and does
   not redefine tenant configuration validation.
-- Issue #217 supplies either a trusted validated user/tenant result or a rejected/failed result. This feature does not
-  perform or redefine OIDC transaction, token, freshness, clock-tolerance, or provider-compatibility validation.
+- Issue #217 supplies either a trusted validated user/tenant result or a rejected/failed result. Its trusted result
+  validates signed `auth_time` presence and does not compare that time for staleness. This feature does not perform or
+  redefine OIDC transaction, token, clock-tolerance, or provider-compatibility validation, and it does not choose the
+  unresolved authentication-time comparison. The reference consumer does not create a session or issue its cookie until
+  freshness has been confirmed.
 - The closed status of prerequisite issues is a delivery coordination signal, not proof that their requirements are
   verified.
 - The session reference identifies server-held transient state. The exact record encoding, operation signatures, and
@@ -186,15 +200,17 @@ read in its current open state on 2026-10-23
 **Originating delivery slice**: [S2 — Share session identity and authoritative idle state across instances](https://github.com/PathableAI-org/Pre-ETS/blob/e206d165f0f30999220922f57a3f92549c15f4cc/docs/delivery/session-management.md#s2--share-session-identity-and-authoritative-idle-state-across-instances),
 approved baseline revision `e206d165f0f30999220922f57a3f92549c15f4cc`; issue #218 is the explicitly authorized
 S2-D subdivision. Current `origin/main` authority inspected at
+`9a5da820b9fd99039857f89606b469446d39412f`. The cited requirement files are unchanged from the earlier inspection at
 `f43cbef2f426bf59cf2bade4cc2534231676b4cc`.
 
 ### Accepted requirement coverage
 
-| Requirement | Acceptance criteria in this slice | Feature disposition |
-| --- | --- | --- |
-| [PREETS-SESSION-003](https://github.com/PathableAI-org/Pre-ETS/blob/f43cbef2f426bf59cf2bade4cc2534231676b4cc/docs/requirements/session/PREETS-SESSION-003.md) | AC1–3, session-establishment portion | AC1 and AC2 are specified directly. The session makes the established identity/tenant available for later protected consumers under AC3; protected-request use is deferred to #219/#154. |
-| [PREETS-SESSION-006](https://github.com/PathableAI-org/Pre-ETS/blob/f43cbef2f426bf59cf2bade4cc2534231676b4cc/docs/requirements/session/PREETS-SESSION-006.md) | AC1 and AC2, service/store portion | This feature specifies distributed storage and consistent independent-client reads. Independently running application-instance recognition is deferred to #219/#154 and is not claimed here. |
-| [PREETS-SESSION-008](https://github.com/PathableAI-org/Pre-ETS/blob/f43cbef2f426bf59cf2bade4cc2534231676b4cc/docs/requirements/session/PREETS-SESSION-008.md) | AC2 | This feature specifies the initial authoritative idle deadline derived from the effective tenant policy. Renewal and no-revival guarantees remain with #220. |
+| Requirement                                                                                                                                                   | Acceptance criteria in this slice    | Feature disposition                                                                                                                                                                                                                                  |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [PREETS-SESSION-003](https://github.com/PathableAI-org/Pre-ETS/blob/9a5da820b9fd99039857f89606b469446d39412f/docs/requirements/session/PREETS-SESSION-003.md) | AC1–3, session-establishment portion | AC1 and AC2 are specified directly. The session makes the established identity/tenant available for later protected consumers under AC3; protected-request use is deferred to #219/#154.                                                             |
+| [PREETS-SESSION-006](https://github.com/PathableAI-org/Pre-ETS/blob/9a5da820b9fd99039857f89606b469446d39412f/docs/requirements/session/PREETS-SESSION-006.md) | AC1 and AC2, service/store portion   | This feature specifies distributed storage and consistent independent-client reads. Independently running application-instance recognition is deferred to #219/#154 and is not claimed here.                                                         |
+| [PREETS-SESSION-008](https://github.com/PathableAI-org/Pre-ETS/blob/9a5da820b9fd99039857f89606b469446d39412f/docs/requirements/session/PREETS-SESSION-008.md) | AC2                                  | This feature specifies the initial authoritative idle deadline derived from the effective tenant policy. Renewal and no-revival guarantees remain with #220.                                                                                         |
+| [PREETS-SESSION-013](https://github.com/PathableAI-org/Pre-ETS/blob/9a5da820b9fd99039857f89606b469446d39412f/docs/requirements/session/PREETS-SESSION-013.md) | AC3, issuance prerequisite only      | This feature refuses session and cookie creation when freshness is unconfirmed. It does not choose the authentication-time comparison, clock tolerance, or provider support, and it does not claim AC1, AC2, AC4, or AC5. Those remain with B6/#158. |
 
 ### Authorized outcome
 
@@ -204,7 +220,8 @@ later integration or lifecycle behavior is complete.
 
 ### In scope
 
-- Establish a user- and tenant-bound session after a successfully validated callback.
+- Establish a user- and tenant-bound session after a successfully validated callback whose authentication event has
+  been confirmed fresh.
 - Issue the host-only session reference used to recover server-held state.
 - Initialize and read the authoritative idle deadline and effective warning policy.
 - Retrieve consistent identity and policy state through independent clients of the real distributed store.
@@ -226,14 +243,17 @@ later integration or lifecycle behavior is complete.
 ### Dependencies and blockers
 
 - Start prerequisites #215 and #217 are closed. Their closure does not establish requirement verification.
-- The feature consumes only a successfully validated callback result. Authentication-time comparison, clock tolerance,
-  provider/broker support, and unsupported-provider handling remain B6/#158 gates and MUST NOT be decided or claimed by
-  this feature.
+- The feature consumes a successfully validated callback result as identity and tenant input. Session creation and
+  cookie issuance additionally require confirmation that the authentication event is fresh. Authentication-time
+  comparison, clock tolerance, provider/broker support, and unsupported-provider handling remain B6/#158 gates and
+  MUST NOT be decided or claimed by this feature. Service and store construction can proceed before that policy is
+  chosen.
 - The approved architecture assigns frontend transient sessions to Redis, but adapter design, public signatures, and
   runtime composition remain planning decisions rather than stakeholder requirements in this specification.
 
 ### Authority findings
 
-None. The remaining B6 decisions do not block this specification because its session-establishment authority begins
-only after callback validation has already produced a trusted result; they continue to gate any affected freshness
-implementation and evidence.
+The remaining B6 comparison, clock-tolerance, and provider-support decisions are not chosen here. They gate session
+issuance: #217's trusted handoff confirms signed `auth_time` presence only, so the reference consumer must not create
+a session or cookie until freshness is confirmed. Service and store construction is not blocked by that unresolved
+policy.

@@ -44,9 +44,11 @@
 ## Notes
 
 - Validation iteration 1: all checklist items pass; no `[NEEDS CLARIFICATION]` markers were introduced.
-- The issue's remaining B6 authentication-time comparison, clock-tolerance, and provider-support decisions remain
-  outside this feature. The specification consumes only an already validated callback result and does not resolve or
-  claim those decisions.
+- Freshness confirmation is a prerequisite for session creation and cookie issuance. #217's signed `auth_time`
+  presence check is not that confirmation. Authentication-time comparison, clock tolerance, and provider support remain
+  B6/#158 decisions and are not selected here. The callback verification plan records both the confirmed-fresh success
+  and the unconfirmed-freshness refusal, and it withholds the success observation until that policy exists. Service and
+  store construction can proceed independently of that policy.
 - The approved architecture names Redis as the frontend transient session store. The specification retains the
   stakeholder-observable distributed-store obligation while deferring adapter structure and public signatures to
   planning.
