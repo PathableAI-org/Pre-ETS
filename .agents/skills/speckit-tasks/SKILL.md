@@ -277,4 +277,5 @@ Before reporting completion, trace every feature verification claim and affected
 contract to implementation and/or evidence tasks, identify intentionally reused existing
 evidence, and list any approved limitation. A checklist-shaped task list is not complete
 when it omits standard manual feature verification or sequences implementation before
-the contract it implements.
+the contract it implements. Generate `tasks.md` on the implementation branch described in
+`docs/engineering/git-workflow.md`. Do not add it to the engineering-plan branch.

@@ -42,6 +42,14 @@ must carry or inherit requirement-ID tags. Keep assertions within those promises
 `@partial` for intermediate evidence. Use the repository's `requirements-bdd-author`,
 `requirements-bdd-scaffold`, and `requirements-bdd-review` skills for those workflows.
 
+## Git and pull requests
+
+Before specifying, planning, or implementing a delivery-issue feature, read
+[Git and pull request workflow](docs/engineering/git-workflow.md) and use the
+`speckit-stack` skill. Requirements, delivery plans, and Spec Kit keep their
+existing authority. The workflow decides how that work is branched, reviewed,
+and merged.
+
 ## Effect workspace routing
 
 Before designing or modifying Effect code in `packages/frontend`,
