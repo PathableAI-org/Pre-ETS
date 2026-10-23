@@ -44,8 +44,11 @@ the same facts with `gh pr view --json baseRefName,headRefName,state,isDraft,rev
 ## Inspect
 
 Identify the delivery issue from the request or from the feature's delivery-authority section. Read it without
-editing it. Find the spec directory, then the branches `{number}-{slug}`, `{number}-{slug}-plan`, and
-`{number}-{slug}-impl`.
+editing it. Find `specs/{number}-{slug}/`, then the branches `{number}-{slug}`, `{number}-{slug}-plan`, and
+`{number}-{slug}-impl`. Set `SPECIFY_FEATURE_DIRECTORY` to that directory before any Spec Kit command. Planning
+and tasks read that variable or the checkout-local `.specify/feature.json`. They do not derive the directory from
+the branch name. A new worktree has no `feature.json`, and a stale file can select another feature. Do not commit
+`feature.json`.
 
 Report, from `gh stack view --json`, `gh pr view`, and `git worktree list`:
 
@@ -65,12 +68,20 @@ Start from current `origin/main` unless the request names an existing feature br
 2. Adopt it with `gh stack init <number>-<slug>` if it is not already in a stack.
 3. Submit the draft specification pull request. Its diff may contain `spec.md`, `verification.md`, and
    `specs/<feature>/checklists/**`.
-4. After that specification is the approved base, check out its branch and run `gh stack add <number>-<slug>-plan`.
-   Run `$speckit-plan` only on the new branch.
-5. After the plan is the approved base, run `gh stack add <number>-<slug>-impl` from the plan branch. Run
-   `$speckit-tasks` and implementation only there. Further slices use `gh stack add <number>-<slug>-impl-<slice>`.
+4. Continue from the predecessor only after choosing the path that matches its pull request:
+   - While that pull request is open, check out its branch and run `gh stack add <number>-<slug>-plan` or
+     `gh stack add <number>-<slug>-impl`. The new branch stays in the same stack.
+   - After that pull request has merged, do not run `gh stack add` on the completed stack. Fetch `origin/main`,
+     create `<number>-<slug>-plan` or `<number>-<slug>-impl` from that commit, and run `gh stack init` so the new
+     branch is its own stack targeting `main`. Keep the original Spec Kit number and `specs/<number>-<slug>/`
+     directory. A completed stack cannot be extended; `gh stack submit` starts the new stack instead.
+5. Run `$speckit-plan` only on the plan branch, and `$speckit-tasks` plus implementation only on an implementation
+   branch. Further slices use `gh stack add <number>-<slug>-impl-<slice>` when the predecessor pull request is
+   still open, and the same new-stack path after it has merged.
 
-Inspect `git status` before a Spec Kit auto-commit and unstage generated output, reports, and temporary probes.
+Do not run a Spec Kit auto-commit while generated output, reports, or temporary probes are in the worktree.
+`.specify/extensions/git/scripts/bash/auto-commit.sh` runs `git add .` immediately before it commits, so
+unstaging those files does not keep them out. Remove them, or leave them ignored, before invoking the hook.
 Commit implementation work as explicit Conventional Commits. The implementation auto-commit hook is disabled.
 
 For a recorded one-pull-request exception, say which gates are combined in the body and target `main`. Do not
@@ -113,7 +124,9 @@ and which approvals or evidence need another review. A clean rebase does not ren
 
 Merge only when a person has approved that phase and every open phase below it, and has explicitly asked to merge.
 Passing checks are not approval.
-Confirm every upper branch is pushed and its worktree is clean. Then merge through that phase:
+Confirm every upper branch is pushed and its worktree is clean.
+
+When `gh stack view` shows the pull request in a native stack, merge through that phase:
 
 ```sh
 gh stack merge <pull-request-number> --yes --squash
@@ -121,3 +134,10 @@ gh stack merge <pull-request-number> --yes --squash
 
 This merges the chosen pull request and every open layer below it, and leaves layers above it open. Afterward,
 fetch and match the rewritten upper branches. Do not replay the old local commits.
+
+A specification that is still the only pull request, and a recorded one-pull-request exception, have no native
+stack. `gh stack merge` applies to stacked pull requests. Merge those with the same approval gates:
+
+```sh
+gh pr merge <pull-request-number> --squash
+```

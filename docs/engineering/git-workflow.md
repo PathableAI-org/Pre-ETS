@@ -45,10 +45,17 @@ main
               └── 156-distributed-sessions-impl
 ```
 
-Add a further implementation slice as `{number}-{slug}-impl-<slice>`. Create those branches with `gh stack add`
-from the branch below. Do not call `speckit.git.feature` for them, and do not put the GitHub issue number in the
-branch name. Issue numbers and Spec Kit numbers are different sequences. Name the issue in the pull request title
-and body.
+Add a further implementation slice as `{number}-{slug}-impl-<slice>`. While the predecessor pull request is open,
+create the next branch with `gh stack add` from that branch. After the predecessor has merged, its remote branch
+is deleted and that completed stack cannot be extended. Create the next branch from updated `origin/main`, keep
+the same Spec Kit number and `specs/{number}-{slug}/` directory, and start a new stack with `gh stack init`. Do
+not call `speckit.git.feature` for either path, and do not put the GitHub issue number in the branch name. Issue
+numbers and Spec Kit numbers are different sequences. Name the issue in the pull request title and body.
+
+Before planning, tasks, or implementation, set `SPECIFY_FEATURE_DIRECTORY` to `specs/{number}-{slug}`. Spec Kit
+resolves the feature directory from that variable or from `.specify/feature.json`. That file is per checkout and
+is not committed. The branch name does not select the directory. Set the variable again when resuming in another
+worktree or switching features, so a missing or stale `feature.json` cannot point at a different spec.
 
 Each pull request targets the branch immediately below it. `gh stack submit` links them so reviewers see that
 layer's diff. GitHub still evaluates `main`'s rules for every layer. The final path segment must start with the
@@ -69,11 +76,14 @@ Keep the rest of the stack open in these cases:
 - The plan depends on a feasibility check that is already in progress. Merge the plan when that check supports the contract.
 - The author recorded an explicit decision to combine gates.
 
-An agent merges a phase only when a person has approved it and explicitly asked for the merge. Merging that phase
-also merges every open phase below it, so those phases need the same approval. Passing checks and Copilot comments
-do not approve a pull request. Before that merge, every upper branch in the stack must be pushed
-and its worktree clean. After GitHub rebases the remaining branches, fetch and match those remote branches. Do not
-replay the pre-rebase commits on top.
+An agent merges a phase only when a person has approved it and explicitly asked for the merge. Merging a stacked
+phase also merges every open phase below it, so those phases need the same approval. Passing checks and Copilot
+comments do not approve a pull request. Before that merge, every upper branch in the stack must be pushed and its
+worktree clean. After GitHub rebases the remaining branches, fetch and match those remote branches. Do not replay
+the pre-rebase commits on top.
+
+Merge a native stack with `gh stack merge --squash`. A specification that is still the only pull request, and a
+recorded one-pull-request exception, are not a native stack. Merge those with `gh pr merge --squash`.
 
 The repository squash-merges with the pull request title as the commit subject and a blank body. The title is the
 durable history. Put the rationale in the specification, plan, and evidence files. Two repository settings are
@@ -98,7 +108,8 @@ and no other work is based on the old commits. After review starts, add commits.
 `main`.
 
 Do not commit generated output, coverage, build directories, tool reports, critique transcripts, or temporary probes.
-Inspect `git status` before a Spec Kit auto-commit. That hook stages the whole tree.
+The Spec Kit auto-commit hook runs `git add .` immediately before committing. Remove those files, or keep them
+ignored, before invoking the hook. Unstaging them does not keep them out of the commit.
 
 Pull request bodies use the templates in `.github/PULL_REQUEST_TEMPLATE/`. A specification or plan pull request
 associates the delivery issue with `Contributes to #N`. An implementation pull request uses `Closes #N` only when
