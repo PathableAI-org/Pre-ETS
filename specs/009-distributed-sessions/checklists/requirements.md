@@ -52,3 +52,6 @@
   planning.
 - `verification.md` records planned evidence only. No runtime, provider, store, browser, or observability procedure was
   executed during specification.
+- Planned observability evidence uses manual inspection of real exported traces, including a telemetry-safe
+  `session.id` correlation attribute, while retaining cookie, store, and public-outcome observations as the primary
+  behavioral evidence.

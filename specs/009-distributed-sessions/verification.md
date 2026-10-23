@@ -49,8 +49,9 @@ below is planned until a later execution record identifies the exercised revisio
 ### Purpose
 
 Directly inspect the composed handoff from real browser authentication to the issued cookie and shared server-held
-session state. This adds cookie-scope/content and cross-client composition observations that are not established by
-service-only automated scenarios.
+session state, then correlate those outcomes with the exported request trace. This adds cookie-scope/content,
+cross-client composition, and live-telemetry observations that are not established by service-only automated
+scenarios.
 
 ### Prerequisites
 
@@ -58,6 +59,8 @@ service-only automated scenarios.
 - The repository's pinned Redis and Keycloak services running with readiness confirmed.
 - The frontend/reference callback consumer running with synthetic tenant configuration, synthetic local user data,
   an owned session-key prefix, and an owned OIDC-transaction prefix.
+- The repository's observability profile running with frontend OTLP trace export enabled as described in
+  [Observability](../../docs/observability.md), with Tempo query access through Grafana MCP or the Grafana UI.
 - Playwright/browser control, HTTP response inspection, and a second independent client of the delivered public
   session capability.
 - No production credentials, PHI, client data, or shared Redis keyspace.
@@ -71,34 +74,73 @@ service-only automated scenarios.
 3. Inspect the callback response and browser cookie store. Record that exactly one authenticated-session cookie was
    issued, that it is host-only (no Domain attribute), and that its value contains no provider token, credential, or
    other secret value used by the scenario.
-4. Pass the issued session reference to a second independent client of the public session capability and record the
+4. Allow for bounded batch export, then query Tempo for the successful callback request trace. Inspect the span that
+   records successful session establishment and confirm it carries `session.id`. Confirm the value is a telemetry-safe
+   correlation identifier, not the browser cookie or store lookup identifier, and cannot be used to retrieve or
+   authenticate the session.
+5. Pass the issued session reference to a second independent client of the public session capability and record the
    returned user, tenant, authoritative deadline, and effective warning policy. Compare them with the validated login
-   and configured policy without printing tokens, credentials, or other secrets.
-5. In a separate fresh browser context, execute a rejected authentication return through the same reference boundary
-   and record that no authenticated-session cookie or usable session results.
-6. Remove only the scenario-owned session and OIDC-transaction keys, close browser contexts, stop processes started by
-   the procedure, and record cleanup completion. Never use `FLUSHALL` against shared Redis.
+   and configured policy without printing tokens, credentials, or other secrets. Inspect the corresponding traced
+   request or reference-consumer operation and confirm the same telemetry-safe `session.id` value correlates it with
+   the established session.
+6. In a separate fresh browser context, execute a rejected authentication return through the same reference boundary.
+   Record that no authenticated-session cookie or usable session results, and inspect the trace to confirm it does not
+   falsely record successful session establishment or a successful-session `session.id`.
+7. Inspect the sampled successful and rejected traces for accidental disclosure. Confirm that Cookie, Authorization,
+   provider tokens, callback parameters, store lookup identifiers, credentials, and error-cause secrets are absent
+   from span attributes, events, names, and descriptions.
+8. Remove only the scenario-owned session and OIDC-transaction keys, close browser contexts, stop processes started by
+   the procedure (including the optional observability profile), and record cleanup completion. Never use `FLUSHALL`
+   against shared Redis.
 
 ### Expected observations
 
 - The successful real callback produces one host-only cookie and one usable session whose user/tenant and
   initial policy state match the trusted callback and effective tenant policy (V-001, V-003, V-008).
+- The successful callback trace contains a telemetry-safe `session.id` that also appears on the correlated session-read
+  trace, while the rejected callback trace does not falsely signal successful session creation (V-001, V-002, V-004).
 - The independent client reads the same consumer-visible state without creator affinity (V-004).
 - The rejected callback produces neither a usable authenticated session nor an authenticated-session cookie (V-002).
 
 ### Evidence to retain
 
 - Exercised Git revision, date/time, environment/service versions, safe synthetic tenant/user labels, policy inputs,
-  bounded actions, redacted cookie attributes/content assessment, second-client observations, rejected-flow outcome,
+  bounded actions, redacted cookie attributes/content assessment, trace IDs and span names, presence/equality (but not
+  the full value) of `session.id`, telemetry-secrecy inspection, second-client observations, rejected-flow outcome,
   cleanup result, pass/fail disposition, and explicit limitations.
 
 ## Operational observability verification
 
-No operational observability claim is established by PREETS-SESSION-003, PREETS-SESSION-006, or
-PREETS-SESSION-008 for this slice. The required distinction between no usable session and a storage/service failure is
-a public behavioral outcome and is verified at that boundary. If temporary logs or traces are used to diagnose an
-execution, inspect real exported data without retaining durable telemetry-output assertions, and record only safe,
-non-secret observations and limitations.
+PREETS-SESSION-003, PREETS-SESSION-006, and PREETS-SESSION-008 establish no separate production monitoring, alerting,
+or SLO obligation for this slice. Live traces are nevertheless planned as complementary execution evidence for the
+session-establishment and cross-request correlation claims; they do not replace the real callback, cookie, distributed-
+store, or public-outcome observations.
+
+With frontend OTLP export enabled, inspect real exported traces through Tempo using the repository's Grafana MCP or UI:
+
+Use the registered OpenTelemetry attribute name `session.id`. The current
+[session semantic convention](https://opentelemetry.io/docs/specs/semconv/general/session/) marks it Development and
+Opt-In, so planning must document the server-side application-session semantics and preserve the confidentiality
+boundary below rather than assuming client-session defaults.
+
+- The successful callback request trace must contain a span recording successful session establishment with a
+  `session.id` attribute. A subsequent traced request or bounded reference-consumer read for that session must carry
+  the same value, supporting correlation between creation and use.
+- `session.id` must be a telemetry-safe correlation identifier that cannot authenticate or retrieve the session. It
+  must not be the browser cookie value, the store lookup identifier, a provider token, or another bearer-capable
+  secret. Its exact generation and attachment belong to planning.
+- Rejected authentication and failed session establishment must not emit a misleading successful-session
+  `session.id`. Where a controlled storage-failure scenario is executed, inspect the affected trace for the failure
+  outcome without treating telemetry alone as proof of the public service result.
+- Preserve the normal HTTP method, route template, and status/outcome observations. Inspect span attributes, events,
+  names, error descriptions, and exception data to confirm that Cookie, Authorization, provider/callback evidence,
+  credentials, raw session references, and other secrets are absent.
+
+Use manual inspection or a temporary agent probe; do not retain durable tests of span names, attributes, events,
+payload secrecy, or exporter wiring. Record the executed revision, trace query, trace IDs, relevant span names,
+attribute presence/equality, observed result, and limitations without retaining the full `session.id` value. An exported
+`session.id` supports correlation but does not by itself prove that the distributed record exists, that the cookie was
+issued, or that a consumer can use the session.
 
 ## Environment and data controls
 
@@ -106,6 +148,8 @@ non-secret observations and limitations.
   prefixes; do not use PHI or real client records.
 - Keep provider credentials, tokens, callback parameters, cookie values, and session references out of committed
   artifacts and retained transcripts.
+- Treat `session.id` as a high-cardinality, opt-in telemetry correlation value. Do not export the raw authenticated
+  session reference, and retain only the attribute's presence/equality result rather than its full value.
 - Use pinned local Redis and Keycloak services for planned integration evidence. Local Keycloak results do not
   establish Microsoft, broker-chain, or universal provider compatibility.
 - Create no second identity stack or process-memory substitute for real-store evidence.
@@ -132,6 +176,8 @@ verification.
 - Browser activity, warning, logout, recovery, and comprehensive entry-point behavior remain with #155–#158 and #154.
 - Local Keycloak does not establish Microsoft or universal provider compatibility. Authentication-time comparison,
   clock tolerance, provider/broker support, and unsupported-provider behavior remain open B6/#158 gates.
+- Trace export is optional and may be disabled or unavailable; an absent trace is not evidence that session behavior
+  did not occur. Telemetry is supporting evidence only and remains subject to sampling/export limitations.
 - This plan does not claim executed behavior, accessibility outcomes, production ingress/deployment behavior, or
   operational monitoring coverage.
 
