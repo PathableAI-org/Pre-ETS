@@ -1,11 +1,22 @@
 ---
-name: "speckit-checklist"
-description: "Generate a custom checklist for the current feature based on user requirements."
-compatibility: "Requires spec-kit project structure with .specify/ directory"
+name: speckit-checklist
+description: Generate a custom checklist for the current feature based on user requirements.
+compatibility: Requires spec-kit project structure with .specify/ directory
 metadata:
-  author: "github-spec-kit"
-  source: "templates/commands/checklist.md"
+  author: github-spec-kit
+  source: preset:pre-ets-specification-planning
 ---
+
+# Speckit Checklist Skill
+
+# Pre-ETS preset-aware checklist setup
+
+Apply this runtime rule while executing the wrapped checklist workflow.
+
+When the wrapped workflow performs setup, run
+`uv run --with pyyaml==6.0.3 -- .specify/scripts/bash/check-prerequisites.sh --json --template checklist-template`
+instead of invoking the Bash script directly. Preset-aware checklist-template
+composition requires PyYAML that may not exist in the system Python.
 
 
 ## Checklist Purpose: "Unit Tests for English"

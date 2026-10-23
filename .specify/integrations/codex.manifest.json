@@ -1,17 +1,17 @@
 {
   "integration": "codex",
   "version": "1.2.3",
-  "installed_at": "2026-10-23T11:01:14.495572+00:00",
+  "installed_at": "2026-10-23T13:00:17.279364+00:00",
   "files": {
     ".agents/skills/speckit-analyze/SKILL.md": "b119544305cf710e3f4bc2da0e965ef3e0bc3a12a1a481ac0903dc59d5baf4b6",
-    ".agents/skills/speckit-clarify/SKILL.md": "f6acfbc82c96c0d91b2429fd0b51ce7df7f94b003d1b73acc54470d48bcc455e",
-    ".agents/skills/speckit-constitution/SKILL.md": "b2a6a979ef7511812b60cde4adb6f1c4a8b1b57314ea2f1861ebc3f4796bf377",
+    ".agents/skills/speckit-clarify/SKILL.md": "3ae0f696fc9469910cd6646b4bcf99ef64c4f2e0d3d2028583940f843f316197",
+    ".agents/skills/speckit-constitution/SKILL.md": "f2784c171aac9f786f939adf8333ef0d156f3b055919e0a040a15544f5e82b42",
     ".agents/skills/speckit-implement/SKILL.md": "848a5c9eff7b99e348927cbde6c35378de9fea3fd317941f58fa0b0b79301eec",
     ".agents/skills/speckit-converge/SKILL.md": "5859c9780ddc012f600e7d35a5691e032fe05861296f226b5665a0ec03135ccd",
-    ".agents/skills/speckit-plan/SKILL.md": "db2406adfa50103fc04ca8109ac934cd715086fba64365fb404630a88c62bda5",
-    ".agents/skills/speckit-checklist/SKILL.md": "7ac5cba31a27151a1a7b73f691bd478d42750ce2dd734701a07eb0e235ffbd94",
-    ".agents/skills/speckit-specify/SKILL.md": "a505028de7f6489878696d6656c7d057f3a66119ebb8c0cc82d69fabb7b344ff",
-    ".agents/skills/speckit-tasks/SKILL.md": "1086d7885df1188d00e7d5eb4715e678b4340b893e8f24ae748d823b13599a56",
+    ".agents/skills/speckit-plan/SKILL.md": "cc2c7129ff979653170c6c3fdd2633723691428c4c7cb366502ce716e176c274",
+    ".agents/skills/speckit-checklist/SKILL.md": "d32ba20826aac849e9c419784a0d2dfab7a1b543fe69bb555d0fef9c01fa8351",
+    ".agents/skills/speckit-specify/SKILL.md": "36335507a89a9d4457db25debd222955eb2ec900db365efa985040e109781b3b",
+    ".agents/skills/speckit-tasks/SKILL.md": "8db3ffe92b4447b7e2cb54848babb9faf26e356bdb43e39c84b1d206b917af9c",
     ".agents/skills/speckit-taskstoissues/SKILL.md": "e149b5b337bfaf1d232af7304916bbe75f357c67c271f5e753f7a0179de240b1"
   }
 }
