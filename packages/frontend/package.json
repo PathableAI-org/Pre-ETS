@@ -13,6 +13,7 @@
     "format:write": "dprint fmt",
     "test:unit": "vitest run --config vitest.config.ts",
     "test:integration": "vitest run --config vitest.integration.config.ts",
+    "fallow:health": "fallow health --complexity",
     "fallow:unused": "fallow dead-code",
     "fallow:audit": "fallow audit --gate new-only --gate-marker frontend"
   },

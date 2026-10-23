@@ -1,5 +1,6 @@
 {
   "$schema": "./node_modules/fallow/schema.json",
+  "extends": "./.fallowrc.shared.json",
   "entry": [
     "cucumber.mjs",
     "cucumber.smoke.mjs",
@@ -22,6 +23,23 @@
     "@effect/platform-node",
     "effect"
   ],
+  "health": {
+    "thresholdOverrides": [
+      {
+        "files": [
+          "tests/bdd/support/server.ts"
+        ],
+        "functions": [
+          "response.on(\"end\")",
+          "signalProcessGroup",
+          "stopSite",
+          "waitUntilReady"
+        ],
+        "maxCrap": 60,
+        "reason": "Cucumber executes this support code dynamically, so static test reachability undercounts its behavioral coverage; global cyclomatic and cognitive ceilings still apply."
+      }
+    ]
+  },
   "rules": {
     "unused-dependencies": "error"
   },

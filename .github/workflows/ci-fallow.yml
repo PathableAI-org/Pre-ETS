@@ -46,6 +46,7 @@ jobs:
               - 'pnpm-workspace.yaml'
               - '.node-version'
               - '.fallowrc.json'
+              - '.fallowrc.shared.json'
               - '.github/workflows/ci-fallow.yml'
       - name: Set path filter outputs
         id: set
@@ -77,6 +78,9 @@ jobs:
       - name: Check unused code and dependencies
         if: needs.changes.outputs.fallow == 'true'
         run: pnpm check:unused
+      - name: Check function complexity
+        if: needs.changes.outputs.fallow == 'true'
+        run: pnpm check:health
       - name: Audit changes
         if: needs.changes.outputs.fallow == 'true'
         env:

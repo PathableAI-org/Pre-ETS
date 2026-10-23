@@ -17,6 +17,7 @@
     "lint:fix": "eslint . --max-warnings=0 --fix",
     "format:check": "dprint check",
     "format:write": "dprint fmt",
+    "fallow:health": "fallow health --complexity",
     "fallow:unused": "fallow dead-code",
     "fallow:audit": "fallow audit --gate new-only --gate-marker domain"
   },
