@@ -132,8 +132,10 @@ skips the browser login) for manual testing.
 Local OpenTelemetry + Grafana is **opt-in**. Default
 `docker compose up -d --wait redis keycloak` does **not** start it.
 
-Pinned image: `grafana/otel-lgtm:0.35.0` (digest pinned in `compose.yaml`).
+Pinned image: `grafana/otel-lgtm:0.37.0` (digest pinned in `compose.yaml`).
 Compose service name: **`otel-lgtm`**. Compose profile: **`observability`**.
+The image runs Grafana plus Tempo, Loki, and Prometheus. The frontend exports
+traces only; empty Loki or Prometheus data is not application evidence.
 
 | Host binding     | Container | Purpose                            |
 | ---------------- | --------- | ---------------------------------- |
@@ -171,7 +173,9 @@ docker compose --profile observability stop otel-lgtm
 Do **not** run bare `docker compose --profile observability stop` (that can
 stop other enabled project services).
 
-App instrumentation and env vars: [observability.md](./observability.md).
+App instrumentation, the read-only Grafana MCP server, and agent query steps:
+[observability.md](./observability.md). The canonical server file is
+[`.mcp.json`](../.mcp.json).
 
 ## Postgres and Flyway
 

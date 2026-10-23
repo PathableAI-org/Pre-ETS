@@ -1,0 +1,15 @@
+# Same server as repo-root .mcp.json. Edit that file first.
+
+[mcp_servers.grafana]
+command = "uvx"
+args = [
+  "mcp-grafana==2.0.0",
+  "--disable-write",
+  "--usage-stats=disabled",
+  "--disable-api",
+  "--enabled-tools",
+  "search,datasource,prometheus,loki,tempo",
+]
+
+[mcp_servers.grafana.env]
+GRAFANA_URL = "http://127.0.0.1:3300"

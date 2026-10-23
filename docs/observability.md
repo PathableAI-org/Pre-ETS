@@ -155,10 +155,21 @@ policy is deferred. Alerting and SLOs are out of scope.
 
 ## Grafana MCP for agents
 
-Requires the optional observability profile (MCP does nothing useful without it).
+Requires the optional observability profile and `uvx`. The server does nothing
+useful until `otel-lgtm` is up and the frontend process was started with
+`OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318`. Without that endpoint the
+tracer is a noop and every query is empty. Allow about 30 seconds after a
+request for batch export.
 
-Pinned package: **`mcp-grafana==2.0.0`** via `uvx` (unversioned `uvx mcp-grafana`
-is not acceptable).
+The image and digest are the `otel-lgtm` service in `compose.yaml`
+(`grafana/otel-lgtm:0.37.0`). That image includes Tempo, Loki, and Prometheus.
+The frontend exports traces only. An empty Loki or Prometheus result does not
+mean the application was quiet or emitted no metrics.
+
+Pinned package: **`mcp-grafana==2.0.0`**. Unversioned `uvx mcp-grafana` is not
+acceptable. The committed command is read-only (`--disable-write`), disables
+anonymous usage reporting, disables the raw Grafana API passthrough, and
+enables only search, datasource, Prometheus, Loki, and Tempo tools.
 
 ### Connection
 
@@ -167,18 +178,40 @@ is not acceptable).
 | `GRAFANA_URL` | `http://127.0.0.1:3300`                         |
 | Auth          | Anonymous org role **Viewer** (Compose default) |
 
-Preferred when anonymous is disabled: a read-only Grafana service account token
-(`GRAFANA_SERVICE_ACCOUNT_TOKEN`). Built-in `admin`/`admin` or anonymous Admin
-are troubleshooting fallbacks only — not the documented MCP default.
+Anonymous Viewer can list the local datasources and query Prometheus, Loki, and
+Tempo. A query tool that returns 403 needs `datasources:query`: create a
+read-only Grafana service account token and set `GRAFANA_SERVICE_ACCOUNT_TOKEN`
+in the developer environment. Do not commit the token. Built-in `admin` /
+`admin` or anonymous Admin are troubleshooting fallbacks only — not the
+documented MCP default.
 
-### Example Cursor MCP config
+### Where the server is declared
+
+[`.mcp.json`](../.mcp.json) is the canonical `mcpServers` definition. Claude
+Code and GitHub Copilot sessions load it. Cursor and Codex do not, so the same
+server is also declared in [`.cursor/mcp.json`](../.cursor/mcp.json) and
+[`.codex/config.toml`](../.codex/config.toml). Edit `.mcp.json` first and keep
+those copies identical. Clients ask the developer to approve the server once.
+Codex skips project `.codex/` config until the checkout is trusted.
+
+Do not commit `.vscode/mcp.json`. Copilot sessions already read `.mcp.json`.
+The VS Code MCP panel uses a different key. For that panel only, translate the
+canonical server to:
 
 ```json
 {
-  "mcpServers": {
+  "servers": {
     "grafana": {
+      "type": "stdio",
       "command": "uvx",
-      "args": ["mcp-grafana==2.0.0"],
+      "args": [
+        "mcp-grafana==2.0.0",
+        "--disable-write",
+        "--usage-stats=disabled",
+        "--disable-api",
+        "--enabled-tools",
+        "search,datasource,prometheus,loki,tempo"
+      ],
       "env": {
         "GRAFANA_URL": "http://127.0.0.1:3300"
       }
@@ -187,14 +220,20 @@ are troubleshooting fallbacks only — not the documented MCP default.
 }
 ```
 
-### Concrete agent read
+### Agent query procedure
 
-With the stack running and at least one exported span, call one of:
+Call `list_datasources` and use the returned UIDs. On this Compose image those
+UIDs are `tempo`, `loki`, and `prometheus`.
 
-1. `check_datasources_health` / datasource list tools, or
-2. Tempo search for service `pre-ets-frontend`.
-
-Exact tool names follow mcp-grafana **2.0.0**.
+1. Traces: `search_tempo_traces` with
+   `{ resource.service.name = "pre-ets-frontend" }`, then `get_tempo_trace` for
+   a returned trace ID. Client spans omit the query string, fragment, and
+   userinfo. Do not copy Authorization, Cookie, or collector headers into the
+   chat.
+2. Logs: `query_loki_logs` may be used. Application logs stay on the Next
+   process, so an empty result is not evidence that the app logged nothing.
+3. Metrics: `query_prometheus` may be used. The frontend does not export
+   metrics, so an empty result is not evidence that the app emitted none.
 
 ### Human verification checklist (SC-006)
 
@@ -203,9 +242,11 @@ Use when CI cannot run MCP. Complete before merge:
 1. `docker compose --profile observability up -d otel-lgtm --wait` succeeds; Grafana opens
    at `http://127.0.0.1:3300`.
 2. Next exports at least one span (any route with SDK enabled / not `OTEL_SDK_DISABLED`).
-3. Start MCP: `GRAFANA_URL=http://127.0.0.1:3300 uvx mcp-grafana==2.0.0`.
-4. From an MCP client, complete one read (list datasources **or** Tempo search
-   for `pre-ets-frontend`) on the **first attempt**.
+3. Use the committed `mcp-grafana==2.0.0` command (`--disable-write`,
+   `--usage-stats=disabled`).
+4. From an MCP client, `list_datasources` and one `search_tempo_traces` for
+   `pre-ets-frontend` succeed on the first attempt. A 403 on the Tempo search
+   means the Viewer role cannot query and the token path above is required.
 5. Record commands + outcome as PR/acceptance evidence.
 
 Docs-only command lists without a live success are not SC-006 evidence.
