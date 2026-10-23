@@ -66,13 +66,17 @@ const endSpan = (span: Span): void => {
   if (span.isRecording()) span.end()
 }
 
+const CLIENT_FAILURE = "Client request failed"
+
+/** Category only. Abort reasons and error messages can carry URLs or request data. */
+const errorCategory = (error: unknown): string => {
+  if (!(error instanceof Error)) return "non-error"
+  return error.name === "" ? "Error" : error.name
+}
+
 const failSpan = (span: Span, error: unknown): void => {
-  if (error instanceof Error) {
-    span.recordException(error)
-    span.setStatus({ code: SpanStatusCode.ERROR, message: error.message })
-    return
-  }
-  span.setStatus({ code: SpanStatusCode.ERROR, message: String(error) })
+  span.setAttribute("error.type", errorCategory(error))
+  span.setStatus({ code: SpanStatusCode.ERROR, message: CLIENT_FAILURE })
 }
 
 const startClientSpan = (tracer: Tracer, kind: FetchKind, method: string, url: URL): Span => {
@@ -196,15 +200,41 @@ const urlFromInput = (input: string | URL): undefined | URL => {
   }
 }
 
+const absent = (value: null | string | undefined): boolean => value === undefined || value === null || value === ""
+
+/**
+ * Node copies URL fields and then lets options replace hostname, port, path, and protocol.
+ * `host` does not win over a hostname that came from the URL.
+ */
+const effectiveHttpUrl = (base: URL, options: Http.RequestOptions): undefined | URL => {
+  if (!absent(options.socketPath)) return undefined
+  const protocol = absent(options.protocol) ? base.protocol : schemeFor(options.protocol, "http:")
+  const hostname = absent(options.hostname) ? base.hostname : options.hostname
+  const port = options.port === undefined || options.port === null ? base.port : String(options.port)
+  const path = options.path ?? `${base.pathname}${base.search}`
+  if (hostname === undefined || hostname === null) return undefined
+  try {
+    return new URL(path, `${protocol}//${hostForUrl(hostname)}${portSuffix(port)}/`)
+  } catch {
+    return undefined
+  }
+}
+
 const callbackAt = (value: unknown): ((response: Http.IncomingMessage) => void) | undefined =>
   isCallback(value) ? value : undefined
 
 const parseUrlCall = (input: string | URL, second: unknown, third: unknown): ParsedHttpCall | undefined => {
-  const url = urlFromInput(input)
+  const base = urlFromInput(input)
+  if (base === undefined) return undefined
+  if (isCallback(second)) return { callback: second, options: {}, requestUrl: input, url: base }
+  // `http.request(url, undefined, callback)` is a real overload. Keep that callback.
+  if (second === undefined || second === null) {
+    return { callback: callbackAt(third), options: {}, requestUrl: input, url: base }
+  }
+  if (!isRequestOptions(second)) return undefined
+  const url = effectiveHttpUrl(base, second)
   if (url === undefined) return undefined
-  if (isCallback(second)) return { callback: second, options: {}, requestUrl: input, url }
-  if (isRequestOptions(second)) return { callback: callbackAt(third), options: second, requestUrl: input, url }
-  return { callback: undefined, options: {}, requestUrl: input, url }
+  return { callback: callbackAt(third), options: second, requestUrl: input, url }
 }
 
 const parseOptionsCall = (
@@ -228,30 +258,46 @@ const isHeaderPairList = (
   headers: Http.OutgoingHttpHeaders | readonly string[]
 ): headers is readonly string[] => Object.getPrototypeOf(headers) === Array.prototype
 
-const pairListRecord = (headers: readonly string[]): Record<string, string> => {
-  const record: Record<string, string> = {}
-  for (let index = 0; index < headers.length; index += 2) {
-    const key = headers[index]
-    const value = headers[index + 1]
-    if (key !== undefined && value !== undefined) record[key] = value
+const pairListSetter: TextMapSetter<string[]> = {
+  set(carrier, key, value) {
+    const name = key.toLowerCase()
+    for (let index = carrier.length - 2; index >= 0; index -= 2) {
+      const existing = carrier[index]
+      if (existing?.toLowerCase() === name) carrier.splice(index, 2)
+    }
+    carrier.push(key, value)
   }
-  return record
 }
 
-const outgoingHeaderRecord = (headers: Http.OutgoingHttpHeaders): Record<string, string> => {
-  const record: Record<string, string> = {}
-  for (const key of Object.keys(headers)) {
-    const value = headers[key]
-    if (typeof value === "string") record[key] = value
-    else if (typeof value === "number") record[key] = String(value)
-    else if (Array.isArray(value)) record[key] = value.join(",")
+const outgoingHeaderSetter: TextMapSetter<Http.OutgoingHttpHeaders> = {
+  set(carrier, key, value) {
+    const name = key.toLowerCase()
+    for (const existing of Object.keys(carrier)) {
+      if (existing.toLowerCase() === name) Reflect.deleteProperty(carrier, existing)
+    }
+    carrier[key] = value
   }
-  return record
 }
 
-const headerRecord = (headers: Http.OutgoingHttpHeaders | readonly string[] | undefined): Record<string, string> => {
-  if (headers === undefined) return {}
-  return isHeaderPairList(headers) ? pairListRecord(headers) : outgoingHeaderRecord(headers)
+/** Copy application headers and replace only propagation fields. */
+const propagateHeaders = (
+  span: Span,
+  headers: Http.OutgoingHttpHeaders | readonly string[] | undefined
+): Http.OutgoingHttpHeaders | string[] => {
+  const context = traceContext(span)
+  if (headers === undefined) {
+    const record: Record<string, string> = {}
+    propagation.inject(context, record, headerRecordSetter)
+    return record
+  }
+  if (isHeaderPairList(headers)) {
+    const next = [...headers]
+    propagation.inject(context, next, pairListSetter)
+    return next
+  }
+  const next: Http.OutgoingHttpHeaders = { ...headers }
+  propagation.inject(context, next, outgoingHeaderSetter)
+  return next
 }
 
 const invokeHttp = (original: HttpCaller, args: readonly unknown[]): Http.ClientRequest => original(...args)
@@ -259,7 +305,7 @@ const invokeHttp = (original: HttpCaller, args: readonly unknown[]): Http.Client
 const invokeHttpWithHeaders = (
   original: HttpCaller,
   parsed: ParsedHttpCall,
-  headers: Record<string, string>
+  headers: Http.OutgoingHttpHeaders | string[]
 ): Http.ClientRequest => {
   const options = { ...parsed.options, headers }
   if (parsed.requestUrl === undefined) {
@@ -307,7 +353,7 @@ const traceHttp = (
   }
   try {
     const request = shouldPropagate(parsed.url)
-      ? invokeHttpWithHeaders(original, parsed, propagateHeaders(span, headerRecord(parsed.options.headers)))
+      ? invokeHttpWithHeaders(original, parsed, propagateHeaders(span, parsed.options.headers))
       : invokeHttp(original, args)
     bindClientRequest(span, request, Date.now())
     return request
@@ -316,11 +362,6 @@ const traceHttp = (
     endSpan(span)
     throw error
   }
-}
-
-const propagateHeaders = (span: Span, headers: Record<string, string>): Record<string, string> => {
-  propagation.inject(traceContext(span), headers, headerRecordSetter)
-  return headers
 }
 
 const traceContext = (span: Span) => trace.setSpan(context.active(), span)
@@ -348,14 +389,11 @@ const requestMethod = (input: RequestInfo | URL, init: RequestInit | undefined):
   return "GET"
 }
 
+/** `init.headers` replaces a Request's headers. An omitted init keeps them. */
 const requestHeaders = (input: RequestInfo | URL, init: RequestInit | undefined): Headers => {
-  const headers = new Headers(typeof input !== "string" && !(input instanceof URL) ? input.headers : undefined)
-  if (init?.headers !== undefined) {
-    new Headers(init.headers).forEach((value, key) => {
-      headers.set(key, value)
-    })
-  }
-  return headers
+  if (init?.headers !== undefined) return new Headers(init.headers)
+  if (typeof input !== "string" && !(input instanceof URL)) return new Headers(input.headers)
+  return new Headers()
 }
 
 const instrumentFetch = (tracer: Tracer): () => void => {
@@ -433,18 +471,30 @@ class NodeHttpClientInstrumentation implements Instrumentation {
   readonly instrumentationVersion = INSTRUMENTATION_VERSION
   private config: InstrumentationConfig = {}
   private readonly restore: (() => void)[] = []
+  private restoreFetchDisabled: (() => void) | undefined
   private tracerProvider: TracerProvider | undefined
 
   disable(): void {
     const restore = this.restore.splice(0).reverse()
     for (const undo of restore) undo()
+    this.restoreFetchDisabled?.()
+    this.restoreFetchDisabled = undefined
   }
 
   enable(): void {
     if (this.config.enabled === false || this.tracerProvider === undefined) return
     this.disable()
     // Next's fetch patch records the raw href. Hide it while this client span is installed.
+    const hadFetchDisabled = Object.hasOwn(process.env, "NEXT_OTEL_FETCH_DISABLED")
+    const previousFetchDisabled = process.env.NEXT_OTEL_FETCH_DISABLED
     process.env.NEXT_OTEL_FETCH_DISABLED = "1"
+    this.restoreFetchDisabled = () => {
+      if (hadFetchDisabled && previousFetchDisabled !== undefined) {
+        process.env.NEXT_OTEL_FETCH_DISABLED = previousFetchDisabled
+        return
+      }
+      delete process.env.NEXT_OTEL_FETCH_DISABLED
+    }
     const tracer = this.tracerProvider.getTracer(this.instrumentationName, this.instrumentationVersion)
     this.restore.push(
       instrumentFetch(tracer),

@@ -38,7 +38,7 @@ const boot = () => {
     return runtime
   }).pipe(
     Effect.provide(
-      Layer.mergeAll(LoggerLayer, configProviderLayer, observabilityLayer)
+      Layer.mergeAll(LoggerLayer, configProviderLayer)
     ),
     Effect.runPromise
   )

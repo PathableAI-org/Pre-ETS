@@ -1,51 +1,40 @@
-import { Config, Option, Schema, SchemaIssue } from "effect"
+import { Config, Option } from "effect"
 
-const TRUE_TOKENS = new Set(["1", "on", "true", "y", "yes"])
-const FALSE_TOKENS = new Set(["0", "false", "n", "no", "off"])
-
-const invalidDisabledFlag = (): Config.Config<boolean> =>
-  Config.fail(
-    new Schema.SchemaError(
-      new SchemaIssue.InvalidValue({ message: "OTEL_SDK_DISABLED must be a boolean" })
-    )
-  )
-
-/** Missing and blank values are absent. Present values keep surrounding space removed. */
+/** Missing and empty values are absent. The env provider treats "" as missing. */
 const optionalString = (name: string): Config.Config<Option.Option<string>> =>
-  Config.String(name).pipe(
-    Config.option,
-    Config.map(Option.flatMap((value) => {
-      const trimmed = value.trim()
-      return trimmed === "" ? Option.none() : Option.some(trimmed)
-    }))
-  )
+  Config.option(Config.NonEmptyString(name))
 
-const disabled = Config.String("OTEL_SDK_DISABLED").pipe(
-  Config.option,
-  Config.flatMap((value) => {
-    if (Option.isNone(value)) return Config.succeed(false)
-    const token = value.value.trim().toLowerCase()
-    if (token === "") return Config.succeed(false)
-    if (TRUE_TOKENS.has(token)) return Config.succeed(true)
-    if (FALSE_TOKENS.has(token)) return Config.succeed(false)
-    return invalidDisabledFlag()
-  })
-)
+const disabled = Config.Boolean("OTEL_SDK_DISABLED").pipe(Config.withDefault(false))
 
-const endpoint = Config.all({
+const endpoints = Config.all({
   base: optionalString("OTEL_EXPORTER_OTLP_ENDPOINT"),
   traces: optionalString("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT")
-}).pipe(Config.map(({ base, traces }) => Option.isSome(traces) ? traces : base))
+})
+
+const endpoint = endpoints.pipe(Config.map(({ base, traces }) => Option.isSome(traces) ? traces : base))
+
+/** Base endpoints gain the OTLP traces path. A traces endpoint is already that URL. */
+const exportUrl = endpoints.pipe(Config.map(({ base, traces }) => {
+  if (Option.isSome(traces)) return traces
+  if (Option.isNone(base)) return Option.none()
+  const trimmed = base.value.endsWith("/") ? base.value.slice(0, -1) : base.value
+  return Option.some(`${trimmed}/v1/traces`)
+}))
 
 /**
  * Optional OpenTelemetry process settings.
  *
- * No field is required. A missing or blank value stays unset. Endpoint strings are not
- * validated; an unreachable collector remains a best-effort export problem after startup.
+ * No field is required. A missing or empty value stays unset. This parser does not
+ * check that an endpoint is a URL. Startup rejects an unparseable export URL without
+ * logging it. An unreachable collector remains a best-effort export problem.
+ * `disabled` uses Effect's boolean literals (`true`, `false`, `yes`, `no`, `on`, `off`,
+ * `1`, `0`, `y`, `n`). `exportUrl` is the traces endpoint, or the base endpoint plus
+ * `/v1/traces`. A missing or empty value is absent.
  */
 export const OtelConfig = Config.all({
   disabled,
   endpoint,
+  exportUrl,
   headers: optionalString("OTEL_EXPORTER_OTLP_HEADERS"),
   protocol: optionalString("OTEL_EXPORTER_OTLP_PROTOCOL"),
   serviceName: optionalString("OTEL_SERVICE_NAME"),

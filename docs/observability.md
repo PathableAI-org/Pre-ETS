@@ -7,15 +7,16 @@ Traces-only instrumentation for the **Next.js Node server**
 **HTTP + export**: During ManagedRuntime boot (loaded from Next
 `instrumentation.ts`), optional OTEL config decides whether tracing starts.
 `OTEL_SDK_DISABLED=true`, or no OTLP endpoint, leaves the default noop tracer
-in place: no SDK, no client patch, and no Effect bridge. When an endpoint is
-set, `@vercel/otel` is the sole OTLP exporter. The observability module patches
-Node `http`/`https` and `fetch` and records client spans without query strings.
-Next.js still emits the server span through the global tracer.
+in place: no provider, no client patch, and no Effect bridge. When an endpoint
+is set, `@effect/opentelemetry` `NodeSdk` is the sole tracer provider and OTLP/HTTP
+exporter. The observability module patches Node `http`/`https` and `fetch` and
+records client spans without query strings. Next.js still emits the server span
+through that registered global tracer.
 
-**Effect bridge**: `@effect/opentelemetry` `OtelTracer.layerGlobal` is installed
-on the frontend `ManagedRuntime` only when export is enabled, so Effect spans
-share that global provider. There is no second exporter. Use `Effect.withSpan`
-only at logical boundaries when needed.
+**Effect bridge**: `@effect/opentelemetry` `OtelTracer.layer` is installed on the
+frontend `ManagedRuntime` only when export is enabled, so Effect spans share that
+provider. There is no second exporter. Use `Effect.withSpan` only at logical
+boundaries when needed.
 
 ## Verification
 
@@ -30,19 +31,19 @@ strings from the span name and `http.url`.
 ## Environment variables
 
 Optional OTEL settings live in frontend `OtelConfig`, not `ServerConfig`. None
-are required. A missing or blank value is unset. Endpoint strings are not
-validated.
+are required. A missing or empty value is unset. The config parser does not check
+URL syntax. Startup rejects an unparseable export URL without logging the value.
 
-| Variable                             | Role                                                                               |
-| ------------------------------------ | ---------------------------------------------------------------------------------- |
-| `OTEL_SDK_DISABLED`                  | **Off switch** — `true` skips the SDK, client patch, and Effect bridge             |
-| `OTEL_EXPORTER_OTLP_ENDPOINT`        | OTLP base URL. Either this or the traces endpoint turns export on                  |
-| `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | Traces URL. Wins over the base endpoint when both are set                          |
-| `OTEL_SERVICE_NAME`                  | Resource `service.name`. Defaults to `pre-ets-frontend` when export is on          |
-| `OTEL_EXPORTER_OTLP_HEADERS`         | Optional collector headers. Do not print them. Headers alone do not turn export on |
-| `OTEL_EXPORTER_OTLP_TRACES_HEADERS`  | Optional traces-specific headers. Same rule as the base headers                    |
-| `OTEL_EXPORTER_OTLP_PROTOCOL`        | Optional OTLP protocol. Protocol alone does not turn export on                     |
-| `OTEL_EXPORTER_OTLP_TRACES_PROTOCOL` | Optional traces protocol. Same rule as the base protocol                           |
+| Variable                             | Role                                                                                                                                                 |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `OTEL_SDK_DISABLED`                  | **Off switch** — a true literal skips the provider, client patch, and Effect bridge. False literals (`false`, `0`, `off`, `no`, `n`) leave export on |
+| `OTEL_EXPORTER_OTLP_ENDPOINT`        | OTLP base URL. Either this or the traces endpoint turns export on                                                                                    |
+| `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | Traces URL. Wins over the base endpoint when both are set                                                                                            |
+| `OTEL_SERVICE_NAME`                  | Resource `service.name`. Defaults to `pre-ets-frontend` when export is on                                                                            |
+| `OTEL_EXPORTER_OTLP_HEADERS`         | Optional collector headers. Do not print them. Headers alone do not turn export on                                                                   |
+| `OTEL_EXPORTER_OTLP_TRACES_HEADERS`  | Optional traces-specific headers. Same rule as the base headers                                                                                      |
+| `OTEL_EXPORTER_OTLP_PROTOCOL`        | Optional OTLP protocol. Protocol alone does not turn export on                                                                                       |
+| `OTEL_EXPORTER_OTLP_TRACES_PROTOCOL` | Optional traces protocol. Same rule as the base protocol                                                                                             |
 
 Quiet local without a collector: leave the endpoint unset, or set
 `OTEL_SDK_DISABLED=true`. An unset endpoint does **not** export to
@@ -52,13 +53,20 @@ Quiet local without a collector: leave the endpoint unset, or set
 
 1. `OTEL_SDK_DISABLED=true` skips all OTEL setup, even if an endpoint is present.
 2. If neither endpoint variable is set, setup is skipped and the default noop tracer stays in place.
-3. Otherwise ManagedRuntime calls `registerOTel` with the query-free client instrumentation and installs `OtelTracer.layerGlobal`. `@vercel/otel` applies headers, protocol, and its exporter from the environment.
+3. Otherwise ManagedRuntime builds `@effect/opentelemetry` `NodeSdk.layerTracerProvider` with the parsed traces URL and service name, registers that provider for Next.js, and installs `OtelTracer.layer`. Startup uses the parsed flag. It does not ask the SDK to reinterpret `OTEL_SDK_DISABLED`.
+
+Traces-specific headers override base header keys. The selected OTLP/HTTP exporter
+reads those header variables itself. The default protocol is `http/protobuf`, which
+uses the protobuf HTTP exporter. `http/json` uses the JSON HTTP exporter. `grpc`
+fails startup. A base endpoint is exported at `{base}/v1/traces`. A traces endpoint
+is used unchanged. An unparseable endpoint fails startup without logging the value.
+An unreachable collector does not.
 
 ### Startup policy after a successful boot
 
 If the collector is unreachable after start (SDK enabled), export is best-effort:
 request handling continues. Expect export failure diagnostics from the
-OpenTelemetry / `@vercel/otel` exporter on stderr — never as a hard crash, and
+OpenTelemetry exporter on stderr — never as a hard crash, and
 never with header values printed by app code.
 
 ## Required span attributes
@@ -70,8 +78,8 @@ and status/outcome when Next emits them (accepted key names):
 - Route: `http.route` or `next.route`
 - Status: `http.response.status_code` or `http.status_code`
 
-Do **not** configure `@vercel/otel` `attributesFromHeaders` to map Authorization,
-Cookie, or other secrets. Do **not** put secrets on `Effect.withSpan` attributes.
+Do **not** copy Authorization,
+Cookie, or other secrets onto spans. Do **not** put secrets on `Effect.withSpan` attributes.
 Client spans omit the query string, fragment, and userinfo from the span name,
 `http.url`, and `resource.name`.
 Confirm with a manual Tempo sample review.
@@ -142,7 +150,7 @@ does not satisfy SC-004.
 
 ## Sampling
 
-Local sampling is **100%** (`traceSampler: "always_on"`). Production sampling
+Local sampling is **100%** (`AlwaysOnSampler`). Production sampling
 policy is deferred. Alerting and SLOs are out of scope.
 
 ## Grafana MCP for agents
@@ -206,7 +214,7 @@ Docs-only command lists without a live success are not SC-006 evidence.
 
 - Metrics and logs export
 - Browser/RUM and cross-process `traceparent` propagation
-- A second OTLP exporter alongside `@vercel/otel` (including Effect `OtlpTracer`)
+- A second OTLP exporter alongside `@effect/opentelemetry` `NodeSdk` (including Effect `OtlpTracer`)
 - Production sampling policies, alerting, and SLOs
 - Hosted vendor selection
 - `packages/backend` process instrumentation

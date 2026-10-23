@@ -13,6 +13,7 @@ describe("OtelConfig", () => {
       const config = yield* OtelConfig
       assert.isFalse(config.disabled)
       assert.deepEqual(config.endpoint, Option.none())
+      assert.deepEqual(config.exportUrl, Option.none())
       assert.deepEqual(config.headers, Option.none())
       assert.deepEqual(config.protocol, Option.none())
       assert.deepEqual(config.serviceName, Option.none())
@@ -20,25 +21,44 @@ describe("OtelConfig", () => {
       assert.deepEqual(config.tracesProtocol, Option.none())
     }).pipe(provide({})))
 
-  it.effect("treats blank values as unset", () =>
+  it.effect("treats empty values as unset", () =>
     Effect.gen(function*() {
       const config = yield* OtelConfig
       assert.isFalse(config.disabled)
       assert.deepEqual(config.endpoint, Option.none())
+      assert.deepEqual(config.exportUrl, Option.none())
       assert.deepEqual(config.headers, Option.none())
       assert.deepEqual(config.serviceName, Option.none())
     }).pipe(provide({
-      OTEL_EXPORTER_OTLP_ENDPOINT: "  ",
+      OTEL_EXPORTER_OTLP_ENDPOINT: "",
       OTEL_EXPORTER_OTLP_HEADERS: "",
-      OTEL_SDK_DISABLED: "   ",
-      OTEL_SERVICE_NAME: " "
+      OTEL_SDK_DISABLED: "",
+      OTEL_SERVICE_NAME: ""
     })))
+
+  it.effect("rejects a whitespace OTEL_SDK_DISABLED", () =>
+    Effect.gen(function*() {
+      const exit = yield* Effect.exit(OtelConfig)
+      assert.isTrue(Exit.isFailure(exit))
+    }).pipe(provide({ OTEL_SDK_DISABLED: "   " })))
+
+  it.effect("treats false boolean literals as enabled", () =>
+    Effect.forEach(["false", "0", "off", "no", "n"], (value) =>
+      Effect.gen(function*() {
+        const config = yield* OtelConfig
+        assert.isFalse(config.disabled)
+        assert.deepEqual(config.exportUrl, Option.some("http://127.0.0.1:4318/v1/traces"))
+      }).pipe(provide({
+        OTEL_EXPORTER_OTLP_ENDPOINT: "http://127.0.0.1:4318/",
+        OTEL_SDK_DISABLED: value
+      }))))
 
   it.effect("records a disabled SDK without requiring an endpoint", () =>
     Effect.gen(function*() {
       const config = yield* OtelConfig
       assert.isTrue(config.disabled)
       assert.deepEqual(config.endpoint, Option.some("http://127.0.0.1:4318"))
+      assert.deepEqual(config.exportUrl, Option.some("http://127.0.0.1:4318/v1/traces"))
     }).pipe(provide({
       OTEL_EXPORTER_OTLP_ENDPOINT: "http://127.0.0.1:4318",
       OTEL_SDK_DISABLED: "true"
@@ -49,6 +69,7 @@ describe("OtelConfig", () => {
       const config = yield* OtelConfig
       assert.isFalse(config.disabled)
       assert.deepEqual(config.endpoint, Option.some("http://127.0.0.1:4318/v1/traces"))
+      assert.deepEqual(config.exportUrl, Option.some("http://127.0.0.1:4318/v1/traces"))
       assert.deepEqual(config.headers, Option.some("Authorization=Bearer test-token"))
       assert.deepEqual(config.protocol, Option.some("http/protobuf"))
       assert.deepEqual(config.serviceName, Option.some("pre-ets-frontend"))
@@ -56,12 +77,12 @@ describe("OtelConfig", () => {
       assert.deepEqual(config.tracesProtocol, Option.some("http/json"))
     }).pipe(provide({
       OTEL_EXPORTER_OTLP_ENDPOINT: "http://127.0.0.1:4318",
-      OTEL_EXPORTER_OTLP_HEADERS: " Authorization=Bearer test-token ",
+      OTEL_EXPORTER_OTLP_HEADERS: "Authorization=Bearer test-token",
       OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf",
       OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: "http://127.0.0.1:4318/v1/traces",
       OTEL_EXPORTER_OTLP_TRACES_HEADERS: "X-Trace=1",
       OTEL_EXPORTER_OTLP_TRACES_PROTOCOL: "http/json",
-      OTEL_SERVICE_NAME: " pre-ets-frontend "
+      OTEL_SERVICE_NAME: "pre-ets-frontend"
     })))
 
   it.effect("does not select an endpoint from headers, protocol, or service name", () =>
@@ -69,6 +90,7 @@ describe("OtelConfig", () => {
       const config = yield* OtelConfig
       assert.isFalse(config.disabled)
       assert.deepEqual(config.endpoint, Option.none())
+      assert.deepEqual(config.exportUrl, Option.none())
       assert.deepEqual(config.headers, Option.some("Authorization=Bearer test-token"))
       assert.deepEqual(config.protocol, Option.some("http/protobuf"))
       assert.deepEqual(config.serviceName, Option.some("pre-ets-frontend"))
