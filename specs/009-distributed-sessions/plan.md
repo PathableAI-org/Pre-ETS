@@ -106,7 +106,8 @@ packages/frontend/
     ├── lib/
     │   └── session.test.ts           # public SessionService scenarios with controlled clock/world
     └── unit/
-        └── authentication-entry.test.ts # callback response/cookie mapping
+        ├── authentication-entry.test.ts # confirmed-fresh callback cookie mapping
+        └── authentication-entry-failures.test.ts # no-cookie tenant and session-failure mapping
 
 tests/bdd/
 ├── requirements/tenant-oidc-callback.feature # remove superseded no-session success assertion; no issue-only expansion
