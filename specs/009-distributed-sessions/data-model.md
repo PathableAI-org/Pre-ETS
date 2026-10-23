@@ -11,13 +11,13 @@ verification output.
 
 ## Trusted establishment input
 
-| Field                       | Type                                | Source                                       | Validation/meaning                                                                                        |
-| --------------------------- | ----------------------------------- | -------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| `identity.issuer`           | non-empty string                    | `AuthenticationService.complete`             | Already validated provider issuer; paired with subject to identify the authenticated user.                |
-| `identity.subject`          | non-empty string                    | `AuthenticationService.complete`             | Already validated nonempty OIDC subject.                                                                  |
-| `tenantAlias`               | non-empty tenant alias              | `AuthenticationService.complete`             | The authentication tenant already bound during callback validation.                                       |
-| `policy.idleTimeoutMinutes` | integer 5–30                        | `TenantConfigService.effectiveSessionPolicy` | Already validated effective timeout, including the omitted-value default.                                 |
-| `policy.warningLeadMinutes` | integer 0 through timeout minus one | `TenantConfigService.effectiveSessionPolicy` | Zero means warnings are disabled; this slice stores the effective warning policy but does not present it. |
+| Field                       | Type                                | Source                                       | Validation/meaning                                                                                                 |
+| --------------------------- | ----------------------------------- | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `identity.issuer`           | non-empty string                    | `AuthenticationService.complete`             | Already validated provider issuer; paired with subject to identify the authenticated user.                         |
+| `identity.subject`          | non-empty string                    | `AuthenticationService.complete`             | Already validated nonempty OIDC subject.                                                                           |
+| `tenantAlias`               | branded `TenantAlias`               | `AuthenticationService.complete`             | The authentication tenant already decoded during callback validation. Do not widen it to `string` or cast it back. |
+| `policy.idleTimeoutMinutes` | integer 5–30                        | `TenantConfigService.effectiveSessionPolicy` | Already validated effective timeout, including the omitted-value default.                                          |
+| `policy.warningLeadMinutes` | integer 0 through timeout minus one | `TenantConfigService.effectiveSessionPolicy` | Zero means warnings are disabled; this slice stores the effective warning policy but does not present it.          |
 
 The session service accepts these values from trusted sibling modules and does not repeat OIDC or tenant-file
 validation. It validates the encoded record before persistence to prevent an invalid wire representation.
@@ -41,7 +41,7 @@ interface StoredSessionV1 {
   readonly issuer: string
   readonly subject: string
   readonly telemetryId: string
-  readonly tenantAlias: string
+  readonly tenantAlias: TenantAlias
   readonly version: 1
   readonly warningLeadMinutes: number
 }
@@ -54,7 +54,7 @@ interface StoredSessionV1 {
 | `version`                       | Literal `1`; unknown/malformed versions are service failures, not anonymous success. | Not exposed.                                                                                                         |
 | `issuer`                        | Non-empty string.                                                                    | Exposed only inside `UsableSession.identity`.                                                                        |
 | `subject`                       | Non-empty string.                                                                    | Exposed only inside `UsableSession.identity`.                                                                        |
-| `tenantAlias`                   | Non-empty valid alias.                                                               | Exposed only by `UsableSession`.                                                                                     |
+| `tenantAlias`                   | Branded `TenantAlias` decoded with the exported tenant schema.                       | Exposed only by `UsableSession`.                                                                                     |
 | `idleDeadlineEpochMilliseconds` | Positive integer; must be later than the establishment clock when created.           | Exposed only by `UsableSession`; read returns no usable session at or after it.                                      |
 | `warningLeadMinutes`            | Integer at least zero and strictly less than the establishment timeout.              | Exposed only by `UsableSession`; zero remains the disabled policy.                                                   |
 | `telemetryId`                   | Random UUID generated independently from the browser reference.                      | Never returned by the public session result or cookie; used only as `session.id` on successful usable-session spans. |
@@ -79,7 +79,7 @@ interface UsableSession {
   readonly _tag: "UsableSession"
   readonly identity: SessionIdentity
   readonly idleDeadlineEpochMilliseconds: number
-  readonly tenantAlias: string
+  readonly tenantAlias: TenantAlias
   readonly warningLeadMinutes: number
 }
 
@@ -94,7 +94,7 @@ failures are not values of this union; they use the typed `SessionServiceUnavail
 ## State transitions
 
 ```text
-trusted callback + effective policy
+freshness-confirmed trusted callback + effective policy
              |
              | SET NX PX succeeds
              v

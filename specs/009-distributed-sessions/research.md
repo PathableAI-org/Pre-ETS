@@ -121,21 +121,42 @@ resource scope and readiness in the existing `ManagedRuntime`.
 
 ## Evidence and observability
 
-### Decision: Use the established Playwright runner for issue-level real-provider composition
+### Decision: Use a focused Node test and the Playwright library for issue-level real-provider composition
 
-**Rationale**: The repository has a Playwright `e2e/` runner and a real-Keycloak browser/process fixture currently
-owned by Cucumber support. The planned provider/session assertion is issue-level evidence rather than requirements BDD,
-so it belongs in `e2e/session-establishment.spec.ts`. Extracting only runner-neutral fixture mechanics into
-`tests/support/oidc/` lets Playwright and Cucumber share the real provider setup without duplicating a harness or placing
-issue-only assertions under requirement tags.
+**Rationale**: Current `origin/main` (`9a5da82`) removed the unused Playwright Test `e2e/` directory, `@playwright/test`,
+and `pnpm test:e2e`. The `playwright` library remains, and requirements BDD (`pnpm test:bdd`) is the end-to-end boundary
+for requirement-backed journeys. The planned provider/session assertion is issue-level evidence rather than requirements
+BDD, so it belongs in `tests/bdd/session/session-establishment.test.ts`, run with `node --test` after Redis and Keycloak
+are ready. That path is outside `tests/bdd/checks/`, because `pnpm test:bdd:checks` runs before Keycloak starts. Extracting
+only runner-neutral fixture mechanics into `tests/support/oidc/` lets this test and Cucumber share the real provider setup
+without duplicating a harness or placing issue-only assertions under requirement tags.
 
 **Alternatives considered**:
 
-- Add `tests/integration/session-callback-keycloak.test.ts` under a new root Node test runner: rejected because that
-  runner/directory does not exist and the current real-provider harness is not a reusable root `node:test` fixture.
+- Restore `e2e/session-establishment.spec.ts` and `pnpm test:e2e`: rejected because that runner and dependency were
+  removed and this feature must not bring them back.
+- Add the journey to `tests/bdd/checks/`: rejected because the nightly harness-check job runs that directory before
+  Keycloak is available.
+- Add `tests/integration/session-callback-keycloak.test.ts` under the frontend Vitest integration config: rejected
+  because that config is the Redis integration boundary and does not own the browser/process harness.
 - Add cookie/store assertions to the existing Cucumber feature: rejected because issue #218 does not supply
   current-main requirements authority for those assertions.
 - Build a second Playwright/Keycloak harness: rejected because it duplicates existing browser/process ownership.
+
+### Decision: Require freshness confirmation before session issuance without choosing the comparison
+
+**Rationale**: #217's trusted handoff validates signed `auth_time` presence and defers stale-time comparison.
+PREETS-SESSION-013 AC3 requires confirmation of a fresh event before a new session exists. The callback consumer
+therefore calls `SessionService.establish` and sets `pathable-session` only after freshness has been confirmed. This
+plan does not select the authentication-time comparison, clock tolerance, or provider policy; those remain B6/#158.
+Until that confirmation exists, the confirmed-fresh success evidence stays unexecuted. Service, store, rejection, and
+unconfirmed-freshness refusal work can proceed.
+
+**Alternatives considered**:
+
+- Treat `AuthenticationService.complete` success as sufficient to issue a session: rejected because it would create a
+  session from unconfirmed freshness.
+- Choose a clock tolerance or `auth_time` comparison in this plan: rejected because that decision remains B6/#158.
 
 ### Decision: Pair real-adapter outage evidence with callback failure mapping
 

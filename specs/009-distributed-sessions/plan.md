@@ -112,11 +112,11 @@ tests/bdd/
 ├── requirements/tenant-oidc-callback.feature # remove superseded no-session success assertion; no issue-only expansion
 └── steps/authentication.ts                    # keep assertions within current-main requirement authority
 
+tests/bdd/session/
+└── session-establishment.test.ts  # issue-level real callback, cookie, and independent public-session read
+
 tests/support/oidc/
 └── harness.ts                     # runner-neutral real-Keycloak browser/process fixture extracted from BDD support
-
-e2e/
-└── session-establishment.spec.ts  # issue-level real callback, cookie, and independent public-session read
 ```
 
 **Structure Decision**: Preserve the frontend workspace and extend the existing `lib/session.ts` parent. Put record
@@ -132,10 +132,12 @@ backend must not consume frontend Redis sessions and no other process owns this 
    persistence codec and Redis commands into private `lib/session/` children. Preserve `hasSession()` as the current
    fail-closed compatibility operation for the root reference entry; it continues to report false until #219 migrates
    that consumer to an independently tenant-bound read.
-2. Preserve `lib/authentication.ts` as the trusted-identity producer. Export its existing `TrustedIdentity` result type
-   so the callback adapter can map it explicitly into the session input; session storage does not absorb OIDC validation.
-3. Preserve `TenantConfigService` and consume its existing `getConfigFromAlias` and `effectiveSessionPolicy` operations
-   at establishment time. Do not duplicate policy defaults or validation in the session module.
+2. Preserve `lib/authentication.ts` as the trusted-identity producer. Export `TrustedIdentity` with `tenantAlias` typed
+   as the tenant module's branded `TenantAlias`, which `complete` already returns from `getAlias`. Do not widen that
+   field to `string`. Session storage does not absorb OIDC validation or the freshness comparison.
+3. Export the existing `TenantAlias` schema and type from `lib/tenant.ts`. Preserve `TenantConfigService` and consume
+   `getConfigFromAlias` and `effectiveSessionPolicy` at establishment time, passing the branded alias with no cast. Do
+   not duplicate policy defaults, alias parsing, or validation in the session module.
 4. Extend the existing callback Route Handler as the bounded reference consumer. Keep Next response/cookie mutation at
    that framework edge; no general callback coordinator service is justified by one consumer.
 5. Recompose the existing process runtime around one `NodeRedis.layer` value shared by authentication transactions and
@@ -149,13 +151,13 @@ The detailed ownership decisions are recorded in [contracts/modules.md](contract
 ### Phase 2 — Public module contracts
 
 [contracts/modules.md](contracts/modules.md) defines the exact TypeScript shapes for `SessionService`, its usable and
-no-usable-session values, `SessionServiceUnavailable`, the exported authentication identity, and the unchanged tenant
-policy dependency. The Effect success channel distinguishes usable from no usable session; the typed error channel is
+no-usable-session values, `SessionServiceUnavailable`, the exported authentication identity, the exported
+`TenantAlias` brand, and the otherwise unchanged tenant policy operations. The Effect success channel distinguishes usable from no usable session; the typed error channel is
 reserved for inability to determine or persist state. Identity and policy exist only on `UsableSession`.
 
-[contracts/callback-http.md](contracts/callback-http.md) defines the bounded callback HTTP/cookie mapping. A successful
-trusted callback writes the Redis record before emitting `pathable-session`; an establishment failure uses the existing
-safe return presentation, clears consumed correlation, and emits no session cookie. This does not define protected-entry
+[contracts/callback-http.md](contracts/callback-http.md) defines the bounded callback HTTP/cookie mapping. A
+freshness-confirmed callback writes the Redis record before emitting `pathable-session`. Unconfirmed freshness and
+establishment failure use the existing safe return presentation, clear consumed correlation, and emit no session cookie. This does not define protected-entry
 consumption.
 
 ### Phase 3 — Module contract evidence
@@ -171,11 +173,15 @@ Evidence follows consumer → claim → violation → boundary → limitation:
   commands. The post-authentication storage-failure case injects a trusted authentication result and
   `SessionServiceUnavailable`; paired with the real-adapter outage test, it proves V-007 without claiming that a
   whole-Redis outage can preserve OIDC transaction recovery through the same shared Redis Layer.
-- An issue-level Playwright spec under the established `e2e/` runner completes a real-Keycloak callback, inspects the
-  issued cookie, and reads the reference through an independently scoped public `SessionService`. Extract only the
-  runner-neutral Keycloak/browser/process fixture required by both Playwright and Cucumber from `tests/bdd/support/`
-  into `tests/support/oidc/`; do not create a second provider harness or put issue-only assertions in requirements BDD.
-  A fabricated identity alone is insufficient for V-001.
+- An issue-level Node test at `tests/bdd/session/session-establishment.test.ts` completes a real-Keycloak callback,
+  inspects the issued cookie, and reads the reference through an independently scoped public `SessionService`. Run it
+  with `node --test` only after Redis and Keycloak are ready. It uses the `playwright` library through the shared
+  harness. It is not a requirements feature and it is not part of `pnpm test:bdd:checks`, which runs before Keycloak
+  starts. Do not restore the removed Playwright Test `e2e/` directory, `@playwright/test`, or `pnpm test:e2e`. Extract
+  only the runner-neutral Keycloak/browser/process fixture required by both that test and Cucumber from
+  `tests/bdd/support/` into `tests/support/oidc/`. Do not create a second provider harness or put issue-only assertions
+  in requirements BDD. A fabricated identity alone is insufficient for V-001. The confirmed-fresh success observation
+  stays unexecuted until the B6/#158 freshness policy exists; the unconfirmed-freshness refusal still runs.
 - Requirements-backed BDD is not expanded to issue-only distinctions. Because this slice has no protected read that
   externally exposes user/tenant binding, the new successful-establishment BDD claim is deferred to #219/#154 rather
   than adding a diagnostic endpoint. Existing callback scenarios retain only assertions justified by current-main
@@ -206,8 +212,11 @@ Evidence follows consumer → claim → violation → boundary → limitation:
    session identifier. Never attach the cookie, derived Redis key, encoded record, identity claims, provider values, or
    credentials to logs, traces, errors, screenshots, or retained output. Treat issuer, subject, and tenant association
    as sensitive transient identity metadata even though they are required in the server-held record.
-5. In the callback Route Handler, call `AuthenticationService.complete`; only its success branch loads the same tenant
-   configuration by trusted alias, derives current effective policy, and calls `SessionService.establish`. On success,
+5. In the callback Route Handler, call `AuthenticationService.complete`. Only a success whose authentication event has
+   been confirmed fresh loads the same tenant configuration by the branded alias, derives current effective policy, and
+   calls `SessionService.establish`. Do not choose the authentication-time comparison or clock tolerance here. A trusted
+   result without that confirmation clears consumed correlation, returns the existing safe presentation, and sets no
+   session cookie. On confirmed-fresh success,
    clear the correlation cookie and set `pathable-session` with `HttpOnly`, `SameSite=Lax`, `Path=/`, no `Domain`, a
    `Secure` value consistent with the existing loopback rule, and lifetime bounded by the initial idle deadline. On
    failure, clear correlation after its prior consumption, reuse the private/no-store safe return, and set no session
@@ -228,7 +237,7 @@ into an implementation-aware run guide with exact local-service, test, real-call
 record steps. Module tests do not replace the composed manual feature procedure.
 
 The execution order is: public-service scenarios → real Redis independent-client scenarios → callback adapter and
-real-provider Playwright composition → applicable BDD regression without issue-only assertions → live
+real-provider browser composition → applicable BDD regression without issue-only assertions → live
 browser/cookie/store inspection → instrumented independent-reader probe → Tempo `session.id` correlation and secrecy
 inspection → cleanup → repository quality gates. Evidence must name the exercised revision and limitations;
 generated artifacts or passing static checks are not runtime proof.

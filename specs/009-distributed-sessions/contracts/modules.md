@@ -8,14 +8,14 @@
 
 ## Module architecture decisions
 
-| Concern                              | Current owner and consumers                                                                                              | Decision                                       | Public boundary                                       | Private decomposition                  | Rationale and non-goals                                                                                          |
-| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------- | ----------------------------------------------------- | -------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| Session establishment/read semantics | `packages/frontend/src/lib/session.ts`; current root presence consumer, new callback consumer, later #219/#154 consumers | Extend and decompose                           | `SessionService`                                      | `session/codec.ts`, `session/store.ts` | One frontend owner is already present. Do not expose Redis commands, arbitrary values, renewal, or invalidation. |
-| Trusted callback identity            | `lib/authentication.ts`; callback Route Handler                                                                          | Preserve behavior; export existing result type | `AuthenticationService` / `TrustedIdentity`           | Existing authentication children       | Session creation consumes trusted output but does not absorb OIDC validation.                                    |
-| Effective tenant policy              | `lib/tenant.ts`; authentication and new session callback consumer                                                        | Preserve existing contract                     | `TenantConfigService`                                 | Existing private tenant config child   | The tenant module remains the single policy/default owner.                                                       |
-| Callback-to-session composition      | `app/auth/callback/route.ts`; browser/provider return                                                                    | Extend existing framework adapter              | HTTP contract in [callback-http.md](callback-http.md) | Existing cookie/presentation helpers   | One consumer does not justify a public coordinator service. No protected access is added.                        |
-| Redis process resource               | `lib/runtime.ts`; authentication transaction layer                                                                       | Preserve and share one Layer value             | Host `ManagedRuntime` composition                     | Existing `NodeRedis.layer`             | Key prefixes separate ownership; no second Redis or per-request client.                                          |
-| Session telemetry                    | Existing observability Layer; manual verifier                                                                            | Extend session operation spans                 | Existing Effect/OpenTelemetry bridge                  | None                                   | `session.id` is a non-bearer stored correlation identifier. No new exporter/service or durable telemetry test.   |
+| Concern                              | Current owner and consumers                                                                                              | Decision                                     | Public boundary                                       | Private decomposition                  | Rationale and non-goals                                                                                                 |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------- | ----------------------------------------------------- | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Session establishment/read semantics | `packages/frontend/src/lib/session.ts`; current root presence consumer, new callback consumer, later #219/#154 consumers | Extend and decompose                         | `SessionService`                                      | `session/codec.ts`, `session/store.ts` | One frontend owner is already present. Do not expose Redis commands, arbitrary values, renewal, or invalidation.        |
+| Trusted callback identity            | `lib/authentication.ts`; callback Route Handler                                                                          | Export the result and keep its alias branded | `AuthenticationService` / `TrustedIdentity`           | Existing authentication children       | Session creation consumes a freshness-confirmed trusted output and does not absorb OIDC or freshness-policy validation. |
+| Effective tenant policy              | `lib/tenant.ts`; authentication and new session callback consumer                                                        | Export the existing `TenantAlias` brand      | `TenantConfigService` and `TenantAlias`               | Existing private tenant config child   | The tenant module remains the single policy/default owner. The brand is public so callers do not cast it.               |
+| Callback-to-session composition      | `app/auth/callback/route.ts`; browser/provider return                                                                    | Extend existing framework adapter            | HTTP contract in [callback-http.md](callback-http.md) | Existing cookie/presentation helpers   | One consumer does not justify a public coordinator service. No protected access is added.                               |
+| Redis process resource               | `lib/runtime.ts`; authentication transaction layer                                                                       | Preserve and share one Layer value           | Host `ManagedRuntime` composition                     | Existing `NodeRedis.layer`             | Key prefixes separate ownership; no second Redis or per-request client.                                                 |
+| Session telemetry                    | Existing observability Layer; manual verifier                                                                            | Extend session operation spans               | Existing Effect/OpenTelemetry bridge                  | None                                   | `session.id` is a non-bearer stored correlation identifier. No new exporter/service or durable telemetry test.          |
 
 Every affected concern has an actual current consumer. File size or feature novelty does not create another public
 module, provider interface, re-export surface, or workspace package.
@@ -43,6 +43,8 @@ representation.
 import type { Redis } from "effect/persistence/Redis"
 import { Config, Context, Effect, Layer, Schema } from "effect"
 
+import type { TenantAlias } from "./tenant.ts"
+
 declare const SessionReferenceBrand: unique symbol
 
 export type SessionReference = string & {
@@ -62,14 +64,14 @@ export interface EffectiveSessionPolicy {
 export interface EstablishSessionInput {
   readonly identity: SessionIdentity
   readonly policy: EffectiveSessionPolicy
-  readonly tenantAlias: string
+  readonly tenantAlias: TenantAlias
 }
 
 export interface UsableSession {
   readonly _tag: "UsableSession"
   readonly identity: SessionIdentity
   readonly idleDeadlineEpochMilliseconds: number
-  readonly tenantAlias: string
+  readonly tenantAlias: TenantAlias
   readonly warningLeadMinutes: number
 }
 
@@ -165,11 +167,13 @@ bounded callback consumer.
 **Proposed signature change**:
 
 ```ts
+import type { TenantAlias } from "./tenant.ts"
+
 export interface TrustedIdentity {
   readonly authenticatedAt: number
   readonly issuer: string
   readonly subject: string
-  readonly tenantAlias: string
+  readonly tenantAlias: TenantAlias
 }
 
 export class AuthenticationService extends Context.Service<AuthenticationService, {
@@ -182,8 +186,10 @@ export class AuthenticationService extends Context.Service<AuthenticationService
 }>() /* existing tag and layer */
 ```
 
-Only `TrustedIdentity` changes visibility; callback input, preparation, failures, and validation behavior remain
-unchanged.
+Export `TrustedIdentity` and type `tenantAlias` as the branded `TenantAlias` from the tenant public module.
+`AuthenticationService.complete` already returns the alias decoded by `getAlias`; this change stops widening that
+value to `string`. Callback input, preparation, failures, and validation behavior remain unchanged. The callback
+passes `tenantAlias` to `getConfigFromAlias` with no cast.
 
 **Inputs and validation ownership**: Authentication retains full ownership of OIDC transaction, state/nonce, token,
 issuer/audience/signature, and identity-claim validation. The session module accepts the successful result as trusted and
@@ -205,9 +211,9 @@ the callback/session handoff from duplicating the trusted-identity shape.
 
 ### Contract evidence
 
-| Claim                                                            | Meaningful violation                                 | Durable evidence                                                                                                      | Manual/transient evidence                                     | Limitations and non-duplication                                                            |
-| ---------------------------------------------------------------- | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| Session establishment receives only a successful trusted result. | Rejected/failed completion invokes session creation. | Callback Route Handler scenario with AuthenticationService success/failure Layers and SessionService call assertions. | Real rejected provider return emits no session cookie/record. | Existing authentication suites own validation correctness; session tests do not repeat it. |
+| Claim                                                                                             | Meaningful violation                                                                                                                                                      | Durable evidence                                                                                                                                                                 | Manual/transient evidence                                            | Limitations and non-duplication                                                                                   |
+| ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Session establishment receives a freshness-confirmed trusted result, and the alias stays branded. | Rejected completion, or a trusted result with unconfirmed freshness, invokes session creation; or `tenantAlias` is widened to `string` and cast for `getConfigFromAlias`. | Callback Route Handler scenario with confirmed, unconfirmed, and failure results, asserting `SessionService.establish` only after confirmation and a typed `TenantAlias` lookup. | Real rejected and unconfirmed returns emit no session cookie/record. | This plan does not choose the B6 freshness comparison. Existing authentication suites own validation correctness. |
 
 ### `packages/frontend/src/lib/tenant.ts`
 
@@ -218,9 +224,17 @@ the callback/session handoff from duplicating the trusted-identity shape.
 - Callback Route Handler uses the trusted alias to load the then-current config and calls
   `effectiveSessionPolicy(config)` before establishment.
 
-**Consumed signatures (unchanged)**:
+**Public type export**: export the existing `TenantAlias` schema and its type from
+`packages/frontend/src/lib/tenant.ts`. `getAlias` already returns that brand, and `getConfigFromAlias` already requires
+it. Service operations, tags, and layers stay unchanged. The export lets authentication and session name the brand
+without an unchecked cast or a second alias parser.
+
+**Consumed signatures**:
 
 ```ts
+export const TenantAlias = /* existing branded schema */
+export type TenantAlias = typeof TenantAlias.Type
+
 export class TenantConfigService extends Context.Service<TenantConfigService, {
   readonly effectiveSessionPolicy: (
     config: { readonly idleTimeoutMinutes?: number; readonly warningLeadMinutes?: number }
@@ -245,7 +259,8 @@ read failure to the existing safe no-session return rather than guessing policy.
 
 **Effect environment requirements**: Unchanged existing filesystem/path/config Layer graph.
 
-**Compatibility and relationships**: No public API change. Future renewal (#220) reuses the same derivation at refresh.
+**Compatibility and relationships**: Exporting the existing branded alias is the only tenant public-surface change.
+`TenantConfigService` operations stay the same. Future renewal (#220) reuses the same derivation at refresh.
 
 ### Contract evidence
 

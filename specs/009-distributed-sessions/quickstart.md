@@ -10,7 +10,7 @@ This guide operationalizes [verification.md](verification.md) for the implementa
 | 1     | Public `SessionService` scenarios                   | V-003, V-005, V-006 and fail-closed portions of V-007 | Test command/result and exercised revision                         |
 | 2     | Independent real-Redis clients                      | V-003–V-007                                           | Integration command/result, Redis version, owned prefix, cleanup   |
 | 3     | Callback adapter mapping                            | V-001, V-002, V-007, V-008                            | Test result for trusted/rejected/session-failure mappings          |
-| 4     | Real-provider Playwright composition                | V-001–V-004, V-008                                    | Browser/runtime result without cookie/token values                 |
+| 4     | Real-provider browser composition                   | V-001–V-004, V-008                                    | Browser/runtime result without cookie/token values                 |
 | 5     | Requirements BDD regression                         | Current-main PREETS-SESSION-003 assertions only       | Runtime result and explicit partial limitation                     |
 | 6     | Manual browser + second public client + live traces | V-001–V-004, V-008; complementary telemetry           | Redacted observation record with trace IDs, presence/equality only |
 | 7     | Repository quality gates                            | Static/build quality, not runtime claims              | Command results                                                    |
@@ -41,6 +41,7 @@ git diff --exit-code f43cbef2f426bf59cf2bade4cc2534231676b4cc..origin/main -- \
   docs/requirements/session/PREETS-SESSION-003.md \
   docs/requirements/session/PREETS-SESSION-006.md \
   docs/requirements/session/PREETS-SESSION-008.md \
+  docs/requirements/session/PREETS-SESSION-013.md \
   docs/engineering/testing/requirements-bdd.md
 pnpm install --frozen-lockfile
 pnpm exec playwright install chromium
@@ -115,25 +116,26 @@ Run callback adapter coverage with the ordinary frontend unit suite:
 pnpm --filter @pathableai/pre-ets-frontend test:unit -- authentication-entry.test.ts
 ```
 
-It must establish that session creation is invoked only for trusted completion, the policy belongs to the trusted
+It must establish that session creation is invoked only after freshness confirmation, the policy belongs to the trusted
 tenant, the cookie is written only after successful establishment, correlation clearing is preserved, and store/tenant
 failure produces the existing private safe response with no session cookie. For the post-authentication store-failure
 case, supply a trusted authentication result and inject `SessionServiceUnavailable`. Pair this mapping result with the
 real-adapter outage from section 2 for V-007. Do not stop the shared Redis instance and claim the callback reached
 session establishment: authentication transaction recovery uses that same dependency and would fail first.
 
-Then run the retained real-provider callback/session composition evidence required by the implementation through the
-repository's established Playwright runner. `e2e/session-establishment.spec.ts` must reuse a runner-neutral
-Keycloak/browser/process fixture extracted from `tests/bdd/support/` into `tests/support/oidc/`; Cucumber and Playwright
-must not maintain parallel provider harnesses. Its second independently scoped client uses only the public
-`SessionService` and must not import `lib/session/codec.ts` or `lib/session/store.ts`:
+Then run the retained real-provider callback/session composition evidence through a focused Node test. It must reuse a
+runner-neutral Keycloak/browser/process fixture extracted from `tests/bdd/support/` into `tests/support/oidc/`, and it
+must use the repository's `playwright` library. Cucumber and this test must not maintain parallel provider harnesses.
+Do not add `@playwright/test`, an `e2e/` directory, or a `pnpm test:e2e` script. Its second independently scoped client
+uses only the public `SessionService` and must not import `lib/session/codec.ts` or `lib/session/store.ts`:
 
 ```sh
-pnpm test:e2e -- session-establishment.spec.ts
+node --test tests/bdd/session/session-establishment.test.ts
 ```
 
-This Playwright spec carries issue-level V-001/V-002/V-003/V-004/V-008 evidence without becoming a requirements BDD
-feature. Run
+This test carries issue-level V-001/V-002/V-003/V-004/V-008 evidence without becoming a requirements BDD feature and
+without joining `pnpm test:bdd:checks`. Record the confirmed-fresh success only when the B6/#158 freshness confirmation
+exists; always record that a trusted result with unconfirmed freshness creates no session cookie. Run
 the BDD harness and scenarios separately for their bounded current-main assertions and fixture regressions:
 
 ```sh
@@ -192,11 +194,14 @@ pnpm dev:frontend
    captured reference without echoing it, call `read`, and print only safe synthetic identity/tenant/deadline/warning
    comparisons. It must not import private session children, decode Redis directly, or print the reference, key,
    encoded record, or telemetry ID.
-6. Run the probe through the installed frontend Vitest configuration. Its finalizer must dispose the scoped runtime so
-   the batch span processor flushes before Tempo inspection. Then delete the probe before completing the run:
+6. Run the probe through the ordinary frontend Vitest configuration, `vitest.config.ts`. That configuration includes
+   `tests/**/*.test.ts`, so `tests/manual/` is discovered. Do not use `vitest.integration.config.ts`: its include is only
+   `tests/integration/**/*.test.ts`, and a filename argument does not override that pattern. The probe finalizer must
+   dispose the scoped runtime so the batch span processor flushes before Tempo inspection. Then delete the probe before
+   completing the run:
 
 ```sh
-pnpm --filter @pathableai/pre-ets-frontend exec vitest run tests/manual/session-read.probe.test.ts --config vitest.integration.config.ts
+pnpm --filter @pathableai/pre-ets-frontend exec vitest run tests/manual/session-read.probe.test.ts --config vitest.config.ts
 ```
 
 Confirm the second client returns `UsableSession` with the expected synthetic issuer/subject, exact tenant alias,
