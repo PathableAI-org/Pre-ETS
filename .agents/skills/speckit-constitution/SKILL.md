@@ -1,11 +1,24 @@
 ---
-name: "speckit-constitution"
-description: "Create or update the project constitution from interactive or provided principle inputs."
-compatibility: "Requires spec-kit project structure with .specify/ directory"
+name: speckit-constitution
+description: Create or update the project constitution from interactive or provided
+  principle inputs.
+compatibility: Requires spec-kit project structure with .specify/ directory
 metadata:
-  author: "github-spec-kit"
-  source: "templates/commands/constitution.md"
+  author: github-spec-kit
+  source: preset:pre-ets-specification-planning
 ---
+
+# Speckit Constitution Skill
+
+# Pre-ETS preset-aware constitution setup
+
+Apply this runtime rule while executing the wrapped constitution workflow.
+
+Run
+`uv run --with pyyaml==6.0.3 -- .specify/scripts/bash/resolve-template.sh constitution-template --json`
+instead of invoking the Bash resolver directly. Parse `TEMPLATE_CONTENT` exactly as the
+wrapped workflow requires. Preset composition requires PyYAML that may not exist in the
+system Python.
 
 
 ## User Input

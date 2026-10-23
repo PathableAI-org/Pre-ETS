@@ -22,6 +22,8 @@
     "**/.next/**",
     "**/next-env.d.ts",
     "**/.fallow/**",
+    ".agents/skills/**",
+    ".specify/presets/*/.composed/**",
     "**/pnpm-lock.yaml"
   ],
   "plugins": [

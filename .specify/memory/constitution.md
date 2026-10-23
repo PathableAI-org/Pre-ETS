@@ -1,29 +1,31 @@
-<!--
-Sync Impact Report
-Version change: 1.0.0 -> 1.1.0
-Modified principles: none (obligations preserved)
-Added sections: Effect agent guidance routing under Architecture Constraints /
-  Development Workflow
-Removed sections: none
-Template synchronization: no template or command changes; consumers read this file at runtime.
-Follow-up TODOs: none.
--->
-
 # Pre-ETS Constitution
 
 ## Core Principles
 
 ### I. Evidence-Grounded Specification
 
-Features MUST start from an identified user workflow, explicit scope, and observable acceptance
-criteria. Specifications MUST distinguish source evidence, inference, approved decisions, and open
-questions. Client forms and prototype behavior MUST NOT become business rules without validation.
-Domain terms and closed sets of values MUST have a clear definition and remain consistent across
-specification, plan, tasks, and implementation.
+Features MUST start from exactly one authorized GitHub delivery issue representing one reviewed
+delivery-plan slice. Accepted requirements in current `origin/main`, the reviewed delivery plan,
+the delivery issue, and approved project constraints are read-only authorities. Specifications MUST
+trace the issue to applicable requirement IDs and criteria, distinguish source evidence, inference,
+approved decisions, and open questions, and preserve the authorized scope. Client forms, prototype
+behavior, historical Spec Kit artifacts, and current code MUST NOT become business rules without
+validation. Domain terms and closed sets of values MUST have a clear definition and remain
+consistent across specification, verification, plan, tasks, and implementation.
+
+Specifications MUST describe stakeholder-observable behavior and constraints without choosing
+module boundaries, libraries, dependency injection, internal algorithms, files, or runtime
+composition. Each specification MUST include a sibling `verification.md` that maps authorized
+claims to meaningful violations and planned automated, manual, and operational evidence. Planned
+procedures MUST NOT be described as executed evidence.
 
 Material uncertainty affecting behavior, data ownership, or access MUST be resolved before dependent
-implementation. Scope corrections MUST replace superseded requirements in the active artifacts.
-This keeps implementation grounded in the client's operations as understanding develops.
+work. A blocking finding MUST identify: (1) the authoritative source; (2) the ambiguity or conflict;
+(3) its impact; (4) the decision required; and (5) possible resolutions explicitly labelled as
+proposals. Feature work MUST NOT edit its requirement, delivery-plan, or issue authorities to remove
+a conflict or expand scope. Scope corrections MUST return to the owning governance workflow and
+replace superseded content only after approval. This keeps implementation grounded in the client's
+operations as understanding develops.
 
 ### II. Explicit Ownership and Authoritative Data
 
@@ -107,6 +109,19 @@ or session boundary; a success message alone is insufficient. Test scope MUST fo
 behavior and risk, without adding redundant tests to inflate counts. Fixtures MUST be synthetic and
 isolated so tests do not depend on execution order or another test's state.
 
+Feature verification and module-contract evidence MUST remain distinct. Every feature MUST include
+a non-empty, agent-executable manual procedure that observes a composed feature outcome not merely
+duplicated by automated scenarios. Module evidence MUST start from an actual consumer claim and may
+use public-interface examples, useful properties, real integration evidence, existing evidence, or
+manual/transient probes at the smallest meaningful boundary. Manual module evidence is conditional;
+manual feature verification is standard.
+
+Observability MUST be verified by inspecting real logs or exported OpenTelemetry data manually or
+with temporary probes. Durable tests MUST NOT assert log text, spans, attributes, telemetry payloads,
+or exporter wiring. Temporary probes and instrumentation MUST include cleanup and MUST NOT be
+committed. Retained evidence MUST identify the revision, environment, safe inputs/actions,
+observation, result, and limitations without credentials, PHI, or other sensitive values.
+
 The project's reference is
 [Playwright E2E Testing Best Practices](https://app.notion.com/p/3bb7cbd04b6d81729a42e209d82aad1a).
 These rules incorporate its semantic workflow approach. Gherkin and test-first sequencing are not
@@ -124,6 +139,13 @@ the applicable behavior checks and repository quality gates, investigate failure
 unverified behavior accurately. Blanket suppressions, weakened checks, and tests without meaningful
 failure signals MUST NOT be used to obtain a passing result.
 
+Engineering design MUST proceed from actual consumers inward: module ownership and dependency
+direction, then concrete public TypeScript signatures and error semantics, then contract evidence,
+then private implementation. Public contracts MUST state inputs, success semantics, expected errors,
+invariants, validation ownership, compatibility, and Effect environment requirements where
+applicable. Provider interfaces, services, re-exports, packages, and future-shaped types MUST NOT be
+introduced without a current consumer.
+
 ## Architecture Constraints
 
 - Use one repository-root Spec Kit workflow and constitution for the coordinated product.
@@ -135,6 +157,12 @@ failure signals MUST NOT be used to obtain a passing result.
   MUST read [Effect agent guidance](../../docs/engineering/effect-guidance.md) and the affected
   workspace `AGENTS.md`. Consult relevant upstream Effect documentation and source matching the
   installed version, then verify APIs against installed Effect declarations.
+- Feature planning MUST decide module structure before public contracts, public contracts before
+  evidence, and evidence before private implementation architecture. Plans MUST record exact
+  signatures for affected public modules and distinguish expected errors from defects and
+  interruption. Effect-native capabilities are preferred when they solve an actual Effect workflow;
+  pure TypeScript and framework adapters remain idiomatic, and host-owned runtimes are reused rather
+  than constructed per operation.
 - The frontend owns OIDC login through the broker and first-party server-side sessions. The broker
   handles tenant identity-provider protocols. The backend verifies broker tokens independently.
 - Redis holds frontend session state. Postgres holds separately owned frontend tenant configuration
@@ -151,20 +179,25 @@ implementation and verification status MUST be established from repository evide
 
 ## Development Workflow and Review
 
-1. Specify the user workflow, evidence, scope, and acceptance criteria. Resolve material questions
-   before planning dependent behavior.
-2. Plan workspace and data ownership, tenant/authentication boundaries, rendering boundaries,
-   accessibility behavior, and meaningful verification. Record a Constitution Check for each
+1. Start from one authorized delivery issue. Read its reviewed delivery slice and accepted
+   requirements from current `origin/main`; report material authority conflicts in the required
+   five-part format instead of guessing or editing an authority.
+2. Specify the stakeholder-observable workflow, scope, acceptance criteria, and feature verification.
+   Complete `spec.md` and `verification.md` together before planning dependent behavior.
+3. Plan in five reviewable phases: module architecture, public module contracts in
+   `contracts/modules.md`, module-contract evidence, private implementation architecture, and
+   feature-verification integration in `quickstart.md`. Record a Constitution Check for each
    applicable principle and explain any non-applicable principle.
-3. Derive implementation tasks with traceability to acceptance criteria. Keep Spec Kit templates and
-   commands unchanged by constitution updates; they consume this file at runtime.
-4. Implement focused changes and validate their behavior. For UI, review the installed PathAble
+4. Derive implementation tasks from the approved verification and module contracts. Sequence public
+   contracts and their evidence before dependent private implementation, and include manual,
+   transient, operational, and cleanup tasks required by the plan.
+5. Implement focused changes and validate their behavior. For UI, review the installed PathAble
    guidance and report library gaps upstream as required by Principle IV.
-5. Before committing, run `pnpm typecheck`, `pnpm build`, `pnpm lint`, `pnpm format:check`, and
+6. Before committing, run `pnpm typecheck`, `pnpm build`, `pnpm lint`, `pnpm format:check`, and
    `pnpm check:unused`, plus feature-specific checks. Apply lint fixes before formatting when fixes
    are needed, then verify both pass. Preserve the root pre-commit hook's staged-file protections and
    single `pnpm check:changes` audit. Do not commit generated output.
-6. Review for acceptance-criteria coverage, meaningful assertions, accessibility, ownership, tenant
+7. Review for acceptance-criteria coverage, meaningful assertions, accessibility, ownership, tenant
    isolation, and unnecessary complexity. Report what was actually tested and any limitations.
    Passing static checks MUST NOT be described as proof of runtime workflows.
 
@@ -194,4 +227,4 @@ amended date while preserving the original ratification date.
 Plans and pull requests MUST be reviewed against the applicable principles. Any required follow-up
 synchronization MUST be recorded; this constitution workflow modifies only this file.
 
-**Version**: 1.1.0 | **Ratified**: 2026-09-13 | **Last Amended**: 2026-09-22
+**Version**: 1.2.0 | **Ratified**: 2026-09-13 | **Last Amended**: 2026-10-23

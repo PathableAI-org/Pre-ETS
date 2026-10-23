@@ -24,6 +24,34 @@
         ]
       },
       "installed_at": "2026-09-13T10:31:05.420597+00:00"
+    },
+    "pre-ets-specification-planning": {
+      "version": "1.0.1",
+      "source": "local",
+      "manifest_hash": "sha256:1b06a7a62e4e01f33b13559d4d4207d454fd42e8bee60d2cfe8589bcc123fbbc",
+      "enabled": true,
+      "priority": 5,
+      "registered_commands": {
+        "codex": [
+          "speckit.specify",
+          "speckit.clarify",
+          "speckit.plan",
+          "speckit.tasks",
+          "speckit.constitution",
+          "speckit.checklist"
+        ]
+      },
+      "registered_skills": {
+        "codex": [
+          "speckit-specify",
+          "speckit-clarify",
+          "speckit-plan",
+          "speckit-tasks",
+          "speckit-constitution",
+          "speckit-checklist"
+        ]
+      },
+      "installed_at": "2026-10-23T12:52:22.267544+00:00"
     }
   }
 }

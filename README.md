@@ -440,34 +440,49 @@ automerge remains disabled.
 
 ## Spec Kit
 
-The repository includes Spec Kit 1.0.5 with one root workflow in `.specify/`.
+The repository includes Spec Kit 1.2.3 with one root workflow in `.specify/`.
 The project constitution is [`.specify/memory/constitution.md`](.specify/memory/constitution.md).
 Read it before specifying, planning, implementing, or reviewing a feature.
 
-Core skills are installed for Codex in `.agents/skills` and for Cursor in
-`.cursor/skills`. The installed assess, BDD, critique, and Git extensions have
-Cursor skill entrypoints; `.specify/extensions.yml` records their workflow hooks.
-The closed-vocabulary preset extends Cursor's analysis command to report
+Core skills are installed for Codex in `.agents/skills`. The installed assess, BDD,
+critique, and Git extensions also provide skills; `.specify/extensions.yml` records
+their workflow hooks.
+The closed-vocabulary preset extends the analysis command to report
 inconsistent enumerations across feature artifacts.
+
+The project-owned
+[`pre-ets-specification-planning`](.specify/presets/pre-ets-specification-planning/README.md)
+preset composes with the upstream specification, clarification, planning, task,
+constitution, and checklist commands. It enforces one delivery issue per feature,
+read-only requirement/delivery
+authorities, a first-class `verification.md`, and consumer-inward planning in this order:
+module architecture, public TypeScript contracts, contract evidence, then private
+implementation. The project workflow overlay inserts clarification and review gates for
+the added artifacts without modifying the upstream workflow definition.
 
 Run Spec Kit from the repository root. Set `SPECIFY_INIT_DIR` to this checkout's
 root when invoking its scripts from another working directory. Start with
-`speckit-specify`, clarify the requirements, then use `speckit-plan` and
-`speckit-tasks` before implementation. The constitution defines the required
-behavioral verification; installing the BDD extension does not make Gherkin
-mandatory for every change.
+`speckit-specify` using exactly one authorized delivery issue, clarify the feature,
+then use `speckit-plan` and `speckit-tasks` before implementation. Specification
+produces `spec.md` and `verification.md`; planning produces `contracts/modules.md` and
+an implementation-aware `quickstart.md`. The constitution defines the required
+behavioral verification; installing the BDD extension does not make Gherkin mandatory
+for every change.
 
-Commit shared scripts, templates, skills, extension configuration, and the
-constitution. Keep the current-feature pointer, local extension overrides, and
-regenerable composition cache out of version control.
+Commit shared scripts, templates, preset sources and registry, CLI-generated effective
+skills, workflow overlays, extension configuration, and the constitution. Keep the
+current-feature pointer, local extension overrides, and regenerable preset composition
+caches out of version control.
 
 The [Upgrade Spec Kit workflow](.github/workflows/speckit-upgrade.yml) checks for
 the latest stable release every Monday at 14:00 UTC. It upgrades installed
 integrations and extensions, then opens or refreshes `automation/speckit-upgrade`
-with changes to `.specify/`, `.agents/skills/`, and `.cursor/skills/`. Review the
-generated diff for overwritten local customizations before merging. Use **Run
-workflow** in GitHub Actions to check immediately or supply a specific release
-tag through `specify_version`.
+with changes to `.specify/` and `.agents/skills/`. Project behavior belongs in presets,
+workflow overlays, the constitution, and repository guidance rather than direct edits
+to upstream-managed command or template files. The upgrade can regenerate effective
+skills while retaining those project-owned layers. Review the composed diff before
+merging. Use **Run workflow** in GitHub Actions to check immediately or supply a
+specific release tag through `specify_version`.
 
 ## Durable requirements
 

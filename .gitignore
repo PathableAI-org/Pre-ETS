@@ -158,3 +158,6 @@ blob-report/
 
 # Generated Husky hook launchers
 .husky/_/
+
+# Regenerable Spec Kit command-composition caches.
+.specify/presets/*/.composed/
