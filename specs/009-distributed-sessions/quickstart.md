@@ -113,10 +113,12 @@ request recognition. Its controlled unavailable-store scenario proves that an ac
 Run callback adapter coverage with the ordinary frontend unit suite:
 
 ```sh
-pnpm --filter @pathableai/pre-ets-frontend test:unit -- authentication-entry.test.ts
+pnpm --filter @pathableai/pre-ets-frontend test:unit -- authentication-entry.test.ts authentication-entry-failures.test.ts
 ```
 
-It must establish that session creation is invoked only after freshness confirmation, the policy belongs to the trusted
+The first file covers confirmed-fresh success. The second file, `authentication-entry-failures.test.ts`, covers the
+post-validation tenant failure and `SessionServiceUnavailable` mapping. Together they must establish that session
+creation is invoked only after freshness confirmation, the policy belongs to the trusted
 tenant, the cookie is written only after successful establishment, correlation clearing is preserved, and store/tenant
 failure produces the existing private safe response with no session cookie. For the post-authentication store-failure
 case, supply a trusted authentication result and inject `SessionServiceUnavailable`. Pair this mapping result with the
