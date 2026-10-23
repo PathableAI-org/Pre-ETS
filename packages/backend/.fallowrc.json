@@ -1,5 +1,6 @@
 {
   "$schema": "../../node_modules/fallow/schema.json",
+  "extends": "../../.fallowrc.shared.json",
   "entry": [
     "src/main.ts"
   ],

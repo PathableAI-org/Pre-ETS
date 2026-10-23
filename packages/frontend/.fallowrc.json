@@ -1,5 +1,6 @@
 {
   "$schema": "../../node_modules/fallow/schema.json",
+  "extends": "../../.fallowrc.shared.json",
   "production": {
     "deadCode": true
   },
@@ -7,6 +8,20 @@
     "**/.next/**",
     "**/next-env.d.ts"
   ],
+  "health": {
+    "thresholdOverrides": [
+      {
+        "files": [
+          "src/components/onsite/visit-state.ts"
+        ],
+        "functions": [
+          "transitionVisit"
+        ],
+        "maxCyclomatic": 15,
+        "reason": "Exhaustive discriminated-union action dispatcher; cognitive complexity remains within the global ceiling."
+      }
+    ]
+  },
   "rules": {
     "unused-dependencies": "error"
   }
