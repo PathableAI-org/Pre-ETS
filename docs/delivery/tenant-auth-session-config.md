@@ -316,8 +316,8 @@ when the process user is actually denied access; root-bypassed chmod is not unre
 Use the existing [observability setup](../observability.md), [Compose guide](../docker-compose.md), and
 [Compose service](../../compose.yaml). Start only `otel-lgtm` through the observability profile; Compose parsing may
 require the documented local bootstrap variables for unrelated services. Do not start another identity stack or
-introduce a second exporter. `OTEL_SDK_DISABLED` must be unset or empty; the literal string `false` also disables
-registration in the currently documented SDK behavior.
+introduce a second exporter. `OTEL_SDK_DISABLED=true` skips export. Empty and false boolean literals leave export
+on when an endpoint is set. Startup follows that parsed flag.
 
 ```sh
 docker compose --profile observability up -d otel-lgtm --wait

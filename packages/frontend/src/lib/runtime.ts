@@ -1,29 +1,13 @@
-import { OtelTracer, Resource } from "@effect/opentelemetry"
 import { NodeRedis, NodeServices } from "@effect/platform-node"
-import { registerOTel } from "@vercel/otel"
 import { ConfigProvider, Effect, Layer, ManagedRuntime } from "effect"
 
 import { makeAuthenticationTestHarness } from "./authentication.ts"
 import { ServerConfig } from "./config/index.ts"
-import { appLoggerLayer } from "./observability.ts"
+import { appLoggerLayer, observabilityLayer } from "./observability.ts"
 import { SessionService } from "./session.ts"
 import { TenantConfigService } from "./tenant.ts"
 
-const OTEL_SERVICE_NAME = "pre-ets-frontend"
-
 const LoggerLayer = appLoggerLayer()
-
-const ObservabilityLayer = Layer.unwrap(
-  Effect.sync(() => {
-    registerOTel({
-      serviceName: OTEL_SERVICE_NAME,
-      traceSampler: "always_on"
-    })
-    return OtelTracer.layerGlobal.pipe(
-      Layer.provide(Resource.layer({ serviceName: OTEL_SERVICE_NAME }))
-    )
-  })
-)
 
 const boot = () => {
   // ConfigProvider.fromEnv() snapshots process.env at construction time. Build a
@@ -50,7 +34,7 @@ const boot = () => {
         ),
         SessionService.layer,
         LoggerLayer,
-        ObservabilityLayer
+        observabilityLayer
       ).pipe(
         Layer.provide(NodeServices.layer),
         Layer.provide(configProviderLayer)
@@ -69,7 +53,7 @@ const boot = () => {
     return runtime
   }).pipe(
     Effect.provide(
-      Layer.mergeAll(LoggerLayer, configProviderLayer, ObservabilityLayer)
+      Layer.mergeAll(LoggerLayer, configProviderLayer)
     ),
     Effect.runPromise
   )

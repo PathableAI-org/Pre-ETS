@@ -3,14 +3,18 @@
 **Consumers**: AI coding agents / MCP clients used by developers.
 
 **Dependency**: Optional Compose `observability` profile running locally with
-pinned image **`grafana/otel-lgtm:0.35.0`** (Compose service name **`otel-lgtm`**).
+the `otel-lgtm` image and digest pinned in `compose.yaml` (currently
+**`grafana/otel-lgtm:0.37.0`**, Compose service name **`otel-lgtm`**).
 
 ## Server
 
-- Open-source Grafana MCP server **`mcp-grafana==2.0.0`**, invoked via
-  `uvx mcp-grafana==2.0.0` (or the `grafana/mcp-grafana` container at an
-  equivalent pinned tag in stdio mode). Unversioned `uvx mcp-grafana` is **not**
-  permitted in project docs or tasks.
+- Open-source Grafana MCP server **`mcp-grafana==2.0.0`**, invoked via `uvx`
+  with `--disable-write`, `--usage-stats=disabled`, `--disable-api`, and
+  `--enabled-tools search,datasource,prometheus,loki,tempo`. Unversioned
+  `uvx mcp-grafana` is **not** permitted in project docs or tasks.
+- The canonical declaration is repo-root `.mcp.json`. `.cursor/mcp.json` and
+  `.codex/config.toml` repeat that same server for clients that do not load
+  `.mcp.json`. Edit `.mcp.json` first.
 
 ## Connection settings (local)
 
@@ -19,7 +23,7 @@ pinned image **`grafana/otel-lgtm:0.35.0`** (Compose service name **`otel-lgtm`*
 | `GRAFANA_URL` | `http://127.0.0.1:3300` (host-mapped Grafana UI)        |
 | Auth          | See **Verified local auth** below (required for SC-006) |
 
-## Verified local auth (`grafana/otel-lgtm:0.35.0`)
+## Verified local auth (image pinned in `compose.yaml`)
 
 SC-006 only requires **reads**. Prefer least privilege for MCP:
 
@@ -27,7 +31,9 @@ SC-006 only requires **reads**. Prefer least privilege for MCP:
    via Compose override (`GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer`). The upstream image
    may default anonymous to Admin — this feature **MUST** override to Viewer for
    the documented MCP path. A service account token is not required while
-   anonymous Viewer is active.
+   anonymous Viewer is active. Query tools need `datasources:query`. A 403 from
+   `search_tempo_traces`, `query_loki_logs`, or `query_prometheus` means this
+   role cannot query, and the token path below is required.
 2. **Preferred when anonymous is disabled**: Create a **read-only** Grafana
    service account token and pass it to the MCP server
    (`GRAFANA_SERVICE_ACCOUNT_TOKEN` or equivalent).
@@ -36,8 +42,8 @@ SC-006 only requires **reads**. Prefer least privilege for MCP:
    debugging, not the agent/MCP primary path.
 
 Project docs (`docs/observability.md`) MUST copy this verified least-privilege
-path and the pinned `mcp-grafana==2.0.0` invocation so SC-006 (“first attempt”)
-is executable—not “preferred if available.”
+path and the pinned `mcp-grafana==2.0.0` invocation, including `--disable-write`,
+so SC-006 (“first attempt”) is executable—not “preferred if available.”
 
 **SC-006 evidence**: Acceptance requires a successful **live** MCP read against
 local Grafana on the first attempt. If CI cannot run MCP, a documented human
@@ -47,8 +53,8 @@ without a live success are not acceptance evidence.
 ## Preconditions
 
 1. `docker compose --profile observability up -d --wait` (or equivalent) succeeded
-   with image `grafana/otel-lgtm:0.35.0` and anonymous org role Viewer (or
-   equivalent read-only token path).
+   with the `otel-lgtm` image pinned in `compose.yaml` and anonymous org role
+   Viewer (or equivalent read-only token path).
 2. Grafana UI reachable at `http://127.0.0.1:3300`.
 3. Next server has exported at least one request span (optional for connectivity
    test; required for “inspect a span” agent exercise).
@@ -56,9 +62,11 @@ without a live success are not acceptance evidence.
 ## Minimum verified capability
 
 Documentation MUST include one concrete agent/MCP action that reads local
-observability data (for example: list datasources, or search recent Tempo traces
-for `pre-ets-frontend`). Exact tool names follow
-**mcp-grafana 2.0.0** as pinned in docs.
+observability data: `list_datasources`, then `search_tempo_traces` for
+`resource.service.name = "pre-ets-frontend"`. Exact tool names follow
+**mcp-grafana 2.0.0** as pinned in docs. Docs MUST say that Loki and Prometheus
+can be queried, and that the frontend does not export application logs or
+metrics.
 
 ## Non-goals
 

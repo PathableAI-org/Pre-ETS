@@ -29,7 +29,10 @@ For property tests, also read [Property-based testing](docs/engineering/testing/
 Choose evidence for a named expectation and the boundary responsible for it; do not add tests solely for coverage.
 
 Verify observability manually or with temporary agent probes, inspecting real logs
-and exported OTel data. Do not retain durable tests of log output, spans, attributes,
+and exported OTel data. When the local Grafana stack is running, use the Grafana
+MCP server in [docs/observability.md](docs/observability.md) to inspect exported
+frontend traces. An empty Loki or Prometheus result is not application evidence.
+Do not retain durable tests of log output, spans, attributes,
 telemetry payloads, or exporter behavior. Keep durable tests focused on application outcomes.
 
 Before authoring or reviewing requirements BDD, step definitions, or supporting helpers, read
