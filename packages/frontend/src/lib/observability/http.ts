@@ -202,6 +202,13 @@ const urlFromInput = (input: string | URL): undefined | URL => {
 
 const absent = (value: null | string | undefined): boolean => value === undefined || value === null || value === ""
 
+const selectedText = (override: null | string | undefined, fallback: string): string => {
+  if (override === undefined || override === null || override === "") return fallback
+  return override
+}
+
+const selectedPort = (port: null | number | string | undefined, fallback: string): string => String(port ?? fallback)
+
 /**
  * Node copies URL fields and then lets options replace hostname, port, path, and protocol.
  * `host` does not win over a hostname that came from the URL.
@@ -209,10 +216,9 @@ const absent = (value: null | string | undefined): boolean => value === undefine
 const effectiveHttpUrl = (base: URL, options: Http.RequestOptions): undefined | URL => {
   if (!absent(options.socketPath)) return undefined
   const protocol = absent(options.protocol) ? base.protocol : schemeFor(options.protocol, "http:")
-  const hostname = absent(options.hostname) ? base.hostname : options.hostname
-  const port = options.port === undefined || options.port === null ? base.port : String(options.port)
+  const hostname = selectedText(options.hostname, base.hostname)
+  const port = selectedPort(options.port, base.port)
   const path = options.path ?? `${base.pathname}${base.search}`
-  if (hostname === undefined || hostname === null) return undefined
   try {
     return new URL(path, `${protocol}//${hostForUrl(hostname)}${portSuffix(port)}/`)
   } catch {
