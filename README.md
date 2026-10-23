@@ -463,13 +463,15 @@ implementation. The project workflow overlay inserts clarification and review ga
 the added artifacts without modifying the upstream workflow definition.
 
 Run Spec Kit from the repository root. Set `SPECIFY_INIT_DIR` to this checkout's
-root when invoking its scripts from another working directory. Start with
-`speckit-specify` using exactly one authorized delivery issue, clarify the feature,
-then use `speckit-plan` and `speckit-tasks` before implementation. Specification
-produces `spec.md` and `verification.md`; planning produces `contracts/modules.md` and
-an implementation-aware `quickstart.md`. The constitution defines the required
-behavioral verification; installing the BDD extension does not make Gherkin mandatory
-for every change.
+root when invoking its scripts from another working directory. A delivery-issue
+feature follows the [Git and pull request workflow](docs/engineering/git-workflow.md):
+specify and clarify on one pull request, review the engineering plan on the next,
+and implement on a following pull request. Use `speckit-stack` to keep those
+pull requests stacked. Start with `speckit-specify` using exactly one authorized
+delivery issue. Specification produces `spec.md` and `verification.md`; planning
+produces `contracts/modules.md` and a planned `quickstart.md`. The constitution
+defines the required behavioral verification; installing the BDD extension does
+not make Gherkin mandatory for every change.
 
 Commit shared scripts, templates, preset sources and registry, CLI-generated effective
 skills, workflow overlays, extension configuration, and the constitution. Keep the

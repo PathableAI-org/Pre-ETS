@@ -440,4 +440,6 @@ Success criteria must be:
 
 Do not report the specification ready for planning when a blocking authority finding is
 open, an accepted criterion lacks a disposition, `verification.md` is absent, or the
-standard manual feature procedure is not meaningful and executable.
+standard manual feature procedure is not meaningful and executable. Follow
+`docs/engineering/git-workflow.md`: `$speckit-stack` opens the specification pull
+request, and planning waits for that branch to be the plan's base.

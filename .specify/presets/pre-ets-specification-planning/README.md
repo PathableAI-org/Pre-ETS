@@ -14,6 +14,8 @@ It establishes this flow:
 4. Planning proceeds through module architecture, public contracts and type
    signatures, contract evidence, then private implementation architecture.
 5. Task generation consumes both feature verification and module contracts.
+6. Each phase is reviewed on its own pull request, as described in
+   `docs/engineering/git-workflow.md`.
 
 The preset composes with upstream commands through `wrap` and with upstream document
 templates through `append`. Upstream command and template improvements therefore remain
