@@ -8,7 +8,9 @@ import { requestSite } from "../support/server.ts"
 
 const assertNoApplicationSession = (cookie: string): void => {
   assert.match(cookie, /Path=\/auth\/callback/i)
-  assert.doesNotMatch(cookie, /(?:^|;\s*)(?:pathable-)?session=/i)
+  for (const header of cookie.split("\n")) {
+    assert.doesNotMatch(header, /(?:^|;\s*)(?:pathable-)?session=/i)
+  }
 }
 
 When("a visitor requests the document at {string}", async function(this: AppWorld, host: string) {

@@ -2,7 +2,7 @@ import { Alert, Container, Heading, Link, Page, Stack, Text } from "@pathableai/
 import { NextResponse } from "next/server"
 import { renderToReadableStream } from "react-dom/server.edge"
 
-const privateNoStore = "private, no-store"
+import { PRIVATE_NO_STORE } from "./constants.ts"
 
 export const authenticationReturnBody = () =>
   renderToReadableStream(
@@ -44,7 +44,7 @@ const missingPageBody = () =>
 export const tenantFailureResponse = async (status: 404 | 500): Promise<NextResponse> =>
   new NextResponse(status === 404 ? await missingPageBody() : null, {
     headers: {
-      "cache-control": privateNoStore,
+      "cache-control": PRIVATE_NO_STORE,
       ...(status === 404 ? { "content-type": "text/html; charset=utf-8" } : {})
     },
     status

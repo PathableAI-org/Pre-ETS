@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server"
 
-import { Effect, Result } from "effect"
+import { Effect } from "effect"
 import { NextResponse } from "next/server"
 
 import {
@@ -9,14 +9,13 @@ import {
   AuthenticationUnavailable,
   type CallbackExpectedFailure
 } from "../../../lib/authentication.ts"
-import { Runtime } from "../../../lib/runtime"
+import { toNext } from "../../../lib/next.ts"
+import { PRIVATE_NO_STORE } from "../constants.ts"
 import { CORRELATION_COOKIE } from "../cookie.ts"
 import { authenticationReturnBody, tenantFailureResponse } from "../presentation.tsx"
 
 export const dynamic = "force-dynamic"
 export const runtime = "nodejs"
-
-const privateNoStore = "private, no-store"
 
 const isLoopbackHost = (host: string): boolean => {
   const hostname = host.replace(/^\[|\](?::\d+)?$|:\d+$/g, "")
@@ -24,7 +23,7 @@ const isLoopbackHost = (host: string): boolean => {
     /^127(?:\.\d{1,3}){3}$/.test(hostname)
 }
 
-const clearCorrelation = (response: NextResponse, request: NextRequest): void => {
+const clearCorrelation = (response: NextResponse, request: NextRequest): NextResponse => {
   const host = request.headers.get("host") ?? ""
   response.cookies.set(CORRELATION_COOKIE, "", {
     httpOnly: true,
@@ -33,19 +32,30 @@ const clearCorrelation = (response: NextResponse, request: NextRequest): void =>
     sameSite: "lax",
     secure: request.nextUrl.protocol === "https:" || !isLoopbackHost(host)
   })
+  return response
 }
 
-const deniedResponse = async () =>
+const authenticationReturn = Effect.promise(async () =>
   new NextResponse(await authenticationReturnBody(), {
     headers: {
-      "cache-control": privateNoStore,
+      "cache-control": PRIVATE_NO_STORE,
       "content-type": "text/html; charset=utf-8"
     },
     status: 200
   })
+)
 
-export async function GET(request: NextRequest): Promise<NextResponse> {
-  const outcome = await Effect.gen(function*() {
+const tenantFailure = (status: 404 | 500) => Effect.promise(() => tenantFailureResponse(status))
+
+const responseForReason = (reason: CallbackExpectedFailure["reason"]) =>
+  Effect.fail(reason).pipe(
+    Effect.catchTag(AuthenticationDenied.tag, () => authenticationReturn),
+    Effect.catchTag(AuthenticationUnavailable.tag, () => authenticationReturn),
+    Effect.catch((failure) => tenantFailure(failure.status))
+  )
+
+const completeAuthentication = (request: NextRequest) =>
+  Effect.gen(function*() {
     const authentication = yield* AuthenticationService
     const correlation = request.cookies.get(CORRELATION_COOKIE)?.value
     return yield* authentication.complete({
@@ -53,22 +63,23 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       host: request.headers.get("host") ?? "",
       query: [...request.nextUrl.searchParams.entries()]
     })
-  }).pipe(Effect.result, Runtime.runPromise)
-
-  if (Result.isSuccess(outcome)) {
-    const response = new NextResponse(null, {
-      headers: { "cache-control": privateNoStore },
-      status: 204
+  }).pipe(
+    Effect.matchEffect({
+      onFailure: (failure) =>
+        responseForReason(failure.reason).pipe(
+          Effect.map((response) =>
+            failure.correlationDisposition === "clear" ? clearCorrelation(response, request) : response
+          )
+        ),
+      onSuccess: () =>
+        Effect.succeed(clearCorrelation(
+          new NextResponse(null, {
+            headers: { "cache-control": PRIVATE_NO_STORE },
+            status: 204
+          }),
+          request
+        ))
     })
-    clearCorrelation(response, request)
-    return response
-  }
+  )
 
-  const failure: CallbackExpectedFailure = outcome.failure
-  const response =
-    failure.reason instanceof AuthenticationDenied || failure.reason instanceof AuthenticationUnavailable ?
-      await deniedResponse() :
-      await tenantFailureResponse(failure.reason.status)
-  if (failure.correlationDisposition === "clear") clearCorrelation(response, request)
-  return response
-}
+export const GET = toNext(completeAuthentication)

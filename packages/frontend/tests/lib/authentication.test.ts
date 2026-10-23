@@ -1,7 +1,8 @@
 import { describe, expect, it } from "@effect/vitest"
-import { ConfigProvider, Effect, FileSystem, Path, References, Result, Schema } from "effect"
+import { Cause, ConfigProvider, Effect, Exit, Fiber, FileSystem, Path, References, Result, Schema } from "effect"
 import { TestClock } from "effect/testing"
 import { generateKeyPairSync, type KeyObject, sign } from "node:crypto"
+import { ClientClosedError, ClientOfflineError } from "redis"
 import { vi } from "vitest"
 
 import {
@@ -20,11 +21,13 @@ interface WorldOptions {
   readonly clientAuth?: "confidential" | "public"
   readonly credentialMap?: string
   readonly issuer?: string
+  readonly issuers?: readonly string[]
+  readonly redis?: ReturnType<typeof makeMemoryRedis>
   readonly secretRef?: string
   readonly ttl?: string
 }
 
-const tenantFile = (options: WorldOptions) =>
+const tenantFile = (options: WorldOptions, issuer: string) =>
   JSON.stringify({
     displayName: "Alpha",
     oidc: options.clientAuth === "confidential" ?
@@ -32,17 +35,18 @@ const tenantFile = (options: WorldOptions) =>
         clientAuth: "confidential",
         clientId: "alpha-client",
         clientSecretRef: options.secretRef ?? "alpha-secret",
-        issuer: options.issuer ?? "https://provider.test"
+        issuer
       } :
       {
         clientAuth: "public",
         clientId: "alpha-client",
-        issuer: options.issuer ?? "https://provider.test"
+        issuer
       }
   })
 
 const withWorld = <A, E, R>(program: Effect.Effect<A, E, AuthenticationService | R>, options: WorldOptions = {}) => {
-  const redis = makeMemoryRedis()
+  const redis = options.redis ?? makeMemoryRedis()
+  let tenantReads = 0
   return program.pipe(
     Effect.provide(makeAuthenticationTestHarness({ redis: redis.layer }).layer),
     Effect.provide(TenantConfigService.layer({
@@ -51,7 +55,11 @@ const withWorld = <A, E, R>(program: Effect.Effect<A, E, AuthenticationService |
     })),
     Effect.provide(FileSystem.layerNoop({
       readDirectory: () => Effect.succeed([]),
-      readFileString: () => Effect.succeed(tenantFile(options))
+      readFileString: () => {
+        const issuer = options.issuers?.[tenantReads] ?? options.issuer ?? "https://provider.test"
+        tenantReads += 1
+        return Effect.succeed(tenantFile(options, issuer))
+      }
     })),
     Effect.provide(Path.layer),
     Effect.provideService(
@@ -215,6 +223,34 @@ describe("AuthenticationService preparation", () => {
       }))
     )
   })
+
+  it.effect("accepts the explicit HTTPS default port and rejects the HTTP default port", () =>
+    withFetch(
+      () => Promise.resolve(metadata()),
+      withWorld(Effect.gen(function*() {
+        const explicitHttps = yield* prepare("alpha.example.test:443").pipe(Effect.result)
+        expect(Result.isSuccess(explicitHttps)).toBe(true)
+        const httpPort = yield* prepare("alpha.example.test:80").pipe(Effect.result)
+        expect(Result.isFailure(httpPort)).toBe(true)
+        if (Result.isFailure(httpPort)) expect(httpPort.failure).toBeInstanceOf(AuthenticationUnavailable)
+      }))
+    ))
+
+  it.effect("matches HTTPS port 80 only when the callback origin uses that port", () =>
+    withFetch(
+      () => Promise.resolve(metadata()),
+      withWorld(
+        Effect.gen(function*() {
+          const matched = yield* prepare("alpha.example.test:80").pipe(Effect.result)
+          expect(Result.isSuccess(matched)).toBe(true)
+          const omitted = yield* prepare("alpha.example.test").pipe(Effect.result)
+          expect(Result.isFailure(omitted)).toBe(true)
+          const httpsDefault = yield* prepare("alpha.example.test:443").pipe(Effect.result)
+          expect(Result.isFailure(httpsDefault)).toBe(true)
+        }),
+        { callback: "https://alpha.example.test:80" }
+      )
+    ))
 
   it.effect("keeps tenant selection failures distinct", () =>
     withFetch(
@@ -474,4 +510,166 @@ describe("AuthenticationService completion", () => {
       }))
     )
   })
+})
+
+const hangingCompletion = (
+  check: (
+    fiber: Fiber.Fiber<unknown, CallbackExpectedFailure>,
+    aborted: () => boolean
+  ) => Effect.Effect<void>
+) => {
+  let hang = false
+  let markStarted: () => void = () => undefined
+  const started = new Promise<void>((resolve) => {
+    markStarted = resolve
+  })
+  let aborted = false
+  return withFetch(
+    (_input, init) => {
+      if (!hang) return Promise.resolve(metadata())
+      return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => {
+          aborted = true
+          reject(new Error("controlled transport aborted"))
+        }, { once: true })
+        markStarted()
+      })
+    },
+    withWorld(Effect.gen(function*() {
+      const authentication = yield* AuthenticationService
+      const prepared = yield* authentication.prepare({ host: "alpha.example.test" })
+      const state = new URL(prepared.destination).searchParams.get("state") ?? ""
+      hang = true
+      const fiber = yield* Effect.forkChild(authentication.complete({
+        correlation: prepared.correlation,
+        host: "alpha.example.test",
+        query: [["code", "controlled-code"], ["state", state]]
+      }))
+      yield* Effect.promise(() => started)
+      yield* check(fiber, () => aborted)
+    }))
+  )
+}
+
+describe("AuthenticationService callback recovery", () => {
+  it.effect("accepts an explicit HTTPS default port on completion and rejects port 80", () => {
+    let nonce = ""
+    return withFetch(
+      completionTransport(() => nonce),
+      withWorld(Effect.gen(function*() {
+        const authentication = yield* AuthenticationService
+        const prepared = yield* authentication.prepare({ host: "alpha.example.test:443" })
+        const destination = new URL(prepared.destination)
+        nonce = destination.searchParams.get("nonce") ?? ""
+        const state = destination.searchParams.get("state") ?? ""
+        expectCallbackFailure(
+          yield* authentication.complete({
+            correlation: prepared.correlation,
+            host: "alpha.example.test:80",
+            query: [["code", "premature"], ["state", state]]
+          }).pipe(Effect.result),
+          "preserve",
+          AuthenticationDenied
+        )
+        const identity = yield* authentication.complete({
+          correlation: prepared.correlation,
+          host: "alpha.example.test:443",
+          query: [["code", "controlled-code"], ["state", state]]
+        })
+        expect(identity.subject).toBe("subject-1")
+      }))
+    )
+  })
+
+  it.effect.each([
+    { cause: () => new ClientOfflineError(), label: "offline" },
+    { cause: () => new ClientClosedError(), label: "closed" }
+  ])("preserves the attempt when Redis is $label before GETDEL", ({ cause }) => {
+    const redis = makeMemoryRedis()
+    let nonce = ""
+    return withFetch(
+      completionTransport(() => nonce),
+      withWorld(
+        Effect.gen(function*() {
+          const authentication = yield* AuthenticationService
+          const prepared = yield* authentication.prepare({ host: "alpha.example.test" })
+          const destination = new URL(prepared.destination)
+          nonce = destination.searchParams.get("nonce") ?? ""
+          const state = destination.searchParams.get("state") ?? ""
+          const input = {
+            correlation: prepared.correlation,
+            host: "alpha.example.test",
+            query: [["code", "controlled-code"], ["state", state]] as const
+          }
+          redis.failNextConsume(cause())
+          expectCallbackFailure(
+            yield* authentication.complete(input).pipe(Effect.result),
+            "preserve",
+            AuthenticationUnavailable
+          )
+          const identity = yield* authentication.complete(input)
+          expect(identity.subject).toBe("subject-1")
+        }),
+        { redis }
+      )
+    )
+  })
+
+  it.effect("clears correlation when a reread issuer is no longer permitted", () =>
+    withFetch(
+      () => Promise.resolve(metadata()),
+      withWorld(
+        Effect.gen(function*() {
+          const authentication = yield* AuthenticationService
+          const prepared = yield* authentication.prepare({ host: "alpha.example.test" })
+          const state = new URL(prepared.destination).searchParams.get("state") ?? ""
+          const input = {
+            correlation: prepared.correlation,
+            host: "alpha.example.test",
+            query: [["code", "controlled-code"], ["state", state]] as const
+          }
+          expectCallbackFailure(
+            yield* authentication.complete(input).pipe(Effect.result),
+            "clear",
+            AuthenticationUnavailable
+          )
+          expectCallbackFailure(
+            yield* authentication.complete(input).pipe(Effect.result),
+            "preserve",
+            AuthenticationDenied
+          )
+        }),
+        {
+          issuers: [
+            "https://provider.test",
+            "http://changed.example",
+            "https://provider.test"
+          ]
+        }
+      )
+    ))
+
+  it.effect("cancels completion transport at five seconds and returns safe unavailability", () =>
+    hangingCompletion((fiber, aborted) =>
+      Effect.gen(function*() {
+        yield* TestClock.adjust(4_999)
+        expect(fiber.pollUnsafe()).toBeUndefined()
+        expect(aborted()).toBe(false)
+        yield* TestClock.adjust(1)
+        const result = yield* Fiber.join(fiber).pipe(Effect.result)
+        expectCallbackFailure(result, "clear", AuthenticationUnavailable)
+        expect(aborted()).toBe(true)
+      })
+    ))
+
+  it.effect("caller interruption cancels completion transport and remains interruption", () =>
+    hangingCompletion((fiber, aborted) =>
+      Effect.gen(function*() {
+        yield* Fiber.interrupt(fiber)
+        const exit = yield* Fiber.await(fiber)
+        expect(Exit.isFailure(exit)).toBe(true)
+        if (Exit.isFailure(exit)) expect(Cause.hasInterrupts(exit.cause)).toBe(true)
+        expect(aborted()).toBe(true)
+      })
+    ))
 })

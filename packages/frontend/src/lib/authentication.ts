@@ -47,11 +47,16 @@ interface TrustedIdentity {
   readonly tenantAlias: string
 }
 
+const authenticationDeniedTag = "@pathableai/pre-ets-frontend/AuthenticationDenied"
+const authenticationUnavailableTag = "@pathableai/pre-ets-frontend/AuthenticationUnavailable"
+
 /** Safe expected denial of an untrusted or no-longer-recoverable callback. */
 export class AuthenticationDenied extends Schema.TaggedError<AuthenticationDenied>()(
-  "@pathableai/pre-ets-frontend/AuthenticationDenied",
+  authenticationDeniedTag,
   {}
-) {}
+) {
+  static readonly tag = authenticationDeniedTag
+}
 
 export class AuthenticationService extends Context.Service<AuthenticationService, AuthenticationServiceShape>()(
   "@pathableai/pre-ets-frontend/AuthenticationService"
@@ -61,9 +66,11 @@ export class AuthenticationService extends Context.Service<AuthenticationService
 
 /** Safe provider, credential, or transaction unavailability. */
 export class AuthenticationUnavailable extends Schema.TaggedError<AuthenticationUnavailable>()(
-  "@pathableai/pre-ets-frontend/AuthenticationUnavailable",
+  authenticationUnavailableTag,
   {}
-) {}
+) {
+  static readonly tag = authenticationUnavailableTag
+}
 
 export class CallbackExpectedFailure extends Data.Error<{
   readonly correlationDisposition: CorrelationDisposition
@@ -77,19 +84,34 @@ const callbackFailure = (
   correlationDisposition: CorrelationDisposition
 ) => new CallbackExpectedFailure({ correlationDisposition, reason })
 
-interface NormalizedRequestHost {
-  readonly authority: string
+interface RequestHost {
   readonly hostname: string
+  readonly port: string
 }
 
-const normalizeRequestHost = (raw: string): NormalizedRequestHost | undefined => {
+/** Keeps an explicit port. Scheme defaults are applied only once the callback origin is known. */
+const parseRequestHost = (raw: string): RequestHost | undefined => {
   if (raw.trim() !== raw || raw === "" || /[/?#@\\]/.test(raw)) return undefined
   try {
-    const url = new URL(`http://${raw}`)
-    return { authority: url.host.toLowerCase(), hostname: url.hostname.toLowerCase() }
+    const url = new URL(`opaque://${raw}`)
+    if (url.hostname === "" || url.pathname !== "" || url.search !== "" || url.hash !== "") return undefined
+    return { hostname: url.hostname.toLowerCase(), port: url.port }
   } catch {
     return undefined
   }
+}
+
+const canonicalPort = (protocol: string, port: string): string | undefined => {
+  if (protocol === "https:") return port === "" || port === "443" ? "443" : port
+  if (protocol === "http:") return port === "" || port === "80" ? "80" : port
+  return undefined
+}
+
+const requestMatchesOrigin = (request: RequestHost, origin: URL): boolean => {
+  const requestPort = canonicalPort(origin.protocol, request.port)
+  const originPort = canonicalPort(origin.protocol, origin.port)
+  return requestPort !== undefined && requestPort === originPort &&
+    request.hostname === origin.hostname.toLowerCase()
 }
 
 interface CallbackShape {
@@ -181,12 +203,12 @@ const AuthenticationServiceLayer = Layer.effect(
     const validateUrl = Schema.decodeUnknownSync(permittedUrl(settings.allowInsecureLoopback))
 
     const prepare = Effect.fn("AuthenticationService.prepare")(function*({ host }: { readonly host: string }) {
-      const normalizedHost = normalizeRequestHost(host)
-      if (normalizedHost === undefined) return yield* unavailable()
-      const alias = yield* Effect.fromResult(tenant.getAlias(normalizedHost.hostname))
+      const requestHost = parseRequestHost(host)
+      if (requestHost === undefined) return yield* unavailable()
+      const alias = yield* Effect.fromResult(tenant.getAlias(requestHost.hostname))
       const config = yield* tenant.getConfigFromAlias(alias)
       const origin = Object.hasOwn(settings.callbackOrigins, alias) ? settings.callbackOrigins[alias] : undefined
-      if (origin?.host.toLowerCase() !== normalizedHost.authority) {
+      if (origin === undefined || !requestMatchesOrigin(requestHost, origin)) {
         return yield* unavailable()
       }
       const callback = exactCallback(origin)
@@ -235,21 +257,21 @@ const AuthenticationServiceLayer = Layer.effect(
 
     const qualifyCallback = Effect.fnUntraced(function*(input: CompleteAuthenticationInput) {
       const shape = callbackShape(input.query)
-      const normalizedHost = normalizeRequestHost(input.host)
-      if (shape === undefined || normalizedHost === undefined) {
+      const requestHost = parseRequestHost(input.host)
+      if (shape === undefined || requestHost === undefined) {
         return yield* callbackFailure(denied(), "preserve")
       }
       const correlation = yield* decodeBrowserCorrelation(input.correlation).pipe(
         Effect.mapError(() => callbackFailure(denied(), "preserve"))
       )
-      const alias = yield* Effect.fromResult(tenant.getAlias(normalizedHost.hostname)).pipe(
+      const alias = yield* Effect.fromResult(tenant.getAlias(requestHost.hostname)).pipe(
         Effect.mapError((failure) => callbackFailure(failure, "preserve"))
       )
       const config = yield* tenant.getConfigFromAlias(alias).pipe(
         Effect.mapError((failure) => callbackFailure(failure, "preserve"))
       )
       const origin = Object.hasOwn(settings.callbackOrigins, alias) ? settings.callbackOrigins[alias] : undefined
-      if (origin?.host.toLowerCase() !== normalizedHost.authority) {
+      if (origin === undefined || !requestMatchesOrigin(requestHost, origin)) {
         return yield* callbackFailure(denied(), "preserve")
       }
       return { alias, callback: exactCallback(origin), config, correlation, shape }
@@ -277,7 +299,10 @@ const AuthenticationServiceLayer = Layer.effect(
         })
       )
 
-      const configuredIssuer = validateUrl(qualified.config.oidc.issuer).href
+      const configuredIssuer = yield* Effect.try({
+        catch: () => callbackFailure(unavailable(), "clear"),
+        try: () => validateUrl(qualified.config.oidc.issuer).href
+      })
       if (
         !attemptMatches(attempt, {
           callbackAuthority: qualified.callback.authority,

@@ -1,6 +1,9 @@
 import { describe, expect, it } from "@effect/vitest"
-import { ConfigProvider, Effect, FileSystem, Path, References, Result } from "effect"
+import { Cause, ConfigProvider, Effect, Exit, Fiber, FileSystem, Path, References, Result } from "effect"
+import { TestClock } from "effect/testing"
 import { vi } from "vitest"
+
+import type { HttpError } from "../../src/lib/error.ts"
 
 import {
   AuthenticationService,
@@ -82,6 +85,35 @@ const expectUnavailable = (result: Result.Result<unknown, unknown>) => {
   if (Result.isFailure(result)) expect(result.failure).toBeInstanceOf(AuthenticationUnavailable)
 }
 
+const pendingPreparation = (
+  check: (
+    fiber: Fiber.Fiber<unknown, AuthenticationUnavailable | HttpError>,
+    aborted: () => boolean
+  ) => Effect.Effect<void>
+) =>
+  Effect.gen(function*() {
+    let markStarted: () => void = () => undefined
+    const started = new Promise<void>((resolve) => {
+      markStarted = resolve
+    })
+    let aborted = false
+    yield* withFetch(
+      (_input, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            aborted = true
+            reject(new Error("controlled transport aborted"))
+          }, { once: true })
+          markStarted()
+        }),
+      withScenario(Effect.gen(function*() {
+        const fiber = yield* Effect.forkChild(attempt)
+        yield* Effect.promise(() => started)
+        yield* check(fiber, () => aborted)
+      }))
+    )
+  })
+
 describe("AuthenticationService safe failures", () => {
   it.effect.each([
     { label: "mismatched discovered issuer", transport: () => Promise.resolve(metadata("https://other.test")) },
@@ -152,6 +184,29 @@ describe("AuthenticationService safe failures", () => {
       Effect.result,
       Effect.map((result) => {
         expect(Result.isFailure(result)).toBe(true)
+      })
+    ))
+
+  it.effect("cancels pending transport at five seconds and returns safe unavailability", () =>
+    pendingPreparation((fiber, aborted) =>
+      Effect.gen(function*() {
+        yield* TestClock.adjust(4_999)
+        expect(fiber.pollUnsafe()).toBeUndefined()
+        expect(aborted()).toBe(false)
+        yield* TestClock.adjust(1)
+        expectUnavailable(yield* Fiber.join(fiber).pipe(Effect.result))
+        expect(aborted()).toBe(true)
+      })
+    ))
+
+  it.effect("caller interruption cancels transport and remains interruption", () =>
+    pendingPreparation((fiber, aborted) =>
+      Effect.gen(function*() {
+        yield* Fiber.interrupt(fiber)
+        const exit = yield* Fiber.await(fiber)
+        expect(Exit.isFailure(exit)).toBe(true)
+        if (Exit.isFailure(exit)) expect(Cause.hasInterrupts(exit.cause)).toBe(true)
+        expect(aborted()).toBe(true)
       })
     ))
 })

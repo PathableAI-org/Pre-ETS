@@ -1,6 +1,7 @@
 import { Config, Context, Effect, Layer, Schema, SchemaIssue } from "effect"
 import { Redis } from "effect/persistence/Redis"
 import { createHash } from "node:crypto"
+import { ClientClosedError, ClientOfflineError } from "redis"
 
 import type { BrowserCorrelation } from "./codec.ts"
 
@@ -47,12 +48,8 @@ const TransactionStoreConfig: Config.Config<TransactionStoreSettings> = Config.a
   Config.map(({ prefix, ttl }) => ({ prefix, ttlMilliseconds: ttl * 1_000, ttlSeconds: ttl }))
 )
 
-const causeName = (cause: unknown): string | undefined => cause instanceof Error ? cause.name : undefined
-
-const phaseFromCause = (cause: unknown): "ambiguous" | "before-send" => {
-  const name = causeName(cause)
-  return name === "ClientClosedError" || name === "ClientOfflineError" ? "before-send" : "ambiguous"
-}
+const phaseFromCause = (cause: unknown): "ambiguous" | "before-send" =>
+  cause instanceof ClientClosedError || cause instanceof ClientOfflineError ? "before-send" : "ambiguous"
 
 const keyFor = (prefix: string, address: AttemptAddress): string => {
   const digest = createHash("sha256")

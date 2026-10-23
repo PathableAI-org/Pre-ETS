@@ -3,6 +3,7 @@ import * as Redis from "effect/persistence/Redis"
 
 export interface MemoryRedis {
   readonly entries: Map<string, Entry>
+  readonly failNextConsume: (cause: unknown) => void
   readonly layer: Layer.Layer<Redis.Redis>
 }
 
@@ -47,15 +48,25 @@ const execute = (entries: Map<string, Entry>, command: string, args: readonly st
 
 export const makeMemoryRedis = (): MemoryRedis => {
   const entries = new Map<string, Entry>()
-  const send = <A>(command: string, ...args: readonly string[]) =>
-    Effect.try({
+  let consumeCause: unknown
+  const failNextConsume = (cause: unknown) => {
+    consumeCause = cause
+  }
+  const send = <A>(command: string, ...args: readonly string[]) => {
+    if (command === "GETDEL" && consumeCause !== undefined) {
+      const cause = consumeCause
+      consumeCause = undefined
+      return Effect.fail(new Redis.RedisError({ cause }))
+    }
+    return Effect.try({
       catch: (cause) => new Redis.RedisError({ cause }),
       try: () => execute(entries, command, args) as A
     })
+  }
 
   const service = Redis.make({
     send,
     subscribe: () => Effect.succeed(Effect.never)
   })
-  return { entries, layer: Layer.effect(Redis.Redis, service) }
+  return { entries, failNextConsume, layer: Layer.effect(Redis.Redis, service) }
 }
