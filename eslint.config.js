@@ -31,7 +31,6 @@ export default defineConfig([
       "packages/*/lint-staged.config.js",
       "scripts/**",
       "tests/**",
-      "e2e/**",
       "packages/*/tests/**"
     ],
     rules: {

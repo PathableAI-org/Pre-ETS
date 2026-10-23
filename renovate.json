@@ -135,7 +135,7 @@
       "addLabels": ["javascript", "pnpm", "tooling"],
     },
     {
-      "description": "Group non-major test and e2e runner updates for CI / runner compatibility.",
+      "description": "Group non-major test runner and browser library updates for CI / runner compatibility.",
       "matchManagers": ["npm"],
       "matchUpdateTypes": ["minor", "patch", "digest", "pin", "pinDigest"],
       "matchPackageNames": [
@@ -145,7 +145,7 @@
         "fast-check",
         "vite",
         "@vitejs/plugin-react",
-        "@playwright/test",
+        "playwright",
         "puppeteer-core",
         "axe-core",
       ],

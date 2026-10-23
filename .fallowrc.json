@@ -4,8 +4,6 @@
   "entry": [
     "cucumber.mjs",
     "cucumber.smoke.mjs",
-    "e2e/playwright.config.ts",
-    "e2e/*.spec.ts",
     "tests/bdd/steps/*.ts",
     "tests/bdd/support/hooks.ts",
     "tests/bdd/support/world.ts",
