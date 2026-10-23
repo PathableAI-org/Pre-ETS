@@ -68,10 +68,21 @@ const endSpan = (span: Span): void => {
 
 const CLIENT_FAILURE = "Client request failed"
 
-/** Category only. Abort reasons and error messages can carry URLs or request data. */
+/** Category only. `Error.name` is caller-controlled and can carry a URL or request data. */
 const errorCategory = (error: unknown): string => {
   if (!(error instanceof Error)) return "non-error"
-  return error.name === "" ? "Error" : error.name
+  switch (error.name) {
+    case "AbortError":
+      return "AbortError"
+    case "Error":
+      return "Error"
+    case "TimeoutError":
+      return "TimeoutError"
+    case "TypeError":
+      return "TypeError"
+    default:
+      return "Error"
+  }
 }
 
 const failSpan = (span: Span, error: unknown): void => {

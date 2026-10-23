@@ -247,13 +247,22 @@ describe("node HTTP client instrumentation", () => {
     controller.abort("https://user:pass@idp.example/token?secret=1")
     await expect(fetch(`http://127.0.0.1:${String(server.port)}/aborted`, { signal: controller.signal })).rejects
       .toBeTruthy()
+    const named = new Error("ignored")
+    named.name = "https://user:pass@idp.example/token?secret=1"
+    const namedController = new AbortController()
+    namedController.abort(named)
+    await expect(fetch(`http://127.0.0.1:${String(server.port)}/named`, { signal: namedController.signal })).rejects
+      .toBeTruthy()
     server.server.close()
     expect(headerValues(raw.rawHeaders, "authorization")).toEqual([])
     expect(spans[0]?.attributes["http.url"]).toBe(`http://127.0.0.1:${String(server.port)}/fetch`)
-    const failed = spans.at(-1)
+    const failed = spans.at(-2)
+    const namedFailure = spans.at(-1)
     expect(failed?.exceptions).toEqual([])
     expect(failed?.status?.message).toBe("Client request failed")
     expect(JSON.stringify(failed?.status)).not.toContain("secret")
     expect(JSON.stringify(failed?.attributes)).not.toContain("secret")
+    expect(namedFailure?.attributes["error.type"]).toBe("Error")
+    expect(JSON.stringify(namedFailure?.attributes)).not.toContain("secret")
   })
 })
