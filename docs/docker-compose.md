@@ -132,8 +132,10 @@ skips the browser login) for manual testing.
 Local OpenTelemetry + Grafana is **opt-in**. Default
 `docker compose up -d --wait redis keycloak` does **not** start it.
 
-Pinned image: `grafana/otel-lgtm:0.35.0` (digest pinned in `compose.yaml`).
+Pinned image: `grafana/otel-lgtm:0.37.0` (digest pinned in `compose.yaml`).
 Compose service name: **`otel-lgtm`**. Compose profile: **`observability`**.
+The image runs Grafana plus Tempo, Loki, and Prometheus. The frontend exports
+traces only; empty Loki or Prometheus data is not application evidence.
 
 | Host binding     | Container | Purpose                            |
 | ---------------- | --------- | ---------------------------------- |
@@ -171,7 +173,9 @@ docker compose --profile observability stop otel-lgtm
 Do **not** run bare `docker compose --profile observability stop` (that can
 stop other enabled project services).
 
-App instrumentation and env vars: [observability.md](./observability.md).
+App instrumentation, the read-only Grafana MCP server, and agent query steps:
+[observability.md](./observability.md). The canonical server file is
+[`.mcp.json`](../.mcp.json).
 
 ## Postgres and Flyway
 
@@ -247,9 +251,10 @@ Use volume deletion only to reset a local disposable environment. Flyway
    `curl -sS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8080/realms/pre-ets/.well-known/openid-configuration`
    (expect `200`).
 2. Copy `packages/frontend/.env.example` to `.env.local` if needed; set
-   `REDIS_URL`, generate `SESSION_SIGNING_SECRET`, and keep the example
-   **static** tenant JSON (issuer `http://127.0.0.1:8080/realms/pre-ets`,
-   client `springfield-web`).
+   `REDIS_URL` and distinct owned `SESSION_KEY_PREFIX` / `OIDC_TX_KEY_PREFIX`
+   values, and keep the example **static** tenant JSON (issuer
+   `http://127.0.0.1:8080/realms/pre-ets`, client `springfield-web`). The session
+   reference is an opaque random lookup value; there is no signing secret to generate.
 3. Run `pnpm dev:frontend` and open `http://localhost:3000/` — you should land
    on the Keycloak login form (`demo` / `demo`). For two-tenant host checks,
    switch `TENANT_RESOLUTION=host` and use `*.localhost` hosts from

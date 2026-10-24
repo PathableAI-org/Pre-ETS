@@ -1,8 +1,8 @@
 # Idea Assessment Pipeline Extension
 
-A five-stage assessment pipeline for Spec Kit that turns **any idea** into a defensible **go / needs-clarification / kill** decision _before_ it enters Spec-Driven Development. It is the missing **discovery track** that sits in front of the SDD **delivery track** (`specify → clarify → plan → tasks → analyze → implement`).
+A five-stage assessment pipeline for Spec Kit that turns **any idea** into a defensible **go / needs-clarification / kill** decision *before* it enters Spec-Driven Development. It is the missing **discovery track** that sits in front of the SDD **delivery track** (`specify → clarify → plan → tasks → analyze → implement`).
 
-Discovery answers _"is this worth building?"_ Delivery answers _"how do we build it?"_ Only ideas that survive assessment hand off to `/speckit.specify`.
+Discovery answers *"is this worth building?"* Delivery answers *"how do we build it?"* Only ideas that survive assessment hand off to `/speckit.specify`.
 
 ## Overview
 
@@ -26,18 +26,19 @@ flowchart LR
     A[intake] --> R[research] --> D[define] --> S[shape] --> C{decide}
     C -->|go| SPEC[/speckit.specify/]
     C -->|kill| X[closed, recorded]
-    C -.->|needs-clarification: revisit the named earlier stage| A
+    C -.->|needs-clarification| F[refine named artifact in place]
+    F -.->|then revise decision.md| C
 ```
 
 ## Commands
 
-| Command                   | Stage                                                                                  | Output        |
-| ------------------------- | -------------------------------------------------------------------------------------- | ------------- |
-| `speckit.assess.intake`   | Capture & normalize a raw idea (text, URL, ticket, or codebase pointer).               | `intake.md`   |
-| `speckit.assess.research` | Gather users/market/prior-art/data evidence — and evidence _against_ the idea.         | `research.md` |
-| `speckit.assess.define`   | Define the problem: users, goals, non-goals, success metrics, cost of inaction.        | `problem.md`  |
-| `speckit.assess.shape`    | Shape 2–3 concept-level options with appetite and trade-offs; recommend one (or none). | `concept.md`  |
-| `speckit.assess.decide`   | Score against criteria and render the verdict; hand `go` ideas to `/speckit.specify`.  | `decision.md` |
+| Command | Stage | Output |
+|---------|-------|--------|
+| `speckit.assess.intake` | Capture & normalize a raw idea (text, URL, ticket, or codebase pointer). | `intake.md` |
+| `speckit.assess.research` | Gather users/market/prior-art/data evidence — and evidence *against* the idea. | `research.md` |
+| `speckit.assess.define` | Define the problem: users, goals, non-goals, success metrics, cost of inaction. | `problem.md` |
+| `speckit.assess.shape` | Shape 2–3 concept-level options with appetite and trade-offs; recommend one (or none). | `concept.md` |
+| `speckit.assess.decide` | Score against criteria and render the verdict; hand `go` ideas to `/speckit.specify`. | `decision.md` |
 
 Stages are meant to run in order but are not rigidly gated:
 
@@ -45,9 +46,30 @@ Stages are meant to run in order but are not rigidly gated:
 - `shape` requires `problem.md`.
 - `decide` requires `problem.md`; a `go` verdict expects `concept.md` (otherwise it is downgraded to `needs-clarification`).
 
+## Resolving clarifications
+
+The normal process is sequential and each command usually runs **once**:
+
+```text
+intake → research → define → shape → decide
+```
+
+Each stage writes a Markdown artifact under `.specify/assessments/<slug>/`. Those files stay editable. The commands keep their existing output templates: they do not rewrite an earlier artifact or perform that refinement themselves. `[NEEDS CLARIFICATION: …]` markers are gaps in the artifact, not a signal to regenerate the whole stage from scratch.
+
+Resolve them by refining the existing file:
+
+1. **Edit the Markdown directly** (fill in the missing metric, owner, constraint, and so on), or
+2. **Ask the agent in free-form chat** to incorporate the missing information into that artifact.
+
+Then ask whether the new information clears the blocker and to update any downstream wording that depended on it. That includes `decision.md`: you can supply the missing facts and ask the agent to revise the scorecard, rationale, verdict, or handoff. That is artifact refinement, not command iteration.
+
+When you add evidence, keep the source and confidence tags the research stage already uses (`ASSUMPTION` vs cited claims). Do not invent citations.
+
+Rerunning an earlier `speckit.assess.*` command is the exception (for example after a wrong slug or a discarded draft), not the default path for answering clarification markers.
+
 ## Slug Conventions
 
-A _slug_ is the per-idea directory name under `.specify/assessments/`. It is the handle all five commands share.
+A *slug* is the per-idea directory name under `.specify/assessments/`. It is the handle all five commands share.
 
 - **User-provided**: normalized to lowercase kebab-case (e.g. `offline-mode`, `cut-onboarding-friction`). Preserved verbatim after normalization — no timestamps or numbers appended.
 - **Asked for**: in interactive use, `speckit.assess.intake` asks for a slug when none is supplied, suggesting a kebab-case default derived from the idea.
@@ -95,7 +117,7 @@ specify extension enable assess
 
 - Only `speckit.assess.*` commands write, and only inside `.specify/assessments/<slug>/`. **None of them modify source code** — solution design and implementation belong to the SDD lifecycle (`/speckit.specify` onward).
 - Web content fetched during `intake`/`research` is treated as untrusted data, governed by an explicit URL Trust Policy (allowlisted public sources fetched freely; unknown hosts prompted or skipped; loopback/RFC1918/metadata endpoints refused).
-- Evidence is never over-claimed: unsourced statements are tagged `ASSUMPTION`, and `research.md` always includes an _Evidence Against the Idea_ section.
+- Evidence is never over-claimed: unsourced statements are tagged `ASSUMPTION`, and `research.md` always includes an *Evidence Against the Idea* section.
 - Verdicts are never over-claimed: a `go` requires a valid problem, `adequate`+ evidence (never weak/unknown), and a shaped concept; otherwise the honest verdict is `needs-clarification`.
 - Slugs are normalized to `[a-z0-9-]` and an empty result is rejected; before any read or write, each command also rejects symlinked path components and verifies the resolved path stays inside the project root — so an assessment can never escape `.specify/assessments/`, even in a crafted or cloned project.
 - No command overwrites an existing artifact without confirmation; in automated mode it refuses.

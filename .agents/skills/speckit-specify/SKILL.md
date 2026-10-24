@@ -1,11 +1,103 @@
 ---
-name: "speckit-specify"
-description: "Create or update the feature specification from a natural language feature description."
-compatibility: "Requires spec-kit project structure with .specify/ directory"
+name: speckit-specify
+description: Create or update the feature specification from a natural language feature
+  description.
+compatibility: Requires spec-kit project structure with .specify/ directory
 metadata:
-  author: "github-spec-kit"
-  source: "templates/commands/specify.md"
+  author: github-spec-kit
+  source: preset:pre-ets-specification-planning
 ---
+
+# Speckit Specify Skill
+
+# Pre-ETS specification authority and verification
+
+Apply this project workflow before and while executing the wrapped command.
+
+Whenever the wrapped workflow resolves `spec-template`, use
+`uv run --with pyyaml==6.0.3 -- .specify/scripts/bash/resolve-template.sh spec-template --json`
+and parse `TEMPLATE_CONTENT`. Do not invoke the Bash resolver outside that isolated
+runtime; preset composition requires PyYAML that may not exist in the system Python.
+
+## Intake gate — complete before creating feature artifacts
+
+1. Require the input to identify exactly one GitHub delivery issue. Treat a bare issue
+   number or repository issue URL as sufficient identification. If no issue is
+   identifiable, stop and request it; do not create a feature from an unauthoritative
+   prose summary.
+2. Read the issue without modifying it. Locate its originating reviewed delivery-plan
+   slice and every accepted requirement and acceptance criterion it cites.
+3. Read requirement files from the current `origin/main` tree. If that baseline or the
+   issue is unavailable, report the access limitation and stop rather than assuming
+   approval or reconstructing scope from a feature branch.
+4. Read the requirement Verification Plan and Observability sections, applicable
+   approved architecture, `docs/requirements/README.md`, `docs/delivery/README.md`,
+   `docs/engineering/testing/README.md`, and the project constitution.
+5. Confirm that the issue represents one authorized delivery slice with sufficiently
+   clear behavior, scope, dependencies, and feasible evidence. Code and historical
+   Spec Kit artifacts are context, not product-contract authorities.
+
+Requirements on `origin/main`, the reviewed delivery plan, and the delivery issue are
+read-only inputs. Do not edit them, update the issue, broaden its scope, or make a new
+product decision. When a material ambiguity, contradiction, missing product decision,
+or unauthorized expansion blocks the specification, stop the affected work and report:
+
+1. authoritative source;
+2. ambiguity or conflict;
+3. impact;
+4. decision required;
+5. possible resolutions labelled as proposals.
+
+This authority rule overrides any wrapped instruction to make an informed guess about
+product behavior, delivery scope, security/privacy policy, acceptance expectations, or
+requirement meaning. Reasonable wording choices that preserve the authorized contract
+may be resolved directly. Technical architecture belongs to planning.
+
+## Specification perspective
+
+Write from the perspective of an external stakeholder approving observable
+expectations. Required HTTP behavior, cookie properties, isolation guarantees,
+accessibility outcomes, confidentiality constraints, and operational obligations are
+appropriate when the authoritative sources require them. Do not introduce module
+interfaces, services, dependency injection, internal algorithms, files, libraries, or
+runtime composition.
+
+Preserve one delivery issue to one Spec Kit feature. In `spec.md`, complete the appended
+Delivery Authority and Scope section with exact repository links or revision-qualified
+references and requirement IDs. Do not treat Spec Kit functional-requirement IDs as a
+replacement authority for the durable requirements register.
+
+## Feature verification design
+
+After `spec.md` is coherent, run
+`uv run --with pyyaml==6.0.3 -- .specify/scripts/bash/resolve-template.sh verification-template --json`, use the
+returned content to create `verification.md` beside `spec.md`, and complete it from the
+approved feature contract. Verification design is implementation-independent and must:
+
+- map each claim to its authoritative requirement criterion or delivery-issue scope;
+- identify observable outcomes and meaningful possible violations;
+- select automated behavioral evidence, including requirements-backed BDD only where
+  the accepted `origin/main` requirements support the assertions;
+- include a non-empty, agent-executable manual feature procedure for every feature;
+- include operational observability verification where obligations apply, using manual
+  inspection or temporary probes rather than durable telemetry-output tests;
+- name environment prerequisites, evidence to retain, cleanup, limitations, and claims
+  that remain incomplete;
+- label all content as planned evidence until a later execution record supplies actual
+  observations.
+
+Manual verification must add a distinct observation rather than mechanically duplicate
+automated scenarios. It may use Playwright, Grafana, or other available integration
+tools. Do not claim tool availability or successful execution during specification.
+
+## Pre-ETS readiness gate
+
+Extend the specification checklist to confirm that authority and scope are traceable,
+`verification.md` is complete, manual feature verification is executable, planned and
+executed evidence are distinguished, and no architectural decisions leaked into the
+contract. The feature is ready for clarification or planning only when both `spec.md`
+and `verification.md` pass this gate. Report both paths in the completion summary.
+
 
 ## User Input
 
@@ -18,10 +110,9 @@ You **MUST** consider the user input before proceeding (if not empty).
 ## Pre-Execution Checks
 
 **Check for extension hooks (before specification)**:
-
 - Check if `.specify/extensions.yml` exists in the project root.
 - If it exists, read it and look for entries under the `hooks.before_specify` key
-- If the YAML cannot be parsed or is invalid, skip hook checking silently and continue normally
+- If the YAML cannot be parsed or is invalid, do not skip silently: tell the user that `.specify/extensions.yml` could not be read (include the parser error) and that no hooks were checked, including any mandatory (`optional: false`) hooks registered there, then continue normally
 - Filter out hooks where `enabled` is explicitly `false`. Treat hooks without an `enabled` field as enabled by default.
 - For each remaining hook, do **not** attempt to interpret or evaluate hook `condition` expressions:
   - If the hook has no `condition` field, or it is null/empty, treat the hook as executable
@@ -114,29 +205,29 @@ Given that feature description, do this:
 5. **IF EXISTS**: Load `.specify/memory/constitution.md` for project principles and governance constraints.
 
 6. Follow this execution flow:
-   1. Parse user description from arguments
-      If empty: ERROR "No feature description provided"
-   2. Extract key concepts from description
-      Identify: actors, actions, data, constraints
-   3. For unclear aspects:
-      - Make informed guesses based on context and industry standards
-      - Only mark with [NEEDS CLARIFICATION: specific question] if:
-        - The choice significantly impacts feature scope or user experience
-        - Multiple reasonable interpretations exist with different implications
-        - No reasonable default exists
-      - **LIMIT: Maximum 3 [NEEDS CLARIFICATION] markers total**
-      - Prioritize clarifications by impact: scope > security/privacy > user experience > technical details
-   4. Fill User Scenarios & Testing section
-      If no clear user flow: ERROR "Cannot determine user scenarios"
-   5. Generate Functional Requirements
-      Each requirement must be testable
-      Use reasonable defaults for unspecified details (document assumptions in Assumptions section)
-   6. Define Success Criteria
-      Create measurable, technology-agnostic outcomes
-      Include both quantitative metrics (time, performance, volume) and qualitative measures (user satisfaction, task completion)
-      Each criterion must be verifiable without implementation details
-   7. Identify Key Entities (if data involved)
-   8. Return: SUCCESS (spec ready for planning)
+    1. Parse user description from arguments
+       If empty: ERROR "No feature description provided"
+    2. Extract key concepts from description
+       Identify: actors, actions, data, constraints
+    3. For unclear aspects:
+       - Make informed guesses based on context and industry standards
+       - Only mark with [NEEDS CLARIFICATION: specific question] if:
+         - The choice significantly impacts feature scope or user experience
+         - Multiple reasonable interpretations exist with different implications
+         - No reasonable default exists
+       - **LIMIT: Maximum 3 [NEEDS CLARIFICATION] markers total**
+       - Prioritize clarifications by impact: scope > security/privacy > user experience > technical details
+    4. Fill User Scenarios & Testing section
+       If no clear user flow: ERROR "Cannot determine user scenarios"
+    5. Generate Functional Requirements
+       Each requirement must be testable
+       Use reasonable defaults for unspecified details (document assumptions in Assumptions section)
+    6. Define Success Criteria
+       Create measurable, technology-agnostic outcomes
+       Include both quantitative metrics (time, performance, volume) and qualitative measures (user satisfaction, task completion)
+       Each criterion must be verifiable without implementation details
+    7. Identify Key Entities (if data involved)
+    8. Return: SUCCESS (spec ready for planning)
 
 7. Write the specification to SPEC_FILE using the template structure, replacing placeholders with concrete details derived from the feature description (arguments) while preserving section order and headings.
 
@@ -144,91 +235,91 @@ Given that feature description, do this:
 
    a. **Create Spec Quality Checklist**: Generate a checklist file at `SPECIFY_FEATURE_DIRECTORY/checklists/requirements.md` using the checklist template structure with these validation items:
 
-   ```markdown
-   # Specification Quality Checklist: [FEATURE NAME]
+      ```markdown
+      # Specification Quality Checklist: [FEATURE NAME]
 
-   **Purpose**: Validate specification completeness and quality before proceeding to planning
-   **Created**: [DATE]
-   **Feature**: [Link to spec.md]
+      **Purpose**: Validate specification completeness and quality before proceeding to planning
+      **Created**: [DATE]
+      **Feature**: [Link to spec.md]
 
-   ## Content Quality
+      ## Content Quality
 
-   - [ ] No implementation details (languages, frameworks, APIs)
-   - [ ] Focused on user value and business needs
-   - [ ] Written for non-technical stakeholders
-   - [ ] All mandatory sections completed
+      - [ ] No implementation details (languages, frameworks, APIs)
+      - [ ] Focused on user value and business needs
+      - [ ] Written for non-technical stakeholders
+      - [ ] All mandatory sections completed
 
-   ## Requirement Completeness
+      ## Requirement Completeness
 
-   - [ ] No [NEEDS CLARIFICATION] markers remain
-   - [ ] Requirements are testable and unambiguous
-   - [ ] Success criteria are measurable
-   - [ ] Success criteria are technology-agnostic (no implementation details)
-   - [ ] All acceptance scenarios are defined
-   - [ ] Edge cases are identified
-   - [ ] Scope is clearly bounded
-   - [ ] Dependencies and assumptions identified
+      - [ ] No [NEEDS CLARIFICATION] markers remain
+      - [ ] Requirements are testable and unambiguous
+      - [ ] Success criteria are measurable
+      - [ ] Success criteria are technology-agnostic (no implementation details)
+      - [ ] All acceptance scenarios are defined
+      - [ ] Edge cases are identified
+      - [ ] Scope is clearly bounded
+      - [ ] Dependencies and assumptions identified
 
-   ## Feature Readiness
+      ## Feature Readiness
 
-   - [ ] All functional requirements have clear acceptance criteria
-   - [ ] User scenarios cover primary flows
-   - [ ] Feature meets measurable outcomes defined in Success Criteria
-   - [ ] No implementation details leak into specification
+      - [ ] All functional requirements have clear acceptance criteria
+      - [ ] User scenarios cover primary flows
+      - [ ] Feature meets measurable outcomes defined in Success Criteria
+      - [ ] No implementation details leak into specification
 
-   ## Notes
+      ## Notes
 
-   - Items marked incomplete require spec updates before `$speckit-clarify` or `$speckit-plan`
-   ```
+      - Items marked incomplete require spec updates before `$speckit-clarify` or `$speckit-plan`
+      ```
 
    b. **Run Validation Check**: Review the spec against each checklist item:
-   - For each item, determine if it passes or fails
-   - Document specific issues found (quote relevant spec sections)
+      - For each item, determine if it passes or fails
+      - Document specific issues found (quote relevant spec sections)
 
    c. **Handle Validation Results**:
 
-   - **If all items pass**: Mark checklist complete and proceed to the Mandatory Post-Execution Hooks section
+      - **If all items pass**: Mark checklist complete and proceed to the Mandatory Post-Execution Hooks section
 
-   - **If items fail (excluding [NEEDS CLARIFICATION])**:
-     1. List the failing items and specific issues
-     2. Update the spec to address each issue
-     3. Re-run validation until all items pass (max 3 iterations)
-     4. If still failing after 3 iterations, document remaining issues in checklist notes and warn user
+      - **If items fail (excluding [NEEDS CLARIFICATION])**:
+        1. List the failing items and specific issues
+        2. Update the spec to address each issue
+        3. Re-run validation until all items pass (max 3 iterations)
+        4. If still failing after 3 iterations, document remaining issues in checklist notes and warn user
 
-   - **If [NEEDS CLARIFICATION] markers remain**:
-     1. Extract all [NEEDS CLARIFICATION: ...] markers from the spec
-     2. **LIMIT CHECK**: If more than 3 markers exist, keep only the 3 most critical (by scope/security/UX impact) and make informed guesses for the rest
-     3. For each clarification needed (max 3), present options to user in this format:
+      - **If [NEEDS CLARIFICATION] markers remain**:
+        1. Extract all [NEEDS CLARIFICATION: ...] markers from the spec
+        2. **LIMIT CHECK**: If more than 3 markers exist, keep only the 3 most critical (by scope/security/UX impact) and make informed guesses for the rest
+        3. For each clarification needed (max 3), present options to user in this format:
 
-        ```markdown
-        ## Question [N]: [Topic]
+           ```markdown
+           ## Question [N]: [Topic]
 
-        **Context**: [Quote relevant spec section]
+           **Context**: [Quote relevant spec section]
 
-        **What we need to know**: [Specific question from NEEDS CLARIFICATION marker]
+           **What we need to know**: [Specific question from NEEDS CLARIFICATION marker]
 
-        **Suggested Answers**:
+           **Suggested Answers**:
 
-        | Option | Answer                    | Implications                          |
-        | ------ | ------------------------- | ------------------------------------- |
-        | A      | [First suggested answer]  | [What this means for the feature]     |
-        | B      | [Second suggested answer] | [What this means for the feature]     |
-        | C      | [Third suggested answer]  | [What this means for the feature]     |
-        | Custom | Provide your own answer   | [Explain how to provide custom input] |
+           | Option | Answer | Implications |
+           |--------|--------|--------------|
+           | A      | [First suggested answer] | [What this means for the feature] |
+           | B      | [Second suggested answer] | [What this means for the feature] |
+           | C      | [Third suggested answer] | [What this means for the feature] |
+           | Custom | Provide your own answer | [Explain how to provide custom input] |
 
-        **Your choice**: _[Wait for user response]_
-        ```
+           **Your choice**: _[Wait for user response]_
+           ```
 
-     4. **CRITICAL - Table Formatting**: Ensure markdown tables are properly formatted:
-        - Use consistent spacing with pipes aligned
-        - Each cell should have spaces around content: `| Content |` not `|Content|`
-        - Header separator must have at least 3 dashes: `|--------|`
-        - Test that the table renders correctly in markdown preview
-     5. Number questions sequentially (Q1, Q2, Q3 - max 3 total)
-     6. Present all questions together before waiting for responses
-     7. Wait for user to respond with their choices for all questions (e.g., "Q1: A, Q2: Custom - [details], Q3: B")
-     8. Update the spec by replacing each [NEEDS CLARIFICATION] marker with the user's selected or provided answer
-     9. Re-run validation after all clarifications are resolved
+        4. **CRITICAL - Table Formatting**: Ensure markdown tables are properly formatted:
+           - Use consistent spacing with pipes aligned
+           - Each cell should have spaces around content: `| Content |` not `|Content|`
+           - Header separator must have at least 3 dashes: `|--------|`
+           - Test that the table renders correctly in markdown preview
+        5. Number questions sequentially (Q1, Q2, Q3 - max 3 total)
+        6. Present all questions together before waiting for responses
+        7. Wait for user to respond with their choices for all questions (e.g., "Q1: A, Q2: Custom - [details], Q3: B")
+        8. Update the spec by replacing each [NEEDS CLARIFICATION] marker with the user's selected or provided answer
+        9. Re-run validation after all clarifications are resolved
 
    d. **Update Checklist**: After each validation iteration, update the checklist file with current pass/fail status
 
@@ -237,10 +328,9 @@ Given that feature description, do this:
 **You MUST complete this section before reporting completion to the user.**
 
 Check if `.specify/extensions.yml` exists in the project root.
-
 - If it does not exist, or no hooks are registered under `hooks.after_specify`, skip to the Completion Report.
 - If it exists, read it and look for entries under the `hooks.after_specify` key.
-- If the YAML cannot be parsed or is invalid, skip hook checking silently and continue to the Completion Report.
+- If the YAML cannot be parsed or is invalid, do not skip silently: tell the user that `.specify/extensions.yml` could not be read (include the parser error) and that no hooks were checked, including any mandatory (`optional: false`) hooks registered there, then continue to the Completion Report.
 - Filter out hooks where `enabled` is explicitly `false`. Treat hooks without an `enabled` field as enabled by default.
 - For each remaining hook, do **not** attempt to interpret or evaluate hook `condition` expressions:
   - If the hook has no `condition` field, or it is null/empty, treat the hook as executable
@@ -271,7 +361,6 @@ Check if `.specify/extensions.yml` exists in the project root.
 ## Completion Report
 
 Report completion to the user with:
-
 - `SPECIFY_FEATURE_DIRECTORY` — the feature directory path
 - `SPEC_FILE` — the spec file path
 - Checklist results summary
@@ -345,3 +434,12 @@ Success criteria must be:
 - [ ] Specification written to `SPEC_FILE` and validated against quality checklist
 - [ ] Extension hooks dispatched or skipped according to the rules in Mandatory Post-Execution Hooks above
 - [ ] Completion reported to user with feature directory, spec file path, and checklist results
+
+
+## Pre-ETS completion rule
+
+Do not report the specification ready for planning when a blocking authority finding is
+open, an accepted criterion lacks a disposition, `verification.md` is absent, or the
+standard manual feature procedure is not meaningful and executable. Follow
+`docs/engineering/git-workflow.md`: `$speckit-stack` opens the specification pull
+request, and planning waits for that branch to be the plan's base.

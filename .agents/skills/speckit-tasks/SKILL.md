@@ -1,11 +1,68 @@
 ---
-name: "speckit-tasks"
-description: "Generate an actionable, dependency-ordered tasks.md for the feature based on available design artifacts."
-compatibility: "Requires spec-kit project structure with .specify/ directory"
+name: speckit-tasks
+description: Generate an actionable, dependency-ordered tasks.md for the feature based
+  on available design artifacts.
+compatibility: Requires spec-kit project structure with .specify/ directory
 metadata:
-  author: "github-spec-kit"
-  source: "templates/commands/tasks.md"
+  author: github-spec-kit
+  source: preset:pre-ets-specification-planning
 ---
+
+# Speckit Tasks Skill
+
+# Pre-ETS contract- and evidence-driven tasks
+
+Apply these rules throughout the wrapped task-generation workflow.
+
+When the wrapped workflow performs setup, run
+`uv run --with pyyaml==6.0.3 -- .specify/scripts/bash/setup-tasks.sh --json` instead of invoking
+the Bash script directly. Preset-aware tasks-template composition requires PyYAML that
+may not exist in the system Python.
+
+Load `verification.md` and `contracts/modules.md` as required inputs in addition to the
+wrapped documents. If either is missing, incomplete, or inconsistent with `spec.md` and
+`plan.md`, stop and return the work to specification or planning rather than inventing
+the missing contract in `tasks.md`.
+
+Requirements, delivery plans, and GitHub issues remain read-only authorities. Tasks may
+implement the authorized slice and record evidence, but must not edit or synchronize
+those source artifacts. A newly discovered product or scope decision is a blocker or a
+proposal for its owning workflow, not an implementation task.
+
+The wrapped rule that test tasks are optional is satisfied here by the approved
+`verification.md`: generate the durable, manual, transient, BDD, integration, and
+observability tasks it actually requires. Do not manufacture one test per operation or
+force a fixed suite. Do not omit evidence merely because the core template calls tests
+optional.
+
+## Task ordering
+
+Preserve independently deliverable user-story phases, but order work inside the real
+dependency graph:
+
+1. Baseline and declaration inspection needed to validate planned APIs.
+2. Shared module boundaries and public contracts that genuinely block several stories.
+3. Within each story: establish its public contract and consumer-facing evidence before
+   private implementation, then implement private children/composition, integrate
+   framework adapters, and execute the applicable feature verification.
+4. Cross-cutting completion: agent-executable manual feature verification, required
+   transient or operational inspection, quality gates, cleanup, and evidence recording.
+
+Each task must name exact paths and cite the contract, invariant, feature claim, or
+verification procedure it realizes. Carry exact public signatures and important semantic
+constraints from `contracts/modules.md`; do not defer them to implementation-time
+discretion. Use the public parent in tests and consumers, never private descendants.
+
+Evidence tasks must distinguish planned procedures from execution records. Temporary
+probes require setup and cleanup and must explicitly avoid committing generated output,
+temporary instrumentation, transcripts containing sensitive data, or credentials.
+Observability tasks inspect real logs/exported OTel data manually or transiently; do not
+add durable assertions over log, span, attribute, telemetry-payload, or exporter output.
+
+Do not create generic setup, logging, security-hardening, or documentation tasks unless
+the feature plan names a concrete obligation. Do not label work parallel when it depends
+on an unfinished public contract, shares a file, or consumes an incomplete capability.
+
 
 ## User Input
 
@@ -18,10 +75,9 @@ You **MUST** consider the user input before proceeding (if not empty).
 ## Pre-Execution Checks
 
 **Check for extension hooks (before tasks generation)**:
-
 - Check if `.specify/extensions.yml` exists in the project root.
 - If it exists, read it and look for entries under the `hooks.before_tasks` key
-- If the YAML cannot be parsed or is invalid, skip hook checking silently and continue normally
+- If the YAML cannot be parsed or is invalid, do not skip silently: tell the user that `.specify/extensions.yml` could not be read (include the parser error) and that no hooks were checked, including any mandatory (`optional: false`) hooks registered there, then continue normally
 - Filter out hooks where `enabled` is explicitly `false`. Treat hooks without an `enabled` field as enabled by default.
 - For each remaining hook, do **not** attempt to interpret or evaluate hook `condition` expressions:
   - If the hook has no `condition` field, or it is null/empty, treat the hook as executable
@@ -91,10 +147,9 @@ You **MUST** consider the user input before proceeding (if not empty).
 **You MUST complete this section before reporting completion to the user.**
 
 Check if `.specify/extensions.yml` exists in the project root.
-
 - If it does not exist, or no hooks are registered under `hooks.after_tasks`, skip to the Completion Report.
 - If it exists, read it and look for entries under the `hooks.after_tasks` key.
-- If the YAML cannot be parsed or is invalid, skip hook checking silently and continue to the Completion Report.
+- If the YAML cannot be parsed or is invalid, do not skip silently: tell the user that `.specify/extensions.yml` could not be read (include the parser error) and that no hooks were checked, including any mandatory (`optional: false`) hooks registered there, then continue to the Completion Report.
 - Filter out hooks where `enabled` is explicitly `false`. Treat hooks without an `enabled` field as enabled by default.
 - For each remaining hook, do **not** attempt to interpret or evaluate hook `condition` expressions:
   - If the hook has no `condition` field, or it is null/empty, treat the hook as executable
@@ -125,7 +180,6 @@ Check if `.specify/extensions.yml` exists in the project root.
 ## Completion Report
 
 Output path to generated tasks.md and summary:
-
 - Total task count
 - Task count per user story
 - Parallel opportunities identified
@@ -215,3 +269,13 @@ Every task MUST strictly follow this format:
 - [ ] tasks.md generated with all phases, task IDs, and file paths
 - [ ] Extension hooks dispatched or skipped according to the rules in Mandatory Post-Execution Hooks above
 - [ ] Completion reported to user with task count, story breakdown, and MVP scope
+
+
+## Pre-ETS completion rule
+
+Before reporting completion, trace every feature verification claim and affected module
+contract to implementation and/or evidence tasks, identify intentionally reused existing
+evidence, and list any approved limitation. A checklist-shaped task list is not complete
+when it omits standard manual feature verification or sequences implementation before
+the contract it implements. Generate `tasks.md` on the implementation branch described in
+`docs/engineering/git-workflow.md`. Do not add it to the engineering-plan branch.

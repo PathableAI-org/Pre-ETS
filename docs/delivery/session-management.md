@@ -55,9 +55,9 @@ No session behavioral suite was executed or assessed as satisfaction evidence.
   guards, activity/logout, browser coordination, and recovery components are absent. The
   [callback page](../../packages/frontend/src/app/auth/callback/page.tsx) is a fallback. The current runtime has
   no server-only OIDC secrets provider; S1 must establish one if the selected integration requires secrets.
-- [Redis/Keycloak Compose services](../../compose.yaml), the local realm, Playwright configuration, and tenant
-  fixtures remain useful setup. They do not supply an application integration or session evidence. The
-  [E2E guide](../../e2e/README.md) confirms no browser specs; active requirements BDD covers tenant behavior.
+- [Redis/Keycloak Compose services](../../compose.yaml), the local realm, Playwright library, and tenant
+  fixtures remain useful setup. They do not supply an application integration or session evidence. Active
+  requirements BDD covers tenant behavior.
   Establish session evidence at the slice that first needs it, then extend those fixtures.
 - Tenant issues [#117](https://github.com/PathableAI-org/Pre-ETS/issues/117), [#118](https://github.com/PathableAI-org/Pre-ETS/issues/118), and
   [#119](https://github.com/PathableAI-org/Pre-ETS/issues/119) are closed. Reuse current tenant selection and failure mappings. Closure does not

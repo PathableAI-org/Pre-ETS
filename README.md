@@ -120,21 +120,23 @@ for inspection, persistence, and reset commands.
 The root asks the session-presence service before tenant lookup and redirects to
 `/auth/login`. That public page resolves the tenant and prepares an OIDC code request
 with PKCE, state, nonce and `max_age=0`, then redirects to the selected provider.
-Start Keycloak for the tracked synthetic tenant fixtures:
+Start Redis and Keycloak for the tracked synthetic tenant fixtures:
 
 ```sh
-docker compose up -d --wait keycloak
+docker compose up -d --wait redis keycloak
 curl --fail http://127.0.0.1:8080/realms/pre-ets/.well-known/openid-configuration
 ```
 
 Set `OIDC_CALLBACK_ORIGINS_JSON` and the local-only
 `OIDC_ALLOW_INSECURE_LOOPBACK=true` in the frontend environment as described in
 [authentication](docs/authentication.md). Then run `pnpm dev:frontend` and open
-`http://localhost:3000/`. The callback remains a denying fallback: this increment
-creates no recoverable attempt, application cookie or authenticated session. Redis
-is not used by initiation. Public diagnostics and the development preview remain
-usable without the provider. Requirements BDD needs the real Keycloak realm running;
-its main-only nightly/manual job provisions an owned provider after building.
+`http://localhost:3000/`. Login stores a bounded, one-time recovery attempt in Redis
+before redirect and writes only an opaque callback-path correlation cookie. A validated
+callback returns an empty 204 and clears correlation; it still creates no authenticated
+application session or protected access. Public diagnostics and the development preview
+remain independent of provider availability, but production frontend readiness now
+requires Redis. Requirements BDD needs both Redis and the real Keycloak realm; its
+main-only nightly/manual job provisions both dependencies after building.
 
 Optional local OpenTelemetry + Grafana uses Compose profile `observability`
 (service `otel-lgtm`); see [observability](docs/observability.md).
@@ -261,12 +263,12 @@ and failing if any scope fails. Each workspace owns its `.fallowrc.json` and loc
 `pnpm --filter @pathableai/pre-ets-frontend fallow:unused`.
 
 The root configuration excludes `packages/**` and owns repository-level tests,
-E2E/BDD support, and tooling. The backend configuration uses `src/main.ts` as its
+BDD support, and tooling. The backend configuration uses `src/main.ts` as its
 runtime root and follows its import of the `src/index.ts` application routes.
 Frontend production code counts as live only when reachable from
 Next.js framework entry points, including routes, layouts, proxy, and instrumentation.
 Library files, ordinary helpers under `app`, and server-action modules must be
-imported by reachable app code. Imports from unit tests or repository E2E/BDD
+imported by reachable app code. Imports from unit tests or repository BDD
 fixtures do not establish frontend production liveness.
 
 Frontend production mode applies only to dead-code analysis, so audit health and
@@ -304,10 +306,16 @@ Non-major ESLint updates include TypeScript, `typescript-eslint`, ESLint plugins
 and `globals` so the compiler and lint integrations can be reviewed together.
 The `typescript-eslint` umbrella package owns its matching parser and plugin
 versions. dprint and its plugins, Prettier and its plugins, and Git hook tooling
-have separate update groups. OpenTelemetry SDKs, instrumentation, semantic
-conventions, and the Next.js integration form a coordinated runtime group;
-`@effect/opentelemetry` remains in the Effect group. React/Next and Vite/Vitest
-retain their existing groups, including Vitest companion packages.
+have separate update groups. OpenTelemetry API, SDK, experimental packages,
+instrumentation, and semantic conventions share one group, including majors, so
+a single release line is updated together. `@effect/opentelemetry` remains in
+the Effect group. Version ceilings keep that group inside the installed
+wrapper's peer ranges: `@opentelemetry/api` below 1.10.0, experimental packages
+below 0.300.0, the stable SDK below 3.0.0, and semantic conventions below 2.0.0.
+Remove the ceilings in the change that adopts a wrapper whose peers accept the
+next SDK, once the frontend no longer depends on `@opentelemetry/sdk-trace-base`,
+`sdk-trace-node`, or `sdk-trace-web`. React/Next and Vite/Vitest retain their existing
+groups, including Vitest companion packages.
 
 Node types remain declared at the root and grouped with the Node runtime. Keep
 the types major aligned with the supported runtime. A catalog does not constrain
@@ -441,7 +449,7 @@ and `workflow_dispatch` always run the full work for those three workflows.
 successful build, the smoke check still runs if requirements scenarios fail, unless the job
 is cancelled. A failure in either suite fails the job. It runs only on `main`, without path
 filtering, and preserves runtime reports and failure diagnostics. There is no CI dry-run job.
-See [BDD commands and evidence](features/README.md). Sign-in browser specs are described in `e2e/README.md`.
+See [BDD commands and evidence](features/README.md).
 
 CI uses the pinned Node and pnpm versions, a frozen lockfile, and pnpm store caching.
 `HUSKY=0` skips local hook installation; CI invokes the full checks directly and
@@ -460,34 +468,51 @@ automerge remains disabled.
 
 ## Spec Kit
 
-The repository includes Spec Kit 1.0.5 with one root workflow in `.specify/`.
+The repository includes Spec Kit 1.2.3 with one root workflow in `.specify/`.
 The project constitution is [`.specify/memory/constitution.md`](.specify/memory/constitution.md).
 Read it before specifying, planning, implementing, or reviewing a feature.
 
-Core skills are installed for Codex in `.agents/skills` and for Cursor in
-`.cursor/skills`. The installed assess, BDD, critique, and Git extensions have
-Cursor skill entrypoints; `.specify/extensions.yml` records their workflow hooks.
-The closed-vocabulary preset extends Cursor's analysis command to report
+Core skills are installed for Codex in `.agents/skills`. The installed assess, BDD,
+critique, and Git extensions also provide skills; `.specify/extensions.yml` records
+their workflow hooks.
+The closed-vocabulary preset extends the analysis command to report
 inconsistent enumerations across feature artifacts.
 
-Run Spec Kit from the repository root. Set `SPECIFY_INIT_DIR` to this checkout's
-root when invoking its scripts from another working directory. Start with
-`speckit-specify`, clarify the requirements, then use `speckit-plan` and
-`speckit-tasks` before implementation. The constitution defines the required
-behavioral verification; installing the BDD extension does not make Gherkin
-mandatory for every change.
+The project-owned
+[`pre-ets-specification-planning`](.specify/presets/pre-ets-specification-planning/README.md)
+preset composes with the upstream specification, clarification, planning, task,
+constitution, and checklist commands. It enforces one delivery issue per feature,
+read-only requirement/delivery
+authorities, a first-class `verification.md`, and consumer-inward planning in this order:
+module architecture, public TypeScript contracts, contract evidence, then private
+implementation. The project workflow overlay inserts clarification and review gates for
+the added artifacts without modifying the upstream workflow definition.
 
-Commit shared scripts, templates, skills, extension configuration, and the
-constitution. Keep the current-feature pointer, local extension overrides, and
-regenerable composition cache out of version control.
+Run Spec Kit from the repository root. Set `SPECIFY_INIT_DIR` to this checkout's
+root when invoking its scripts from another working directory. A delivery-issue
+feature follows the [Git and pull request workflow](docs/engineering/git-workflow.md):
+specify and clarify on one pull request, review the engineering plan on the next,
+and implement on a following pull request. Use `speckit-stack` to keep those
+pull requests stacked. Start with `speckit-specify` using exactly one authorized
+delivery issue. Specification produces `spec.md` and `verification.md`; planning
+produces `contracts/modules.md` and a planned `quickstart.md`. The constitution
+defines the required behavioral verification; installing the BDD extension does
+not make Gherkin mandatory for every change.
+
+Commit shared scripts, templates, preset sources and registry, CLI-generated effective
+skills, workflow overlays, extension configuration, and the constitution. Keep the
+current-feature pointer, local extension overrides, and regenerable preset composition
+caches out of version control.
 
 The [Upgrade Spec Kit workflow](.github/workflows/speckit-upgrade.yml) checks for
 the latest stable release every Monday at 14:00 UTC. It upgrades installed
 integrations and extensions, then opens or refreshes `automation/speckit-upgrade`
-with changes to `.specify/`, `.agents/skills/`, and `.cursor/skills/`. Review the
-generated diff for overwritten local customizations before merging. Use **Run
-workflow** in GitHub Actions to check immediately or supply a specific release
-tag through `specify_version`.
+with changes to `.specify/` and `.agents/skills/`. Project behavior belongs in presets,
+workflow overlays, the constitution, and repository guidance rather than direct edits
+to upstream-managed command or template files. The upgrade can regenerate effective
+skills while retaining those project-owned layers. Review the composed diff before
+merging. Use **Run workflow** in GitHub Actions to check immediately or supply a
+specific release tag through `specify_version`.
 
 ## Durable requirements
 
@@ -505,7 +530,14 @@ See [Testing as evidence](docs/engineering/testing/README.md) for choosing meani
 verification and [Property-based testing](docs/engineering/testing/property-based-testing.md)
 for designing properties and using fast-check with project examples.
 
-## Browser E2E tests
+## End-to-end tests
 
-Run `pnpm test:e2e` after starting the Compose stack. See the
-[E2E guide](e2e/README.md) for setup, debugging, and coverage boundaries.
+Requirements BDD scenarios under [`tests/bdd/requirements/`](tests/bdd/requirements/) observe the
+running application through HTTP and Chromium. Real Keycloak is provisioned and exercised by
+`pnpm test:bdd` and the nightly [`CI / BDD`](.github/workflows/ci-bdd.yml) job.
+Run `pnpm test:bdd:dry` to validate feature discovery, then follow the
+[BDD commands guide](features/README.md) for provider and environment setup.
+
+The `playwright` library drives Chromium inside Cucumber steps; it is not invoked
+through a separate Playwright Test runner. BDD replaces the old `pnpm test:e2e`
+command, which has been removed.

@@ -3,7 +3,8 @@ export async function register() {
     return
   }
 
-  // ManagedRuntime boot always calls registerOTel + Effect global Tracer bridge.
-  // Set OTEL_SDK_DISABLED=true to keep export/instrumentation off.
+  // ManagedRuntime boot reads optional OTEL config. An OTLP endpoint installs
+  // the Effect Node SDK tracer. OTEL_SDK_DISABLED=true, or no endpoint, leaves
+  // the noop tracer in place.
   await import("./lib/runtime.ts")
 }

@@ -1,29 +1,13 @@
-import { OtelTracer, Resource } from "@effect/opentelemetry"
-import { NodeServices } from "@effect/platform-node"
-import { registerOTel } from "@vercel/otel"
+import { NodeRedis, NodeServices } from "@effect/platform-node"
 import { ConfigProvider, Effect, Layer, ManagedRuntime } from "effect"
 
 import { AuthenticationService } from "./authentication.ts"
 import { ServerConfig } from "./config/index.ts"
-import { appLoggerLayer } from "./observability.ts"
+import { appLoggerLayer, observabilityLayer } from "./observability.ts"
 import { SessionService } from "./session.ts"
 import { TenantConfigService } from "./tenant.ts"
 
-const OTEL_SERVICE_NAME = "pre-ets-frontend"
-
 const LoggerLayer = appLoggerLayer()
-
-const ObservabilityLayer = Layer.unwrap(
-  Effect.sync(() => {
-    registerOTel({
-      serviceName: OTEL_SERVICE_NAME,
-      traceSampler: "always_on"
-    })
-    return OtelTracer.layerGlobal.pipe(
-      Layer.provide(Resource.layer({ serviceName: OTEL_SERVICE_NAME }))
-    )
-  })
-)
 
 const boot = () => {
   // ConfigProvider.fromEnv() snapshots process.env at construction time. Build a
@@ -36,25 +20,43 @@ const boot = () => {
       Effect.tapError(() => Effect.logError("Invalid server configuration"))
     )
 
+    // One shared Redis layer value serves authentication transactions and
+    // session state; the host acquires and disposes the resource exactly once.
+    const redisLayer = NodeRedis.layer({
+      disableOfflineQueue: true,
+      pingInterval: 1_000,
+      socket: { socketTimeout: 5_000 },
+      url: config.redis.url
+    })
+
+    const applicationLayer = Layer.mergeAll(
+      AuthenticationService.layer.pipe(
+        Layer.provideMerge(TenantConfigService.layer(config))
+      ),
+      SessionService.layer,
+      LoggerLayer,
+      observabilityLayer
+    )
+
     const runtime = ManagedRuntime.make(
-      Layer.mergeAll(
-        AuthenticationService.layer.pipe(Layer.provideMerge(TenantConfigService.layer(config))),
-        SessionService.layer,
-        LoggerLayer,
-        ObservabilityLayer
-      ).pipe(
-        Layer.provide(NodeServices.layer),
-        Layer.provide(configProviderLayer)
+      applicationLayer.pipe(
+        Layer.provide(Layer.mergeAll(redisLayer, NodeServices.layer, configProviderLayer))
       )
     )
 
-    // Running this effect also makes sure that the layers get resolved
-    runtime.runSync(Effect.logDebug("Runtime started"))
+    // Awaiting this probe eagerly acquires asynchronous layers, including Redis,
+    // before instrumentation declares the process ready.
+    yield* Effect.tryPromise({
+      catch: (cause) => cause,
+      try: () => runtime.runPromise(Effect.logDebug("Runtime started"))
+    }).pipe(
+      Effect.tapError(() => Effect.promise(() => runtime.dispose()))
+    )
 
     return runtime
   }).pipe(
     Effect.provide(
-      Layer.mergeAll(LoggerLayer, configProviderLayer, ObservabilityLayer)
+      Layer.mergeAll(LoggerLayer, configProviderLayer)
     ),
     Effect.runPromise
   )

@@ -43,8 +43,7 @@ incomplete. Diagnostics, raw root routing and tenant rejection need no reachable
 | ---------------------- | ------------------------------------------------------------------------------------- |
 | `pnpm test:bdd:dry`    | Parse features and discover step bindings; no runtime evidence                        |
 | `pnpm test:bdd`        | Build the frontend, then run HTTP and browser scenarios against an owned Next process |
-| `pnpm test:bdd:checks` | Harness regression checks that still protect fixtures used by BDD/E2E                 |
-| `pnpm test:e2e`        | Separate real-Keycloak authentication journeys; see [E2E setup](../e2e/README.md)     |
+| `pnpm test:bdd:checks` | Browser-routing harness regression checks                                             |
 
 After a frontend build, `pnpm test:bdd:smoke` runs the separate application-level
 [on-site production safeguard](../tests/bdd/smoke/onsite-production.feature).
@@ -64,7 +63,7 @@ See [step guidance](../tests/bdd/steps/README.md).
 
 CI provisions the pinned real Keycloak realm with bounded readiness and cleanup. It runs requirements BDD
 and the production safeguard smoke nightly at 06:17 UTC on `main`.
-Manual dispatch is also restricted to `main`; there is no CI dry-run job. Real-Keycloak E2E stays manual.
+Manual dispatch is also restricted to `main`; there is no CI dry-run job.
 
 ## Gherkin linting and formatting
 

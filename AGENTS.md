@@ -29,7 +29,10 @@ For property tests, also read [Property-based testing](docs/engineering/testing/
 Choose evidence for a named expectation and the boundary responsible for it; do not add tests solely for coverage.
 
 Verify observability manually or with temporary agent probes, inspecting real logs
-and exported OTel data. Do not retain durable tests of log output, spans, attributes,
+and exported OTel data. When the local Grafana stack is running, use the Grafana
+MCP server in [docs/observability.md](docs/observability.md) to inspect exported
+frontend traces. An empty Loki or Prometheus result is not application evidence.
+Do not retain durable tests of log output, spans, attributes,
 telemetry payloads, or exporter behavior. Keep durable tests focused on application outcomes.
 
 Before authoring or reviewing requirements BDD, step definitions, or supporting helpers, read
@@ -38,6 +41,14 @@ in current `origin/main`; report unavailable baseline access rather than assumin
 must carry or inherit requirement-ID tags. Keep assertions within those promises and use feature-level
 `@partial` for intermediate evidence. Use the repository's `requirements-bdd-author`,
 `requirements-bdd-scaffold`, and `requirements-bdd-review` skills for those workflows.
+
+## Git and pull requests
+
+Before specifying, planning, or implementing a delivery-issue feature, read
+[Git and pull request workflow](docs/engineering/git-workflow.md) and use the
+`speckit-stack` skill. Requirements, delivery plans, and Spec Kit keep their
+existing authority. The workflow decides how that work is branched, reviewed,
+and merged.
 
 ## Effect workspace routing
 

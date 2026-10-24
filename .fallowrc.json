@@ -1,14 +1,14 @@
 {
   "$schema": "./node_modules/fallow/schema.json",
+  "extends": "./.fallowrc.shared.json",
   "entry": [
     "cucumber.mjs",
     "cucumber.smoke.mjs",
-    "e2e/playwright.config.ts",
-    "e2e/*.spec.ts",
     "tests/bdd/steps/*.ts",
     "tests/bdd/support/hooks.ts",
     "tests/bdd/support/world.ts",
-    "tests/bdd/checks/*.test.*"
+    "tests/bdd/checks/*.test.*",
+    "tests/bdd/session/*.test.*"
   ],
   "ignorePatterns": [
     "packages/**",
@@ -22,6 +22,23 @@
     "@effect/platform-node",
     "effect"
   ],
+  "health": {
+    "thresholdOverrides": [
+      {
+        "files": [
+          "tests/bdd/support/server.ts"
+        ],
+        "functions": [
+          "response.on(\"end\")",
+          "signalProcessGroup",
+          "stopSite",
+          "waitUntilReady"
+        ],
+        "maxCrap": 60,
+        "reason": "Cucumber executes this support code dynamically, so static test reachability undercounts its behavioral coverage; global cyclomatic and cognitive ceilings still apply."
+      }
+    ]
+  },
   "rules": {
     "unused-dependencies": "error"
   },

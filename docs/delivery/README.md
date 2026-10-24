@@ -87,6 +87,9 @@ relationships. Publication records remain local until separately committed and p
 No active Spec Kit state, synchronization, Projects
 automation, RTM generator, or new runtime tool is required. Historical specifications do not override accepted register
 decisions. Read architecture for ownership and implementation context, not to demand synchronization of old specs.
+Issued slices are specified, planned, and implemented through the
+[Git and pull request workflow](../engineering/git-workflow.md). These delivery skills do not create those branches
+or pull requests.
 
 ## Plans
 

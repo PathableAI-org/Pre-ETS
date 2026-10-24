@@ -53,8 +53,8 @@ checkout differs. Source prose saying a refinement awaits approval must be read 
   during planning. The former durable telemetry suite is removed under the maintainer refinement below;
   observability is verified manually through application logs and exported OTel data.
 - [Tracked fixtures](../../fixtures/tenant-config) contain display names only.
-  [The E2E fixture](../../e2e/tenant-directory.ts) has an obsolete nested `{ config, slug }` shape. Update fixture
-  producers and independent expected values together when required OIDC is introduced; preserve owned cleanup.
+  The per-scenario tenant fixture in BDD steps creates the required OIDC shape.
+  Update fixture producers and independent expected values together when required OIDC is introduced; preserve owned cleanup.
 - Live read-only inspection covered #215, #153, [#154](https://github.com/PathableAI-org/Pre-ETS/issues/154),
   [#216](https://github.com/PathableAI-org/Pre-ETS/issues/216), [#217](https://github.com/PathableAI-org/Pre-ETS/issues/217),
   [#218](https://github.com/PathableAI-org/Pre-ETS/issues/218), [#219](https://github.com/PathableAI-org/Pre-ETS/issues/219),
@@ -316,8 +316,8 @@ when the process user is actually denied access; root-bypassed chmod is not unre
 Use the existing [observability setup](../observability.md), [Compose guide](../docker-compose.md), and
 [Compose service](../../compose.yaml). Start only `otel-lgtm` through the observability profile; Compose parsing may
 require the documented local bootstrap variables for unrelated services. Do not start another identity stack or
-introduce a second exporter. `OTEL_SDK_DISABLED` must be unset or empty; the literal string `false` also disables
-registration in the currently documented SDK behavior.
+introduce a second exporter. `OTEL_SDK_DISABLED=true` skips export. Empty and false boolean literals leave export
+on when an endpoint is set. Startup follows that parsed flag.
 
 ```sh
 docker compose --profile observability up -d otel-lgtm --wait
