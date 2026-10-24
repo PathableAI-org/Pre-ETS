@@ -6,4 +6,3 @@ const DEFAULT_APP_ENV = "development" as const
 export const AppEnv = Config.Literals(["development", "production", "test"], "NODE_ENV").pipe(
   Config.orElse(() => Config.succeed(DEFAULT_APP_ENV))
 )
-export type AppEnv = Config.Success<typeof AppEnv>

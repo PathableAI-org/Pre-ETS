@@ -1,10 +1,6 @@
-export async function register() {
-  if (process.env.NEXT_RUNTIME !== "nodejs") {
-    return
-  }
-
-  // ManagedRuntime boot reads optional OTEL config. An OTLP endpoint installs
-  // the Effect Node SDK tracer. OTEL_SDK_DISABLED=true, or no endpoint, leaves
-  // the noop tracer in place.
-  await import("./lib/runtime.ts")
+export const register = async (): Promise<void> => {
+  if (process.env.NEXT_RUNTIME !== "nodejs") return
+  if (process.env.NEXT_PHASE === "phase-production-build") return
+  const runtime = await import("./lib/production-runtime.ts")
+  await runtime.startProductionRuntime()
 }

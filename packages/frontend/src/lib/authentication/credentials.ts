@@ -40,7 +40,7 @@ const confidentialAuthentication = (secret: string): oidc.ClientAuth => (metadat
   authenticate(metadata, client, body, headers)
 }
 
-const ClientCredentialConfig = Config.String("OIDC_CLIENT_SECRETS_JSON").pipe(
+export const ClientCredentialConfig = Config.String("OIDC_CLIENT_SECRETS_JSON").pipe(
   Config.withDefault("{}"),
   Config.mapEffect((raw) =>
     Schema.decodeUnknownEffect(SecretMap)(raw).pipe(

@@ -1,10 +1,10 @@
 import "server-only"
-import { Clock, Context, Data, Effect, Layer, Result, Schema } from "effect"
+import { Clock, Config, Context, Data, Effect, Layer, Result, Schema } from "effect"
 
 import type { HttpError } from "./error.ts"
 
 import { AuthenticationConfig, permittedUrl } from "./authentication/config.ts"
-import { ClientCredentials } from "./authentication/credentials.ts"
+import { ClientCredentialConfig, ClientCredentials } from "./authentication/credentials.ts"
 import { completeProvider, prepareProvider } from "./authentication/provider.ts"
 import {
   AuthenticationAttemptCollision,
@@ -13,7 +13,15 @@ import {
   makeBrowserCorrelation,
   TransactionStoreUnavailable
 } from "./authentication/transaction.ts"
+import { TransactionStoreConfig } from "./authentication/transaction/store.ts"
 import { type TenantAlias, TenantConfigService } from "./tenant.ts"
+
+/** Process-wide authentication settings. Service behavior stays on AuthenticationService. */
+export const AuthenticationProcessConfig = Config.all({
+  credentials: ClientCredentialConfig,
+  settings: AuthenticationConfig,
+  transactions: TransactionStoreConfig
+})
 
 export interface TrustedIdentity {
   readonly authenticatedAt: number
