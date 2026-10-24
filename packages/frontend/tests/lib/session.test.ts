@@ -17,6 +17,25 @@ import { makeSessionMemoryRedis } from "../helpers/session.ts"
 const alias = Schema.decodeSync(TenantAlias)("alpha")
 const noUsableSession: NoUsableSession = { _tag: "NoUsableSession" }
 
+const publicDiagnostic = (value: unknown): string => {
+  const seen = new Set<unknown>()
+  const parts: string[] = []
+  const visit = (current: unknown): void => {
+    if (typeof current === "string") {
+      parts.push(current)
+      return
+    }
+    if (typeof current !== "object" || current === null || seen.has(current)) return
+    seen.add(current)
+    if (current instanceof Error) parts.push(current.message)
+    for (const key of Object.getOwnPropertyNames(current)) {
+      visit((current as Record<string, unknown>)[key])
+    }
+  }
+  visit(value)
+  return parts.join("\n")
+}
+
 const BASE_TIME = 1_800_000_000_000
 
 const policyOf = (idleTimeoutMinutes: number, warningLeadMinutes: number): EffectiveSessionPolicy => ({
@@ -149,11 +168,20 @@ describe("SessionService read outcomes", () => {
     Effect.gen(function*() {
       yield* TestClock.setTime(BASE_TIME)
       const service = yield* SessionService
+      redis.entries.clear()
       const { reference } = yield* establish(service, 30, 5)
-      for (const key of redis.entries.keys()) redis.entries.set(key, JSON.stringify({ version: 2 }))
+      for (const [key, payload] of redis.entries) {
+        const record = JSON.parse(payload) as Record<string, unknown>
+        redis.entries.set(key, JSON.stringify({ ...record, version: 2 }))
+      }
       const result = yield* service.read({ reference }).pipe(Effect.result)
       expect(Result.isFailure(result)).toBe(true)
-      if (Result.isFailure(result)) expect(result.failure).toBeInstanceOf(SessionServiceUnavailable)
+      if (Result.isFailure(result)) {
+        expect(result.failure).toBeInstanceOf(SessionServiceUnavailable)
+        expect(result.failure.cause).toBeUndefined()
+        expect(publicDiagnostic(result.failure)).not.toContain("subject-1")
+        expect(publicDiagnostic(result.failure)).not.toContain("https://provider.test/")
+      }
     }).pipe(Effect.provide(redisWorld(redis))))
 
   it.effect("returns SessionServiceUnavailable after three exhausted creation collisions", () =>
@@ -197,7 +225,8 @@ describe("SessionService read outcomes", () => {
       expect(Result.isFailure(result)).toBe(true)
       if (Result.isFailure(result)) {
         expect(result.failure).toBeInstanceOf(SessionServiceUnavailable)
-        expect(result.failure.cause).toBeDefined()
+        expect(result.failure.cause).toBeUndefined()
+        expect(publicDiagnostic(result.failure)).not.toContain("subject-1")
       }
     }).pipe(Effect.provide(redisWorld(redis))))
 })

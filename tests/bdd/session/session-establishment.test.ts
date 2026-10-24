@@ -57,14 +57,23 @@ await test("issue-level: a rejected provider return establishes no session or co
   assert.equal(names.includes("pathable-session"), false)
 })
 
-await test("issue-level: a trusted but unconfirmed completion establishes no session or cookie", async (t) => {
+await test("issue-level: a safe provider return establishes no session or cookie", async (t) => {
   const site = await startSite(t, "production")
   const owned = await openBrowser(t, site.port)
   const context = await owned.browser.newContext()
   const page = await context.newPage()
   await page.goto(`http://${host}/`)
+  const issued = await context.cookies()
+  assert.equal(issued.some((cookie) => cookie.name === "oidc-correlation"), true)
+  const callback = page.waitForResponse((response) => new URL(response.url()).pathname === "/auth/callback")
   await signIn(page)
-  await page.waitForURL((url) => url.pathname === "/auth/callback").catch(() => undefined)
+  const response = await callback
+  assert.equal(response.status(), 200)
+  assert.equal(response.headers()["cache-control"], "private, no-store")
+  const body = await response.text()
+  assert.match(body, /Sign-in could not continue/)
+  assert.match(body, /Return to the application entry/)
+  assert.doesNotMatch(body, /Welcome to the Pre-ETS workspace/)
   const cookies = await context.cookies()
   assert.equal(cookies.some((cookie) => cookie.name === "pathable-session"), false)
   assert.equal(cookies.some((cookie) => cookie.name === "oidc-correlation"), false)

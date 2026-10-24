@@ -195,9 +195,7 @@ describe("callback session-establishment failure mapping", () => {
   it("returns the safe page when establishment fails after a confirmed trusted result", async () => {
     const directory = await mkdtemp(join(tmpdir(), "preets-session-failure-"))
     const confirmed = vi.spyOn(callbackFreshnessPolicy, "confirmed").mockReturnValue(true)
-    const establish = vi.fn(() =>
-      Effect.fail(new SessionServiceUnavailable({ cause: new Error("controlled session failure") }))
-    )
+    const establish = vi.fn(() => Effect.fail(new SessionServiceUnavailable({})))
     try {
       await writeFile(
         join(directory, "alpha.json"),
@@ -220,7 +218,7 @@ describe("callback session-establishment failure mapping", () => {
         "/auth/callback?code=secret-code&state=state-1",
         `oidc-correlation=${"G".repeat(43)}`
       ))
-      await expectSafeReturn(response, "controlled session failure")
+      await expectSafeReturn(response, "SessionServiceUnavailable")
       expect(establish).toHaveBeenCalledTimes(1)
     } finally {
       confirmed.mockRestore()

@@ -1,12 +1,12 @@
 @partial
 Feature: Validate the selected tenant OIDC callback
-  This slice recovers one tenant-bound provider attempt across frontend instances and
-  validates the OIDC response without protected access. Freshness confirmation and
-  session establishment remain incomplete, so no scenario observes a bound session;
-  rejection and replay still issue no application session.
+  This slice recovers one tenant-bound provider attempt across frontend instances.
+  Observed callbacks are the safe no-session response. Freshness confirmation and
+  session establishment remain incomplete, so no scenario observes a bound session
+  or treats that response as proof of trusted provider validation.
 
   @preets-session-002
-  Scenario: Real provider completion crosses application instances once
+  Scenario: A real provider return across instances receives the safe no-session response
     Given production tenant sites for Springfield and Shelbyville
     And host resolution uses base hostname "localhost"
     When the visitor completes real provider sign-in across two application instances at "springfield.localhost:3000"
@@ -36,7 +36,7 @@ Feature: Validate the selected tenant OIDC callback
     Given production tenant sites for Springfield and Shelbyville
     And host resolution uses base hostname "localhost"
     When two application instances race the same captured valid return at "springfield.localhost:3000"
-    Then exactly one raced callback succeeds and replay is denied
+    Then exactly one raced callback consumes the return and replay does not
     And the response clears recoverable correlation and issues no application session
 
   @preets-session-002

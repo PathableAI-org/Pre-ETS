@@ -16,7 +16,7 @@ type ReadOutcome = string | undefined
 
 class SessionStoreUnavailable extends Schema.TaggedError<SessionStoreUnavailable>()(
   "SessionStoreUnavailable",
-  { cause: Schema.Defect() }
+  {}
 ) {}
 
 const keyFor = (prefix: string, reference: SessionReference): string => {
@@ -53,7 +53,7 @@ export class SessionStore extends Context.Service<SessionStore, {
           "PX",
           String(ttlMilliseconds)
         ).pipe(
-          Effect.mapError((cause) => new SessionStoreUnavailable({ cause }))
+          Effect.mapError(() => new SessionStoreUnavailable({}))
         )
         return result === "OK" ? "created" : "exists"
       })
@@ -61,7 +61,7 @@ export class SessionStore extends Context.Service<SessionStore, {
       const read = Effect.fnUntraced(function*(address: { readonly reference: SessionReference }) {
         return yield* redis.send<null | string>("GET", keyFor(prefix, address.reference)).pipe(
           Effect.map((value) => value ?? undefined),
-          Effect.mapError((cause) => new SessionStoreUnavailable({ cause }))
+          Effect.mapError(() => new SessionStoreUnavailable({}))
         )
       })
 

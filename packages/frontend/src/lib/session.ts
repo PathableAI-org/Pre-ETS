@@ -54,10 +54,14 @@ const sessionServiceUnavailableTag = "@pathableai/pre-ets-frontend/SessionServic
 
 export class SessionServiceUnavailable extends Schema.TaggedError<SessionServiceUnavailable>()(
   sessionServiceUnavailableTag,
-  { cause: Schema.Defect() }
+  {}
 ) {
   static readonly tag = sessionServiceUnavailableTag
 }
+
+/** Drops codec and store diagnostics so records, keys, and identity stay off the public error and its span. */
+const serviceUnavailable = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+  effect.pipe(Effect.mapError(() => new SessionServiceUnavailable({})))
 
 const COLLISION_RETRIES = 3
 const noUsableSession: NoUsableSession = { _tag: "NoUsableSession" }
@@ -103,7 +107,7 @@ export class SessionService extends Context.Service<SessionService, {
             const reference = yield* makeSessionReference()
             const telemetryId = yield* makeTelemetryId()
             const idleDeadlineEpochMilliseconds = now + input.policy.idleTimeoutMinutes * 60_000
-            const payload = yield* encodeStoredSession({
+            const payload = yield* serviceUnavailable(encodeStoredSession({
               idleDeadlineEpochMilliseconds,
               issuer: input.identity.issuer,
               subject: input.identity.subject,
@@ -111,20 +115,14 @@ export class SessionService extends Context.Service<SessionService, {
               tenantAlias: input.tenantAlias,
               version: 1,
               warningLeadMinutes: input.policy.warningLeadMinutes
-            }).pipe(
-              Effect.mapError((cause) => new SessionServiceUnavailable({ cause }))
-            )
+            }))
             const ttlMilliseconds = idleDeadlineEpochMilliseconds - now
-            const outcome = yield* store.create({ reference }, payload, ttlMilliseconds).pipe(
-              Effect.mapError((cause) => new SessionServiceUnavailable({ cause }))
-            )
+            const outcome = yield* serviceUnavailable(store.create({ reference }, payload, ttlMilliseconds))
             if (outcome === "exists" && remaining > 1) {
               return yield* attempt(remaining - 1)
             }
             if (outcome === "exists") {
-              return yield* new SessionServiceUnavailable({
-                cause: new Error("Session reference collisions exhausted")
-              })
+              return yield* new SessionServiceUnavailable({})
             }
             yield* Effect.annotateCurrentSpan("session.id", telemetryId)
             return {
@@ -147,15 +145,11 @@ export class SessionService extends Context.Service<SessionService, {
         if (Option.isNone(reference)) {
           return noUsableSession
         }
-        const payload = yield* store.read({ reference: reference.value }).pipe(
-          Effect.mapError((cause) => new SessionServiceUnavailable({ cause }))
-        )
+        const payload = yield* serviceUnavailable(store.read({ reference: reference.value }))
         if (payload === undefined) {
           return noUsableSession
         }
-        const record = yield* decodeStoredSession(payload).pipe(
-          Effect.mapError((cause) => new SessionServiceUnavailable({ cause }))
-        )
+        const record = yield* serviceUnavailable(decodeStoredSession(payload))
         if (record.idleDeadlineEpochMilliseconds <= (yield* Clock.currentTimeMillis)) {
           return noUsableSession
         }

@@ -97,6 +97,42 @@ const deleteOwnedPrefix = async (prefix: string) => {
   }
 }
 
+const ownedKeyMetadata = async (prefix: string) => {
+  if (!ownedSessionPrefix.test(prefix)) {
+    throw new Error("Refusing to inspect an unvalidated session prefix")
+  }
+  const runtime = ManagedRuntime.make(redisLayer())
+  try {
+    return await runtime.runPromise(Effect.gen(function*() {
+      const redis = yield* Redis.Redis
+      let cursor = "0"
+      let count = 0
+      let ttlMilliseconds = -2
+      do {
+        const page = yield* redis.send<readonly [string, readonly string[]]>(
+          "SCAN",
+          cursor,
+          "MATCH",
+          `${prefix}*`,
+          "COUNT",
+          "100"
+        )
+        const keys = page[1].filter((key) => key.startsWith(prefix))
+        for (const key of keys) {
+          const ttl = yield* redis.send<number>("PTTL", key)
+          if (ttl === -2) continue
+          count += 1
+          ttlMilliseconds = Math.max(ttlMilliseconds, ttl)
+        }
+        cursor = page[0]
+      } while (cursor !== "0")
+      return { count, ttlMilliseconds }
+    }))
+  } finally {
+    await runtime.dispose()
+  }
+}
+
 const destroyClient = Effect.gen(function*() {
   const node = yield* NodeRedis.NodeRedis
   node.client.destroy()
@@ -154,15 +190,24 @@ describe("SessionService with independently scoped NodeRedis clients", () => {
     }
   })
 
-  it("returns NoUsableSession after the Redis record expires", async () => {
-    const runtime = ManagedRuntime.make(sessionLayer(sessionPrefix))
+  it("returns NoUsableSession after Redis evicts the owned record", async () => {
+    const prefix = `test:session:${randomUUID()}:`
+    const runtime = ManagedRuntime.make(sessionLayer(prefix))
     try {
       const established = await establish(runtime, 2 / 60)
+      const stored = await ownedKeyMetadata(prefix)
+      expect(stored.count).toBe(1)
+      expect(stored.ttlMilliseconds).toBeGreaterThan(0)
+      expect(stored.ttlMilliseconds).toBeLessThanOrEqual(2_000)
       await delay(2_500)
+      const evicted = await ownedKeyMetadata(prefix)
+      expect(evicted.count).toBe(0)
+      expect(evicted.ttlMilliseconds).toBe(-2)
       const result = await read(runtime, established.reference)
       expect(result).toStrictEqual(noUsableSession)
     } finally {
       await runtime.dispose()
+      await deleteOwnedPrefix(prefix)
     }
   }, 10_000)
 
@@ -181,7 +226,8 @@ describe("SessionService with independently scoped NodeRedis clients", () => {
       expect(Result.isFailure(result)).toBe(true)
       if (Result.isFailure(result)) {
         expect(result.failure).toBeInstanceOf(SessionServiceUnavailable)
-        expect(result.failure.cause).toBeDefined()
+        expect(result.failure.cause).toBeUndefined()
+        expect(String(result.failure)).not.toContain("subject-redis")
       }
     } finally {
       await runtime.dispose()
@@ -209,7 +255,8 @@ describe("SessionService with independently scoped NodeRedis clients", () => {
       expect(Result.isFailure(result)).toBe(true)
       if (Result.isFailure(result)) {
         expect(result.failure).toBeInstanceOf(SessionServiceUnavailable)
-        expect(result.failure.cause).toBeDefined()
+        expect(result.failure.cause).toBeUndefined()
+        expect(String(result.failure)).not.toContain("subject-redis")
       }
       expect(await read(healthy, established.reference)).toStrictEqual(established.session)
     } finally {

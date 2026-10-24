@@ -75,7 +75,7 @@ const establishSession = Effect.fn("establishSession")(function*(
   const tenant = yield* TenantConfigService
   const session = yield* SessionService
   const config = yield* tenant.getConfigFromAlias(identity.tenantAlias).pipe(
-    Effect.mapError((cause) => new SessionServiceUnavailable({ cause }))
+    Effect.mapError(() => new SessionServiceUnavailable({}))
   )
   const policy: EffectiveSessionPolicy = tenant.effectiveSessionPolicy(config)
   const input: EstablishSessionInput = {

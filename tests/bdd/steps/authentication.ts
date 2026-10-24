@@ -261,7 +261,7 @@ When("the visitor submits the captured provider return after it expires at {stri
   )
 })
 
-Then("exactly one raced callback succeeds and replay is denied", function(this: AppWorld) {
+Then("exactly one raced callback consumes the return and replay does not", function(this: AppWorld) {
   assert.deepEqual(this.callbackRaceResponses.map((response) => response.status).sort(), [200, 200])
   assert.equal(this.callbackRaceResponses.filter(clearsCorrelation).length, 1)
   assert.equal(this.replayResponse?.status, 200)
