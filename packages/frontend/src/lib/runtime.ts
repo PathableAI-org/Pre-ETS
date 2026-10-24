@@ -20,22 +20,25 @@ const boot = () => {
       Effect.tapError(() => Effect.logError("Invalid server configuration"))
     )
 
+    // One shared Redis layer value serves authentication transactions and
+    // session state; the host acquires and disposes the resource exactly once.
+    const redisLayer = NodeRedis.layer({
+      disableOfflineQueue: true,
+      pingInterval: 1_000,
+      socket: { socketTimeout: 5_000 },
+      url: process.env.REDIS_URL ?? "redis://127.0.0.1:6379"
+    })
+
     const runtime = ManagedRuntime.make(
       Layer.mergeAll(
-        makeAuthenticationTestHarness({
-          redis: NodeRedis.layer({
-            disableOfflineQueue: true,
-            pingInterval: 1_000,
-            socket: { socketTimeout: 5_000 },
-            url: process.env.REDIS_URL ?? "redis://127.0.0.1:6379"
-          })
-        }).layer.pipe(
+        makeAuthenticationTestHarness({ redis: redisLayer }).layer.pipe(
           Layer.provideMerge(TenantConfigService.layer(config))
         ),
         SessionService.layer,
         LoggerLayer,
         observabilityLayer
       ).pipe(
+        Layer.provide(redisLayer),
         Layer.provide(NodeServices.layer),
         Layer.provide(configProviderLayer)
       )
