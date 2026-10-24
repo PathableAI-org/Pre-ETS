@@ -1,6 +1,4 @@
 import "server-only"
-import type { Redis } from "effect/persistence/Redis"
-
 import { Clock, Context, Data, Effect, Layer, Result, Schema } from "effect"
 
 import type { HttpError } from "./error.ts"
@@ -348,12 +346,3 @@ const AuthenticationServiceLayer = Layer.effect(
 ).pipe(
   Layer.provide(Layer.mergeAll(ClientCredentials.layer, AuthenticationTransactions.layer))
 )
-
-interface AuthenticationTestOptions<E = never, R = never> {
-  readonly redis: Layer.Layer<Redis, E, R>
-}
-
-/** Parent construction seam; private authentication services remain hidden. */
-export const makeAuthenticationTestHarness = <E, R>(options: AuthenticationTestOptions<E, R>) => ({
-  layer: AuthenticationService.layer.pipe(Layer.provide(options.redis))
-})

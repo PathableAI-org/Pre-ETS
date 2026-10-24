@@ -1,7 +1,7 @@
 import { NodeRedis, NodeServices } from "@effect/platform-node"
 import { ConfigProvider, Effect, Layer, ManagedRuntime } from "effect"
 
-import { makeAuthenticationTestHarness } from "./authentication.ts"
+import { AuthenticationService } from "./authentication.ts"
 import { ServerConfig } from "./config/index.ts"
 import { appLoggerLayer, observabilityLayer } from "./observability.ts"
 import { SessionService } from "./session.ts"
@@ -29,18 +29,18 @@ const boot = () => {
       url: config.redis.url
     })
 
+    const applicationLayer = Layer.mergeAll(
+      AuthenticationService.layer.pipe(
+        Layer.provideMerge(TenantConfigService.layer(config))
+      ),
+      SessionService.layer,
+      LoggerLayer,
+      observabilityLayer
+    )
+
     const runtime = ManagedRuntime.make(
-      Layer.mergeAll(
-        makeAuthenticationTestHarness({ redis: redisLayer }).layer.pipe(
-          Layer.provideMerge(TenantConfigService.layer(config))
-        ),
-        SessionService.layer,
-        LoggerLayer,
-        observabilityLayer
-      ).pipe(
-        Layer.provide(redisLayer),
-        Layer.provide(NodeServices.layer),
-        Layer.provide(configProviderLayer)
+      applicationLayer.pipe(
+        Layer.provide(Layer.mergeAll(redisLayer, NodeServices.layer, configProviderLayer))
       )
     )
 
