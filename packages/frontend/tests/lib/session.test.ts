@@ -6,6 +6,7 @@ import { vi } from "vitest"
 import {
   type EffectiveSessionPolicy,
   type EstablishSessionInput,
+  type NoUsableSession,
   type SessionIdentity,
   SessionService,
   SessionServiceUnavailable
@@ -14,6 +15,7 @@ import { TenantAlias } from "../../src/lib/tenant.ts"
 import { makeSessionMemoryRedis } from "../helpers/session.ts"
 
 const alias = Schema.decodeSync(TenantAlias)("alpha")
+const noUsableSession: NoUsableSession = { _tag: "NoUsableSession" }
 
 const BASE_TIME = 1_800_000_000_000
 
@@ -100,7 +102,7 @@ describe("SessionService read outcomes", () => {
     Effect.gen(function*() {
       const service = yield* SessionService
       const result = yield* service.read({})
-      expect(result).toStrictEqual({ _tag: "NoUsableSession" })
+      expect(result).toStrictEqual(noUsableSession)
       expect(redis.entries.size).toBe(0)
     }).pipe(Effect.provide(redisWorld(redis))))
 
@@ -108,7 +110,7 @@ describe("SessionService read outcomes", () => {
     Effect.gen(function*() {
       const service = yield* SessionService
       const result = yield* service.read({ reference: "not-a-valid-reference" })
-      expect(result).toStrictEqual({ _tag: "NoUsableSession" })
+      expect(result).toStrictEqual(noUsableSession)
       expect(redis.entries.size).toBe(0)
     }).pipe(Effect.provide(redisWorld(redis))))
 
@@ -119,7 +121,7 @@ describe("SessionService read outcomes", () => {
       const { reference } = yield* establish(service, 30, 5)
       redis.entries.clear()
       const result = yield* service.read({ reference })
-      expect(result).toStrictEqual({ _tag: "NoUsableSession" })
+      expect(result).toStrictEqual(noUsableSession)
     }).pipe(Effect.provide(redisWorld(redis))))
 
   it.effect("returns NoUsableSession for a record read at or after its deadline", () =>
@@ -129,7 +131,7 @@ describe("SessionService read outcomes", () => {
       const { reference } = yield* establish(service, 30, 5)
       yield* TestClock.adjust("31 minutes")
       const result = yield* service.read({ reference })
-      expect(result).toStrictEqual({ _tag: "NoUsableSession" })
+      expect(result).toStrictEqual(noUsableSession)
     }).pipe(Effect.provide(redisWorld(redis))))
 
   it.effect("returns SessionServiceUnavailable for a corrupted stored record", () =>
@@ -193,7 +195,10 @@ describe("SessionService read outcomes", () => {
       redis.failNextCommand("SET")
       const result = yield* establish(service, 30, 5).pipe(Effect.result)
       expect(Result.isFailure(result)).toBe(true)
-      if (Result.isFailure(result)) expect(result.failure).toBeInstanceOf(SessionServiceUnavailable)
+      if (Result.isFailure(result)) {
+        expect(result.failure).toBeInstanceOf(SessionServiceUnavailable)
+        expect(result.failure.cause).toBeDefined()
+      }
     }).pipe(Effect.provide(redisWorld(redis))))
 })
 

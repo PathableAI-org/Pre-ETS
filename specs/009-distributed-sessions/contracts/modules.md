@@ -86,7 +86,7 @@ export interface EstablishedSession {
 
 export class SessionServiceUnavailable extends Schema.TaggedError<SessionServiceUnavailable>()(
   "@pathableai/pre-ets-frontend/SessionServiceUnavailable",
-  {}
+  { cause: Schema.Defect() }
 ) {}
 
 export class SessionService extends Context.Service<SessionService, {
@@ -126,9 +126,9 @@ tools outside safe synthetic public-result comparisons.
 
 **Expected errors**:
 
-| Public error                | Meaning for consumers                                                                  | Owned internal failures translated here                                                              | Consumer response                                                                   |
-| --------------------------- | -------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| `SessionServiceUnavailable` | The service could not persist or determine session state; the caller must fail closed. | Redis command/transport failure, stored-record encode/decode corruption, exhausted create collisions | Callback sets no session cookie; reads do not grant access or create a replacement. |
+| Public error                | Meaning for consumers                                                                                                                                 | Owned internal failures translated here                                                              | Consumer response                                                                                                            |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `SessionServiceUnavailable` | The service could not persist or determine session state; the caller must fail closed. The diagnostic `cause` is retained and is not a session field. | Redis command/transport failure, stored-record encode/decode corruption, exhausted create collisions | Callback sets no session cookie; reads do not grant access or create a replacement. HTTP responses do not serialize `cause`. |
 
 Missing, malformed, expired, and deleted references are `NoUsableSession`, not errors. Defects and interruption are not
 collapsed into this expected error.

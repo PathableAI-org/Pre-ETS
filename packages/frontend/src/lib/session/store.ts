@@ -1,8 +1,10 @@
-import { Config, Context, Effect, Layer, Schema } from "effect"
+import { Context, Effect, Layer, Schema } from "effect"
 import { Redis } from "effect/persistence/Redis"
 import { createHash } from "node:crypto"
 
 import type { SessionReference } from "./codec.ts"
+
+import { SessionKeyPrefix } from "../config/index.ts"
 
 /**
  * Store-level existence outcomes kept deliberately coarse: the parent owns the
@@ -11,18 +13,11 @@ import type { SessionReference } from "./codec.ts"
 type CreateOutcome = "created" | "exists"
 
 type ReadOutcome = string | undefined
-interface SessionStoreSettings {
-  readonly prefix: string
-}
 
 class SessionStoreUnavailable extends Schema.TaggedError<SessionStoreUnavailable>()(
   "SessionStoreUnavailable",
-  {}
+  { cause: Schema.Defect() }
 ) {}
-
-const SessionStoreConfig: Config.Config<SessionStoreSettings> = Config.all({
-  prefix: Config.String("SESSION_KEY_PREFIX").pipe(Config.withDefault("preets:session:v1"))
-})
 
 const keyFor = (prefix: string, reference: SessionReference): string => {
   const digest = createHash("sha256").update(reference).digest("base64url")
@@ -43,7 +38,7 @@ export class SessionStore extends Context.Service<SessionStore, {
     SessionStore,
     Effect.gen(function*() {
       const redis = yield* Redis
-      const settings = yield* SessionStoreConfig
+      const prefix = yield* SessionKeyPrefix
 
       const create = Effect.fnUntraced(function*(
         address: { readonly reference: SessionReference },
@@ -52,21 +47,21 @@ export class SessionStore extends Context.Service<SessionStore, {
       ) {
         const result = yield* redis.send<null | string>(
           "SET",
-          keyFor(settings.prefix, address.reference),
+          keyFor(prefix, address.reference),
           payload,
           "NX",
           "PX",
           String(ttlMilliseconds)
         ).pipe(
-          Effect.mapError(() => new SessionStoreUnavailable({}))
+          Effect.mapError((cause) => new SessionStoreUnavailable({ cause }))
         )
         return result === "OK" ? "created" : "exists"
       })
 
       const read = Effect.fnUntraced(function*(address: { readonly reference: SessionReference }) {
-        return yield* redis.send<null | string>("GET", keyFor(settings.prefix, address.reference)).pipe(
+        return yield* redis.send<null | string>("GET", keyFor(prefix, address.reference)).pipe(
           Effect.map((value) => value ?? undefined),
-          Effect.mapError(() => new SessionStoreUnavailable({}))
+          Effect.mapError((cause) => new SessionStoreUnavailable({ cause }))
         )
       })
 

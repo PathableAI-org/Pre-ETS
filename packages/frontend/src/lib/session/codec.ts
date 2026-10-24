@@ -1,4 +1,4 @@
-import { Effect, Result, Schema } from "effect"
+import { Effect, Option, Result, Schema } from "effect"
 
 import { TenantAlias } from "../tenant.ts"
 
@@ -55,18 +55,19 @@ export const encodeStoredSession = Schema.encodeEffect(StoredSession)
 
 const decodeReference = Schema.decodeResult(SessionReference)
 
-export const decodeSessionReference = (value: string | undefined): SessionReference | undefined => {
-  if (value === undefined) return undefined
+/** Absent and malformed cookie values are both no reference. Callers do not branch on why. */
+export const decodeSessionReference = (value: string | undefined): Option.Option<SessionReference> => {
+  if (value === undefined) return Option.none()
   const decoded = decodeReference(value)
-  return Result.isSuccess(decoded) ? decoded.success : undefined
+  return Result.isSuccess(decoded) ? Option.some(decoded.success) : Option.none()
 }
 
-export const makeSessionReference = Effect.gen(function*() {
+export const makeSessionReference = Effect.fnUntraced(function*() {
   const bytes = yield* Effect.sync(() => globalThis.crypto.getRandomValues(new Uint8Array(32)))
   return Schema.decodeUnknownSync(SessionReference)(Buffer.from(bytes).toString("base64url"))
 })
 
-export const makeTelemetryId = Effect.gen(function*() {
+export const makeTelemetryId = Effect.fnUntraced(function*() {
   const value = yield* Effect.sync(() => globalThis.crypto.randomUUID())
   return Schema.decodeUnknownSync(TelemetryId)(value)
 })

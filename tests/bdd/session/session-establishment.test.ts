@@ -2,7 +2,7 @@ import type { Page } from "playwright"
 
 import assert from "node:assert/strict"
 import { randomUUID } from "node:crypto"
-import { test } from "node:test"
+import { test, type TestContext } from "node:test"
 
 import { applicationBrowser, freePort, spawnFrontend, stopProcess, waitUntilReady } from "../../support/oidc/harness.ts"
 
@@ -10,12 +10,7 @@ const host = "springfield.localhost:3000"
 const tenantConfigDir = new URL("../../../fixtures/tenant-config", import.meta.url).pathname
 const transactionPrefix = `preets:oidc:node-test:${randomUUID()}:`
 
-interface SiteProcess {
-  readonly port: number
-  readonly stop: () => Promise<void>
-}
-
-const startSite = async (runtime: "development" | "production"): Promise<SiteProcess> => {
+const startSite = async (t: TestContext, runtime: "development" | "production"): Promise<{ readonly port: number }> => {
   const port = await freePort()
   const { child, logs } = await spawnFrontend(
     {
@@ -31,8 +26,15 @@ const startSite = async (runtime: "development" | "production"): Promise<SitePro
     },
     port
   )
+  t.after(() => stopProcess(child))
   await waitUntilReady(child, logs)
-  return { port, stop: () => stopProcess(child) }
+  return { port }
+}
+
+const openBrowser = async (t: TestContext, port: number) => {
+  const owned = await applicationBrowser(port, [host])
+  t.after(() => owned.close())
+  return owned
 }
 
 const signIn = async (page: Page): Promise<void> => {
@@ -41,41 +43,31 @@ const signIn = async (page: Page): Promise<void> => {
   await page.getByRole("button", { name: /sign in/i }).click({ noWaitAfter: true })
 }
 
-await test("issue-level: a rejected provider return establishes no session or cookie", async () => {
-  const site = await startSite("production")
-  const owned = await applicationBrowser(site.port, [host])
-  try {
-    const context = await owned.browser.newContext()
-    const page = await context.newPage()
-    const response = await page.goto(
-      `http://${host}/auth/callback?error=access_denied&error_description=controlled&state=wrong`
-    )
-    assert.equal(response?.status(), 200)
-    assert.doesNotMatch(await page.locator("body").innerText(), /Welcome to the Pre-ETS workspace/)
-    const names = (await context.cookies()).map((cookie) => cookie.name)
-    assert.equal(names.includes("pathable-session"), false)
-  } finally {
-    await owned.close()
-    await site.stop()
-  }
+await test("issue-level: a rejected provider return establishes no session or cookie", async (t) => {
+  const site = await startSite(t, "production")
+  const owned = await openBrowser(t, site.port)
+  const context = await owned.browser.newContext()
+  const page = await context.newPage()
+  const response = await page.goto(
+    `http://${host}/auth/callback?error=access_denied&error_description=controlled&state=wrong`
+  )
+  assert.equal(response?.status(), 200)
+  assert.doesNotMatch(await page.locator("body").innerText(), /Welcome to the Pre-ETS workspace/)
+  const names = (await context.cookies()).map((cookie) => cookie.name)
+  assert.equal(names.includes("pathable-session"), false)
 })
 
-await test("issue-level: a trusted but unconfirmed completion establishes no session or cookie", async () => {
-  const site = await startSite("production")
-  const owned = await applicationBrowser(site.port, [host])
-  try {
-    const context = await owned.browser.newContext()
-    const page = await context.newPage()
-    await page.goto(`http://${host}/`)
-    await signIn(page)
-    await page.waitForURL((url) => url.pathname === "/auth/callback").catch(() => undefined)
-    const cookies = await context.cookies()
-    assert.equal(cookies.some((cookie) => cookie.name === "pathable-session"), false)
-    assert.equal(cookies.some((cookie) => cookie.name === "oidc-correlation"), false)
-  } finally {
-    await owned.close()
-    await site.stop()
-  }
+await test("issue-level: a trusted but unconfirmed completion establishes no session or cookie", async (t) => {
+  const site = await startSite(t, "production")
+  const owned = await openBrowser(t, site.port)
+  const context = await owned.browser.newContext()
+  const page = await context.newPage()
+  await page.goto(`http://${host}/`)
+  await signIn(page)
+  await page.waitForURL((url) => url.pathname === "/auth/callback").catch(() => undefined)
+  const cookies = await context.cookies()
+  assert.equal(cookies.some((cookie) => cookie.name === "pathable-session"), false)
+  assert.equal(cookies.some((cookie) => cookie.name === "oidc-correlation"), false)
 })
 
 await test("issue-level: confirmed-fresh success is recorded as blocked until the B6/#158 policy exists", (t) => {

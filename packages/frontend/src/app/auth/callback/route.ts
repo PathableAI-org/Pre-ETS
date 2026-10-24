@@ -15,6 +15,7 @@ import {
   type EffectiveSessionPolicy,
   type EstablishedSession,
   type EstablishSessionInput,
+  type NoUsableSession,
   type SessionIdentity,
   SessionService,
   SessionServiceUnavailable,
@@ -24,9 +25,13 @@ import { TenantConfigService } from "../../../lib/tenant.ts"
 import { PRIVATE_NO_STORE } from "../constants.ts"
 import { CORRELATION_COOKIE, isLoopbackHost, setSessionCookie } from "../cookie.ts"
 import { authenticationReturnBody, tenantFailureResponse } from "../presentation.tsx"
+import { callbackFreshnessPolicy } from "./freshness.ts"
 
 export const dynamic = "force-dynamic"
 export const runtime = "nodejs"
+
+/** Establish only issues the usable member of the public read result. */
+type IssuedSession = Extract<NoUsableSession | UsableSession, { readonly _tag: "UsableSession" }>
 
 const clearCorrelation = (response: NextResponse, request: NextRequest): NextResponse => {
   const host = request.headers.get("host") ?? ""
@@ -39,14 +44,6 @@ const clearCorrelation = (response: NextResponse, request: NextRequest): NextRes
   })
   return response
 }
-
-/**
- * B6/#158 owns the authentication-time comparison, clock tolerance, and provider
- * policy that would confirm a fresh authentication event. Until that confirmation
- * exists, a trusted identity is treated as unconfirmed and never establishes a
- * session or issues a session cookie.
- */
-const freshnessConfirmed = (_identity: TrustedIdentity): boolean => false
 
 const authenticationReturn = Effect.promise(async () =>
   new NextResponse(await authenticationReturnBody(), {
@@ -71,29 +68,31 @@ const responseForReason = (reason: CallbackExpectedFailure["reason"]) =>
 const failClosedAfterTrustedResult = (request: NextRequest) =>
   authenticationReturn.pipe(Effect.map((response) => clearCorrelation(response, request)))
 
-const establishSession = (request: NextRequest, identity: TrustedIdentity) =>
-  Effect.gen(function*() {
-    const tenant = yield* TenantConfigService
-    const session = yield* SessionService
-    const config = yield* tenant.getConfigFromAlias(identity.tenantAlias).pipe(
-      Effect.mapError(() => new SessionServiceUnavailable({}))
-    )
-    const policy: EffectiveSessionPolicy = tenant.effectiveSessionPolicy(config)
-    const input: EstablishSessionInput = {
-      identity: { issuer: identity.issuer, subject: identity.subject } satisfies SessionIdentity,
-      policy,
-      tenantAlias: identity.tenantAlias
-    }
-    const established: EstablishedSession = yield* session.establish(input)
-    const usable: UsableSession = established.session
-    const now = yield* Clock.currentTimeMillis
-    const maxAgeSeconds = Math.max(0, Math.floor((usable.idleDeadlineEpochMilliseconds - now) / 1_000))
-    const response = new NextResponse(null, {
-      headers: { "cache-control": PRIVATE_NO_STORE },
-      status: 204
-    })
-    return setSessionCookie(clearCorrelation(response, request), request, established.reference, maxAgeSeconds)
+const establishSession = Effect.fn("establishSession")(function*(
+  request: NextRequest,
+  identity: TrustedIdentity
+) {
+  const tenant = yield* TenantConfigService
+  const session = yield* SessionService
+  const config = yield* tenant.getConfigFromAlias(identity.tenantAlias).pipe(
+    Effect.mapError((cause) => new SessionServiceUnavailable({ cause }))
+  )
+  const policy: EffectiveSessionPolicy = tenant.effectiveSessionPolicy(config)
+  const input: EstablishSessionInput = {
+    identity: { issuer: identity.issuer, subject: identity.subject } satisfies SessionIdentity,
+    policy,
+    tenantAlias: identity.tenantAlias
+  }
+  const established: EstablishedSession = yield* session.establish(input)
+  const usable: IssuedSession = established.session
+  const now = yield* Clock.currentTimeMillis
+  const maxAgeSeconds = Math.max(0, Math.floor((usable.idleDeadlineEpochMilliseconds - now) / 1_000))
+  const response = new NextResponse(null, {
+    headers: { "cache-control": PRIVATE_NO_STORE },
+    status: 204
   })
+  return setSessionCookie(clearCorrelation(response, request), request, established.reference, maxAgeSeconds)
+})
 
 const completeAuthentication = (request: NextRequest) =>
   Effect.gen(function*() {
@@ -113,7 +112,7 @@ const completeAuthentication = (request: NextRequest) =>
           )
         ),
       onSuccess: (identity) =>
-        freshnessConfirmed(identity) ?
+        callbackFreshnessPolicy.confirmed(identity) ?
           establishSession(request, identity).pipe(
             Effect.catchTag(SessionServiceUnavailable.tag, () => failClosedAfterTrustedResult(request))
           ) :

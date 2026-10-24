@@ -26,7 +26,7 @@ const boot = () => {
       disableOfflineQueue: true,
       pingInterval: 1_000,
       socket: { socketTimeout: 5_000 },
-      url: process.env.REDIS_URL ?? "redis://127.0.0.1:6379"
+      url: config.redis.url
     })
 
     const runtime = ManagedRuntime.make(

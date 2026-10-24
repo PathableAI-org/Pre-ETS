@@ -249,7 +249,7 @@ export class TenantConfigService extends Context.Service<TenantConfigService, {
   readonly getConfigFromAlias: (alias: TenantAlias) => Effect.Effect<TenantConfig, TenantFailure>
   readonly getConfigFromHost: (host: string) => Effect.Effect<TenantConfig, TenantFailure>
 }>()("@pathableai/pre-ets-frontend/TenantConfigService") {
-  static readonly layer = (config: Config.Success<typeof ServerConfig>) =>
+  static readonly layer = (config: Pick<Config.Success<typeof ServerConfig>, "env" | "tenant">) =>
     Layer.effect(
       TenantConfigService,
       Effect.gen(function*() {

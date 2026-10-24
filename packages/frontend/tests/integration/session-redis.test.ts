@@ -2,14 +2,17 @@ import { NodeRedis } from "@effect/platform-node"
 import { ConfigProvider, Effect, Layer, ManagedRuntime, Result, Schema } from "effect"
 import * as Redis from "effect/persistence/Redis"
 import { randomUUID } from "node:crypto"
-import { describe, expect, it } from "vitest"
+import { setTimeout as delay } from "node:timers/promises"
+import { afterAll, describe, expect, it } from "vitest"
 
-import { SessionService, SessionServiceUnavailable } from "../../src/lib/session.ts"
+import { type NoUsableSession, SessionService, SessionServiceUnavailable } from "../../src/lib/session.ts"
 import { TenantAlias } from "../../src/lib/tenant.ts"
 
 const redisUrl = process.env.REDIS_URL ?? "redis://127.0.0.1:6379"
 const sessionPrefix = `test:session:${randomUUID()}:`
 const alias = Schema.decodeSync(TenantAlias)("alpha")
+const noUsableSession: NoUsableSession = { _tag: "NoUsableSession" }
+const ownedSessionPrefix = /^test:session:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:$/
 
 const redisLayer = () =>
   NodeRedis.layer({
@@ -24,6 +27,22 @@ const sessionLayer = (prefix: string) =>
     Layer.provide(redisLayer()),
     Layer.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({ SESSION_KEY_PREFIX: prefix })))
   )
+
+const disconnectedLayer = (prefix: string) => {
+  const redis = NodeRedis.layer({
+    disableOfflineQueue: true,
+    pingInterval: 1_000,
+    socket: {
+      reconnectStrategy: () => false,
+      socketTimeout: 1_000
+    },
+    url: redisUrl
+  })
+  return SessionService.layer.pipe(
+    Layer.provideMerge(redis),
+    Layer.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({ SESSION_KEY_PREFIX: prefix })))
+  )
+}
 
 const identity = { issuer: "https://provider.test/", subject: "subject-redis" }
 
@@ -50,7 +69,44 @@ const read = (runtime: ManagedRuntime.ManagedRuntime<SessionService, unknown>, r
     })
   )
 
+const deleteOwnedPrefix = async (prefix: string) => {
+  if (!ownedSessionPrefix.test(prefix)) {
+    throw new Error("Refusing to clean an unvalidated session prefix")
+  }
+  const runtime = ManagedRuntime.make(redisLayer())
+  try {
+    await runtime.runPromise(Effect.gen(function*() {
+      const redis = yield* Redis.Redis
+      let cursor = "0"
+      do {
+        const page = yield* redis.send<readonly [string, readonly string[]]>(
+          "SCAN",
+          cursor,
+          "MATCH",
+          `${prefix}*`,
+          "COUNT",
+          "100"
+        )
+        const keys = page[1].filter((key) => key.startsWith(prefix))
+        if (keys.length > 0) yield* redis.send("DEL", ...keys)
+        cursor = page[0]
+      } while (cursor !== "0")
+    }))
+  } finally {
+    await runtime.dispose()
+  }
+}
+
+const destroyClient = Effect.gen(function*() {
+  const node = yield* NodeRedis.NodeRedis
+  node.client.destroy()
+})
+
 describe("SessionService with independently scoped NodeRedis clients", () => {
+  afterAll(async () => {
+    await deleteOwnedPrefix(sessionPrefix)
+  })
+
   it("establishes on A and reads identical public state on B and a recreated B", async () => {
     const runtimeA = ManagedRuntime.make(sessionLayer(sessionPrefix))
     const runtimeB = ManagedRuntime.make(sessionLayer(sessionPrefix))
@@ -80,40 +136,85 @@ describe("SessionService with independently scoped NodeRedis clients", () => {
       bytes[0] = 7
       const absentReference = Buffer.from(bytes).toString("base64url")
       const result = await read(runtime, absentReference)
-      expect(result).toStrictEqual({ _tag: "NoUsableSession" })
+      expect(result).toStrictEqual(noUsableSession)
     } finally {
       await runtime.dispose()
     }
   })
 
-  it("translates a store outage into SessionServiceUnavailable for establishment", async () => {
-    // A controlled outage at the Redis command boundary proves the real store
-    // adapter and SessionService translate transport failure without leaking
-    // the underlying cause into the public error.
-    const unavailableRedis = Redis.make({
-      send: () => Effect.fail(new Redis.RedisError({ cause: new Error("controlled outage") })),
-      subscribe: () => Effect.succeed(Effect.never)
-    })
-    const unavailable = SessionService.layer.pipe(
-      Layer.provide(Layer.effect(Redis.Redis, unavailableRedis)),
-      Layer.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({ SESSION_KEY_PREFIX: sessionPrefix })))
-    )
-    const runtime = ManagedRuntime.make(unavailable)
+  it("returns NoUsableSession after the owned record is deleted", async () => {
+    const runtime = ManagedRuntime.make(sessionLayer(sessionPrefix))
     try {
-      const result = await runtime.runPromise(
-        Effect.gen(function*() {
-          const service = yield* SessionService
-          return yield* service.establish({
-            identity,
-            policy: { idleTimeoutMinutes: 30, warningLeadMinutes: 5 },
-            tenantAlias: alias
-          }).pipe(Effect.result)
-        })
-      )
-      expect(Result.isFailure(result)).toBe(true)
-      if (Result.isFailure(result)) expect(result.failure).toBeInstanceOf(SessionServiceUnavailable)
+      const established = await establish(runtime, 30)
+      await deleteOwnedPrefix(sessionPrefix)
+      const result = await read(runtime, established.reference)
+      expect(result).toStrictEqual(noUsableSession)
     } finally {
       await runtime.dispose()
+    }
+  })
+
+  it("returns NoUsableSession after the Redis record expires", async () => {
+    const runtime = ManagedRuntime.make(sessionLayer(sessionPrefix))
+    try {
+      const established = await establish(runtime, 2 / 60)
+      await delay(2_500)
+      const result = await read(runtime, established.reference)
+      expect(result).toStrictEqual(noUsableSession)
+    } finally {
+      await runtime.dispose()
+    }
+  }, 10_000)
+
+  it("translates a disconnected NodeRedis client into SessionServiceUnavailable for establishment", async () => {
+    const runtime = ManagedRuntime.make(disconnectedLayer(sessionPrefix))
+    try {
+      await runtime.runPromise(destroyClient)
+      const result = await runtime.runPromise(Effect.gen(function*() {
+        const service = yield* SessionService
+        return yield* service.establish({
+          identity,
+          policy: { idleTimeoutMinutes: 30, warningLeadMinutes: 5 },
+          tenantAlias: alias
+        }).pipe(Effect.result)
+      }))
+      expect(Result.isFailure(result)).toBe(true)
+      if (Result.isFailure(result)) {
+        expect(result.failure).toBeInstanceOf(SessionServiceUnavailable)
+        expect(result.failure.cause).toBeDefined()
+      }
+    } finally {
+      await runtime.dispose()
+    }
+
+    const recovered = ManagedRuntime.make(sessionLayer(sessionPrefix))
+    try {
+      const established = await establish(recovered, 30)
+      expect(await read(recovered, established.reference)).toStrictEqual(established.session)
+    } finally {
+      await recovered.dispose()
+    }
+  })
+
+  it("translates a disconnected NodeRedis client into SessionServiceUnavailable for a read", async () => {
+    const healthy = ManagedRuntime.make(sessionLayer(sessionPrefix))
+    const outage = ManagedRuntime.make(disconnectedLayer(sessionPrefix))
+    try {
+      const established = await establish(healthy, 30)
+      await outage.runPromise(destroyClient)
+      const result = await outage.runPromise(Effect.gen(function*() {
+        const service = yield* SessionService
+        return yield* service.read({ reference: established.reference }).pipe(Effect.result)
+      }))
+      expect(Result.isFailure(result)).toBe(true)
+      if (Result.isFailure(result)) {
+        expect(result.failure).toBeInstanceOf(SessionServiceUnavailable)
+        expect(result.failure.cause).toBeDefined()
+      }
+      expect(await read(healthy, established.reference)).toStrictEqual(established.session)
+    } finally {
+      await healthy.dispose()
+      await outage.dispose()
     }
   })
 })

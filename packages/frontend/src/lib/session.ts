@@ -1,6 +1,6 @@
 import type { Redis } from "effect/persistence/Redis"
 
-import { Clock, type Config, Context, Effect, Layer, Schema } from "effect"
+import { Clock, type Config, Context, Effect, Layer, Option, Schema } from "effect"
 
 import type { TenantAlias } from "./tenant.ts"
 
@@ -13,6 +13,8 @@ import {
   type SessionReference
 } from "./session/codec.ts"
 import { SessionStore } from "./session/store.ts"
+
+export type { SessionReference }
 
 export interface EffectiveSessionPolicy {
   readonly idleTimeoutMinutes: number
@@ -28,6 +30,11 @@ export interface EstablishSessionInput {
   readonly identity: SessionIdentity
   readonly policy: EffectiveSessionPolicy
   readonly tenantAlias: TenantAlias
+}
+
+/** Missing, malformed, expired, and deleted references. No identity or policy. */
+export interface NoUsableSession {
+  readonly _tag: "NoUsableSession"
 }
 
 export interface SessionIdentity {
@@ -47,12 +54,13 @@ const sessionServiceUnavailableTag = "@pathableai/pre-ets-frontend/SessionServic
 
 export class SessionServiceUnavailable extends Schema.TaggedError<SessionServiceUnavailable>()(
   sessionServiceUnavailableTag,
-  {}
+  { cause: Schema.Defect() }
 ) {
   static readonly tag = sessionServiceUnavailableTag
 }
 
 const COLLISION_RETRIES = 3
+const noUsableSession: NoUsableSession = { _tag: "NoUsableSession" }
 
 const toUsableSession = (
   record: {
@@ -77,7 +85,7 @@ export class SessionService extends Context.Service<SessionService, {
   readonly hasSession: () => Effect.Effect<boolean>
   readonly read: (
     input: { readonly reference?: string }
-  ) => Effect.Effect<UsableSession | { readonly _tag: "NoUsableSession" }, SessionServiceUnavailable>
+  ) => Effect.Effect<NoUsableSession | UsableSession, SessionServiceUnavailable>
 }>()("@pathableai/pre-ets-frontend/SessionService") {
   static readonly layer: Layer.Layer<
     SessionService,
@@ -92,8 +100,8 @@ export class SessionService extends Context.Service<SessionService, {
         const attempt = (remaining: number): Effect.Effect<EstablishedSession, SessionServiceUnavailable> =>
           Effect.gen(function*() {
             const now = yield* Clock.currentTimeMillis
-            const reference = yield* makeSessionReference
-            const telemetryId = yield* makeTelemetryId
+            const reference = yield* makeSessionReference()
+            const telemetryId = yield* makeTelemetryId()
             const idleDeadlineEpochMilliseconds = now + input.policy.idleTimeoutMinutes * 60_000
             const payload = yield* encodeStoredSession({
               idleDeadlineEpochMilliseconds,
@@ -104,17 +112,19 @@ export class SessionService extends Context.Service<SessionService, {
               version: 1,
               warningLeadMinutes: input.policy.warningLeadMinutes
             }).pipe(
-              Effect.mapError(() => new SessionServiceUnavailable({}))
+              Effect.mapError((cause) => new SessionServiceUnavailable({ cause }))
             )
             const ttlMilliseconds = idleDeadlineEpochMilliseconds - now
             const outcome = yield* store.create({ reference }, payload, ttlMilliseconds).pipe(
-              Effect.mapError(() => new SessionServiceUnavailable({}))
+              Effect.mapError((cause) => new SessionServiceUnavailable({ cause }))
             )
             if (outcome === "exists" && remaining > 1) {
               return yield* attempt(remaining - 1)
             }
             if (outcome === "exists") {
-              return yield* new SessionServiceUnavailable({})
+              return yield* new SessionServiceUnavailable({
+                cause: new Error("Session reference collisions exhausted")
+              })
             }
             yield* Effect.annotateCurrentSpan("session.id", telemetryId)
             return {
@@ -134,20 +144,20 @@ export class SessionService extends Context.Service<SessionService, {
 
       const read = Effect.fn("SessionService.read")(function*(input: { readonly reference?: string }) {
         const reference = decodeSessionReference(input.reference)
-        if (reference === undefined) {
-          return { _tag: "NoUsableSession" as const }
+        if (Option.isNone(reference)) {
+          return noUsableSession
         }
-        const payload = yield* store.read({ reference }).pipe(
-          Effect.mapError(() => new SessionServiceUnavailable({}))
+        const payload = yield* store.read({ reference: reference.value }).pipe(
+          Effect.mapError((cause) => new SessionServiceUnavailable({ cause }))
         )
         if (payload === undefined) {
-          return { _tag: "NoUsableSession" as const }
+          return noUsableSession
         }
         const record = yield* decodeStoredSession(payload).pipe(
-          Effect.mapError(() => new SessionServiceUnavailable({}))
+          Effect.mapError((cause) => new SessionServiceUnavailable({ cause }))
         )
         if (record.idleDeadlineEpochMilliseconds <= (yield* Clock.currentTimeMillis)) {
-          return { _tag: "NoUsableSession" as const }
+          return noUsableSession
         }
         yield* Effect.annotateCurrentSpan("session.id", record.telemetryId)
         return toUsableSession(record)
