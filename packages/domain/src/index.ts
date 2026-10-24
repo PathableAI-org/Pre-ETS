@@ -1,1 +1,1 @@
-export { OnSiteVisit } from "./onsite/visit-schema.js"
+export { CreateOnSiteVisit, OnSiteVisit } from "./onsite/visit-schema.js"

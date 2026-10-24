@@ -3,12 +3,12 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "build": "pnpm --filter @pathableai/pre-ets-domain build && tsc -p tsconfig.build.json",
+    "typecheck": "pnpm --filter @pathableai/pre-ets-domain build && tsc --noEmit -p tsconfig.json",
     "start": "node dist/main.js",
-    "test": "pnpm run build && node --test tests/server.test.mjs",
-    "lint": "eslint . --max-warnings=0",
-    "lint:fix": "eslint . --max-warnings=0 --fix",
+    "test": "pnpm run build && node --test tests/*.test.mjs",
+    "lint": "pnpm --filter @pathableai/pre-ets-domain build && eslint . --max-warnings=0",
+    "lint:fix": "pnpm --filter @pathableai/pre-ets-domain build && eslint . --max-warnings=0 --fix",
     "format:check": "dprint check",
     "format:write": "dprint fmt",
     "fallow:health": "fallow health --complexity",
@@ -17,6 +17,11 @@
   },
   "dependencies": {
     "@effect/platform-node": "catalog:effect",
-    "effect": "catalog:effect"
+    "@pathableai/pre-ets-domain": "workspace:*",
+    "effect": "catalog:effect",
+    "pg": "8.16.3"
+  },
+  "devDependencies": {
+    "@types/pg": "8.15.4"
   }
 }

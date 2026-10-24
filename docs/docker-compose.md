@@ -205,8 +205,9 @@ the only writer of domain data. They do not share tables. Neither uses
 Postgres as a session store.
 
 Flyway reads versioned SQL from `packages/backend/migrations`, which reflects
-backend ownership of domain persistence. The current `migration_demo` schema is
-synthetic and does not implement the planned Consumer service-log schema.
+backend ownership of domain persistence. The `migration_demo` schema is
+synthetic; `onsite.visit` supports local synthetic create testing only and does
+not implement the authorized Consumer service-log workflow.
 Starting Postgres never runs Flyway automatically.
 
 ### Start and migrate

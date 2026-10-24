@@ -29,7 +29,25 @@ frontend production output into `.next`. After a production build,
 port; an invalid value prevents startup. The backend binds to `127.0.0.1` and
 stops on process shutdown. `/healthz` reports process liveness only: it does
 not check the database or establish readiness for domain requests. The backend
-does not yet expose visit endpoints.
+does not expose visit endpoints by default.
+
+The synthetic on-site create route is disabled by default. For local development
+only, apply the backend Flyway migrations to an isolated Postgres database, set
+`NODE_ENV=development`, `BACKEND_ENABLE_DEV_VISIT_WRITE=true`, and a local
+`BACKEND_DATABASE_URL` in the backend process environment, then start the backend.
+The listener remains bound to `127.0.0.1`; setting the flag outside development
+prevents startup. Never proxy or deploy this unauthenticated route, or put real
+participant information in it. Until backend identity and authorization are
+designed, `coachId`, `tenantId`, and `participantRef` must be synthetic-prefixed
+placeholders, not verified identities. Do not commit database credentials.
+
+`POST http://127.0.0.1:3001/visits` accepts JSON with those three references and
+an explicit UTC `startedAt` string; `endedAt` and each of `purposeOfVisit`,
+`observations`, `interventions`, and `nextSteps` are optional. It returns `201`
+with only `{ "id": "<database-generated UUID>" }` after the insert succeeds,
+`400` for invalid input, or `500` for a database failure. There is no read
+endpoint, verified ownership, or automatic retry. This local experiment does
+not fulfill the authorized visit workflow in issue #195.
 
 All packages are private; the npm scope identifies ownership, not publication.
 
