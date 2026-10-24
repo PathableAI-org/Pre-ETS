@@ -1,6 +1,6 @@
 import { NodeServices } from "@effect/platform-node"
 import { fc, it } from "@fast-check/vitest"
-import { Effect, Layer, References } from "effect"
+import { ConfigProvider, Effect, Layer, References, Schema } from "effect"
 import { NextRequest } from "next/server"
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
@@ -13,21 +13,59 @@ import { GET as callback } from "../../src/app/auth/callback/route.ts"
 import { GET as login } from "../../src/app/auth/login/route.ts"
 import { AuthenticationDenied, AuthenticationService, CallbackExpectedFailure } from "../../src/lib/authentication.ts"
 import { SessionService } from "../../src/lib/session.ts"
-import { TenantConfigService } from "../../src/lib/tenant.ts"
+import { TenantAlias, TenantConfigService } from "../../src/lib/tenant.ts"
+import { makeSessionMemoryRedis } from "../helpers/session.ts"
 import { requestHeaders, setRequestHost } from "./next-headers-stub.ts"
 import { RedirectError } from "./next-navigation-stub.ts"
 
 const runtime = vi.hoisted(() => ({ runPromise: vi.fn() }))
 vi.mock("../../src/lib/runtime", () => ({ Runtime: runtime }))
 
+const alias = Schema.decodeSync(TenantAlias)("alpha")
+
 afterEach(() => {
   requestHeaders.clear()
   vi.clearAllMocks()
 })
 
+const redis = makeSessionMemoryRedis()
+
+const routeSessionLayer = SessionService.layer.pipe(
+  Layer.provide(redis.layer),
+  Layer.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({ SESSION_KEY_PREFIX: "test:session" })))
+)
+
+const routeTenantLayer = Layer.succeed(TenantConfigService, {
+  effectiveSessionPolicy: () => {
+    throw new Error("effectiveSessionPolicy must remain unused for an unconfirmed result")
+  },
+  getAlias: (): never => {
+    throw new Error("getAlias must remain unused for an unconfirmed result")
+  },
+  getConfigFromAlias: (): never => {
+    throw new Error("getConfigFromAlias must remain unused for an unconfirmed result")
+  },
+  getConfigFromHost: (): never => {
+    throw new Error("getConfigFromHost must remain unused for an unconfirmed result")
+  }
+})
+
+const trustedIdentity = {
+  authenticatedAt: 1_700_000_000,
+  issuer: "https://provider.test/",
+  subject: "subject-1",
+  tenantAlias: alias
+}
+
 const routeRuntime = (service: AuthenticationService["Service"]) => {
   runtime.runPromise.mockImplementation((program: Effect.Effect<unknown, never, AuthenticationService>) =>
-    Effect.runPromise(program.pipe(Effect.provideService(AuthenticationService, service)))
+    Effect.runPromise(
+      program.pipe(
+        Effect.provideService(AuthenticationService, service),
+        Effect.provide(routeSessionLayer),
+        Effect.provide(routeTenantLayer)
+      )
+    )
   )
 }
 
@@ -73,19 +111,12 @@ describe("authentication Route Handlers", () => {
     }
   )
 
-  it("maps a trusted handoff to an empty 204 and clears only correlation", async () => {
+  it("treats a trusted handoff without freshness confirmation as the safe return, clearing correlation without a session cookie", async () => {
     const complete = vi.fn((_input: {
       readonly correlation?: string
       readonly host: string
       readonly query: readonly (readonly [string, string])[]
-    }) =>
-      Effect.succeed({
-        authenticatedAt: 1_700_000_000,
-        issuer: "https://provider.test/",
-        subject: "subject-1",
-        tenantAlias: "alpha"
-      })
-    )
+    }) => Effect.succeed(trustedIdentity))
     routeRuntime({ complete, prepare: () => Effect.die("prepare must remain unused") })
     const correlation = "B".repeat(43)
     const request = new NextRequest("https://alpha.example.test/auth/callback?code=secret-code&state=state-1", {
@@ -97,13 +128,13 @@ describe("authentication Route Handlers", () => {
 
     const response = await callback(request)
 
-    expect(response.status).toBe(204)
-    expect(await response.text()).toBe("")
+    expect(response.status).toBe(200)
+    expect(await response.text()).toContain("Sign-in could not continue")
     expect(response.headers.get("cache-control")).toBe("private, no-store")
     const cookie = response.headers.get("set-cookie") ?? ""
     expect(cookie).toContain("oidc-correlation=")
     expect(cookie).toContain("Max-Age=0")
-    expect(cookie).not.toContain("session=")
+    expect(cookie).not.toContain("pathable-session")
     expect([...response.headers.values()].join(" ")).not.toContain("secret-code")
     expect(complete).toHaveBeenCalledTimes(1)
     expect(complete.mock.calls[0]?.[0]).toEqual({
@@ -137,7 +168,7 @@ describe("authentication Route Handlers", () => {
     expect(response.headers.get("location")).toBeNull()
   })
 
-  it("preserves correlation for a premature callback and clears it after the valid return", async () => {
+  it("preserves correlation for a premature callback and clears it after the unconfirmed return", async () => {
     const complete = vi.fn()
       .mockReturnValueOnce(
         Effect.fail(
@@ -147,14 +178,7 @@ describe("authentication Route Handlers", () => {
           })
         )
       )
-      .mockReturnValueOnce(
-        Effect.succeed({
-          authenticatedAt: 1_700_000_000,
-          issuer: "https://provider.test/",
-          subject: "subject-1",
-          tenantAlias: "alpha"
-        })
-      )
+      .mockReturnValueOnce(Effect.succeed(trustedIdentity))
     routeRuntime({ complete, prepare: () => Effect.die("prepare must remain unused") })
     const cookie = `oidc-correlation=${"C".repeat(43)}`
 
@@ -172,8 +196,9 @@ describe("authentication Route Handlers", () => {
         headers: { cookie, host: "alpha.example.test" }
       })
     )
-    expect(valid.status).toBe(204)
+    expect(valid.status).toBe(200)
     expect(valid.headers.get("set-cookie")).toContain("Max-Age=0")
+    expect(valid.headers.get("set-cookie")).not.toContain("pathable-session")
     expect(complete).toHaveBeenCalledTimes(2)
   })
 })
@@ -209,7 +234,11 @@ describe("application entry with the real absent-session capability", () => {
       const services = Layer.mergeAll(
         SessionService.layer,
         TenantConfigService.layer({ env: "test", tenant })
-      ).pipe(Layer.provide(NodeServices.layer))
+      ).pipe(
+        Layer.provide(redis.layer),
+        Layer.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({ SESSION_KEY_PREFIX: "test:session" }))),
+        Layer.provide(NodeServices.layer)
+      )
       runtime.runPromise.mockImplementation((
         program: Effect.Effect<unknown, unknown, SessionService | TenantConfigService>
       ) =>

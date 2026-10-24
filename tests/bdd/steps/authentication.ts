@@ -13,6 +13,9 @@ import { requestInstance, requestSite, startSecondSite } from "../support/server
 
 type RecordedResponse = NonNullable<AppWorld["response"]>
 
+const clearsCorrelation = (response: { headers: Record<string, string> }): boolean =>
+  /(?:^|\n)oidc-correlation=;(?:[\s;]|$)/.test(response.headers["set-cookie"] ?? "")
+
 const recordBrowserResponse = async (response: {
   allHeaders: () => Promise<Record<string, string>>
   status: () => number
@@ -24,12 +27,6 @@ const recordBrowserResponse = async (response: {
     headers: await response.allHeaders(),
     status
   }
-}
-
-const belongsToApplicationHost = (domain: string, host: string): boolean => {
-  const hostname = new URL(`http://${host}`).hostname.toLowerCase()
-  const owner = domain.replace(/^\./, "").toLowerCase()
-  return owner.length > 0 && (hostname === owner || hostname.endsWith(`.${owner}`))
 }
 
 const signIn = async (page: Page): Promise<void> => {
@@ -152,9 +149,6 @@ When("the visitor completes real provider sign-in across two application instanc
     const callbackResponse = page.waitForResponse((response) => new URL(response.url()).pathname === "/auth/callback")
     await signIn(page)
     this.response = await recordBrowserResponse(await callbackResponse)
-    this.browserCookieNames = (await context.cookies())
-      .filter((cookie) => belongsToApplicationHost(cookie.domain, host))
-      .map((cookie) => cookie.name)
   } finally {
     await owned.close()
   }
@@ -246,7 +240,7 @@ When("two application instances race the same captured valid return at {string}"
     requestInstance(this, this.port, host, requestPath, true, captured.cookie),
     requestInstance(this, this.secondaryPort, host, requestPath, true, captured.cookie)
   ])
-  this.response = this.callbackRaceResponses.find((response) => response.status === 204)
+  this.response = this.callbackRaceResponses.find(clearsCorrelation)
   this.replayResponse = await requestInstance(this, this.port, host, requestPath, true, captured.cookie)
 })
 
@@ -267,18 +261,10 @@ When("the visitor submits the captured provider return after it expires at {stri
   )
 })
 
-Then("the callback clears correlation and creates no application session", function(this: AppWorld) {
-  assert.equal(this.browserCookieNames.includes("oidc-correlation"), false)
-  assert.equal(this.browserCookieNames.some((name) => /session/i.test(name)), false)
-  const cookie = this.response?.headers["set-cookie"] ?? ""
-  for (const header of cookie.split("\n")) {
-    assert.doesNotMatch(header, /(?:^|;\s*)(?:pathable-)?session=/i)
-  }
-})
-
 Then("exactly one raced callback succeeds and replay is denied", function(this: AppWorld) {
-  assert.deepEqual(this.callbackRaceResponses.map((response) => response.status).sort(), [200, 204])
-  assert.equal(this.callbackRaceResponses.filter((response) => response.status === 204).length, 1)
-  assert.equal(this.callbackRaceResponses.find((response) => response.status === 204)?.body, "")
+  assert.deepEqual(this.callbackRaceResponses.map((response) => response.status).sort(), [200, 200])
+  assert.equal(this.callbackRaceResponses.filter(clearsCorrelation).length, 1)
   assert.equal(this.replayResponse?.status, 200)
+  assert.ok(this.replayResponse)
+  assert.equal(clearsCorrelation(this.replayResponse), false)
 })
