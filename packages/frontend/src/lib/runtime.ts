@@ -1,88 +1,99 @@
-import { NodeRedis, NodeServices } from "@effect/platform-node"
-import { ConfigProvider, Effect, Layer, ManagedRuntime } from "effect"
+import type { NodeServices } from "@effect/platform-node"
+import type * as Redis from "effect/persistence/Redis"
 
-import { AuthenticationService } from "./authentication.ts"
-import { ServerConfig } from "./config/index.ts"
-import { appLoggerLayer, observabilityLayer } from "./observability.ts"
+import { type Config, ConfigProvider, Effect, Layer, type ManagedRuntime, Schema } from "effect"
+
+import { AuthenticationProcessConfig, AuthenticationService } from "./authentication.ts"
+import { type OtelConfig, type ServerConfig, StartupConfig } from "./config/index.ts"
+import { type ObservabilityInitializationError, observabilityLayer } from "./observability.ts"
 import { SessionService } from "./session.ts"
 import { TenantConfigService } from "./tenant.ts"
 
-const LoggerLayer = appLoggerLayer()
+const startupFailureTag = "@pathableai/pre-ets-frontend/StartupFailure"
+const startupNotReadyTag = "@pathableai/pre-ets-frontend/StartupNotReady"
 
-const boot = () => {
-  // ConfigProvider.fromEnv() snapshots process.env at construction time. Build a
-  // fresh provider per boot so Vitest env stubs / TENANT_CONFIG_DIR resets apply.
-  const configProviderLayer = ConfigProvider.layer(ConfigProvider.fromEnv())
+export type ApplicationServices = AuthenticationService | SessionService | TenantConfigService
 
-  return Effect.gen(function*() {
-    const config = yield* ServerConfig.pipe(
-      Effect.tap(() => Effect.logDebug("Loaded server config")),
-      Effect.tapError(() => Effect.logError("Invalid server configuration"))
-    )
-
-    // One shared Redis layer value serves authentication transactions and
-    // session state; the host acquires and disposes the resource exactly once.
-    const redisLayer = NodeRedis.layer({
-      disableOfflineQueue: true,
-      pingInterval: 1_000,
-      socket: { socketTimeout: 5_000 },
-      url: config.redis.url
-    })
-
-    const applicationLayer = Layer.mergeAll(
-      AuthenticationService.layer.pipe(
-        Layer.provideMerge(TenantConfigService.layer(config))
-      ),
-      SessionService.layer,
-      LoggerLayer,
-      observabilityLayer
-    )
-
-    const runtime = ManagedRuntime.make(
-      applicationLayer.pipe(
-        Layer.provide(Layer.mergeAll(redisLayer, NodeServices.layer, configProviderLayer))
-      )
-    )
-
-    // Awaiting this probe eagerly acquires asynchronous layers, including Redis,
-    // before instrumentation declares the process ready.
-    yield* Effect.tryPromise({
-      catch: (cause) => cause,
-      try: () => runtime.runPromise(Effect.logDebug("Runtime started"))
-    }).pipe(
-      Effect.tapError(() => Effect.promise(() => runtime.dispose()))
-    )
-
-    return runtime
-  }).pipe(
-    Effect.provide(
-      Layer.mergeAll(LoggerLayer, configProviderLayer)
-    ),
-    Effect.runPromise
-  )
+export interface ProcessStartup {
+  readonly authentication: Config.Success<typeof AuthenticationProcessConfig>
+  readonly configProvider: ConfigProvider.ConfigProvider
+  readonly logLevel: Config.Success<typeof StartupConfig>["logLevel"]
+  readonly otel: Config.Success<typeof OtelConfig>
+  readonly server: Config.Success<typeof ServerConfig>
 }
 
-const fakeBoot = new Proxy({} as Awaited<ReturnType<typeof boot>>, {
-  get(_target, property) {
-    throw new Error(
-      `Server runtime (${String(property)}) is not available in the build environment`
-    )
+export class StartupFailure extends Schema.TaggedError<StartupFailure>()(
+  startupFailureTag,
+  {
+    reason: Schema.Literals(["acquisition", "config", "defect", "observability-initialization"]),
+    stage: Schema.Literals(["application-acquisition", "configuration", "observability"])
+  }
+) {}
+export class StartupNotReady extends Schema.TaggedError<StartupNotReady>()(startupNotReadyTag, {}) {}
+
+export const loadProcessStartup: Effect.Effect<ProcessStartup, Config.ConfigError> = Effect.gen(function*() {
+  const env: Record<string, string | undefined> = { ...process.env }
+  const configProvider = ConfigProvider.fromEnvRecord(env)
+  const startup = yield* Effect.provideService(StartupConfig, ConfigProvider.ConfigProvider, configProvider)
+  const authentication = yield* Effect.provideService(
+    AuthenticationProcessConfig,
+    ConfigProvider.ConfigProvider,
+    configProvider
+  )
+  return {
+    authentication,
+    configProvider,
+    logLevel: startup.logLevel,
+    otel: startup.otel,
+    server: startup.server
   }
 })
 
-export const Runtime = process.env.NEXT_PHASE === "phase-production-build" ?
-  fakeBoot :
-  await boot().catch(async (error: unknown) => {
-    // Prefer Effect diagnostics from appLoggerLayer; fall back to stderr when boot
-    // fails before any logger is available. Avoid dumping configuration payloads.
-    const detail = error instanceof Error && error.message.trim() !== "" ?
-      error.message :
-      "startup failed before diagnostics were available"
+const applicationCore = (startup: ProcessStartup) =>
+  Layer.mergeAll(
+    AuthenticationService.layer.pipe(Layer.provideMerge(TenantConfigService.layer(startup.server))),
+    SessionService.layer
+  )
 
-    await Effect.logError(`pre-ets-frontend: ManagedRuntime boot failed (${detail})`).pipe(
-      Effect.provide(LoggerLayer),
-      Effect.runPromise
-    )
+/**
+ * Observability is merged into the runtime context so the console logger and
+ * selected signals stay available after acquisition. Redis stays behind
+ * `Layer.provide`, so it is not a sibling and is not part of `ApplicationServices`.
+ * The public error channel omits `ConfigError` because this Effect version has
+ * no layer error map that preserves services; a runtime config failure is still
+ * classified as configuration.
+ */
+export const applicationLayer = (
+  startup: ProcessStartup,
+  infrastructure: Layer.Layer<NodeServices.NodeServices | Redis.Redis, Redis.RedisError>
+): Layer.Layer<ApplicationServices, ObservabilityInitializationError | Redis.RedisError> => {
+  const layer = applicationCore(startup).pipe(
+    Layer.provide(infrastructure),
+    Layer.provideMerge(observabilityLayer({
+      logLevel: startup.logLevel,
+      otel: startup.otel,
+      serverEnv: startup.server.env
+    })),
+    Layer.provide(ConfigProvider.layer(startup.configProvider))
+  )
+  return layer as Layer.Layer<ApplicationServices, ObservabilityInitializationError | Redis.RedisError>
+}
 
-    process.exit(1)
-  })
+let active: ManagedRuntime.ManagedRuntime<ApplicationServices, unknown> | undefined
+
+const rejectNotReady = <A>(): Promise<A> => Effect.runPromise(Effect.fail(new StartupNotReady({})))
+
+export const Runtime = {
+  runPromise: <A, E>(effect: Effect.Effect<A, E, ApplicationServices>): Promise<A> => {
+    const runtime = active
+    if (runtime === undefined) return rejectNotReady()
+    return runtime.runPromise(effect)
+  }
+}
+
+/** Publishes the runtime `startProductionRuntime` acquired. Request code only reads it. */
+export const installManagedRuntime = (
+  runtime: ManagedRuntime.ManagedRuntime<ApplicationServices, unknown>
+): void => {
+  active = runtime
+}

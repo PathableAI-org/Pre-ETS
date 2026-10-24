@@ -1,32 +1,37 @@
-# Observability (OpenTelemetry traces)
+# Observability (OpenTelemetry traces, metrics, and logs)
 
-Traces-only instrumentation for the **Next.js Node server**
-(`@pathableai/pre-ets-frontend`). Metrics, logs, browser/RUM, and
-`packages/backend` instrumentation are out of scope for this increment.
+Instrumentation for the **Next.js Node server**
+(`@pathableai/pre-ets-frontend`). Browser/RUM and `packages/backend`
+instrumentation are out of scope.
 
-**HTTP + export**: During ManagedRuntime boot (loaded from Next
-`instrumentation.ts`), optional OTEL config decides whether tracing starts.
-`OTEL_SDK_DISABLED=true`, or no OTLP endpoint, leaves the default noop tracer
-in place: no provider, no client patch, and no Effect bridge. When an endpoint
-is set, `@effect/opentelemetry` `NodeSdk` is the sole tracer provider and OTLP/HTTP
-exporter. The observability module patches Node `http`/`https` and `fetch` and
-records client spans without query strings. Next.js still emits the server span
-through that registered global tracer.
+**HTTP + export**: `instrumentation.ts` starts one process runtime. Optional OTEL
+config decides which signals are selected. `OTEL_SDK_DISABLED=true` skips every
+signal, including a malformed endpoint or protocol. A signal whose exporter is
+`none`, or that has neither its own endpoint nor the base endpoint, is absent and
+its protocol is ignored. When traces are selected, `@effect/opentelemetry`
+`NodeSdk` is the sole tracer provider. The observability module then patches Node
+`http`/`https` and `fetch` and records client spans without query strings. Next.js
+still emits the server span through that registered global tracer. When traces
+are not selected, the process does not register a provider and does not patch
+HTTP. Logs and metrics use the same `NodeSdk` layer and the same precedence.
+There is no second tracer provider.
 
-**Effect bridge**: `@effect/opentelemetry` `OtelTracer.layer` is installed on the
-frontend `ManagedRuntime` only when export is enabled, so Effect spans share that
-provider. There is no second exporter. Use `Effect.withSpan` only at logical
-boundaries when needed.
+**Effect bridge**: The Node SDK installs the Effect tracer, logger, and metrics
+bridges only for the signals that were selected. Use `Effect.withSpan` only at
+logical boundaries when needed. The console logger stays beside OTLP logs: JSON
+when `NODE_ENV=production`, pretty otherwise.
 
 ## Verification
 
 Default local URL base: **`http://127.0.0.1:3000`**.
 
-Any Next Node request produces a server span when an OTLP endpoint is
-configured and the SDK is not disabled. For a quick check, hit the app root
-(redirect/401 is fine) or any other route and search Tempo for service
-`pre-ets-frontend`. Outbound client spans use the same trace and omit query
-strings from the span name and `http.url`.
+Any Next Node request produces a server span when traces are selected. For a
+quick check, hit the app root (redirect/401 is fine) or any other route and
+search Tempo for service `pre-ets-frontend`. Outbound client spans use the same
+trace and omit query strings from the span name and `http.url`. Loki is evidence
+for logs only when logs are selected. Prometheus is evidence for metrics only
+when metrics are selected (FR-007, V-003, V-004). An empty result for a signal
+that was not selected does not mean the process was quiet.
 
 ## Environment variables
 
@@ -34,16 +39,23 @@ Optional OTEL settings live in frontend `OtelConfig`, not `ServerConfig`. None
 are required. A missing or empty value is unset. The config parser does not check
 URL syntax. Startup rejects an unparseable export URL without logging the value.
 
-| Variable                             | Role                                                                                                                                                 |
-| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `OTEL_SDK_DISABLED`                  | **Off switch** — a true literal skips the provider, client patch, and Effect bridge. False literals (`false`, `0`, `off`, `no`, `n`) leave export on |
-| `OTEL_EXPORTER_OTLP_ENDPOINT`        | OTLP base URL. Either this or the traces endpoint turns export on                                                                                    |
-| `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | Traces URL. Wins over the base endpoint when both are set                                                                                            |
-| `OTEL_SERVICE_NAME`                  | Resource `service.name`. Defaults to `pre-ets-frontend` when export is on                                                                            |
-| `OTEL_EXPORTER_OTLP_HEADERS`         | Optional collector headers. Do not print them. Headers alone do not turn export on                                                                   |
-| `OTEL_EXPORTER_OTLP_TRACES_HEADERS`  | Optional traces-specific headers. Same rule as the base headers                                                                                      |
-| `OTEL_EXPORTER_OTLP_PROTOCOL`        | Optional OTLP protocol. Protocol alone does not turn export on                                                                                       |
-| `OTEL_EXPORTER_OTLP_TRACES_PROTOCOL` | Optional traces protocol. Same rule as the base protocol                                                                                             |
+| Variable                              | Role                                                                                                                                                 |
+| ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `OTEL_SDK_DISABLED`                   | **Off switch** — a true literal skips the provider, client patch, and Effect bridge. False literals (`false`, `0`, `off`, `no`, `n`) leave export on |
+| `OTEL_EXPORTER_OTLP_ENDPOINT`         | OTLP base URL. A selected signal appends `/v1/traces`, `/v1/metrics`, or `/v1/logs` after one trailing slash is removed                              |
+| `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`  | Traces URL. Wins over the base endpoint for traces                                                                                                   |
+| `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` | Metrics URL. Wins over the base endpoint for metrics                                                                                                 |
+| `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`    | Logs URL. Wins over the base endpoint for logs                                                                                                       |
+| `OTEL_TRACES_EXPORTER`                | `otlp` selects traces when a URL is present. `none` leaves traces absent and ignores that signal's endpoint and protocol                             |
+| `OTEL_METRICS_EXPORTER`               | Same choice for metrics                                                                                                                              |
+| `OTEL_LOGS_EXPORTER`                  | Same choice for logs                                                                                                                                 |
+| `OTEL_SERVICE_NAME`                   | Resource `service.name`. Defaults to `pre-ets-frontend` when any signal is selected                                                                  |
+| `OTEL_EXPORTER_OTLP_HEADERS`          | Optional collector headers. Do not print them. Headers alone do not turn export on. Exporters read them from the environment                         |
+| `OTEL_EXPORTER_OTLP_TRACES_HEADERS`   | Optional traces-specific headers. Same rule as the base headers                                                                                      |
+| `OTEL_EXPORTER_OTLP_PROTOCOL`         | Optional OTLP protocol. Protocol alone does not turn export on                                                                                       |
+| `OTEL_EXPORTER_OTLP_TRACES_PROTOCOL`  | Optional traces protocol. Wins over the base protocol for traces                                                                                     |
+| `OTEL_EXPORTER_OTLP_METRICS_PROTOCOL` | Optional metrics protocol. Wins over the base protocol for metrics                                                                                   |
+| `OTEL_EXPORTER_OTLP_LOGS_PROTOCOL`    | Optional logs protocol. Wins over the base protocol for logs                                                                                         |
 
 Quiet local without a collector: leave the endpoint unset, or set
 `OTEL_SDK_DISABLED=true`. An unset endpoint does **not** export to
@@ -51,23 +63,32 @@ Quiet local without a collector: leave the endpoint unset, or set
 
 ### Precedence (boot)
 
-1. `OTEL_SDK_DISABLED=true` skips all OTEL setup, even if an endpoint is present.
-2. If neither endpoint variable is set, setup is skipped and the default noop tracer stays in place.
-3. Otherwise ManagedRuntime builds `@effect/opentelemetry` `NodeSdk.layerTracerProvider` with the parsed traces URL and service name, registers that provider for Next.js, and installs `OtelTracer.layer`. Startup uses the parsed flag. It does not ask the SDK to reinterpret `OTEL_SDK_DISABLED`.
+Each signal is judged in order traces, then metrics, then logs. The first failure
+wins (FR-007, FR-010, V-004).
 
-Traces-specific headers override base header keys. The selected OTLP/HTTP exporter
-reads those header variables itself. The default protocol is `http/protobuf`, which
-uses the protobuf HTTP exporter. `http/json` uses the JSON HTTP exporter. `grpc`
-fails startup. A base endpoint is exported at `{base}/v1/traces`. A traces endpoint
-is used unchanged. An unparseable endpoint fails startup without logging the value.
-An unreachable collector does not.
+1. `OTEL_SDK_DISABLED=true` leaves every signal absent, even if an endpoint or protocol is unusable.
+2. Exporter `none` leaves that signal absent and ignores its endpoint and protocol.
+3. If neither that signal's endpoint nor the base endpoint is set, the signal is absent and its protocol and exporter are ignored.
+4. Any other exporter value than `otlp` fails startup for that signal (`reason=exporter`).
+5. A selected protocol other than `http/json` or `http/protobuf` fails startup (`reason=protocol`). `grpc` is fatal only when the signal is selected. The default is `http/protobuf`.
+6. A selected string that is not a URL fails startup (`reason=endpoint`) without logging the value.
+
+`http/protobuf` uses the protobuf HTTP exporter. `http/json` uses the JSON HTTP exporter.
+A traces endpoint is used unchanged for traces. A logs or metrics endpoint wins for
+that signal. Otherwise the base endpoint gains `/v1/traces`, `/v1/metrics`, or
+`/v1/logs`. Signal-specific headers override base header keys. The exporter reads
+those variables itself. Startup does not log header values.
+
+An unreachable selected URL is still a successful selection (FR-011, V-005).
+Collector unreachability is not an initialization failure and does not remove readiness.
 
 ### Startup policy after a successful boot
 
-If the collector is unreachable after start (SDK enabled), export is best-effort:
-request handling continues. Expect export failure diagnostics from the
-OpenTelemetry exporter on stderr — never as a hard crash, and
-never with header values printed by app code.
+If the collector is unreachable after start, export is best-effort: request
+handling continues and the process does not exit. A failed export writes only
+`pre-ets-frontend: telemetry delivery failed signal=<signal>`, where `<signal>`
+is `logs`, `metrics`, or `traces` (FR-011, V-005). That sentence has no URL,
+header, or exporter configuration.
 
 ## Required span attributes
 
@@ -163,8 +184,9 @@ request for batch export.
 
 The image and digest are the `otel-lgtm` service in `compose.yaml`
 (`grafana/otel-lgtm:0.37.0`). That image includes Tempo, Loki, and Prometheus.
-The frontend exports traces only. An empty Loki or Prometheus result does not
-mean the application was quiet or emitted no metrics.
+Loki is evidence only when logs are selected, and Prometheus is evidence only
+when metrics are selected (V-003, V-004). An empty result for a signal that was
+not selected does not mean the application was quiet.
 
 Pinned package: **`mcp-grafana==2.0.0`**. Unversioned `uvx mcp-grafana` is not
 acceptable. The committed command is read-only (`--disable-write`), disables
@@ -230,10 +252,12 @@ UIDs are `tempo`, `loki`, and `prometheus`.
    a returned trace ID. Client spans omit the query string, fragment, and
    userinfo. Do not copy Authorization, Cookie, or collector headers into the
    chat.
-2. Logs: `query_loki_logs` may be used. Application logs stay on the Next
-   process, so an empty result is not evidence that the app logged nothing.
-3. Metrics: `query_prometheus` may be used. The frontend does not export
-   metrics, so an empty result is not evidence that the app emitted none.
+2. Logs: `query_loki_logs` may be used when logs are selected. An empty result
+   for an unselected logs signal is not evidence that the app logged nothing.
+   Local console output remains on the Next process either way.
+3. Metrics: `query_prometheus` may be used when metrics are selected. An empty
+   result for an unselected metrics signal is not evidence that the app emitted
+   none.
 
 ### Human verification checklist (SC-006)
 
@@ -253,7 +277,6 @@ Docs-only command lists without a live success are not SC-006 evidence.
 
 ## Out of scope (stubs)
 
-- Metrics and logs export
 - Browser/RUM and cross-process `traceparent` propagation
 - A second OTLP exporter alongside `@effect/opentelemetry` `NodeSdk` (including Effect `OtlpTracer`)
 - Production sampling policies, alerting, and SLOs

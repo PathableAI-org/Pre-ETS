@@ -1,8 +1,8 @@
 import { assert, it } from "@effect/vitest"
-import { ConfigProvider, Effect, Exit } from "effect"
+import { Cause, Config, ConfigProvider, Effect, Exit, Option } from "effect"
 import { describe } from "vitest"
 
-import { ServerConfig } from "../../src/lib/config"
+import { ServerConfig, StartupConfig } from "../../src/lib/config"
 
 const BaseConfigProvider = ConfigProvider.fromUnknown({
   BASE_HOSTNAME: "example.test",
@@ -325,5 +325,65 @@ describe("ServerConfig", () => {
         )
       )
     })
+  })
+})
+
+const configError = (exit: Exit.Exit<unknown, unknown>): boolean => {
+  if (!Exit.isFailure(exit)) return false
+  const error = Cause.findErrorOption(exit.cause)
+  return Option.isSome(error) && error.value instanceof Config.ConfigError
+}
+
+// StartupConfig contract: one Config failure before infrastructure, without URL or protocol selection (V-006).
+describe("StartupConfig", () => {
+  it.effect("fails with ConfigError when TENANT_CONFIG_DIR is omitted", () => {
+    return Effect.gen(function*() {
+      const exit = yield* Effect.exit(StartupConfig)
+      assert.isTrue(configError(exit))
+    }).pipe(
+      Effect.provideService(
+        ConfigProvider.ConfigProvider,
+        withConfigOverrides({}, ["TENANT_CONFIG_DIR"])
+      )
+    )
+  })
+
+  it.effect("defaults LOG_LEVEL to Info", () => {
+    return Effect.gen(function*() {
+      const config = yield* StartupConfig
+      assert.strictEqual(config.logLevel, "Info")
+      assert.strictEqual(config.server.tenant.resolution, "host")
+    }).pipe(
+      Effect.provideService(ConfigProvider.ConfigProvider, BaseConfigProvider)
+    )
+  })
+
+  it.effect("fails with ConfigError when LOG_LEVEL is invalid", () => {
+    return Effect.gen(function*() {
+      const exit = yield* Effect.exit(StartupConfig)
+      assert.isTrue(configError(exit))
+    }).pipe(
+      Effect.provideService(
+        ConfigProvider.ConfigProvider,
+        withConfigOverrides({ LOG_LEVEL: "loud" })
+      )
+    )
+  })
+
+  it.effect("does not apply URL or protocol selection", () => {
+    return Effect.gen(function*() {
+      const config = yield* StartupConfig
+      assert.deepEqual(config.otel.endpoint, Option.some("not a url"))
+      assert.deepEqual(config.otel.exportUrl, Option.some("not a url/v1/traces"))
+      assert.deepEqual(config.otel.protocol, Option.some("grpc"))
+    }).pipe(
+      Effect.provideService(
+        ConfigProvider.ConfigProvider,
+        withConfigOverrides({
+          OTEL_EXPORTER_OTLP_ENDPOINT: "not a url",
+          OTEL_EXPORTER_OTLP_PROTOCOL: "grpc"
+        })
+      )
+    )
   })
 })

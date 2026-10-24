@@ -105,4 +105,82 @@ describe("OtelConfig", () => {
       const exit = yield* Effect.exit(OtelConfig)
       assert.isTrue(Exit.isFailure(exit))
     }).pipe(provide({ OTEL_SDK_DISABLED: "maybe" })))
+
+  // OtelConfig contract: disabled or unselected strings still decode. URL syntax is not checked here (V-006).
+  it.effect("leaves logs, metrics, and exporter fields unset", () =>
+    Effect.gen(function*() {
+      const config = yield* OtelConfig
+      assert.deepEqual(config.logsEndpoint, Option.none())
+      assert.deepEqual(config.logsExporter, Option.none())
+      assert.deepEqual(config.logsExportUrl, Option.none())
+      assert.deepEqual(config.logsProtocol, Option.none())
+      assert.deepEqual(config.metricsEndpoint, Option.none())
+      assert.deepEqual(config.metricsExporter, Option.none())
+      assert.deepEqual(config.metricsExportUrl, Option.none())
+      assert.deepEqual(config.metricsProtocol, Option.none())
+      assert.deepEqual(config.tracesExporter, Option.none())
+    }).pipe(provide({})))
+
+  it.effect("treats empty logs and metrics values as unset", () =>
+    Effect.gen(function*() {
+      const config = yield* OtelConfig
+      assert.deepEqual(config.logsEndpoint, Option.none())
+      assert.deepEqual(config.logsExporter, Option.none())
+      assert.deepEqual(config.logsExportUrl, Option.none())
+      assert.deepEqual(config.logsProtocol, Option.none())
+      assert.deepEqual(config.metricsEndpoint, Option.none())
+      assert.deepEqual(config.metricsExporter, Option.none())
+      assert.deepEqual(config.metricsExportUrl, Option.none())
+      assert.deepEqual(config.metricsProtocol, Option.none())
+      assert.deepEqual(config.tracesExporter, Option.none())
+    }).pipe(provide({
+      OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: "",
+      OTEL_EXPORTER_OTLP_LOGS_PROTOCOL: "",
+      OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: "",
+      OTEL_EXPORTER_OTLP_METRICS_PROTOCOL: "",
+      OTEL_LOGS_EXPORTER: "",
+      OTEL_METRICS_EXPORTER: "",
+      OTEL_TRACES_EXPORTER: ""
+    })))
+
+  it.effect("lets a logs or metrics endpoint win over the base export URL", () =>
+    Effect.gen(function*() {
+      const config = yield* OtelConfig
+      assert.deepEqual(config.logsEndpoint, Option.some("http://127.0.0.1:4318/v1/logs"))
+      assert.deepEqual(config.logsExportUrl, Option.some("http://127.0.0.1:4318/v1/logs"))
+      assert.deepEqual(config.metricsEndpoint, Option.some("http://127.0.0.1:4318/v1/metrics"))
+      assert.deepEqual(config.metricsExportUrl, Option.some("http://127.0.0.1:4318/v1/metrics"))
+      assert.deepEqual(config.exportUrl, Option.some("http://127.0.0.1:4318/v1/traces"))
+    }).pipe(provide({
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://127.0.0.1:4318",
+      OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: "http://127.0.0.1:4318/v1/logs",
+      OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: "http://127.0.0.1:4318/v1/metrics"
+    })))
+
+  it.effect("appends logs and metrics paths after removing one trailing slash", () =>
+    Effect.gen(function*() {
+      const config = yield* OtelConfig
+      assert.deepEqual(config.logsEndpoint, Option.none())
+      assert.deepEqual(config.logsExportUrl, Option.some("http://127.0.0.1:4318/v1/logs"))
+      assert.deepEqual(config.metricsEndpoint, Option.none())
+      assert.deepEqual(config.metricsExportUrl, Option.some("http://127.0.0.1:4318/v1/metrics"))
+    }).pipe(provide({
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://127.0.0.1:4318/"
+    })))
+
+  it.effect("still decodes a disabled SDK, including the computed traces export URL", () =>
+    Effect.gen(function*() {
+      const config = yield* OtelConfig
+      assert.isTrue(config.disabled)
+      assert.deepEqual(config.exportUrl, Option.some("http://127.0.0.1:4318/v1/traces"))
+      assert.deepEqual(config.logsExportUrl, Option.some("http://127.0.0.1:4318/v1/logs"))
+      assert.deepEqual(config.metricsExportUrl, Option.some("http://127.0.0.1:4318/v1/metrics"))
+      assert.deepEqual(config.logsExporter, Option.some("none"))
+      assert.deepEqual(config.logsProtocol, Option.some("grpc"))
+    }).pipe(provide({
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://127.0.0.1:4318",
+      OTEL_EXPORTER_OTLP_LOGS_PROTOCOL: "grpc",
+      OTEL_LOGS_EXPORTER: "none",
+      OTEL_SDK_DISABLED: "true"
+    })))
 })

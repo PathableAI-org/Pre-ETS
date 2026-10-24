@@ -33,7 +33,7 @@ const decodeTtlSeconds = Schema.decodeUnknownEffect(
   Schema.String.pipe(Schema.check(Schema.isPattern(/^(?:[1-9]|[1-9][0-9]|[1-5][0-9]{2}|600)$/)))
 )
 
-const TransactionStoreConfig: Config.Config<TransactionStoreSettings> = Config.all({
+export const TransactionStoreConfig: Config.Config<TransactionStoreSettings> = Config.all({
   prefix: Config.String("OIDC_TX_KEY_PREFIX").pipe(Config.withDefault("preets:oidc-tx:v1")),
   ttl: Config.String("OIDC_TX_TTL_SECONDS").pipe(
     Config.withDefault("600"),
