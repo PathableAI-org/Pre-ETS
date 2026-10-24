@@ -250,9 +250,10 @@ Use volume deletion only to reset a local disposable environment. Flyway
    `curl -sS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8080/realms/pre-ets/.well-known/openid-configuration`
    (expect `200`).
 2. Copy `packages/frontend/.env.example` to `.env.local` if needed; set
-   `REDIS_URL`, generate `SESSION_SIGNING_SECRET`, and keep the example
-   **static** tenant JSON (issuer `http://127.0.0.1:8080/realms/pre-ets`,
-   client `springfield-web`).
+   `REDIS_URL` and distinct owned `SESSION_KEY_PREFIX` / `OIDC_TX_KEY_PREFIX`
+   values, and keep the example **static** tenant JSON (issuer
+   `http://127.0.0.1:8080/realms/pre-ets`, client `springfield-web`). The session
+   reference is an opaque random lookup value; there is no signing secret to generate.
 3. Run `pnpm dev:frontend` and open `http://localhost:3000/` — you should land
    on the Keycloak login form (`demo` / `demo`). For two-tenant host checks,
    switch `TENANT_RESOLUTION=host` and use `*.localhost` hosts from
