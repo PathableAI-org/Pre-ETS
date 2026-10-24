@@ -32,14 +32,14 @@ As an operator, I need every required startup failure to be diagnosed and to ter
 
 **Why this priority**: A process that survives a failed start can receive traffic without the configuration or resources needed to preserve tenant, authentication, and session guarantees.
 
-**Independent Test**: Introduce one controlled failure at each startup stage, including trials where diagnostic delivery, cleanup, or telemetry flush fails or stalls, and observe the stage-specific diagnostic, cleanup attempt, bounded telemetry delivery where applicable, nonzero termination within the planning-defined bound, and absence of readiness.
+**Independent Test**: Introduce one controlled failure at each startup stage, including trials where diagnostic delivery, cleanup, or telemetry flush fails or stalls, and observe the bounded diagnostic attempt, the stage-specific record when that delivery succeeds, the cleanup attempt, bounded telemetry delivery where applicable, nonzero termination within the planning-defined bound, and absence of readiness.
 
 **Acceptance Scenarios**:
 
 1. **Given** invalid required process-wide configuration, **When** startup validation fails, **Then** the application records a safe diagnostic through the bootstrap logging path, identifies configuration validation as the failing stage, never reports readiness, and terminates with a nonzero status.
 2. **Given** explicitly configured required observability cannot initialize, **When** startup reaches observability initialization, **Then** the application records a safe fallback diagnostic, never begins application-service acquisition, never reports readiness, and terminates with a nonzero status.
 3. **Given** configured observability is ready but a required application resource such as the distributed store cannot be acquired, **When** startup reaches application acquisition, **Then** the failure is diagnosed through the fully initialized observability capabilities, previously acquired resources are released where possible, buffered telemetry receives a bounded delivery attempt, and the process terminates with a nonzero status.
-4. **Given** diagnostic delivery or cleanup fails or does not complete within its bound, **When** fatal startup handling runs, **Then** that secondary failure does not prevent eventual nonzero process termination.
+4. **Given** diagnostic delivery or cleanup fails or does not complete within its bound, **When** fatal startup handling runs, **Then** a bounded diagnostic attempt has still been made, a stage-identifying record is required only when that delivery succeeds, and the secondary failure does not prevent nonzero process termination.
 
 ---
 
@@ -75,6 +75,7 @@ As a maintainer, I need startup configuration and application dependencies to ha
 2. **Given** a test supplies controlled infrastructure dependencies, **When** application composition is acquired without starting the process or a web server, **Then** service behavior can be exercised through existing public contracts.
 3. **Given** the refactored application is exercised through existing tenant, authentication, persistence, session, and HTTP scenarios, **When** results are compared with the accepted contracts, **Then** statuses, redirects, errors, storage behavior, and tenant isolation remain unchanged.
 4. **Given** production startup, **When** the application composition is acquired, **Then** it does not use a construction path designated specifically as a test harness.
+5. **Given** a ready application process, **When** it handles more than one business request and then shuts down gracefully, **Then** those requests share one process-lifetime application environment and acquired resources are disposed.
 
 ### Edge Cases
 
@@ -108,7 +109,7 @@ As a maintainer, I need startup configuration and application dependencies to ha
 - **FR-013**: Dependent application services MUST receive a coherent validated startup-configuration value through one consistent application dependency boundary rather than independently parsing the same process environment settings.
 - **FR-014**: Startup configuration MUST remain distinct from request-selected tenant configuration and request-specific data. This refactor MUST NOT change when or how per-request tenant configuration is selected and loaded.
 - **FR-015**: Any failure to complete required startup initialization, including required configuration, observability, application-service, or external-resource initialization, MUST be fatal at the application bootstrap boundary.
-- **FR-016**: Every fatal startup failure MUST record a meaningful diagnostic using the best diagnostic capability available at the failing stage and MUST identify that stage.
+- **FR-016**: Every fatal startup failure MUST make a bounded attempt to record a meaningful diagnostic using the best diagnostic capability available at the failing stage. When that delivery succeeds, the record MUST identify the failing stage. When diagnostic delivery fails or does not complete within the planning-defined bound, nonzero process termination remains mandatory.
 - **FR-017**: Startup diagnostics MUST preserve useful typed or categorized failure information where available without exposing credentials, secret references resolved to values, collector authorization material, tokens, tenant configuration contents, or other sensitive configuration.
 - **FR-018**: Fatal startup handling MUST release resources acquired by completed earlier stages where possible and MUST attempt bounded delivery of buffered telemetry when applicable.
 - **FR-019**: Diagnostic, cleanup, or telemetry-delivery failure MUST NOT prevent eventual process termination with a nonzero status.
@@ -127,7 +128,7 @@ As a maintainer, I need startup configuration and application dependencies to ha
 ### Measurable Outcomes
 
 - **SC-001**: In the planned startup matrix, 100% of successful starts declare readiness only after configuration, configured observability, application services, and required external resources are ready.
-- **SC-002**: In the planned startup matrix, 100% of required failures at configuration, observability, and application-acquisition stages produce a stage-identifying safe diagnostic where diagnostic delivery succeeds, never declare readiness, and terminate with a nonzero status. Trials in which diagnostic delivery, cleanup, or flush fails or stalls still terminate nonzero within the planning-defined bound.
+- **SC-002**: In the planned startup matrix, 100% of required failures at configuration, observability, and application-acquisition stages make a bounded diagnostic attempt, produce a stage-identifying safe diagnostic when that delivery succeeds, never declare readiness, and terminate with a nonzero status. Trials in which diagnostic delivery, cleanup, or flush fails or stalls still terminate nonzero within the planning-defined bound.
 - **SC-003**: The application passes all seven manual observability and startup cases defined in the verification plan using actual standard-error output and configured telemetry destinations.
 - **SC-004**: With telemetry intentionally disabled or not selected, including when unselected observability settings are malformed and when only one capability is disabled, the application starts successfully in 100% of valid test runs, does not require the disabled or unselected capability, and retains local diagnostic output.
 - **SC-005**: With a collector unreachable from process start, or becoming unavailable after successful initialization, the application becomes or remains ready and continues serving valid requests in 100% of planned trials while recording best-effort delivery failure locally.
@@ -135,6 +136,7 @@ As a maintainer, I need startup configuration and application dependencies to ha
 - **SC-007**: Existing automated tenant, authentication, persistence, session, configuration, and framework-boundary behavioral checks pass without weakening their assertions or changing accepted outcomes.
 - **SC-008**: Application composition can be acquired in a test process with substituted startup configuration and infrastructure dependencies, without starting a web server or invoking process termination.
 - **SC-009**: Manual review of startup failure diagnostics finds zero exposed credentials, resolved secrets, authorization headers, tokens, or tenant configuration contents across the planned failure cases.
+- **SC-010**: In the planned manual trial, multiple requests in one process share one application environment, and graceful shutdown disposes acquired resources before the process exits.
 
 ## Assumptions
 
