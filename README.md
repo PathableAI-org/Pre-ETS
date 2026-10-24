@@ -286,10 +286,16 @@ Non-major ESLint updates include TypeScript, `typescript-eslint`, ESLint plugins
 and `globals` so the compiler and lint integrations can be reviewed together.
 The `typescript-eslint` umbrella package owns its matching parser and plugin
 versions. dprint and its plugins, Prettier and its plugins, and Git hook tooling
-have separate update groups. OpenTelemetry SDKs, instrumentation, semantic
-conventions, and the Next.js integration form a coordinated runtime group;
-`@effect/opentelemetry` remains in the Effect group. React/Next and Vite/Vitest
-retain their existing groups, including Vitest companion packages.
+have separate update groups. OpenTelemetry API, SDK, experimental packages,
+instrumentation, and semantic conventions share one group, including majors, so
+a single release line is updated together. `@effect/opentelemetry` remains in
+the Effect group. Version ceilings keep that group inside the installed
+wrapper's peer ranges: `@opentelemetry/api` below 1.10.0, experimental packages
+below 0.300.0, the stable SDK below 3.0.0, and semantic conventions below 2.0.0.
+Remove the ceilings in the change that adopts a wrapper whose peers accept the
+next SDK, once the frontend no longer depends on `@opentelemetry/sdk-trace-base`,
+`sdk-trace-node`, or `sdk-trace-web`. React/Next and Vite/Vitest retain their existing
+groups, including Vitest companion packages.
 
 Node types remain declared at the root and grouped with the Node runtime. Keep
 the types major aligned with the supported runtime. A catalog does not constrain
