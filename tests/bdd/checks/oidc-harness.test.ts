@@ -1,5 +1,6 @@
 import assert from "node:assert/strict"
 import http from "node:http"
+import net from "node:net"
 import { test } from "node:test"
 
 import {
@@ -138,9 +139,20 @@ await test("process readiness is bounded and owned processes always close", asyn
   assert.ok(child.exitCode !== null || child.signalCode !== null, "owned child process exited after stopProcess")
 })
 
-await test("freePort returns distinct usable loopback ports", async () => {
-  const first = await freePort()
-  const second = await freePort()
-  assert.notEqual(first, second)
-  assert.ok(first > 0 && second > 0)
+await test("freePort returns a released loopback port that can be rebound", async () => {
+  const port = await freePort()
+  assert.ok(port > 0)
+  const server = net.createServer()
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject)
+    server.listen(port, "127.0.0.1", () => {
+      resolve()
+    })
+  })
+  await new Promise<void>((resolve, reject) => {
+    server.close((error) => {
+      if (error) reject(error)
+      else resolve()
+    })
+  })
 })

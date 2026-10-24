@@ -184,7 +184,7 @@ When("the visitor submits a wrong-state callback before the captured valid retur
   const valid = new URL(captured.url)
   const wrong = new URL(valid)
   wrong.searchParams.set("state", "wrong-state")
-  const premature = await requestInstance(
+  this.earlierResponse = await requestInstance(
     this,
     this.port,
     host,
@@ -192,8 +192,6 @@ When("the visitor submits a wrong-state callback before the captured valid retur
     true,
     captured.cookie
   )
-  assert.equal(premature.status, 200)
-  assert.equal(premature.headers["set-cookie"], undefined)
   this.response = await requestInstance(
     this,
     this.secondaryPort,
@@ -209,7 +207,7 @@ When("the captured Springfield return is first submitted to Shelbyville and then
 ) {
   const captured = await captureProviderReturn(this, "springfield.localhost:3000")
   const valid = new URL(captured.url)
-  const mismatch = await requestInstance(
+  this.earlierResponse = await requestInstance(
     this,
     this.port,
     "shelbyville.localhost:3000",
@@ -217,8 +215,6 @@ When("the captured Springfield return is first submitted to Shelbyville and then
     true,
     captured.cookie
   )
-  assert.equal(mismatch.status, 200)
-  assert.equal(mismatch.headers["set-cookie"], undefined)
   this.response = await requestInstance(
     this,
     this.secondaryPort,

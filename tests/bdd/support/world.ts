@@ -16,6 +16,7 @@ export class AppWorld extends World {
   callbackRaceResponses: { body: string; headers: Record<string, string>; status: number }[] = []
   cookie: string | undefined
   directory = tenantConfigDir
+  earlierResponse: undefined | { body: string; headers: Record<string, string>; status: number }
   extraHeaders: Record<string, string> = {}
   logs = ""
   ownedDirectory: string | undefined

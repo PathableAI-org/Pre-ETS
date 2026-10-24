@@ -22,6 +22,12 @@ When("a visitor requests {string} at {string}", async function(this: AppWorld, p
 Then("the response status is {int}", function(this: AppWorld, status: number) {
   assert.equal(this.response?.status, status)
 })
+Then("the earlier callback status is {int}", function(this: AppWorld, status: number) {
+  assert.equal(this.earlierResponse?.status, status)
+})
+Then("the earlier callback issues no cookie", function(this: AppWorld) {
+  assert.equal(this.earlierResponse?.headers["set-cookie"], undefined)
+})
 Then("the response header {string} is {string}", function(this: AppWorld, name: string, value: string) {
   assert.equal(this.response?.headers[name.toLowerCase()], value)
 })

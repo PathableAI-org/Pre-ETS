@@ -1,4 +1,5 @@
 @partial
+@preets-session-003
 Feature: Validate the selected tenant OIDC callback
   This slice recovers one tenant-bound provider attempt across frontend instances.
   Observed callbacks are the safe no-session response. Freshness confirmation and
@@ -20,6 +21,8 @@ Feature: Validate the selected tenant OIDC callback
     Given production tenant sites for Springfield and Shelbyville
     And host resolution uses base hostname "localhost"
     When the visitor submits a wrong-state callback before the captured valid return at "springfield.localhost:3000"
+    Then the earlier callback status is 200
+    And the earlier callback issues no cookie
     Then the response status is 200
     And the response clears recoverable correlation and issues no application session
 
@@ -28,6 +31,8 @@ Feature: Validate the selected tenant OIDC callback
     Given production tenant sites for Springfield and Shelbyville
     And host resolution uses base hostname "localhost"
     When the captured Springfield return is first submitted to Shelbyville and then Springfield
+    Then the earlier callback status is 200
+    And the earlier callback issues no cookie
     Then the response status is 200
     And the response clears recoverable correlation and issues no application session
 

@@ -1,5 +1,7 @@
 import type { NextRequest, NextResponse } from "next/server"
 
+import type { SessionReference } from "../../lib/session.ts"
+
 export const CORRELATION_COOKIE = "oidc-correlation"
 const SESSION_COOKIE = "pathable-session"
 
@@ -13,7 +15,7 @@ export const isLoopbackHost = (host: string): boolean => {
 export const setSessionCookie = (
   response: NextResponse,
   request: NextRequest,
-  reference: string,
+  reference: SessionReference,
   maxAgeSeconds: number
 ): NextResponse => {
   response.cookies.set(SESSION_COOKIE, reference, {

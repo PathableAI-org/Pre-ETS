@@ -48,14 +48,15 @@ const identity = { issuer: "https://provider.test/", subject: "subject-redis" }
 
 const establish = (
   runtime: ManagedRuntime.ManagedRuntime<SessionService, unknown>,
-  idleTimeoutMinutes: number
+  idleTimeoutMinutes: number,
+  warningLeadMinutes = 5
 ) =>
   runtime.runPromise(
     Effect.gen(function*() {
       const service = yield* SessionService
       return yield* service.establish({
         identity,
-        policy: { idleTimeoutMinutes, warningLeadMinutes: 5 },
+        policy: { idleTimeoutMinutes, warningLeadMinutes },
         tenantAlias: alias
       })
     })
@@ -133,6 +134,34 @@ const ownedKeyMetadata = async (prefix: string) => {
   }
 }
 
+const shortenOwnedTtl = async (prefix: string, ttlMilliseconds: number) => {
+  if (!ownedSessionPrefix.test(prefix)) {
+    throw new Error("Refusing to expire an unvalidated session prefix")
+  }
+  const runtime = ManagedRuntime.make(redisLayer())
+  try {
+    await runtime.runPromise(Effect.gen(function*() {
+      const redis = yield* Redis.Redis
+      let cursor = "0"
+      do {
+        const page = yield* redis.send<readonly [string, readonly string[]]>(
+          "SCAN",
+          cursor,
+          "MATCH",
+          `${prefix}*`,
+          "COUNT",
+          "100"
+        )
+        const keys = page[1].filter((key) => key.startsWith(prefix))
+        for (const key of keys) yield* redis.send("PEXPIRE", key, String(ttlMilliseconds))
+        cursor = page[0]
+      } while (cursor !== "0")
+    }))
+  } finally {
+    await runtime.dispose()
+  }
+}
+
 const destroyClient = Effect.gen(function*() {
   const node = yield* NodeRedis.NodeRedis
   node.client.destroy()
@@ -194,12 +223,13 @@ describe("SessionService with independently scoped NodeRedis clients", () => {
     const prefix = `test:session:${randomUUID()}:`
     const runtime = ManagedRuntime.make(sessionLayer(prefix))
     try {
-      const established = await establish(runtime, 2 / 60)
+      const established = await establish(runtime, 5, 0)
       const stored = await ownedKeyMetadata(prefix)
       expect(stored.count).toBe(1)
-      expect(stored.ttlMilliseconds).toBeGreaterThan(0)
-      expect(stored.ttlMilliseconds).toBeLessThanOrEqual(2_000)
-      await delay(2_500)
+      expect(stored.ttlMilliseconds).toBeGreaterThan(290_000)
+      expect(stored.ttlMilliseconds).toBeLessThanOrEqual(300_000)
+      await shortenOwnedTtl(prefix, 1_000)
+      await delay(1_500)
       const evicted = await ownedKeyMetadata(prefix)
       expect(evicted.count).toBe(0)
       expect(evicted.ttlMilliseconds).toBe(-2)

@@ -2,8 +2,6 @@ import { Context, Effect, Layer, Schema } from "effect"
 import { Redis } from "effect/persistence/Redis"
 import { createHash } from "node:crypto"
 
-import type { SessionReference } from "./codec.ts"
-
 import { SessionKeyPrefix } from "../config/index.ts"
 
 /**
@@ -14,24 +12,29 @@ type CreateOutcome = "created" | "exists"
 
 type ReadOutcome = string | undefined
 
+/** Opaque reference already validated by the session parent. */
+interface SessionStoreAddress {
+  readonly reference: string
+}
+
 class SessionStoreUnavailable extends Schema.TaggedError<SessionStoreUnavailable>()(
   "SessionStoreUnavailable",
   {}
 ) {}
 
-const keyFor = (prefix: string, reference: SessionReference): string => {
+const keyFor = (prefix: string, reference: string): string => {
   const digest = createHash("sha256").update(reference).digest("base64url")
   return `${prefix}:${digest}`
 }
 
 export class SessionStore extends Context.Service<SessionStore, {
   readonly create: (
-    address: { readonly reference: SessionReference },
+    address: SessionStoreAddress,
     payload: string,
     ttlMilliseconds: number
   ) => Effect.Effect<CreateOutcome, SessionStoreUnavailable>
   readonly read: (
-    address: { readonly reference: SessionReference }
+    address: SessionStoreAddress
   ) => Effect.Effect<ReadOutcome, SessionStoreUnavailable>
 }>()("@pathableai/pre-ets-frontend/SessionStore") {
   static readonly layer = Layer.effect(
@@ -41,7 +44,7 @@ export class SessionStore extends Context.Service<SessionStore, {
       const prefix = yield* SessionKeyPrefix
 
       const create = Effect.fnUntraced(function*(
-        address: { readonly reference: SessionReference },
+        address: SessionStoreAddress,
         payload: string,
         ttlMilliseconds: number
       ) {
@@ -58,7 +61,7 @@ export class SessionStore extends Context.Service<SessionStore, {
         return result === "OK" ? "created" : "exists"
       })
 
-      const read = Effect.fnUntraced(function*(address: { readonly reference: SessionReference }) {
+      const read = Effect.fnUntraced(function*(address: SessionStoreAddress) {
         return yield* redis.send<null | string>("GET", keyFor(prefix, address.reference)).pipe(
           Effect.map((value) => value ?? undefined),
           Effect.mapError(() => new SessionStoreUnavailable({}))

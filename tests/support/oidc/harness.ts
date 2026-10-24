@@ -137,7 +137,10 @@ export async function stopProcess(child: ChildProcess | undefined): Promise<void
   if (pid === undefined) return
   signalProcessGroup(pid, "SIGTERM")
   await waitForExit(child)
-  if (running(child)) signalProcessGroup(pid, "SIGKILL")
+  if (!running(child)) return
+  signalProcessGroup(pid, "SIGKILL")
+  await waitForExit(child)
+  if (running(child)) throw new Error("Owned process did not exit after SIGKILL")
 }
 
 const readinessFailure = (
