@@ -67,7 +67,7 @@ const TenantAliasBrand = "@pathableai/pre-ets-frontend/TenantAlias" as const
  *
  * @category models
  */
-const TenantAlias = Schema.NonEmptyString.pipe(
+export const TenantAlias = Schema.NonEmptyString.pipe(
   Schema.check(Schema.isPattern(/^[a-z-]+$/)),
   Schema.brand(TenantAliasBrand)
 )
@@ -77,7 +77,7 @@ const TenantAlias = Schema.NonEmptyString.pipe(
  *
  * @category models
  */
-type TenantAlias = typeof TenantAlias.Type
+export type TenantAlias = typeof TenantAlias.Type
 
 const decodeTenantAlias = Schema.decodeResult(TenantAlias)
 

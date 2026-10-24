@@ -15,7 +15,14 @@ import {
   makeBrowserCorrelation,
   TransactionStoreUnavailable
 } from "./authentication/transaction.ts"
-import { TenantConfigService } from "./tenant.ts"
+import { type TenantAlias, TenantConfigService } from "./tenant.ts"
+
+export interface TrustedIdentity {
+  readonly authenticatedAt: number
+  readonly issuer: string
+  readonly subject: string
+  readonly tenantAlias: TenantAlias
+}
 
 interface AuthenticationServiceShape {
   readonly complete: (
@@ -38,13 +45,6 @@ interface PreparedAuthentication {
   readonly correlation: string
   readonly destination: string
   readonly expiresAt: number
-}
-
-interface TrustedIdentity {
-  readonly authenticatedAt: number
-  readonly issuer: string
-  readonly subject: string
-  readonly tenantAlias: string
 }
 
 const authenticationDeniedTag = "@pathableai/pre-ets-frontend/AuthenticationDenied"
