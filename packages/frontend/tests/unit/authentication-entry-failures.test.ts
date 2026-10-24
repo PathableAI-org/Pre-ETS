@@ -1,7 +1,12 @@
-import { Effect } from "effect"
+import { NodeServices } from "@effect/platform-node"
+import { Effect, Layer, Schema } from "effect"
 import { NextRequest } from "next/server"
+import { mkdtemp, rm, writeFile } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
+import { callbackFreshnessPolicy } from "../../src/app/auth/callback/freshness.ts"
 import { GET as callback } from "../../src/app/auth/callback/route.ts"
 import { GET as login } from "../../src/app/auth/login/route.ts"
 import {
@@ -11,6 +16,8 @@ import {
   CallbackExpectedFailure
 } from "../../src/lib/authentication.ts"
 import { HttpError } from "../../src/lib/error.ts"
+import { SessionService, SessionServiceUnavailable } from "../../src/lib/session.ts"
+import { TenantAlias, TenantConfigService } from "../../src/lib/tenant.ts"
 
 const runtime = vi.hoisted(() => ({ runPromise: vi.fn() }))
 vi.mock("../../src/lib/runtime", () => ({ Runtime: runtime }))
@@ -112,5 +119,110 @@ describe("callback expected-failure mapping", () => {
     ))
     expect(response.status).toBe(status)
     expect(response.headers.get("set-cookie")).toBeNull()
+  })
+})
+
+describe("callback session-establishment failure mapping", () => {
+  const alias = Schema.decodeSync(TenantAlias)("alpha")
+  const identity = {
+    authenticatedAt: 1_700_000_000,
+    issuer: "https://provider.test/",
+    subject: "subject-1",
+    tenantAlias: alias
+  }
+
+  const tenantLayer = (configDir: string) =>
+    TenantConfigService.layer({
+      env: "test",
+      tenant: { configDir, resolution: "static", staticAlias: "alpha" }
+    }).pipe(Layer.provide(NodeServices.layer))
+
+  const runConfirmed = (
+    layers: {
+      readonly session: Layer.Layer<SessionService, unknown>
+      readonly tenant: Layer.Layer<TenantConfigService, unknown>
+    }
+  ) => {
+    runtime.runPromise.mockImplementation((program: Effect.Effect<unknown, never, AuthenticationService>) =>
+      Effect.runPromise(program.pipe(
+        Effect.provideService(AuthenticationService, {
+          complete: () => Effect.succeed(identity),
+          prepare: () => Effect.die("prepare must remain unused")
+        }),
+        Effect.provide(layers.session),
+        Effect.provide(layers.tenant)
+      ))
+    )
+  }
+
+  const expectSafeReturn = async (response: Response, absent: string) => {
+    const body = await response.text()
+    const cookies = response.headers.getSetCookie().join(" ")
+    expect(response.status).toBe(200)
+    expect(response.headers.get("cache-control")).toBe("private, no-store")
+    expect(body).toContain("Sign-in could not continue")
+    expect(body).toContain("Return to the application entry")
+    expect(body).not.toContain(absent)
+    expect(cookies).toContain("oidc-correlation=")
+    expect(cookies).toContain("Max-Age=0")
+    expect(cookies).not.toContain("pathable-session")
+  }
+
+  it("returns the safe page when tenant lookup fails after a confirmed trusted result", async () => {
+    const confirmed = vi.spyOn(callbackFreshnessPolicy, "confirmed").mockReturnValue(true)
+    const missingDirectory = join(tmpdir(), "preets-missing-tenant-config")
+    const establish = vi.fn(() => Effect.die("establish must remain unused"))
+    try {
+      runConfirmed({
+        session: Layer.succeed(SessionService, {
+          establish,
+          hasSession: () => Effect.succeed(false),
+          read: () => Effect.die("read must remain unused")
+        }),
+        tenant: tenantLayer(missingDirectory)
+      })
+      const response = await callback(request(
+        "/auth/callback?code=secret-code&state=state-1",
+        `oidc-correlation=${"F".repeat(43)}`
+      ))
+      await expectSafeReturn(response, missingDirectory)
+      expect(establish).not.toHaveBeenCalled()
+    } finally {
+      confirmed.mockRestore()
+    }
+  })
+
+  it("returns the safe page when establishment fails after a confirmed trusted result", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "preets-session-failure-"))
+    const confirmed = vi.spyOn(callbackFreshnessPolicy, "confirmed").mockReturnValue(true)
+    const establish = vi.fn(() => Effect.fail(new SessionServiceUnavailable({})))
+    try {
+      await writeFile(
+        join(directory, "alpha.json"),
+        JSON.stringify({
+          displayName: "Alpha",
+          idleTimeoutMinutes: 30,
+          oidc: { clientAuth: "public", clientId: "alpha-web", issuer: "https://provider.test" },
+          warningLeadMinutes: 5
+        })
+      )
+      runConfirmed({
+        session: Layer.succeed(SessionService, {
+          establish,
+          hasSession: () => Effect.succeed(false),
+          read: () => Effect.die("read must remain unused")
+        }),
+        tenant: tenantLayer(directory)
+      })
+      const response = await callback(request(
+        "/auth/callback?code=secret-code&state=state-1",
+        `oidc-correlation=${"G".repeat(43)}`
+      ))
+      await expectSafeReturn(response, "SessionServiceUnavailable")
+      expect(establish).toHaveBeenCalledTimes(1)
+    } finally {
+      confirmed.mockRestore()
+      await rm(directory, { force: true, recursive: true })
+    }
   })
 })

@@ -9,7 +9,6 @@ const tenantConfigDir = fileURLToPath(new URL("../../../fixtures/tenant-config",
 export class AppWorld extends World {
   allowInsecureLoopback = true
   baseHostname: string | undefined
-  browserCookieNames: string[] = []
   callbackOrigins: Record<string, string> = {
     shelbyville: "http://shelbyville.localhost:3000",
     springfield: "http://springfield.localhost:3000"
@@ -17,6 +16,7 @@ export class AppWorld extends World {
   callbackRaceResponses: { body: string; headers: Record<string, string>; status: number }[] = []
   cookie: string | undefined
   directory = tenantConfigDir
+  earlierResponse: undefined | { body: string; headers: Record<string, string>; status: number }
   extraHeaders: Record<string, string> = {}
   logs = ""
   ownedDirectory: string | undefined

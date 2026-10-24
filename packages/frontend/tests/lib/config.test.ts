@@ -280,4 +280,50 @@ describe("ServerConfig", () => {
       })
     })
   })
+
+  describe(".redis", () => {
+    it.effect("defaults the local compose URL when REDIS_URL is absent", () => {
+      return Effect.gen(function*() {
+        const config = yield* ServerConfig
+        assert.deepEqual(config.redis.url, "redis://127.0.0.1:6379")
+      }).pipe(
+        Effect.provideService(ConfigProvider.ConfigProvider, BaseConfigProvider)
+      )
+    })
+
+    it.effect("reads REDIS_URL", () => {
+      return Effect.gen(function*() {
+        const config = yield* ServerConfig
+        assert.deepEqual(config.redis.url, "redis://cache.test:6379")
+      }).pipe(
+        Effect.provideService(
+          ConfigProvider.ConfigProvider,
+          withConfigOverrides({ REDIS_URL: "redis://cache.test:6379" })
+        )
+      )
+    })
+  })
+
+  describe(".session", () => {
+    it.effect("defaults the versioned session prefix when SESSION_KEY_PREFIX is absent", () => {
+      return Effect.gen(function*() {
+        const config = yield* ServerConfig
+        assert.deepEqual(config.session.keyPrefix, "preets:session:v1")
+      }).pipe(
+        Effect.provideService(ConfigProvider.ConfigProvider, BaseConfigProvider)
+      )
+    })
+
+    it.effect("reads SESSION_KEY_PREFIX", () => {
+      return Effect.gen(function*() {
+        const config = yield* ServerConfig
+        assert.deepEqual(config.session.keyPrefix, "test:session:owned")
+      }).pipe(
+        Effect.provideService(
+          ConfigProvider.ConfigProvider,
+          withConfigOverrides({ SESSION_KEY_PREFIX: "test:session:owned" })
+        )
+      )
+    })
+  })
 })

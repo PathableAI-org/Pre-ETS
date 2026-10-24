@@ -1,7 +1,7 @@
 import { NodeRedis, NodeServices } from "@effect/platform-node"
 import { ConfigProvider, Effect, Layer, ManagedRuntime } from "effect"
 
-import { makeAuthenticationTestHarness } from "./authentication.ts"
+import { AuthenticationService } from "./authentication.ts"
 import { ServerConfig } from "./config/index.ts"
 import { appLoggerLayer, observabilityLayer } from "./observability.ts"
 import { SessionService } from "./session.ts"
@@ -20,24 +20,27 @@ const boot = () => {
       Effect.tapError(() => Effect.logError("Invalid server configuration"))
     )
 
+    // One shared Redis layer value serves authentication transactions and
+    // session state; the host acquires and disposes the resource exactly once.
+    const redisLayer = NodeRedis.layer({
+      disableOfflineQueue: true,
+      pingInterval: 1_000,
+      socket: { socketTimeout: 5_000 },
+      url: config.redis.url
+    })
+
+    const applicationLayer = Layer.mergeAll(
+      AuthenticationService.layer.pipe(
+        Layer.provideMerge(TenantConfigService.layer(config))
+      ),
+      SessionService.layer,
+      LoggerLayer,
+      observabilityLayer
+    )
+
     const runtime = ManagedRuntime.make(
-      Layer.mergeAll(
-        makeAuthenticationTestHarness({
-          redis: NodeRedis.layer({
-            disableOfflineQueue: true,
-            pingInterval: 1_000,
-            socket: { socketTimeout: 5_000 },
-            url: process.env.REDIS_URL ?? "redis://127.0.0.1:6379"
-          })
-        }).layer.pipe(
-          Layer.provideMerge(TenantConfigService.layer(config))
-        ),
-        SessionService.layer,
-        LoggerLayer,
-        observabilityLayer
-      ).pipe(
-        Layer.provide(NodeServices.layer),
-        Layer.provide(configProviderLayer)
+      applicationLayer.pipe(
+        Layer.provide(Layer.mergeAll(redisLayer, NodeServices.layer, configProviderLayer))
       )
     )
 

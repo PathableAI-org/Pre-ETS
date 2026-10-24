@@ -1,15 +1,11 @@
 import { describe, expect, it } from "@effect/vitest"
-import { Cause, ConfigProvider, Effect, Exit, Fiber, FileSystem, Path, References, Result } from "effect"
+import { Cause, ConfigProvider, Effect, Exit, Fiber, FileSystem, Layer, Path, References, Result } from "effect"
 import { TestClock } from "effect/testing"
 import { vi } from "vitest"
 
 import type { HttpError } from "../../src/lib/error.ts"
 
-import {
-  AuthenticationService,
-  AuthenticationUnavailable,
-  makeAuthenticationTestHarness
-} from "../../src/lib/authentication.ts"
+import { AuthenticationService, AuthenticationUnavailable } from "../../src/lib/authentication.ts"
 import { TenantConfigService } from "../../src/lib/tenant.ts"
 import { makeMemoryRedis } from "../helpers/authentication.ts"
 
@@ -21,7 +17,7 @@ const withScenario = <A, E, R>(program: Effect.Effect<A, E, AuthenticationServic
 } = {}) => {
   const redis = makeMemoryRedis()
   return program.pipe(
-    Effect.provide(makeAuthenticationTestHarness({ redis: redis.layer }).layer),
+    Effect.provide(AuthenticationService.layer.pipe(Layer.provide(redis.layer))),
     Effect.provide(TenantConfigService.layer({
       env: "test",
       tenant: { baseHostname: "example.test", configDir: "/tenants", resolution: "host" }

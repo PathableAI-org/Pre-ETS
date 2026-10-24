@@ -1,6 +1,4 @@
 import "server-only"
-import type { Redis } from "effect/persistence/Redis"
-
 import { Clock, Context, Data, Effect, Layer, Result, Schema } from "effect"
 
 import type { HttpError } from "./error.ts"
@@ -15,7 +13,14 @@ import {
   makeBrowserCorrelation,
   TransactionStoreUnavailable
 } from "./authentication/transaction.ts"
-import { TenantConfigService } from "./tenant.ts"
+import { type TenantAlias, TenantConfigService } from "./tenant.ts"
+
+export interface TrustedIdentity {
+  readonly authenticatedAt: number
+  readonly issuer: string
+  readonly subject: string
+  readonly tenantAlias: TenantAlias
+}
 
 interface AuthenticationServiceShape {
   readonly complete: (
@@ -38,13 +43,6 @@ interface PreparedAuthentication {
   readonly correlation: string
   readonly destination: string
   readonly expiresAt: number
-}
-
-interface TrustedIdentity {
-  readonly authenticatedAt: number
-  readonly issuer: string
-  readonly subject: string
-  readonly tenantAlias: string
 }
 
 const authenticationDeniedTag = "@pathableai/pre-ets-frontend/AuthenticationDenied"
@@ -348,12 +346,3 @@ const AuthenticationServiceLayer = Layer.effect(
 ).pipe(
   Layer.provide(Layer.mergeAll(ClientCredentials.layer, AuthenticationTransactions.layer))
 )
-
-interface AuthenticationTestOptions<E = never, R = never> {
-  readonly redis: Layer.Layer<Redis, E, R>
-}
-
-/** Parent construction seam; private authentication services remain hidden. */
-export const makeAuthenticationTestHarness = <E, R>(options: AuthenticationTestOptions<E, R>) => ({
-  layer: AuthenticationService.layer.pipe(Layer.provide(options.redis))
-})

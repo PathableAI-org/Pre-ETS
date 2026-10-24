@@ -1,27 +1,37 @@
 import type { NextRequest } from "next/server"
 
-import { Effect } from "effect"
+import { Clock, Effect } from "effect"
 import { NextResponse } from "next/server"
 
 import {
   AuthenticationDenied,
   AuthenticationService,
   AuthenticationUnavailable,
-  type CallbackExpectedFailure
+  type CallbackExpectedFailure,
+  type TrustedIdentity
 } from "../../../lib/authentication.ts"
 import { toNext } from "../../../lib/next.ts"
+import {
+  type EffectiveSessionPolicy,
+  type EstablishedSession,
+  type EstablishSessionInput,
+  type NoUsableSession,
+  type SessionIdentity,
+  SessionService,
+  SessionServiceUnavailable,
+  type UsableSession
+} from "../../../lib/session.ts"
+import { TenantConfigService } from "../../../lib/tenant.ts"
 import { PRIVATE_NO_STORE } from "../constants.ts"
-import { CORRELATION_COOKIE } from "../cookie.ts"
+import { CORRELATION_COOKIE, isLoopbackHost, setSessionCookie } from "../cookie.ts"
 import { authenticationReturnBody, tenantFailureResponse } from "../presentation.tsx"
+import { callbackFreshnessPolicy } from "./freshness.ts"
 
 export const dynamic = "force-dynamic"
 export const runtime = "nodejs"
 
-const isLoopbackHost = (host: string): boolean => {
-  const hostname = host.replace(/^\[|\](?::\d+)?$|:\d+$/g, "")
-  return hostname === "localhost" || hostname.endsWith(".localhost") || hostname === "::1" ||
-    /^127(?:\.\d{1,3}){3}$/.test(hostname)
-}
+/** Establish only issues the usable member of the public read result. */
+type IssuedSession = Extract<NoUsableSession | UsableSession, { readonly _tag: "UsableSession" }>
 
 const clearCorrelation = (response: NextResponse, request: NextRequest): NextResponse => {
   const host = request.headers.get("host") ?? ""
@@ -54,6 +64,36 @@ const responseForReason = (reason: CallbackExpectedFailure["reason"]) =>
     Effect.catch((failure) => tenantFailure(failure.status))
   )
 
+/** Failed or ambiguous establishment, and unconfirmed trusted completion, both fail closed with no session cookie. */
+const failClosedAfterTrustedResult = (request: NextRequest) =>
+  authenticationReturn.pipe(Effect.map((response) => clearCorrelation(response, request)))
+
+const establishSession = Effect.fn("establishSession")(function*(
+  request: NextRequest,
+  identity: TrustedIdentity
+) {
+  const tenant = yield* TenantConfigService
+  const session = yield* SessionService
+  const config = yield* tenant.getConfigFromAlias(identity.tenantAlias).pipe(
+    Effect.mapError(() => new SessionServiceUnavailable({}))
+  )
+  const policy: EffectiveSessionPolicy = tenant.effectiveSessionPolicy(config)
+  const input: EstablishSessionInput = {
+    identity: { issuer: identity.issuer, subject: identity.subject } satisfies SessionIdentity,
+    policy,
+    tenantAlias: identity.tenantAlias
+  }
+  const established: EstablishedSession = yield* session.establish(input)
+  const usable: IssuedSession = established.session
+  const now = yield* Clock.currentTimeMillis
+  const maxAgeSeconds = Math.max(0, Math.floor((usable.idleDeadlineEpochMilliseconds - now) / 1_000))
+  const response = new NextResponse(null, {
+    headers: { "cache-control": PRIVATE_NO_STORE },
+    status: 204
+  })
+  return setSessionCookie(clearCorrelation(response, request), request, established.reference, maxAgeSeconds)
+})
+
 const completeAuthentication = (request: NextRequest) =>
   Effect.gen(function*() {
     const authentication = yield* AuthenticationService
@@ -71,14 +111,12 @@ const completeAuthentication = (request: NextRequest) =>
             failure.correlationDisposition === "clear" ? clearCorrelation(response, request) : response
           )
         ),
-      onSuccess: () =>
-        Effect.succeed(clearCorrelation(
-          new NextResponse(null, {
-            headers: { "cache-control": PRIVATE_NO_STORE },
-            status: 204
-          }),
-          request
-        ))
+      onSuccess: (identity) =>
+        callbackFreshnessPolicy.confirmed(identity) ?
+          establishSession(request, identity).pipe(
+            Effect.catchTag(SessionServiceUnavailable.tag, () => failClosedAfterTrustedResult(request))
+          ) :
+          failClosedAfterTrustedResult(request)
     })
   )
 

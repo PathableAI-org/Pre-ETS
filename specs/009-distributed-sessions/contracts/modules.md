@@ -126,9 +126,9 @@ tools outside safe synthetic public-result comparisons.
 
 **Expected errors**:
 
-| Public error                | Meaning for consumers                                                                  | Owned internal failures translated here                                                              | Consumer response                                                                   |
-| --------------------------- | -------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| `SessionServiceUnavailable` | The service could not persist or determine session state; the caller must fail closed. | Redis command/transport failure, stored-record encode/decode corruption, exhausted create collisions | Callback sets no session cookie; reads do not grant access or create a replacement. |
+| Public error                | Meaning for consumers                                                                                                                                                                     | Owned internal failures translated here                                                              | Consumer response                                                                   |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `SessionServiceUnavailable` | The service could not persist or determine session state; the caller must fail closed. The error is fieldless: codec and store diagnostics are discarded before it is returned or traced. | Redis command/transport failure, stored-record encode/decode corruption, exhausted create collisions | Callback sets no session cookie; reads do not grant access or create a replacement. |
 
 Missing, malformed, expired, and deleted references are `NoUsableSession`, not errors. Defects and interruption are not
 collapsed into this expected error.

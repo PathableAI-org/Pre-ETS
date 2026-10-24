@@ -23,9 +23,18 @@ The callback independently resolves the tenant and exact registered authority, q
 the correlation/state tuple, and consumes it once with Redis `GETDEL`. `openid-client`
 then performs code exchange and issuer, audience, signature, state, nonce, and ID-token
 validation with non-repudiation checks enabled. A successful callback requires nonempty
-`sub` and integer `auth_time` and currently returns an empty HTTP 204 while clearing the
-correlation cookie. It creates no application session and grants no protected access;
-[#218](https://github.com/PathableAI-org/Pre-ETS/issues/218) owns that handoff.
+`sub` and integer `auth_time`.
+
+A trusted identity is not itself authority to establish a session: the callback must also
+confirm that the authentication event is fresh. That freshness comparison and clock
+tolerance are unresolved ([#158](https://github.com/PathableAI-org/Pre-ETS/issues/158)), so
+the callback currently treats every trusted result as unconfirmed. It returns the safe
+"No authentication could be established" page with a cleared correlation cookie and issues
+no `pathable-session`. Once freshness is confirmed, the callback derives the tenant's
+effective session policy, establishes a Redis-backed session through `SessionService`, and
+only then writes the host-only `pathable-session` cookie alongside the cleared correlation
+cookie; establishment or tenant failure fails closed to the same safe page with no session
+cookie. See [session-state.md](./session-state.md) for the session contract.
 
 Unqualified input and qualified lookup misses preserve correlation so the original valid
 return can still complete. Actual consumption and ambiguous in-flight consumption clear
@@ -82,8 +91,9 @@ See the [verification guide](../specs/007-initiate-tenant-oidc/quickstart.md).
 
 Only the tracked Keycloak provider is executed by repository BDD. Microsoft, broker
 chains, a real confidential-provider round trip, and `auth_time` age/tolerance policy are
-not established here. #218 owns authenticated session establishment; #219/#154 retain
-later enforcement/application integration; #158 owns freshness comparison and tolerance.
+not established here. #218 implements the session handoff behind the unresolved freshness
+confirmation; #219/#154 retain later enforcement/application integration; #158 owns the
+freshness comparison and tolerance that gate live establishment.
 
 ## Configuration for OIDC consumers
 
@@ -110,8 +120,10 @@ request. Tenant loading and diagnostics never resolve or disclose the secret.
 Deploy initiation and callback handling together. An attempt begun on an old instance
 cannot complete on a new callback, and a new recoverable attempt cannot complete through
 an old callback. During a mixed-version rollout, an in-flight login may be denied but must
-never be accepted with guessed or partial state. Rollback needs no migration: only bounded,
-versioned Redis keys and host-only callback-path cookies remain, and both expire naturally.
+never be accepted with guessed or partial state. Rollback needs no migration: bounded,
+versioned Redis keys, host-only callback-path correlation cookies, and TTL-bounded
+session records all expire naturally. A remaining `pathable-session` cookie grants no
+protected access and must not be treated as authenticated state by a prior revision.
 
 ## Session policy handoff
 
@@ -124,10 +136,10 @@ without changing the diagnostic document. See the
 [policy contract](./multi-tenancy.md#idle-timeout-and-warning-policy) for the accepted
 values and examples.
 
-Session creation ([#218](https://github.com/PathableAI-org/Pre-ETS/issues/218)) and
-policy refresh ([#220](https://github.com/PathableAI-org/Pre-ETS/issues/220)) should use
-this derivation with the then-current validated tenant configuration. Credential
+Session establishment ([#218](https://github.com/PathableAI-org/Pre-ETS/issues/218)) and
+policy refresh ([#220](https://github.com/PathableAI-org/Pre-ETS/issues/220)) use this
+derivation with the then-current validated tenant configuration. Credential
 resolution and callback exchange belong to
 [#217](https://github.com/PathableAI-org/Pre-ETS/issues/217). This configuration work
 does not implement expiration enforcement, warning UI, or session policy adoption.
-See [session-state.md](./session-state.md) for the current minimal presence boundary.
+See [session-state.md](./session-state.md) for the current session boundary.

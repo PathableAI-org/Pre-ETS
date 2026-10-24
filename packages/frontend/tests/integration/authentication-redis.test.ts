@@ -4,12 +4,7 @@ import { generateKeyPairSync, randomUUID, sign } from "node:crypto"
 import { setTimeout as delay } from "node:timers/promises"
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest"
 
-import {
-  AuthenticationDenied,
-  AuthenticationService,
-  CallbackExpectedFailure,
-  makeAuthenticationTestHarness
-} from "../../src/lib/authentication.ts"
+import { AuthenticationDenied, AuthenticationService, CallbackExpectedFailure } from "../../src/lib/authentication.ts"
 import { TenantConfigService } from "../../src/lib/tenant.ts"
 
 const redisUrl = process.env.REDIS_URL ?? "redis://127.0.0.1:6379"
@@ -72,7 +67,8 @@ const redisLayer = () =>
   })
 
 const authenticationLayer = (options: { readonly prefix?: string; readonly ttl?: string } = {}) =>
-  makeAuthenticationTestHarness({ redis: redisLayer() }).layer.pipe(
+  AuthenticationService.layer.pipe(
+    Layer.provide(redisLayer()),
     Layer.provide(TenantConfigService.layer({
       env: "test",
       tenant: { baseHostname: "example.test", configDir: "/tenants", resolution: "host" }

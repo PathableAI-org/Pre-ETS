@@ -67,7 +67,7 @@ const TenantAliasBrand = "@pathableai/pre-ets-frontend/TenantAlias" as const
  *
  * @category models
  */
-const TenantAlias = Schema.NonEmptyString.pipe(
+export const TenantAlias = Schema.NonEmptyString.pipe(
   Schema.check(Schema.isPattern(/^[a-z-]+$/)),
   Schema.brand(TenantAliasBrand)
 )
@@ -77,7 +77,7 @@ const TenantAlias = Schema.NonEmptyString.pipe(
  *
  * @category models
  */
-type TenantAlias = typeof TenantAlias.Type
+export type TenantAlias = typeof TenantAlias.Type
 
 const decodeTenantAlias = Schema.decodeResult(TenantAlias)
 
@@ -249,7 +249,7 @@ export class TenantConfigService extends Context.Service<TenantConfigService, {
   readonly getConfigFromAlias: (alias: TenantAlias) => Effect.Effect<TenantConfig, TenantFailure>
   readonly getConfigFromHost: (host: string) => Effect.Effect<TenantConfig, TenantFailure>
 }>()("@pathableai/pre-ets-frontend/TenantConfigService") {
-  static readonly layer = (config: Config.Success<typeof ServerConfig>) =>
+  static readonly layer = (config: Pick<Config.Success<typeof ServerConfig>, "env" | "tenant">) =>
     Layer.effect(
       TenantConfigService,
       Effect.gen(function*() {

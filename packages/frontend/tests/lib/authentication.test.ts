@@ -1,5 +1,5 @@
 import { describe, expect, it } from "@effect/vitest"
-import { Cause, ConfigProvider, Effect, Exit, Fiber, FileSystem, Path, References, Result, Schema } from "effect"
+import { Cause, ConfigProvider, Effect, Exit, Fiber, FileSystem, Layer, Path, References, Result, Schema } from "effect"
 import { TestClock } from "effect/testing"
 import { generateKeyPairSync, type KeyObject, sign } from "node:crypto"
 import { ClientClosedError, ClientOfflineError } from "redis"
@@ -9,8 +9,7 @@ import {
   AuthenticationDenied,
   AuthenticationService,
   AuthenticationUnavailable,
-  CallbackExpectedFailure,
-  makeAuthenticationTestHarness
+  CallbackExpectedFailure
 } from "../../src/lib/authentication.ts"
 import { HttpError } from "../../src/lib/error.ts"
 import { TenantConfigService } from "../../src/lib/tenant.ts"
@@ -48,7 +47,7 @@ const withWorld = <A, E, R>(program: Effect.Effect<A, E, AuthenticationService |
   const redis = options.redis ?? makeMemoryRedis()
   let tenantReads = 0
   return program.pipe(
-    Effect.provide(makeAuthenticationTestHarness({ redis: redis.layer }).layer),
+    Effect.provide(AuthenticationService.layer.pipe(Layer.provide(redis.layer))),
     Effect.provide(TenantConfigService.layer({
       env: "test",
       tenant: { baseHostname: "example.test", configDir: "/tenants", resolution: "host" }

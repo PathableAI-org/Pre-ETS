@@ -44,39 +44,16 @@ storage reason. The service never creates an application session.
 
 ## Parent-owned test construction
 
-`authentication.ts` also owns one explicitly test-only construction seam. The planning-level shape is:
-
-```ts
-interface AuthenticationTestOptions {
-  readonly tenantConfiguration: ReadonlyArray<AuthenticationTenantFixture>
-  readonly credentialValues: Readonly<Record<string, string>>
-  readonly redis: Layer.Layer<Redis.Redis>
-  readonly clock: Clock.Clock
-  readonly random: Random.Random
-  readonly transport?: typeof fetch
-  readonly transactionPrefix: string
-}
-
-interface AuthenticationTestHarness {
-  readonly layer: Layer.Layer<AuthenticationService>
-  readonly fixtures: AuthenticationRedisFixtureSetup
-}
-
-declare const makeAuthenticationTestHarness: (
-  options: AuthenticationTestOptions
-) => AuthenticationTestHarness
-```
-
-Exact installed types may adjust the syntax, but not the boundary: this is a closed parent factory over ordinary
-platform/test inputs. It composes the real private transaction, credential, and provider children. Controlled HTTP
-transport still exercises openid-client and the real provider child; callers cannot inject `TrustedIdentity` or a
-completed provider result. The fixture handle may reserve an address or seed bytes under the unique test prefix only
-to arrange collision/corruption cases. Its methods accept semantic setup descriptors owned by the parent and return
-no raw key or encoded payload. Tests assert the public service result and never assert key/codec shape.
+Tests build the public `AuthenticationService.layer` and provide Redis, tenant configuration, clock, randomness, and
+transport as ordinary Effect layers. That layer composes the real private transaction, credential, and provider
+children. Controlled HTTP transport still exercises openid-client and the real provider child; callers cannot inject
+`TrustedIdentity` or a completed provider result. A test may reserve an address or seed bytes under a unique prefix
+only to arrange collision or corruption cases, and it must not observe a raw key or encoded payload. Tests assert the
+public service result and never assert key or codec shape.
 
 No private child Context service, codec, stored-attempt type, key builder, or provider result is exported. External
-tests import this seam from `authentication.ts` and never import `authentication/*`. Production consumers receive the
-normal live Layer/service rather than the fixture handle.
+tests import `AuthenticationService` from `authentication.ts` and never import `authentication/*`. Production boot
+provides Redis to that same layer with the rest of the process infrastructure.
 
 ## Private ownership tree
 

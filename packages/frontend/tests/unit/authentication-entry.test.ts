@@ -1,6 +1,6 @@
 import { NodeServices } from "@effect/platform-node"
 import { fc, it } from "@fast-check/vitest"
-import { Effect, Layer, References } from "effect"
+import { ConfigProvider, Effect, Layer, References, Schema } from "effect"
 import { NextRequest } from "next/server"
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
@@ -9,27 +9,86 @@ import { afterEach, describe, expect, vi } from "vitest"
 
 import AppLayout from "../../src/app/(app)/layout.tsx"
 import HomePage from "../../src/app/(app)/page.tsx"
+import { callbackFreshnessPolicy } from "../../src/app/auth/callback/freshness.ts"
 import { GET as callback } from "../../src/app/auth/callback/route.ts"
 import { GET as login } from "../../src/app/auth/login/route.ts"
 import { AuthenticationDenied, AuthenticationService, CallbackExpectedFailure } from "../../src/lib/authentication.ts"
 import { SessionService } from "../../src/lib/session.ts"
-import { TenantConfigService } from "../../src/lib/tenant.ts"
+import { TenantAlias, TenantConfigService } from "../../src/lib/tenant.ts"
+import { makeSessionMemoryRedis } from "../helpers/session.ts"
 import { requestHeaders, setRequestHost } from "./next-headers-stub.ts"
 import { RedirectError } from "./next-navigation-stub.ts"
 
 const runtime = vi.hoisted(() => ({ runPromise: vi.fn() }))
 vi.mock("../../src/lib/runtime", () => ({ Runtime: runtime }))
 
+const alias = Schema.decodeSync(TenantAlias)("alpha")
+
 afterEach(() => {
   requestHeaders.clear()
   vi.clearAllMocks()
 })
 
-const routeRuntime = (service: AuthenticationService["Service"]) => {
+const redis = makeSessionMemoryRedis()
+
+const routeSessionLayer = SessionService.layer.pipe(
+  Layer.provide(redis.layer),
+  Layer.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({ SESSION_KEY_PREFIX: "test:session" })))
+)
+
+const routeTenantLayer = Layer.succeed(TenantConfigService, {
+  effectiveSessionPolicy: () => {
+    throw new Error("effectiveSessionPolicy must remain unused for an unconfirmed result")
+  },
+  getAlias: (): never => {
+    throw new Error("getAlias must remain unused for an unconfirmed result")
+  },
+  getConfigFromAlias: (): never => {
+    throw new Error("getConfigFromAlias must remain unused for an unconfirmed result")
+  },
+  getConfigFromHost: (): never => {
+    throw new Error("getConfigFromHost must remain unused for an unconfirmed result")
+  }
+})
+
+const trustedIdentity = {
+  authenticatedAt: 1_700_000_000,
+  issuer: "https://provider.test/",
+  subject: "subject-1",
+  tenantAlias: alias
+}
+
+const routeRuntime = (
+  service: AuthenticationService["Service"],
+  provided: {
+    readonly session: Layer.Layer<SessionService, unknown>
+    readonly tenant: Layer.Layer<TenantConfigService, unknown>
+  } = { session: routeSessionLayer, tenant: routeTenantLayer }
+) => {
   runtime.runPromise.mockImplementation((program: Effect.Effect<unknown, never, AuthenticationService>) =>
-    Effect.runPromise(program.pipe(Effect.provideService(AuthenticationService, service)))
+    Effect.runPromise(
+      program.pipe(
+        Effect.provideService(AuthenticationService, service),
+        Effect.provide(provided.session),
+        Effect.provide(provided.tenant)
+      )
+    )
   )
 }
+
+const cookiesNamed = (response: Response, name: string) =>
+  response.headers.getSetCookie().filter((cookie) => cookie.startsWith(`${name}=`))
+
+const expectHostOnlyCookie = (cookie: string, path: string, secure: boolean) => {
+  expect(cookie).toContain("HttpOnly")
+  expect(cookie).toContain("SameSite=lax")
+  expect(cookie).toContain(`Path=${path}`)
+  expect(cookie).not.toContain("Domain=")
+  if (secure) expect(cookie).toContain("Secure")
+  else expect(cookie).not.toContain("Secure")
+}
+
+const maxAge = (cookie: string) => Number(/Max-Age=(\d+)/.exec(cookie)?.[1])
 
 describe("authentication Route Handlers", () => {
   it.prop([fc.domain(), fc.domain(), fc.string().map(encodeURIComponent)])(
@@ -73,19 +132,12 @@ describe("authentication Route Handlers", () => {
     }
   )
 
-  it("maps a trusted handoff to an empty 204 and clears only correlation", async () => {
+  it("treats a trusted handoff without freshness confirmation as the safe return, clearing correlation without a session cookie", async () => {
     const complete = vi.fn((_input: {
       readonly correlation?: string
       readonly host: string
       readonly query: readonly (readonly [string, string])[]
-    }) =>
-      Effect.succeed({
-        authenticatedAt: 1_700_000_000,
-        issuer: "https://provider.test/",
-        subject: "subject-1",
-        tenantAlias: "alpha"
-      })
-    )
+    }) => Effect.succeed(trustedIdentity))
     routeRuntime({ complete, prepare: () => Effect.die("prepare must remain unused") })
     const correlation = "B".repeat(43)
     const request = new NextRequest("https://alpha.example.test/auth/callback?code=secret-code&state=state-1", {
@@ -97,13 +149,13 @@ describe("authentication Route Handlers", () => {
 
     const response = await callback(request)
 
-    expect(response.status).toBe(204)
-    expect(await response.text()).toBe("")
+    expect(response.status).toBe(200)
+    expect(await response.text()).toContain("Sign-in could not continue")
     expect(response.headers.get("cache-control")).toBe("private, no-store")
     const cookie = response.headers.get("set-cookie") ?? ""
     expect(cookie).toContain("oidc-correlation=")
     expect(cookie).toContain("Max-Age=0")
-    expect(cookie).not.toContain("session=")
+    expect(cookie).not.toContain("pathable-session")
     expect([...response.headers.values()].join(" ")).not.toContain("secret-code")
     expect(complete).toHaveBeenCalledTimes(1)
     expect(complete.mock.calls[0]?.[0]).toEqual({
@@ -111,6 +163,66 @@ describe("authentication Route Handlers", () => {
       host: "alpha.example.test",
       query: [["code", "secret-code"], ["state", "state-1"]]
     })
+  })
+
+  it("writes one host-only session cookie after a freshness-confirmed establishment", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "preets-session-callback-"))
+    const confirmed = vi.spyOn(callbackFreshnessPolicy, "confirmed").mockReturnValue(true)
+    try {
+      await writeFile(
+        join(directory, "alpha.json"),
+        JSON.stringify({
+          displayName: "Alpha",
+          idleTimeoutMinutes: 30,
+          oidc: { clientAuth: "public", clientId: "alpha-web", issuer: "https://provider.test" },
+          warningLeadMinutes: 5
+        })
+      )
+      const tenant = TenantConfigService.layer({
+        env: "test",
+        tenant: { configDir: directory, resolution: "static", staticAlias: "alpha" }
+      }).pipe(Layer.provide(NodeServices.layer))
+      const session = SessionService.layer.pipe(
+        Layer.provide(redis.layer),
+        Layer.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({ SESSION_KEY_PREFIX: "test:session" })))
+      )
+      routeRuntime(
+        { complete: () => Effect.succeed(trustedIdentity), prepare: () => Effect.die("prepare must remain unused") },
+        { session, tenant }
+      )
+      const correlation = `oidc-correlation=${"B".repeat(43)}`
+      const secureRequest = new NextRequest("https://alpha.example.test/auth/callback?code=secret-code&state=state-1", {
+        headers: { cookie: correlation, host: "alpha.example.test" }
+      })
+      const secure = await callback(secureRequest)
+      expect(secure.status).toBe(204)
+      expect(await secure.text()).toBe("")
+      expect(secure.headers.get("cache-control")).toBe("private, no-store")
+      const secureSession = cookiesNamed(secure, "pathable-session")
+      const secureCorrelation = cookiesNamed(secure, "oidc-correlation")
+      expect(secureSession).toHaveLength(1)
+      expect(secureCorrelation).toHaveLength(1)
+      expectHostOnlyCookie(secureSession[0] ?? "", "/", true)
+      expectHostOnlyCookie(secureCorrelation[0] ?? "", "/auth/callback", true)
+      expect(maxAge(secureCorrelation[0] ?? "")).toBe(0)
+      const sessionLifetime = maxAge(secureSession[0] ?? "")
+      expect(sessionLifetime).toBeGreaterThanOrEqual(1_790)
+      expect(sessionLifetime).toBeLessThanOrEqual(1_800)
+      expect(secure.headers.get("set-cookie")).not.toContain("secret-code")
+
+      const loopback = await callback(
+        new NextRequest("http://alpha.localhost/auth/callback?code=secret-code&state=state-1", {
+          headers: { cookie: correlation, host: "alpha.localhost" }
+        })
+      )
+      const loopbackSession = cookiesNamed(loopback, "pathable-session")
+      expect(loopback.status).toBe(204)
+      expect(loopbackSession).toHaveLength(1)
+      expectHostOnlyCookie(loopbackSession[0] ?? "", "/", false)
+    } finally {
+      confirmed.mockRestore()
+      await rm(directory, { force: true, recursive: true })
+    }
   })
 
   it("preserves correlation on pre-consumption denial", async () => {
@@ -137,7 +249,7 @@ describe("authentication Route Handlers", () => {
     expect(response.headers.get("location")).toBeNull()
   })
 
-  it("preserves correlation for a premature callback and clears it after the valid return", async () => {
+  it("preserves correlation for a premature callback and clears it after the unconfirmed return", async () => {
     const complete = vi.fn()
       .mockReturnValueOnce(
         Effect.fail(
@@ -147,14 +259,7 @@ describe("authentication Route Handlers", () => {
           })
         )
       )
-      .mockReturnValueOnce(
-        Effect.succeed({
-          authenticatedAt: 1_700_000_000,
-          issuer: "https://provider.test/",
-          subject: "subject-1",
-          tenantAlias: "alpha"
-        })
-      )
+      .mockReturnValueOnce(Effect.succeed(trustedIdentity))
     routeRuntime({ complete, prepare: () => Effect.die("prepare must remain unused") })
     const cookie = `oidc-correlation=${"C".repeat(43)}`
 
@@ -172,8 +277,9 @@ describe("authentication Route Handlers", () => {
         headers: { cookie, host: "alpha.example.test" }
       })
     )
-    expect(valid.status).toBe(204)
+    expect(valid.status).toBe(200)
     expect(valid.headers.get("set-cookie")).toContain("Max-Age=0")
+    expect(valid.headers.get("set-cookie")).not.toContain("pathable-session")
     expect(complete).toHaveBeenCalledTimes(2)
   })
 })
@@ -209,7 +315,11 @@ describe("application entry with the real absent-session capability", () => {
       const services = Layer.mergeAll(
         SessionService.layer,
         TenantConfigService.layer({ env: "test", tenant })
-      ).pipe(Layer.provide(NodeServices.layer))
+      ).pipe(
+        Layer.provide(redis.layer),
+        Layer.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({ SESSION_KEY_PREFIX: "test:session" }))),
+        Layer.provide(NodeServices.layer)
+      )
       runtime.runPromise.mockImplementation((
         program: Effect.Effect<unknown, unknown, SessionService | TenantConfigService>
       ) =>
