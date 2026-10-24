@@ -57,6 +57,16 @@ test("serves liveness and releases the listening port on shutdown", async () => 
     assert.equal(missing.status, 404)
     yield* Effect.promise(() => missing.text())
 
+    const disabledWrite = yield* Effect.promise(() =>
+      fetch(`http://127.0.0.1:${address.port}/visits`, {
+        body: "{}",
+        headers: { connection: "close", "content-type": "application/json" },
+        method: "POST"
+      })
+    )
+    assert.equal(disabledWrite.status, 404)
+    yield* Effect.promise(() => disabledWrite.text())
+
     return address.port
   })))
 

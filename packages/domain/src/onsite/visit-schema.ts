@@ -24,3 +24,16 @@ export const OnSiteVisit = Schema.Struct({
   startedAt: Schema.DateTimeUtc,
   tenantId: TenantId
 })
+
+/** Development create input; the persisted record receives its id from Postgres. */
+export const CreateOnSiteVisit = Schema.Struct({
+  coachId: OnSiteVisit.fields.coachId,
+  endedAt: Schema.optionalKey(Schema.DateTimeUtcFromString),
+  interventions: OnSiteVisit.fields.interventions,
+  nextSteps: OnSiteVisit.fields.nextSteps,
+  observations: OnSiteVisit.fields.observations,
+  participantRef: OnSiteVisit.fields.participantReference,
+  purposeOfVisit: OnSiteVisit.fields.purposeOfVisit,
+  startedAt: Schema.DateTimeUtcFromString,
+  tenantId: OnSiteVisit.fields.tenantId
+})
