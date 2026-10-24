@@ -4,7 +4,7 @@ import { HttpRouter, HttpServer } from "effect/http"
 import assert from "node:assert/strict"
 import { spawnSync } from "node:child_process"
 import { randomUUID } from "node:crypto"
-import { createServer } from "node:http"
+import { createServer, request as httpRequest } from "node:http"
 import test from "node:test"
 import { Client } from "pg"
 
@@ -40,11 +40,32 @@ const withDatabaseServer = (databaseUrl, run) =>
     run
   )
 
-const create = (url, body) =>
+const create = (url, body, headers = {}) =>
   fetch(url, {
     body: JSON.stringify(body),
-    headers: { connection: "close", "content-type": "application/json" },
+    headers: { connection: "close", "content-type": "application/json", ...headers },
     method: "POST"
+  })
+
+const createWithHeaders = (url, headers) =>
+  new Promise((resolve, reject) => {
+    const request = httpRequest(url, {
+      headers: { connection: "close", "content-type": "application/json", ...headers },
+      method: "POST"
+    }, (response) => {
+      const chunks = []
+      response.on("data", (chunk) => chunks.push(chunk))
+      response.on("error", reject)
+      response.on("end", () => {
+        try {
+          resolve({ body: JSON.parse(Buffer.concat(chunks).toString()), status: response.statusCode })
+        } catch (error) {
+          reject(error)
+        }
+      })
+    })
+    request.on("error", reject)
+    request.end(JSON.stringify(openVisit))
   })
 
 test("returns the generated id only after one successful store call", async () => {
@@ -64,6 +85,46 @@ test("returns the generated id only after one successful store call", async () =
   assert.equal(saved[0].interventions, "Synthetic note")
   assert.equal("endedAt" in saved[0], false)
   assert.equal("purposeOfVisit" in saved[0], false)
+})
+
+test("allows a matching local origin", async () => {
+  let calls = 0
+  await withServer(() => {
+    calls++
+    return Effect.succeed("9b9ac91d-4caf-459a-988f-b1bb2cf0f084")
+  }, async (url) => {
+    const response = await create(url, openVisit, { origin: new URL(url).origin })
+    assert.equal(response.status, 201)
+    assert.deepEqual(await response.json(), { id: "9b9ac91d-4caf-459a-988f-b1bb2cf0f084" })
+  })
+  assert.equal(calls, 1)
+})
+
+test("rejects nonlocal hosts, origins, and non-JSON bodies before invoking the store", async () => {
+  let calls = 0
+  await withServer(() => {
+    calls++
+    return Effect.succeed("unexpected")
+  }, async (url) => {
+    for (
+      const headers of [
+        { host: "outside.example" },
+        { origin: "http://outside.example" },
+        { origin: "" },
+        { origin: "null" },
+        { host: "127.0.0.1.outside.example", origin: "http://127.0.0.1.outside.example" }
+      ]
+    ) {
+      const response = await createWithHeaders(url, headers)
+      assert.equal(response.status, 403)
+      assert.deepEqual(response.body, { error: "Local visit request denied" })
+    }
+
+    const nonJson = await createWithHeaders(url, { "content-type": "text/plain" })
+    assert.equal(nonJson.status, 415)
+    assert.deepEqual(nonJson.body, { error: "JSON request required" })
+  })
+  assert.equal(calls, 0)
 })
 
 test("rejects invalid input before invoking the store", async () => {

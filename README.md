@@ -48,6 +48,8 @@ with only `{ "id": "<database-generated UUID>" }` after the insert succeeds,
 `400` for invalid input, or `500` for a database failure. There is no read
 endpoint, verified ownership, or automatic retry. This local experiment does
 not fulfill the authorized visit workflow in issue #195.
+The create route also rejects nonlocal `Host` or `Origin` headers and requests
+without a JSON content type before reading the body or invoking the store.
 
 All packages are private; the npm scope identifies ownership, not publication.
 

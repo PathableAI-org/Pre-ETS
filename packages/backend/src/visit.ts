@@ -10,6 +10,7 @@ const DevCreateOnSiteVisit = CreateOnSiteVisit.mapFields((fields) => ({
   participantRef: fields.participantRef.check(synthetic),
   tenantId: fields.tenantId.check(synthetic)
 }))
+const localHost = /^(?:127\.0\.0\.1|localhost)(?::[1-9]\d{0,4})?$/iu
 
 export class VisitSaveError extends Schema.TaggedError<VisitSaveError>()("VisitSaveError", {}) {}
 
@@ -79,6 +80,18 @@ export const devVisitRoutes = HttpRouter.add(
   "POST",
   "/visits",
   Effect.gen(function*() {
+    const request = yield* HttpServerRequest.HttpServerRequest
+    const host = request.headers.host
+    if (
+      !host || !localHost.test(host)
+      || (request.headers.origin !== undefined && request.headers.origin !== `http://${host}`)
+    ) {
+      return HttpServerResponse.jsonUnsafe({ error: "Local visit request denied" }, { status: 403 })
+    }
+    if (request.headers["content-type"]?.split(";", 1)[0]?.trim().toLowerCase() !== "application/json") {
+      return HttpServerResponse.jsonUnsafe({ error: "JSON request required" }, { status: 415 })
+    }
+
     const visit = yield* HttpServerRequest.schemaBodyJson(DevCreateOnSiteVisit, {
       onExcessProperty: "error"
     }).pipe(Effect.catch(() => Effect.succeed(null)))
