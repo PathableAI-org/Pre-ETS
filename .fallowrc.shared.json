@@ -6,6 +6,12 @@
     "projects": ["tsconfig.json"],
     "require": "best-effort"
   },
+  "duplicates": {
+    "mode": "semantic"
+  },
+  "similarCode": {
+    "ignore": ["**/.next/**", "**/dist/**", "**/coverage/**", "**/build/**"]
+  },
   "health": {
     "maxCyclomatic": 10,
     "maxCognitive": 10,

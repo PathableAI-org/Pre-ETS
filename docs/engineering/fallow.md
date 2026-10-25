@@ -52,10 +52,27 @@ kind of issue.
 | Why an export or dependency looks unused      | `pnpm --filter <package> exec fallow dead-code --trace <file>:<export>` or `--trace-dependency <name>` |
 | Complexity of a file or directory             | `pnpm --filter <package> exec fallow health --complexity <path>`                                       |
 | Possible duplication                          | `pnpm --filter <package> exec fallow dupes`                                                            |
+| Semantically similar functions (advisory)     | `pnpm --filter <package> exec fallow similar-code`                                                     |
 
-Duplication inspection is advisory. The completion audit already includes duplication in changed
-files. `fallow explain <issue-type>` describes one finding type and does not analyze the
+`fallow dupes` uses the shared `duplicates.mode` of `semantic`, so renamed identifiers and changed
+literals count as the same structure. The completion audit includes those structural clones for
+changed files. A full duplication report stays advisory: it does not fail on a duplication
+percentage. `fallow explain <issue-type>` describes one finding type and does not analyze the
 repository: `pnpm exec fallow explain boundary-violation`.
+
+`fallow similar-code` is a separate review. It does not run inside `fallow dupes`, `fallow audit`,
+bare `fallow`, or the three completion commands. Check readiness first:
+
+```sh
+pnpm --filter @pathableai/pre-ets-frontend exec fallow similar-code status
+```
+
+When the pinned local model is missing, ask a person to run `fallow similar-code setup --local`.
+Agents do not run setup or approve the download. Project config cannot select or download the
+model. Run discovery in the workspace you are changing; a root run skips `packages/**`. A
+candidate is not a finding. Its score is not a probability, a proof that two functions behave the
+same, or permission to merge them. Inspect both functions, their callers, and their tests before
+suggesting a consolidation.
 
 `fallow dead-code` still reports cycles and boundary findings, so a targeted dead-code run can
 surface them. Prefer `fallow architecture` when that is the question.

@@ -36,8 +36,10 @@ command reference is [Fallow during development](docs/engineering/fallow.md).
   ordinary localized edit.
 - While editing, run the workspace-scoped Fallow command for a boundary, cycle,
   unused-code, complexity, or duplication risk as soon as the edit can introduce
-  it. Prefer that command over repeating `pnpm check:unused`, `pnpm check:health`,
-  or `pnpm check:changes`.
+  it. Structural duplication uses semantic mode and is included in
+  `pnpm check:changes`. Model-based similar-code is an advisory review, not a
+  completion check. Prefer a targeted command over repeating `pnpm check:unused`,
+  `pnpm check:health`, or `pnpm check:changes`.
 - Before completing work, run `pnpm check:unused` and `pnpm check:health` for
   every scope, then `pnpm check:changes` for findings introduced since the base.
   The first two are whole-scope checks. `check:changes` is the new-only audit

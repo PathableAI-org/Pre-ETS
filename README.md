@@ -257,7 +257,9 @@ root.
 ## Fallow
 
 Agent workflow, architectural boundaries, and the command reference live in
-[Fallow during development](docs/engineering/fallow.md).
+[Fallow during development](docs/engineering/fallow.md). Shared configuration
+uses semantic duplication mode. Similar-code review is advisory and is documented
+there.
 
 Run `pnpm check:unused` for dead-code, dependency, and architecture findings, and
 `pnpm check:health` for function complexity. Each root command runs the matching
