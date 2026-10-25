@@ -256,10 +256,15 @@ root.
 
 ## Fallow
 
-Run `pnpm check:unused` for dead-code and dependency checks. The root command runs
-`fallow:unused` in the root and every workspace in parallel, completing all scopes
-and failing if any scope fails. Each workspace owns its `.fallowrc.json` and local
-`fallow:unused` / `fallow:audit` scripts. Run a workspace independently with
+Agent workflow, architectural boundaries, and the command reference live in
+[Fallow during development](docs/engineering/fallow.md).
+
+Run `pnpm check:unused` for dead-code, dependency, and architecture findings, and
+`pnpm check:health` for function complexity. Each root command runs the matching
+`fallow:unused` or `fallow:health` script in the root and every workspace in
+parallel, completing all scopes and failing if any scope fails. Each workspace
+owns its `.fallowrc.json` and local `fallow:unused`, `fallow:health`, and
+`fallow:audit` scripts. Run a workspace independently with
 `pnpm --filter @pathableai/pre-ets-frontend fallow:unused`.
 
 The root configuration excludes `packages/**` and owns repository-level tests,
@@ -422,8 +427,8 @@ Successful fixes are staged automatically. lint-staged’s default backup, rollb
 and partial-staging protections remain enabled: unstaged changes to partially
 staged files are hidden during checks and restored afterward. A failing task
 blocks the commit. After lint-staged succeeds, the hook runs `pnpm check:changes`
-once at the repository root. It runs root, frontend, and backend Fallow audits
-in parallel with distinct gate markers. All use the `new-only` gate and automatically
+once at the repository root. It runs root, frontend, backend, and domain Fallow
+audits in parallel with distinct gate markers. All use the `new-only` gate and automatically
 resolve their comparison base from the upstream or default branch.
 It checks the working tree, including restored unstaged and untracked changes,
 so unfinished local work can block a commit. Error-severity findings and audit
@@ -432,7 +437,8 @@ runtime errors block the commit; warnings remain advisory.
 Run `pnpm check:changes` to invoke the same audit manually. `prepare` remains
 `husky`: the tracked hook defines the audit step, and installation does not run
 Fallow’s hook installer. Builds and full typechecks remain separate checks.
-`pnpm check:unused` remains available for full-repository dead-code checks.
+`pnpm check:unused` and `pnpm check:health` remain the full-scope dead-code and
+complexity checks.
 
 ## Continuous integration
 
@@ -444,7 +450,7 @@ BDD runs nightly at 06:17 UTC on `main` and can also be dispatched manually on `
 | `.github/workflows/ci-quality.yml` | **CI / Quality** | Formatting, lint, types, frontend Vitest                |
 | `.github/workflows/ci-build.yml`   | **CI / Build**   | Package builds, backend HTTP tests and health smoke     |
 | `.github/workflows/ci-bdd.yml`     | **CI / BDD**     | Nightly requirements BDD and production safeguard smoke |
-| `.github/workflows/ci-fallow.yml`  | **CI / Fallow**  | Unused code and new-finding audit                       |
+| `.github/workflows/ci-fallow.yml`  | **CI / Fallow**  | Unused code, complexity, and new-finding audit          |
 
 Shared install steps live in `.github/actions/setup-node-pnpm`.
 

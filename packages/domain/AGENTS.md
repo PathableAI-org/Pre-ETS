@@ -13,6 +13,11 @@ sources, and persistence are separate delivery boundaries.
 Use Vitest with `TestSchema` from `effect/testing` for meaningful schema
 behavior. These plain async tests do not need `@effect/vitest` or test Layers.
 
+This workspace does not configure Fallow architecture zones. Fallow will not
+report a boundary violation for an import of either application workspace.
+Follow the root [Fallow workflow](../../docs/engineering/fallow.md) for unused
+code, complexity, and changed-code audits.
+
 From the repository root, run:
 
 - `pnpm --filter @pathableai/pre-ets-domain test`

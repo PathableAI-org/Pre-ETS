@@ -193,10 +193,11 @@ implementation and verification status MUST be established from repository evide
    transient, operational, and cleanup tasks required by the plan.
 5. Implement focused changes and validate their behavior. For UI, review the installed PathAble
    guidance and report library gaps upstream as required by Principle IV.
-6. Before committing, run `pnpm typecheck`, `pnpm build`, `pnpm lint`, `pnpm format:check`, and
-   `pnpm check:unused`, plus feature-specific checks. Apply lint fixes before formatting when fixes
-   are needed, then verify both pass. Preserve the root pre-commit hook's staged-file protections and
-   single `pnpm check:changes` audit. Do not commit generated output.
+6. Before committing, run `pnpm typecheck`, `pnpm build`, `pnpm lint`, `pnpm format:check`,
+   `pnpm check:unused`, and `pnpm check:health`, plus feature-specific checks. Apply lint fixes
+   before formatting when fixes are needed, then verify both pass. Preserve the root pre-commit
+   hook's staged-file protections and single `pnpm check:changes` audit. Do not commit generated
+   output.
 7. Review for acceptance-criteria coverage, meaningful assertions, accessibility, ownership, tenant
    isolation, and unnecessary complexity. Report what was actually tested and any limitations.
    Passing static checks MUST NOT be described as proof of runtime workflows.
