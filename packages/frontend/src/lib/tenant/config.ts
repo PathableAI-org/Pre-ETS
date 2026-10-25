@@ -21,7 +21,7 @@ const TenantOidcConfig = Schema.Union([
   })
 ])
 
-interface SessionPolicy {
+export interface SessionPolicy {
   readonly idleTimeoutMinutes: number
   readonly warningLeadMinutes: number
 }

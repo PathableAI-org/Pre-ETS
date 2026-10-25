@@ -86,7 +86,7 @@ export const applicationLayer = (
  */
 const managedRuntimeSlot = Symbol.for("@pathableai/pre-ets-frontend/ManagedRuntime")
 
-type InstalledRuntime = ManagedRuntime.ManagedRuntime<ApplicationServices, unknown>
+export type InstalledRuntime = ManagedRuntime.ManagedRuntime<ApplicationServices, unknown>
 
 const readInstalledRuntime = (): InstalledRuntime | undefined => {
   const published: unknown = Reflect.get(globalThis, managedRuntimeSlot)

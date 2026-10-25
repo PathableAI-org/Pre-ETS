@@ -24,7 +24,7 @@ export interface ProviderIdentity {
   readonly subject: string
 }
 
-interface ProviderRequest {
+export interface ProviderRequest {
   readonly allowInsecureLoopback: boolean
   readonly clientAuthentication: ResolvedClientAuthentication
   readonly clientId: string
@@ -34,6 +34,9 @@ interface ProviderRequest {
 }
 
 class ProviderUnavailable extends Schema.TaggedError<ProviderUnavailable>()("ProviderUnavailable", {}) {}
+
+/** Callers name this error. The class value stays in this module. */
+export type { ProviderUnavailable }
 
 const validateIssuer = (request: ProviderRequest): URL => {
   const issuer = request.validateUrl(request.issuer)

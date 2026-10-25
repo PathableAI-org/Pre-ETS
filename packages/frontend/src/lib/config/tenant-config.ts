@@ -11,6 +11,10 @@ const _RawTenantConfig = Config.all({
   )
 })
 
+export interface BaseTenantConfig {
+  readonly configDir: string
+}
+
 export interface HostTenantConfig extends BaseTenantConfig {
   readonly baseHostname: string
   readonly resolution: "host"
@@ -22,10 +26,6 @@ export interface StaticTenantConfig extends BaseTenantConfig {
 }
 
 export type TenantConfig = HostTenantConfig | StaticTenantConfig
-
-interface BaseTenantConfig {
-  readonly configDir: string
-}
 
 const missingKey = (key: string, messageMissingKey: string): Config.Config<TenantConfig> => {
   const issue = new SchemaIssue.MissingKey({

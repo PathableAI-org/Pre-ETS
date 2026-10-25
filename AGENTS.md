@@ -118,7 +118,8 @@ Effect REST domain layer. See
   Investigate findings rather than adding suppressions. Type-aware analysis is
   enabled in best-effort mode against each scope's `tsconfig.json`. It does not
   replace `tsc`. A partial or unavailable checker result keeps the finding and
-  is not evidence that it can be deleted. The `private-type-leaks` rule stays off.
+  is not evidence that it can be deleted. `private-type-leaks` is an error:
+  an exported signature must name an exported type.
 - Coding agents MUST NOT disable ESLint, Fallow, TypeScript, or any other check
   via comments or suppressions (`eslint-disable`, `@ts-ignore`,
   `@ts-expect-error`, `fallow-ignore`, ignore directives, and similar). Do not
