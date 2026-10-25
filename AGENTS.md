@@ -67,6 +67,11 @@ in current `origin/main`; report unavailable baseline access rather than assumin
 must carry or inherit requirement-ID tags. Keep assertions within those promises and use feature-level
 `@partial` for intermediate evidence. Use the repository's `requirements-bdd-author`,
 `requirements-bdd-scaffold`, and `requirements-bdd-review` skills for those workflows.
+Structured `/_test/*` responses may serve as sparse, requirement-driven BDD evidence seams when ordinary product
+behavior cannot expose a precise assertion. They must use the owning application capabilities, return only the minimum
+safe semantic data, remain private/no-store where applicable, and state what the diagnostic observation does not prove.
+Do not add them merely for test convenience, read backing stores directly, or treat separate production-ingress blocking
+as evidence supplied by application BDD.
 
 ## Git and pull requests
 

@@ -26,6 +26,12 @@ scenarios must pass and substantiate their claimed outcomes. Suggest tag removal
 its step implementations establish the full applicable scope of all feature/scenario references. Do not
 equate completeness, issue closure, discovery, or tag removal with reviewed runtime verification.
 
+Do not reject a scenario merely because it observes a structured `/_test/*` response. Apply the guide's sparse
+diagnostic-evidence review: confirm the response serves a current-main claim, uses the owning application's real
+capabilities, exposes only minimal safe semantic data, preserves no-store/authentication/tenant rules, and states what
+the diagnostic does not prove. Flag diagnostics that mirror internals, replace required user-facing evidence, mutate
+state without authority, expose sensitive values, or rely on production ingress blocking as application evidence.
+
 Return actionable findings with requirement IDs, scenario/step locations, consequences, and bounded corrections.
 Separate defects, requirement gaps, and access/evidence limitations. If no defects are found, say so and state
 the review's limits and what execution evidence was actually inspected.

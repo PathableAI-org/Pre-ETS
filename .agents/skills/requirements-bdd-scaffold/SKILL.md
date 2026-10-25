@@ -26,6 +26,12 @@ extra assertions. Scaffold unresolved work explicitly rather than supplying cann
 bindings as incomplete work. Undefined, pending, or failing steps must be resolved before claiming an active
 feature is complete, including features tagged `@partial`.
 
+For an authorized structured `/_test/*` observation, bind the step through the existing owned HTTP request/response
+support and assert only the required stable fields. Do not import endpoint implementation, add backing-store access,
+or implement a missing diagnostic as part of scaffolding. Report missing product support separately, and preserve the
+feature's explicit limitation that direct application access does not verify production ingress blocking or the
+ordinary user workflow.
+
 Run discovery and applicable static checks; run runtime BDD only with its documented prerequisites when within
 the requested scope. Report requirement IDs, baseline revision, reused/new bindings, remaining work, and actual
 results. A dry run is discovery evidence only. Do not expand scenarios, implement product behavior, alter
