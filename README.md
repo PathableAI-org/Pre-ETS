@@ -286,6 +286,15 @@ The root configuration declares the dprint npm plugins and the Effect language-s
 schema dependency as tooling references that Fallow does not resolve from their
 configuration strings.
 
+Shared Fallow configuration enables type-aware analysis for every scope. Each scope
+uses its own `tsconfig.json` in best-effort mode: root tests, and the frontend,
+backend, and domain typecheck projects. Compiler-option bases and package emit
+configs stay out of that pass. Type-aware analysis confirms symbol use for Fallow
+findings. It does not replace `pnpm typecheck`. When the checker result is partial
+or unavailable, the original finding remains and is not evidence that the symbol
+can be deleted. The `private-type-leaks` rule stays off, so that advisory API
+check is not part of `pnpm check:unused`.
+
 ## Renovate
 
 `renovate.json` follows the update policy in `next-level-preets`, including groups
