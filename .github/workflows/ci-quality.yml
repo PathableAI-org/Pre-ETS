@@ -108,6 +108,9 @@ jobs:
       - name: Typecheck workspaces
         if: needs.changes.outputs.code == 'true'
         run: pnpm typecheck
+      - name: Run frontend service unit tests
+        if: needs.changes.outputs.code == 'true'
+        run: pnpm --filter @pathableai/pre-ets-frontend-services test
       - name: Run frontend unit tests
         if: needs.changes.outputs.code == 'true'
         run: pnpm --filter @pathableai/pre-ets-frontend test:unit

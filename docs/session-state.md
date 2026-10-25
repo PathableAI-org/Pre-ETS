@@ -4,7 +4,7 @@ The frontend owns temporary session state; the backend owns durable domain recor
 See [domain persistence](./domain-persistence.md) for that boundary and
 [authentication](./authentication.md) for the current initiation flow.
 
-`packages/frontend/src/lib/session.ts` exposes the public `SessionService` with three
+`packages/frontend-services/src/session.ts` exposes the public `SessionService` with three
 operations:
 
 - `establish(input)` creates one tenant-bound session record and returns its opaque

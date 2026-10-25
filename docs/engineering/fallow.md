@@ -6,10 +6,12 @@ Prefer the pnpm scripts when they perform the same check.
 
 Root [`.fallowrc.json`](../../.fallowrc.json) ignores `packages/**`. Run a workspace command with
 `pnpm --filter` so Fallow loads that workspace's `.fallowrc.json`. Package names are
-`@pathableai/pre-ets-frontend`, `@pathableai/pre-ets-backend`, and `@pathableai/pre-ets-domain`.
+`@pathableai/pre-ets-frontend`, `@pathableai/pre-ets-frontend-services`,
+`@pathableai/pre-ets-backend`, and `@pathableai/pre-ets-domain`.
 
 `pnpm check:unused`, `pnpm check:health`, and `pnpm check:changes` each run the matching
-`fallow:*` script in the root, frontend, backend, and domain scopes, and fail if any scope fails.
+`fallow:*` script in the root, frontend, frontend-services, backend, and domain scopes,
+and fail if any scope fails.
 A path filter such as `architecture --file` or `health --complexity <path>` still builds that
 workspace graph. Use it instead of repeating the all-scope scripts while editing.
 
@@ -23,7 +25,7 @@ In the frontend, see which zone and import directions apply to the files you exp
 change:
 
 ```sh
-pnpm --filter @pathableai/pre-ets-frontend exec fallow guard src/lib/tenant.ts
+pnpm --filter @pathableai/pre-ets-frontend exec fallow guard src/components/onsite/visit-state.ts
 ```
 
 `fallow guard` reports rules for those paths. It does not build the import graph. When the zone
@@ -33,9 +35,10 @@ map itself is unfamiliar, list it:
 pnpm --filter @pathableai/pre-ets-frontend exec fallow list --boundaries
 ```
 
-Backend, domain, and the repository root have no boundary zones. `fallow guard` there reports
-that none are configured. Leave them unconfigured. Ownership rules in each workspace `AGENTS.md`
-remain the constraint Fallow does not encode.
+Backend, domain, frontend-services, and the repository root have no boundary zones.
+`fallow guard` there reports that none are configured. Leave them unconfigured, including
+frontend-services: its Effect modules are not Bulletproof zones. Ownership rules in each
+workspace `AGENTS.md` remain the constraint Fallow does not encode.
 
 ## During implementation
 
@@ -83,7 +86,7 @@ From the repository root, run:
 
 - `pnpm check:unused` — dead code, dependency hygiene, cycles, and boundary findings for every scope. The workspace script is `fallow:unused` (`fallow dead-code`).
 - `pnpm check:health` — functions over the complexity ceilings for every scope. The workspace script is `fallow:health` (`fallow health --complexity`).
-- `pnpm check:changes` — changed-file audit for every scope. Each workspace script is `fallow audit --gate new-only` with its own gate marker (`root`, `frontend`, `backend`, or `domain`).
+- `pnpm check:changes` — changed-file audit for every scope. Each workspace script is `fallow audit --gate new-only` with its own gate marker (`root`, `frontend`, `frontend-services`, `backend`, or `domain`).
 
 `check:unused` and `check:health` examine each whole scope. `check:changes` fails on findings the
 changeset introduced and reports inherited findings without failing on them. Set
@@ -117,8 +120,12 @@ Same-zone imports are allowed. `src/lib` and `src/components` are both `shared`,
 imports between them. Read the zone from `fallow guard` for the file you are changing. A
 directory name alone does not grant a permission.
 
-`src/features` is absent, and `src/server` is empty. Fallow warns that `features` auto-discovery
-failed and that both zones match no files. Leave those directories absent or empty.
+`src/lib` is absent. Effect services for the frontend process live in
+`packages/frontend-services`, not in this zone. `src/features` is absent, and `src/server`
+is empty. Fallow warns that `features` auto-discovery failed and that both zones match no
+files. Leave those directories absent or empty. Do not create them, and do not move
+`src/components`, to satisfy Bulletproof during ordinary work.
+
 `src/instrumentation.ts` and `src/proxy.ts` are the configured `allowUnmatched` files: they have
 no zone, and their imports are unrestricted. `fallow guard` marks other unmatched paths with
 `coverage_required`. A reachable file in that state is a boundary-coverage error. Frontend tests
@@ -128,8 +135,8 @@ leave tests where they are. Boundary violations and boundary-coverage gaps are e
 ## Recursive modules
 
 The root [AGENTS.md](../../AGENTS.md) module rule still applies. A public entry such as
-`lib/tenant.ts` owns the private modules under `lib/tenant/`. Only that parent imports its
-children. Siblings and external tests use the public entry.
+`packages/frontend-services/src/tenant.ts` owns the private modules under `src/tenant/`.
+Only that parent imports its children. Siblings and external tests use the public entry.
 
 Bulletproof does not encode that rule. An import of a private child can stay inside `shared` and
 pass Fallow. Follow the module rule when Fallow reports no boundary violation.

@@ -1,0 +1,18 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "noEmitOnError": true,
+    "declaration": true,
+    "rootDir": "src",
+    "outDir": "dist",
+    "sourceMap": true,
+    "lib": ["ES2022", "DOM"],
+    "paths": {
+      "next/navigation": ["./node_modules/next/navigation.d.ts"],
+      "next/server": ["./node_modules/next/server.d.ts"]
+    },
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts"]
+}

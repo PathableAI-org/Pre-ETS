@@ -17,7 +17,6 @@ export default defineConfig({
     exclude: ["tests/integration/**"],
     globals: false,
     include: ["tests/**/*.test.ts"],
-    server: { deps: { inline: ["@pathableai/react", "@pathableai/styles"] } },
-    setupFiles: ["./tests/unit/tenant-config-dir-setup.ts"]
+    server: { deps: { inline: ["@pathableai/react", "@pathableai/styles"] } }
   }
 })

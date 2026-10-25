@@ -1,7 +1,7 @@
 # Multi-tenancy strategy
 
 The frontend owns tenant configuration. The server-only
-[TenantConfigService](../packages/frontend/src/lib/tenant.ts) resolves tenant aliases
+[TenantConfigService](../packages/frontend-services/src/tenant.ts) resolves tenant aliases
 and loads one `{alias}.json` file under `TENANT_CONFIG_DIR` for each read. The current
 app has a welcome page and a tenant diagnostic route; login and sessions remain
 follow-on work described in [authentication.md](./authentication.md). Durable business
@@ -32,14 +32,14 @@ original Host header and protect the diagnostic endpoint separately.
 request Host → selected alias → TENANT_CONFIG_DIR/{alias}.json → validated tenant configuration
 ```
 
-The [tenant module](../packages/frontend/src/lib/tenant.ts) owns a private child at
-`lib/tenant/config.ts`. Its `TenantConfig` value is an Effect `Config` recipe with
+The [tenant module](../packages/frontend-services/src/tenant.ts) owns a private child at
+`packages/frontend-services/src/tenant/config.ts`. Its `TenantConfig` value is an Effect `Config` recipe with
 decoded type `Config.Success<typeof TenantConfig>`. Only `tenant.ts` imports this
 child; sibling modules and tests use the public tenant service. A file-backed
 `ConfigProvider` supplies the complete selected JSON document. This
 provider is local to that read and does not replace the environment provider used
 for process settings. The process-resolution configuration also has a `TenantConfig`
-name in `lib/config/tenant-config.ts`; it is a separate contract.
+name in `packages/frontend-services/src/config/tenant-config.ts`; it is a separate contract.
 
 Each read checks directory availability and reads one complete file snapshot. Later
 calls observe file changes without restarting the process; there is no process-lifetime

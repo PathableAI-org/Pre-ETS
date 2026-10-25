@@ -127,7 +127,7 @@ protected access and must not be treated as authenticated state by a prior revis
 
 ## Session policy handoff
 
-[TenantConfigService](../packages/frontend/src/lib/tenant.ts) provides validated
+[TenantConfigService](../packages/frontend-services/src/tenant.ts) provides validated
 integration data and shared effective timeout/warning values through
 `service.effectiveSessionPolicy(config)`. The Config recipe and policy implementation
 are private children of the tenant module. File parsing preserves omitted fields;

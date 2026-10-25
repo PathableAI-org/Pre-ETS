@@ -78,11 +78,14 @@ and merged.
 
 ## Effect workspace routing
 
-Before designing or modifying Effect code in `packages/frontend`,
-`packages/backend`, or a future workspace extending `tsconfig.effect.json`,
-read [Effect agent guidance](docs/engineering/effect-guidance.md) and the target
-workspace's `AGENTS.md`: [frontend](packages/frontend/AGENTS.md),
-[backend](packages/backend/AGENTS.md). This explicit routing also applies when an
+Before designing or modifying Effect code in `packages/frontend-services`,
+`packages/backend`, `packages/domain`, or a future workspace extending
+`tsconfig.effect.json`, read
+[Effect agent guidance](docs/engineering/effect-guidance.md) and the target
+workspace's `AGENTS.md`: [frontend-services](packages/frontend-services/AGENTS.md),
+[backend](packages/backend/AGENTS.md), [domain](packages/domain/AGENTS.md). The
+Next.js app in [frontend](packages/frontend/AGENTS.md) is not an Effect workspace.
+This explicit routing also applies when an
 agent starts at the repository root. Locate the available Effect v4 checkout,
 read its `LLMS.md`, then only the linked examples/source relevant to the task.
 The local discovery path and source precedence are in the Effect guide. Verify
@@ -97,9 +100,10 @@ tracing boundaries or `Effect.fnUntraced` otherwise; inline programs use `Effect
 
 Product Effect pins are coordinated in the named `effect` catalog in
 [`pnpm-workspace.yaml`](pnpm-workspace.yaml), including `@effect/platform-node`.
-Existing product ownership still applies: frontend owns
-Next.js UI, tenant configuration, OIDC, and session state; backend owns the
-Effect REST domain layer. See
+Existing product ownership still applies: the Next.js app owns presentation and
+calls `@pathableai/pre-ets-frontend-services` for tenant configuration, OIDC, and
+temporary session state; backend owns the Effect REST domain layer. Do not import
+`effect` from `packages/frontend`. See
 [effect-guidance](docs/engineering/effect-guidance.md) and
 [domain persistence](docs/domain-persistence.md).
 

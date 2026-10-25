@@ -30,8 +30,10 @@ operations as understanding develops.
 ### II. Explicit Ownership and Authoritative Data
 
 The frontend and backend MUST remain separate processes with implementation in its owning workspace.
-The frontend owns presentation, tenant configuration, authentication orchestration, and temporary
-session/UI state. The backend owns business rules, domain authorization, and durable domain records.
+The frontend process owns presentation, tenant configuration, authentication orchestration, and
+temporary session/UI state. The Next.js workspace owns presentation and calls
+`packages/frontend-services` for tenant configuration, authentication orchestration, and temporary
+session state. The backend owns business rules, domain authorization, and durable domain records.
 
 Session state MUST NOT become the business source of truth. When an object needs durable identity,
 a business lifecycle, or access beyond its originating session, the frontend MUST persist it through
@@ -153,10 +155,11 @@ introduced without a current consumer.
   `@pathableai` scope. Runtime and dependency versions belong in their existing configuration files.
 - The frontend is an SSR-first Next.js App Router application. The planned backend is a stateless
   RESTful Effect v4 service; this decision does not imply that backend workflows already exist.
-- Before designing or changing Effect code in `packages/frontend` or `packages/backend`, agents
-  MUST read [Effect agent guidance](../../docs/engineering/effect-guidance.md) and the affected
-  workspace `AGENTS.md`. Consult relevant upstream Effect documentation and source matching the
-  installed version, then verify APIs against installed Effect declarations.
+- Before designing or changing Effect code in `packages/frontend-services`, `packages/backend`, or
+  `packages/domain`, agents MUST read [Effect agent guidance](../../docs/engineering/effect-guidance.md)
+  and the affected workspace `AGENTS.md`. The Next.js app in `packages/frontend` is not an Effect
+  workspace and MUST NOT import `effect`. Consult relevant upstream Effect documentation and source
+  matching the installed version, then verify APIs against installed Effect declarations.
 - Feature planning MUST decide module structure before public contracts, public contracts before
   evidence, and evidence before private implementation architecture. Plans MUST record exact
   signatures for affected public modules and distinguish expected errors from defects and

@@ -10,8 +10,8 @@ at the backend process host; pure transformations need no Effect wrapper. Produc
 Own the planned stateless RESTful Effect v4 domain service: business rules,
 domain authorization, durable domain persistence, Effect services, workflows, and
 implementation Layers. Depend on Effect and `@effect/platform-node` as declared
-in this workspace. Do not import Next.js, React, Redis session state, or the
-frontend workspace.
+in this workspace. Do not import Next.js, React, Redis session state, the
+frontend workspace, or `@pathableai/pre-ets-frontend-services`.
 
 Importing an entrypoint must not start a runtime until the process host
 intentionally boots. Keep broker token verification independent of the frontend
