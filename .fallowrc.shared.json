@@ -23,7 +23,7 @@
     "complexity-cyclomatic": "error",
     "complexity-cognitive": "error",
     "complexity-crap": "error",
-    "private-type-leaks": "off",
+    "private-type-leaks": "error",
     "require-suppression-reason": "error"
   }
 }

@@ -299,8 +299,8 @@ backend, and domain typecheck projects. Compiler-option bases and package emit
 configs stay out of that pass. Type-aware analysis confirms symbol use for Fallow
 findings. It does not replace `pnpm typecheck`. When the checker result is partial
 or unavailable, the original finding remains and is not evidence that the symbol
-can be deleted. The `private-type-leaks` rule stays off, so that advisory API
-check is not part of `pnpm check:unused`.
+can be deleted. `private-type-leaks` is an error, so an exported signature
+must name an exported type.
 
 ## Renovate
 

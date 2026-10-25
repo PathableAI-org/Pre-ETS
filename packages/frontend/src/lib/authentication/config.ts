@@ -22,7 +22,7 @@ const invalidAuthenticationConfig = () =>
     )
   )
 
-interface AuthenticationSettings {
+export interface AuthenticationSettings {
   readonly allowInsecureLoopback: boolean
   readonly callbackOrigins: Readonly<Record<string, URL>>
 }

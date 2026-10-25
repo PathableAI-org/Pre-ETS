@@ -160,8 +160,9 @@ dependencies declared at the root.
 
 Type-aware analysis is enabled in best-effort mode against each scope's `tsconfig.json`. It
 confirms symbol use for Fallow findings and does not replace `pnpm typecheck`. A partial or
-unavailable checker result keeps the finding. The `private-type-leaks` rule stays off, so that
-check is not part of `pnpm check:unused`.
+unavailable checker result keeps the finding. `private-type-leaks` is an error.
+An exported signature must not reference a same-file type that callers cannot name.
+Export that type, or change the signature so it uses an exported type.
 
 ## Responding to a finding
 

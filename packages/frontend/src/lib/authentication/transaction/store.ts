@@ -11,7 +11,7 @@ export interface AttemptAddress {
   readonly tenantAlias: string
 }
 
-interface TransactionStoreSettings {
+export interface TransactionStoreSettings {
   readonly prefix: string
   readonly ttlMilliseconds: number
   readonly ttlSeconds: number

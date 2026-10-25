@@ -23,15 +23,15 @@ import type { OtelSettings } from "./config/index.ts"
 
 import { nodeHttpClientInstrumentation } from "./observability/http.ts"
 
-interface ObservabilitySelection {
+export interface ObservabilitySelection {
   readonly logs: SelectedOtlpSignal | undefined
   readonly metrics: SelectedOtlpSignal | undefined
   readonly traces: SelectedOtlpSignal | undefined
 }
 
-type OtlpHttpProtocol = "http/json" | "http/protobuf"
+export type OtlpHttpProtocol = "http/json" | "http/protobuf"
 
-interface SelectedOtlpSignal {
+export interface SelectedOtlpSignal {
   readonly protocol: OtlpHttpProtocol
   readonly url: string
 }

@@ -23,6 +23,8 @@ export const AuthenticationProcessConfig = Config.all({
   transactions: TransactionStoreConfig
 })
 
+export type CorrelationDisposition = "clear" | "preserve"
+
 export interface TrustedIdentity {
   readonly authenticatedAt: number
   readonly issuer: string
@@ -44,8 +46,6 @@ interface CompleteAuthenticationInput {
   readonly host: string
   readonly query: readonly (readonly [string, string])[]
 }
-
-type CorrelationDisposition = "clear" | "preserve"
 
 interface PreparedAuthentication {
   readonly correlation: string
