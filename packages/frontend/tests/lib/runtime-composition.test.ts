@@ -3,7 +3,7 @@ import { assert, it } from "@effect/vitest"
 import { Cause, Config, ConfigProvider, Effect, Exit, Layer, Option } from "effect"
 import * as Redis from "effect/persistence/Redis"
 import { NextRequest, NextResponse } from "next/server"
-import { describe, expect, vi } from "vitest"
+import { afterEach, describe, expect, vi } from "vitest"
 
 import { AuthenticationProcessConfig } from "../../src/lib/authentication.ts"
 import { toNext } from "../../src/lib/next.ts"
@@ -53,6 +53,12 @@ const failure = (exit: Exit.Exit<unknown, unknown>): unknown => {
   return Option.isSome(error) ? error.value : undefined
 }
 
+const managedRuntimeSlot = Symbol.for("@pathableai/pre-ets-frontend/ManagedRuntime")
+
+const clearInstalledRuntime = (): void => {
+  Reflect.deleteProperty(globalThis, managedRuntimeSlot)
+}
+
 const memoryRedis = Layer.effect(
   Redis.Redis,
   Redis.make({
@@ -63,6 +69,8 @@ const memoryRedis = Layer.effect(
 
 // Runtime and authentication contracts: one startup value before infrastructure (V-006, V-001, V-008).
 describe("runtime composition", () => {
+  afterEach(clearInstalledRuntime)
+
   it.effect("does not acquire infrastructure when TENANT_CONFIG_DIR is omitted", () => {
     const recording = recordingInfrastructure()
     return withEnv(
@@ -177,6 +185,25 @@ describe("runtime composition", () => {
       if (phase === undefined) delete process.env.NEXT_PHASE
       else process.env.NEXT_PHASE = phase
     }
+  })
+
+  it("uses the runtime installed by another evaluation of this module", async () => {
+    vi.resetModules()
+    const first = await import("../../src/lib/runtime.ts")
+    let ran = false
+    first.installManagedRuntime(
+      {
+        runPromise: () => {
+          ran = true
+          return Promise.resolve(undefined)
+        }
+      } as unknown as Parameters<typeof first.installManagedRuntime>[0]
+    )
+    vi.resetModules()
+    const second = await import("../../src/lib/runtime.ts")
+    expect(second.Runtime).not.toBe(first.Runtime)
+    await expect(second.Runtime.runPromise(Effect.void)).resolves.toBeUndefined()
+    expect(ran).toBe(true)
   })
 
   it("does not call the handler before the runtime is ready", async () => {

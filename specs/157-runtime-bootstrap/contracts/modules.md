@@ -551,8 +551,11 @@ imports `config/index.ts` and its own child `observability/http.ts`. It does not
   ordinary `Redis | NodeServices.NodeServices` argument, and `startProductionRuntime` keeps `NodeRedis.layer`
   inside its `Layer.provide` chain.
 - A second managed runtime for bootstrap diagnostics: standard error is available before Effect startup.
-- A health-check service or mutable global locator: Next.js `register` plus `StartupNotReady` cover the
-  consumers that exist.
+- A health-check service or general service locator: Next.js `register` plus `StartupNotReady` cover the
+  consumers that exist. The installed runtime is stored on `globalThis` under
+  `Symbol.for("@pathableai/pre-ets-frontend/ManagedRuntime")` because Turbopack does not share a module-level
+  binding between the instrumentation chunk and request chunks. That property is the same single publisher,
+  not a second runtime or a locator API.
 - `effect/observability` OTLP exporters or a hand-built `NodeTracerProvider`: installed `NodeSdk.layer` is the
   provider.
 - Per-signal disable flags other than `OTEL_*_EXPORTER=none`: that is the OTEL setting that means the signal
