@@ -228,8 +228,8 @@ importers:
         specifier: 3.35.0
         version: 3.35.0
       gherkin-refine:
-        specifier: 1.4.4
-        version: 1.4.4
+        specifier: 1.4.5
+        version: 1.4.5
       globals:
         specifier: 17.13.0
         version: 17.13.0
@@ -1875,8 +1875,8 @@ packages:
     resolution: {integrity: sha512-3hN7NaskYvMDLQY55gnW3NQ+mesEAepTqlg+VEbj7zzqEMBVNhzcGYYeqFo/TlYz6eQiFcp1HcsCZO+nGgS8zg==}
     engines: {node: '>=6.9.0'}
 
-  gherkin-refine@1.4.4:
-    resolution: {integrity: sha512-br8fQDBlz/vc14HBoznH2b94GbL0SsxNecf+diXN+4TH/O2JA54FPkaEv7K8BIEA9i7RawocCF8h7zah125ICQ==}
+  gherkin-refine@1.4.5:
+    resolution: {integrity: sha512-+7xBmJG72LPehMbUpjC0uFcvqMjuieqRP7ChuYCvvynJ/VvkXBghUHnqqh3GBAejDugvNnFwM36C6mg5bG0CRQ==}
     engines: {node: '>=22.18.0'}
     hasBin: true
 
@@ -4069,7 +4069,7 @@ snapshots:
 
   gensync@1.0.0-beta.2: {}
 
-  gherkin-refine@1.4.4:
+  gherkin-refine@1.4.5:
     dependencies:
       '@cucumber/gherkin': 42.0.1
       '@cucumber/messages': 34.2.1
