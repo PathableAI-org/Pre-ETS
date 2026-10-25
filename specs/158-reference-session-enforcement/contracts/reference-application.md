@@ -7,11 +7,18 @@ page and one Server Action. It is not a comprehensive route policy and does not 
 
 The root page is dynamically rendered and private/no-store. Before rendering protected content it:
 
-1. reads the request host;
-2. resolves and loads that tenant through `TenantConfigService`;
-3. reads the opaque `pathable-session` cookie;
-4. calls `SessionService.readForTenant` with the independently resolved alias; and
-5. maps the result before rendering starts.
+1. reads `headers().get("host")` and accepts it with the same rules as authentication's `parseRequestHost`;
+2. maps an unparseable host to the existing tenant 404 and stops, without calling `getAlias` or redirecting to login;
+3. passes only the lowercase hostname to `TenantConfigService.getAlias`, then loads that alias with
+   `getConfigFromAlias` (`alias.localhost:3000` calls `getAlias("alias.localhost")`);
+4. reads the opaque `pathable-session` cookie;
+5. calls `SessionService.readForTenant` with the independently resolved alias; and
+6. maps the result before rendering starts.
+
+`getAlias`, `getConfigFromHost`, and `GET /_test/tenant-config` keep the raw-host contract. The diagnostic route still
+passes the incoming Host header to `getConfigFromHost`. A parseable hostname in static mode still reaches `getAlias`,
+which ignores that hostname. The adapter example in `packages/frontend/tests/unit/reference-session-enforcement.test.ts`
+asserts that `alias.localhost:3000` does not pass the port into `getAlias`.
 
 | Condition                              | HTTP behavior                                          | Body/content behavior                                                                                             | Cookie/effect behavior                                                                         |
 | -------------------------------------- | ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
@@ -19,6 +26,7 @@ The root page is dynamically rendered and private/no-store. Before rendering pro
 | `NoUsableSession` after tenant success | `307` to same-origin `/auth/login`                     | No protected identity, content, action, or result is rendered first.                                              | The page sets no application/correlation/effect cookie. Login owns later correlation behavior. |
 | `SessionTenantMismatch`                | `403` through installed `forbidden()` before streaming | Bounded generic forbidden indication; no session tenant, identity, protected content, or effect.                  | No replacement login/session/effect.                                                           |
 | `SessionServiceUnavailable`            | Server failure distinct from redirect/403/success      | Safe failure presentation; no raw cause, stored value, identity, or protected content.                            | No replacement login/session/effect.                                                           |
+| Unparseable host                       | Existing tenant `404`                                  | No fallback tenant, no protected content, and no login redirect.                                                  | `getAlias` is not called. No session-based conversion or effect.                              |
 | Tenant alias/configuration failure     | Existing `404` or `500` mapping                        | No fallback tenant and no protected content.                                                                      | No session-based conversion or effect.                                                         |
 
 The root `forbidden.tsx` copy is revised from login-configuration language to a bounded tenant/session forbidden
@@ -26,9 +34,12 @@ indication. It accepts no props and exposes no tenant or identity values.
 
 ## Protected Server Action
 
-The reference page exposes one top-level `"use server"` action through a native form. Every invocation independently
-repeats host/tenant resolution, cookie reading, and `readForTenant`; it does not trust rendered props, form fields,
-client state, or an earlier page admission.
+The reference page exposes one top-level Server Action through a native form. Every invocation independently repeats
+host normalization, tenant resolution, cookie reading, and `readForTenant`; it does not trust rendered props, form
+fields, client state, or an earlier page admission. An unparseable host is the same tenant 404 as the page, and a
+portful host such as `alias.localhost:3000` passes only `alias.localhost` to `getAlias`.
+
+`packages/frontend/src/app/(app)/reference-action-state.ts` has neither `"use server"` nor `server-only`:
 
 ```ts
 export type ReferenceActionState =
@@ -36,13 +47,24 @@ export type ReferenceActionState =
   | { readonly _tag: "Denied"; readonly message: string }
   | { readonly _tag: "Succeeded"; readonly message: string }
 
-export const initialReferenceActionState: ReferenceActionState
+export const initialReferenceActionState: ReferenceActionState = {
+  _tag: "Ready"
+}
+```
 
+`packages/frontend/src/app/(app)/actions.ts` has a file-level `"use server"` directive. `runReferenceOperation` is its
+only runtime export:
+
+```ts
 export async function runReferenceOperation(
   previousState: ReferenceActionState,
   formData: FormData
 ): Promise<ReferenceActionState>
 ```
+
+The client island imports the state type and `initialReferenceActionState` from the sibling module, and imports
+`runReferenceOperation` from the server module. It receives no tenant config, cookie, session reference, or identity
+props.
 
 `previousState` and `formData` convey no authority and are not used to select identity or tenant.
 
@@ -52,6 +74,7 @@ export async function runReferenceOperation(
 | `NoUsableSession`           | Returns `Denied`; does not start OIDC.             | Absent; denial is announced.                | None.                                                                                 |
 | `SessionTenantMismatch`     | Invokes `forbidden()` before mutation.             | Absent; actual action HTTP response is 403. | None.                                                                                 |
 | `SessionServiceUnavailable` | Fails distinctly as a safe server error.           | Absent.                                     | None.                                                                                 |
+| Unparseable host            | Existing tenant `404`; `getAlias` is not called.   | Absent. No login redirect.                  | None.                                                                                 |
 | Tenant 404/500              | Preserves the existing tenant failure class.       | Absent.                                     | None.                                                                                 |
 
 The action's generated transport endpoint and identifiers are Next.js implementation details, not a public HTTP API.

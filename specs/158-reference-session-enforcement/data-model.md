@@ -73,19 +73,43 @@ interface ResolvedRequestContext {
 }
 ```
 
-- Constructed by the private `(app)` adapter from request headers through `TenantConfigService.getAlias` followed by
-  `getConfigFromAlias`.
+- Constructed by the private `(app)` adapter. The adapter accepts `headers().get("host")` with the same rules as
+  authentication's `parseRequestHost`, then calls `TenantConfigService.getAlias` with only the lowercase hostname and
+  `getConfigFromAlias` with the resulting alias. `alias.localhost:3000` yields `getAlias("alias.localhost")`.
+- An unparseable host does not produce this context. It is the existing tenant 404 and does not call `getAlias`.
+- `getAlias`, `getConfigFromHost`, and the diagnostic route keep the raw-host contract described in
+  [research.md](research.md) Decision 2.
 - Cached only for the current render/request using React request memoization.
 - Does not persist, widen, or serialize the tenant alias.
 
 ### Reference action state
 
+Defined in `packages/frontend/src/app/(app)/reference-action-state.ts`, a sibling with neither `"use server"` nor
+`server-only`:
+
 ```ts
-type ReferenceActionState =
+export type ReferenceActionState =
   | { readonly _tag: "Ready" }
   | { readonly _tag: "Denied"; readonly message: string }
   | { readonly _tag: "Succeeded"; readonly message: string }
+
+export const initialReferenceActionState: ReferenceActionState = {
+  _tag: "Ready"
+}
 ```
+
+`packages/frontend/src/app/(app)/actions.ts` has a file-level `"use server"` directive. Its only runtime export is:
+
+```ts
+export async function runReferenceOperation(
+  previousState: ReferenceActionState,
+  formData: FormData
+): Promise<ReferenceActionState>
+```
+
+It imports `ReferenceActionState` as a type and does not export the initial state. The client island imports
+`ReferenceActionState` and `initialReferenceActionState` from the sibling module and `runReferenceOperation` from the
+server module. It receives no tenant config, cookie, session reference, or identity props.
 
 - `Ready` is client initialization only.
 - `Denied` is returned only for `NoUsableSession`; it contains no protected result and starts no OIDC flow.
@@ -110,17 +134,19 @@ This is temporary synthetic UI state, not a session store extension or durable b
 
 ```text
 incoming page/action request
-  -> resolve request tenant and load its configuration
-     -> tenant failure: existing 404/500, stop
-     -> tenant success: read opaque session reference for that tenant
-        -> no usable session
-           -> page: redirect to same-origin /auth/login
-           -> action: return Denied, no effect
-        -> tenant mismatch: forbidden 403, no effect
-        -> service unavailable: server failure, no effect, no replacement login
-        -> usable matching session
-           -> page: render protected identity/policy and action control
-           -> action: emit one receipt, return Succeeded
+  -> normalize Host with the parseRequestHost acceptance rules
+     -> unparseable: existing tenant 404, stop
+     -> lowercase hostname: getAlias, then getConfigFromAlias
+        -> tenant failure: existing 404/500, stop
+        -> tenant success: read opaque session reference for that tenant
+           -> no usable session
+              -> page: redirect to same-origin /auth/login
+              -> action: return Denied, no effect
+           -> tenant mismatch: forbidden 403, no effect
+           -> service unavailable: server failure, no effect, no replacement login
+           -> usable matching session
+              -> page: render protected identity/policy and action control
+              -> action: emit one receipt, return Succeeded
 ```
 
 No transition creates, renews, invalidates, or revives an application session. Session establishment remains owned by

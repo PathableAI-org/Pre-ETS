@@ -27,19 +27,63 @@ identity, idle deadline, and warning policy. A mismatch error carries no tenant 
 - Tenant comparison in each page/action: rejected because #154 needs one reusable, framework-independent contract and
   duplicated comparisons could drift.
 
-## Decision 2: Keep request-tenant resolution ahead of session enforcement
+## Decision 2: Normalize the request host, then resolve the tenant before session enforcement
 
-**Decision**: The private `(app)` request adapter resolves the request host to a branded `TenantAlias` and loads that
-tenant's configuration before reading the session cookie or choosing a session outcome. It then calls
+**Decision**: The private `(app)` reference adapter reads `headers().get("host")` and accepts it with the same rules as
+the unexported `parseRequestHost` in `packages/frontend/src/lib/authentication.ts`. A value is rejected when it is
+empty, has surrounding whitespace, contains `/`, `?`, `#`, `@`, or `\`, fails the `opaque://` URL parse, has an empty
+hostname, or has a non-empty path, query, or fragment. Rejection is the existing tenant 404 through `notFound()` (the
+status-404 branch of `httpErrorPage`). It does not call `getAlias`, redirect to `/auth/login`, or read the session.
+An accepted value contributes only its lowercased `hostname` to `TenantConfigService.getAlias`; the port is not passed.
+The adapter then calls `getConfigFromAlias` and only afterward reads the session cookie and calls
 `readForTenant({ reference, tenantAlias })`.
 
-**Rationale**: `TenantConfigService` already owns alias parsing, file selection, validation, and the accepted 404/500
-failures. Passing only its independently resolved alias into the session service prevents session state from becoming a
-tenant selector. This order ensures invalid-host and unavailable-configuration outcomes win over redirect, forbidden,
-or session-service outcomes.
+`alias.localhost:3000` is the required adapter example: `getAlias` receives `alias.localhost`. A second example uses a
+value `parseRequestHost` rejects, such as `alias.localhost/extra`, and observes a 404 without a `getAlias` call or a
+login redirect. `127.0.0.1` and a bare base host are parseable; they still reach `getAlias` and keep that operation's
+existing pattern failure.
+
+**Rationale**: Installed `getAlias` rejects any host that still contains a port
+(`packages/frontend/tests/unit/tenant-alias.test.ts`). Login and callback do not pass that string: `parseRequestHost`
+returns the lowercase hostname, and authentication calls `getAlias(requestHost.hostname)`. Running OIDC evidence uses
+hosts such as `springfield.localhost:3000`. Passing the raw `Host` header to `getAlias` would make those requests a
+tenant 404 before session admission or `/auth/login`.
+
+This resolves the strategy conflict without changing the service. `docs/multi-tenancy.md` still says a retained port
+fails alias resolution, the diagnostic adapter passes the incoming Host header to the service, and consumers do not
+give the service an independently parsed host. Authentication already normalizes before `getAlias` so the session alias
+and the request alias are the same value. The reference adapter uses that same pre-service normalization. It does not
+change `getAlias`, `getConfigFromHost`, or `GET /_test/tenant-config`, which keep the raw-host contract. A parseable
+hostname in static mode still reaches `getAlias`, which ignores that hostname and selects the configured static alias.
+An unparseable Host is 404 before `getAlias`, including in static mode.
+
+`/_test/onsite` calls the shared `requireTenantConfig()` helper and must keep its current outcomes: static mode at
+`127.0.0.1` stays 200, host mode at `springfield.example.test` stays 200, and `unknown.example.test` stays 404. Those
+hosts are parseable, so normalization does not change them. The onsite page does not become a session consumer.
+
+The normalization is a private pure function in the `(app)` adapter. It is not an Effect wrapper, a new public parser,
+or an export of authentication's `parseRequestHost`. `TenantNotFound` stays module-private; the adapter does not
+construct it.
+
+**Documentation the implementation pass replaces**: This planning pass does not edit product docs. Implementation
+replaces these superseded sentences:
+
+- `docs/authentication.md`: "The root uses `SessionService.hasSession()` before request-tenant lookup."
+- `docs/authentication.md`: "Root's separate first hop remains 307 even when tenant lookup will fail."
+- `docs/session-state.md`: "`hasSession()` remains `false` for the current no-input root consumer; it does not read
+  cookies, Redis, or request-tenant identity, and does not turn presence into authorization."
+- `docs/session-state.md`: "The root consumer uses absence to redirect to `/auth/login` before tenant lookup."
+
+The replacement states that the reference page normalizes Host, resolves the tenant, and then reads the session. A
+resolved tenant with no usable session redirects to `/auth/login`. An unparseable host or other tenant failure on `/`
+is that tenant 404 or 500. `hasSession()` is removed.
 
 **Alternatives considered**:
 
+- Pass the raw `Host` header, including a retained port, to `getAlias`: rejected because installed `getAlias` rejects
+  retained ports and the local evidence hosts include a port.
+- Teach `getAlias` or `getConfigFromHost` to strip ports: rejected. Those operations and the diagnostic route keep the
+  raw-host contract.
 - Pass the request host into `SessionService`: rejected because it would move tenant/configuration ownership into the
   session module.
 - Derive the request tenant from `UsableSession.tenantAlias`: rejected because it violates independent tenant
@@ -181,5 +225,7 @@ confirmed fresh authentication.
   `Text`, `Alert`, `Form`, and `Button`. Only `useActionState` requires the client boundary.
 - **Storage**: No new durable storage or schema is introduced. Redis remains the established session store; the
   synthetic effect is an outgoing short-lived response cookie.
+- **Request host**: The reference adapter normalizes with the `parseRequestHost` rules above and does not change
+  `getAlias`. No product clarification remains.
 - **Product decisions**: No unresolved product decision blocks this plan. B6 remains a declared execution limitation,
-  not an implementation assumption.
+  not an implementation assumption. No `NEEDS CLARIFICATION` remains.

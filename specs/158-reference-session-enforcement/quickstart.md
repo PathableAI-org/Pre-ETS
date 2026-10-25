@@ -68,6 +68,8 @@ Expected observations:
 - `SessionServiceUnavailable` remains distinguishable;
 - the page resolves tenant first, redirects absence only after tenant success, maps mismatch to forbidden, and does not
   perform the action effect on any denied/failure path;
+- Host `alias.localhost:3000` calls `getAlias` with `alias.localhost` and does not pass the port; an unparseable host
+  is a tenant 404 and does not call `getAlias`;
 - each Server Action invocation re-enforces rather than trusting rendered state.
 
 These checks do not prove actual Next HTTP status, real Redis, provider behavior, or keyboard/focus behavior.
@@ -122,7 +124,11 @@ Expected automated observations:
 
 - a no-session reference page resolves the tenant and delegates to same-origin `/auth/login` before protected content;
 - a forged/malformed reference obtains no protected content or action result;
-- a tenant-A session presented to tenant B returns actual HTTP 403 with bounded forbidden content and no receipt;
+- V-003 is a direct HTTP request whose `Host` is tenant B (a portful value such as `shelbyville.localhost:<port>` is
+  valid because the adapter normalizes it before `getAlias`) and whose `Cookie` header carries tenant A's
+  `pathable-session` value. That request returns actual HTTP 403 with bounded forbidden content and no receipt. A
+  browser navigation will not send that host-only cookie across the two hosts, so this observation is not a cross-host
+  page navigation;
 - session-store failure is distinct from redirect/403/success and emits no receipt;
 - when B6 is approved and functioning, authentication through A is consumed through B with the same safe synthetic
   identity/tenant and the action emits exactly one receipt;
@@ -144,9 +150,53 @@ workflow and current `origin/main` requirement text. The feature stays `@partial
 - `@preets-session-006`
 - applicable current-main tenant tags for preserved tenant behavior.
 
-Replace the superseded scenario that claims root delegation occurs before tenant-dependent work. The new bounded
-scenario must establish tenant-first behavior: a valid resolved tenant may delegate a missing session to login, while
-invalid-host or invalid/unavailable tenant configuration preserves its approved 404/500 outcome.
+Revise scenarios in the implementation pass. Do not edit them during planning, do not open Redis, and do not add a
+pending authenticated scenario. Do not revise `tests/bdd/requirements/tenant-context.feature` or
+`tests/bdd/requirements/onsite-prototype.feature`; their scenarios stay on `/auth/login` and `/_test/onsite`.
+
+In `tests/bdd/requirements/tenant-oidc-initiation.feature`, replace only
+`Scenario Outline: Root delegates before tenant-dependent work without protected content`. The current outline applies
+invalid Springfield JSON to every example and expects login delegation. The replacement splits those outcomes:
+
+- A valid Springfield tenant, including the fabricated-cookie document request at `springfield.example.test`, still
+  redirects to same-origin `/auth/login`, contains no protected application content, is not cacheable, and issues no
+  application or correlation cookie.
+- Invalid JSON for the selected Springfield file returns 404, with no login redirect, no protected content, and no
+  fallback tenant.
+- The bare base host `example.test` returns 404, with no login redirect, no protected content, and no fallback tenant.
+
+Keep these portful scenarios as login delegation for the document request at `springfield.localhost:3000`. Their
+`/auth/login` steps stay as written. Host normalization is what makes that host resolvable; they must not become
+tenant 404s:
+
+- `Scenario: First-time browser entry delegates automatically to the selected real provider`
+- `Scenario Outline: Unavailable preparation leaves access denied with public failure content`
+
+In `tests/bdd/requirements/tenant-failures.feature`, replace the feature sentence "Root is a separate session-missing
+redirect; complete session lookup, authenticated access and other tenant-dependent consumers remain incomplete." The
+replacement says `/` resolves the tenant before session admission, and a document request that is itself a tenant
+failure returns that failure's 404 or 500. Complete session lookup and other tenant-dependent consumers may remain
+incomplete.
+
+Change only the document request that is itself the tenant failure. Its new status is the status that row already
+expects from `/auth/login`, with no login redirect and no fallback tenant:
+
+| Scenario | Document request to change | Document outcome |
+| --- | --- | --- |
+| A host-mode alias with no tenant file is not found | `capital-city.example.test` | 404 |
+| A static alias with no tenant file is a server failure | `springfield.example.test` | 500 |
+| A host outside the tenant pattern is not found | `example.test`, `unknown.example.test`, `127.0.0.1` | 404 |
+| Directory failures produce server failures in both interfaces | `springfield.example.test` | 500 |
+| Unusable selected files are ordinary missing tenants in both interfaces | `springfield.example.test` | 404 |
+| Missing selected files retain the mode-specific response in both interfaces | `springfield.example.test` | 404 in host mode, 500 in static mode |
+
+Leave these as they are:
+
+- the valid Springfield document request that delegates to login in "An absent path on a reachable tenant is not
+  found", "A host-mode alias with no tenant file is not found", and "A host outside the tenant pattern is not found";
+- the absent-path 404 for `/this-page-is-absent`;
+- every `/auth/login` assertion;
+- every `/_test/tenant-config` assertion.
 
 Run discovery, lint/format, and execution:
 
@@ -200,8 +250,12 @@ Temporary probe code, screenshots containing sensitive values, and raw browser/n
    visible focus indication. Press `Enter` or `Space`; record the announced success result. Inspect browser/network
    state only far enough to establish that exactly one reference-effect receipt was emitted, without retaining its
    name/value. This establishes the distinct composed V-008 observation.
-4. Send the tenant-A session to tenant B through instance B. Record actual HTTP 403, bounded forbidden indication,
-   absence of tenant-A identity/content/result, and no new receipt.
+4. Observe V-003 with a direct HTTP request to instance B. Set `Host` to tenant B's host and `Cookie` to tenant A's
+   `pathable-session` value. A portful Host such as `shelbyville.localhost:<B port>` is expected: the adapter
+   normalizes it to the lowercase hostname before `getAlias`. A browser navigation will not send that host-only cookie
+   across the two hosts, so do not use cross-host navigation for this observation. Record actual HTTP 403, bounded
+   forbidden indication, absence of tenant-A identity/content/result, and no new receipt. A tenant 404 means the Host
+   was not normalized or the tenant did not resolve; it is not the mismatch result.
 5. Remove or invalidate only the scenario-owned session record, then submit the already-rendered reference operation.
    Record the perceivable no-session denial, no automatic OIDC, no protected result, and no receipt.
 6. In a fresh browser context, request tenant A's `/` through B. Record absence of protected content and automatic

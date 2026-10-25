@@ -49,20 +49,23 @@ Redis/OIDC/action fixtures for later #154/#157/#220/#221 work
 
 ## Constitution Check
 
-_GATE: Passed before Phase 0 research and re-checked after Phase 1 design._
+_GATE: Passed before Phase 0 research, re-checked after Phase 1 design, and re-checked after the 2026-10-25 critique revision. The revision does not weaken a gate._
 
 | Principle                                     | Pre-design gate                                                                                                                                                                                     | Post-design result                                                                                                                                                                                            |
 | --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | I. Evidence-grounded specification            | `spec.md`, `verification.md`, issue #219, S2-E, and current `origin/main` PREETS-SESSION-001/003/004/005/006 were read as immutable authorities. #218 is present on `origin/main`; B6 remains open. | Pass. No accepted behavior is changed. B6 limits successful real-login execution and remains an explicit incomplete claim rather than an assumption.                                                          |
 | II. Explicit ownership and authoritative data | Frontend owns OIDC/session/UI state; no business workflow or backend data is needed.                                                                                                                | Pass. Redis session ownership is unchanged; the synthetic receipt is bounded temporary UI state with no business data.                                                                                        |
-| III. Tenant isolation                         | The request tenant must be resolved independently and compared with the session tenant; mismatch must fail closed.                                                                                  | Pass. Tenant resolution precedes `readForTenant`; mismatch is fieldless and maps to forbidden without substitution.                                                                                           |
+| III. Tenant isolation                         | The request tenant must be resolved independently and compared with the session tenant; mismatch must fail closed.                                                                                  | Pass. The reference adapter normalizes Host to the lowercase hostname before unchanged `getAlias`, then `readForTenant`. Unparseable hosts are tenant 404s. Mismatch stays fieldless and maps to forbidden without substitution.                                                                                           |
 | IV. Accessible, server-rendered UI            | The feature changes UI and must use installed `@pathableai/react`, SSR by default, keyboard semantics, visible focus, and perceivable outcomes.                                                     | Pass. The page stays server-rendered; only action state is a client island. Installed component guidance/declarations were read and composed-browser verification remains required.                           |
-| V. Meaningful behavioral tests                | Evidence must name claims and separate module, adapter, real infrastructure, requirements BDD, and manual composed observations.                                                                    | Pass. [contracts/modules.md](contracts/modules.md) and [quickstart.md](quickstart.md) map non-duplicative evidence and preserve BDD/current-main limits. No telemetry test is added.                          |
-| VI. Simplicity and verifiable quality         | Actual consumers must justify public types, services, packages, storage, and tools.                                                                                                                 | Pass. The existing session owner is extended, its placeholder is removed, and existing runtime/harnesses are reused. No service, Layer, workspace, dependency, Redis value API, or middleware guard is added. |
+| V. Meaningful behavioral tests                | Evidence must name claims and separate module, adapter, real infrastructure, requirements BDD, and manual composed observations.                                                                    | Pass. [contracts/modules.md](contracts/modules.md) and [quickstart.md](quickstart.md) map non-duplicative evidence and preserve BDD/current-main limits. Quickstart records the named root BDD scenario revisions as implementation obligations. No telemetry test is added.                          |
+| VI. Simplicity and verifiable quality         | Actual consumers must justify public types, services, packages, storage, and tools.                                                                                                                 | Pass. The existing session owner is extended, its placeholder is removed, and existing runtime/harnesses are reused. Host normalization stays a private pure function. The `"use server"` module exports only `runReferenceOperation`; action state is a sibling module. No service, Layer, workspace, dependency, Redis value API, or middleware guard is added. |
 
 Architecture constraints also pass: frontend/backend separation is unchanged; direct installed declarations were
 checked for Effect, Next.js, React, and `@pathableai/react`; the host-owned `ManagedRuntime` is reused; and exact public
-signatures precede private design.
+signatures precede private design. Critique findings E1–E3 stay inside those gates. Host normalization reuses
+authentication's pure acceptance rules without a new tenant API. The BDD revisions follow the approved tenant-first
+page. The action-state split removes a runtime export that a file-level `"use server"` module cannot provide, without
+adding a public module.
 
 ## Project Structure
 
@@ -90,10 +93,11 @@ packages/frontend/
 ├── src/
 │   ├── app/
 │   │   ├── (app)/
-│   │   │   ├── actions.ts                 # planned top-level protected Server Action
+│   │   │   ├── actions.ts                 # "use server"; only runtime export is runReferenceOperation
 │   │   │   ├── page.tsx                   # replace root placeholder with protected reference page
+│   │   │   ├── reference-action-state.ts  # ReferenceActionState and initial state; no "use server"
 │   │   │   ├── session-context.ts         # planned private tenant/cookie/runtime outcome adapter
-│   │   │   └── tenant-context.ts          # extend cached request context to retain branded alias + config
+│   │   │   └── tenant-context.ts          # normalize Host, then cache branded alias + config
 │   │   ├── auth/cookie.ts                 # share the existing session-cookie name with protected adapters
 │   │   └── forbidden.tsx                  # bounded tenant/session mismatch indication
 │   ├── components/session/
@@ -137,18 +141,23 @@ No constitution violation requires justification.
    public usable/absent/failure outcomes, and the private codec/store children. Add tenant-bound read behavior there
    because #218 explicitly deferred that consumer contract to #219. Do not add an enforcement service, Layer, package,
    or child module. Remove the temporary `hasSession()` operation after its only production consumer migrates.
-2. **Preserve tenant ownership**. `TenantConfigService` remains the only owner of request-host alias resolution,
-   selected file loading, and approved 404/500 errors. The private request adapter composes existing `getAlias` then
-   `getConfigFromAlias` so it retains the branded request alias and validated configuration. The session module never
-   sees a host or tenant file.
+2. **Preserve tenant ownership**. `TenantConfigService` remains the only owner of alias selection, selected file
+   loading, and approved 404/500 errors. The private `(app)` adapter applies the same pure acceptance rules as
+   authentication's unexported `parseRequestHost`, passes only the lowercase hostname to existing `getAlias`, and then
+   calls `getConfigFromAlias`. An unparseable host is the existing tenant 404 and does not call `getAlias`. Do not
+   change `getAlias`, `getConfigFromHost`, or the diagnostic route, and do not add a host-parsing service or Effect
+   wrapper. The session module never sees a host or tenant file. `/_test/onsite` keeps its current `requireTenantConfig`
+   outcomes. Details are in [research.md](research.md) Decision 2.
 3. **Replace the bounded root placeholder**. `/` becomes the reference protected page. A private
    `session-context.ts` reads async Next headers/cookies, invokes tenant then session public operations through the
    existing `Runtime`, and returns/maps the result before rendering. Public callback, login/failure/recovery, and
    `/_test` resources do not import this adapter.
-4. **Add one independently protected action**. A top-level Server Action repeats tenant resolution, cookie reading, and
-   `readForTenant` on every invocation. It does not accept identity/tenant authority from the page or form. A private
-   action helper emits the bounded receipt after admission. This private concern does not warrant a service or public
-   module.
+4. **Add one independently protected action**. `runReferenceOperation` is the only runtime export of the `"use server"`
+   module `(app)/actions.ts`. `ReferenceActionState` and `initialReferenceActionState` live in the sibling
+   `(app)/reference-action-state.ts`, which has no `"use server"` directive. The action repeats host normalization,
+   tenant resolution, cookie reading, and `readForTenant` on every invocation. It does not accept identity/tenant
+   authority from the page or form. A private action helper emits the bounded receipt after admission. This private
+   concern does not warrant a service or public module.
 5. **Keep UI server-first**. The page and protected identity/policy presentation stay server-rendered. One
    `components/session/reference-operation.tsx` client island owns `useActionState`, pending state, native form submit,
    and the status announcement because those are browser interactions. Installed `@pathableai/react` supplies the
@@ -194,7 +203,9 @@ Evidence follows consumer → claim → violation → smallest boundary:
   `SessionServiceUnavailable`. This still does not prove running application instances.
 - Framework adapter tests inject public service outcomes to establish tenant-first ordering, page redirect, action
   denial, forbidden invocation, server-failure distinction, unchanged protected result, and exact zero/one receipt
-  calls. They do not claim actual HTTP 403 or browser accessibility.
+  calls. They include the `alias.localhost:3000` example: `getAlias` is called with `alias.localhost` and not the
+  port. An unparseable host, such as `alias.localhost/extra`, is a tenant 404 and does not call `getAlias`. These
+  tests do not claim actual HTTP 403 or browser accessibility.
 - No durable test asserts logs, spans, attributes, exporter output, or raw cookie values. This feature adds no
   observability claim; temporary diagnostics must be removed.
 
@@ -210,9 +221,15 @@ browser, infrastructure, and handoff evidence remain in Phase 5 rather than dupl
 2. Export the existing session-cookie name, or one narrow read helper, from `app/auth/cookie.ts` so callback writing and
    protected page/action reading cannot drift. Keep the untrusted string outside browser-visible props and let
    `SessionService.read` own decoding.
-3. Extend `tenant-context.ts` to cache a request-scoped `{ tenantAlias, config }` obtained from async `headers()`,
-   `TenantConfigService.getAlias`, and `getConfigFromAlias`. Keep the existing config-only consumer compatible through
-   a projection if needed. Tenant errors continue through `httpErrorPage`.
+3. Extend `tenant-context.ts` so the reference adapter reads async `headers().get("host")`, normalizes it with the
+   `parseRequestHost` acceptance rules in [research.md](research.md) Decision 2, and caches a request-scoped
+   `{ tenantAlias, config }` from `TenantConfigService.getAlias(hostname)` and `getConfigFromAlias`. Pass only the
+   lowercase hostname. An unparseable host is the existing tenant 404 and does not call `getAlias`. Keep `getAlias`,
+   `getConfigFromHost`, and `GET /_test/tenant-config` on the raw-host contract. Keep `/_test/onsite`'s current
+   `requireTenantConfig` outcomes. Tenant errors continue through `httpErrorPage`. Add the adapter example that
+   `alias.localhost:3000` calls `getAlias` with `alias.localhost`. During implementation, replace the superseded
+   `docs/authentication.md` and `docs/session-state.md` sentences named in Decision 2. This planning pass does not edit
+   those docs.
 4. Add a private session-context adapter that obtains the cookie through async `cookies()`, calls `readForTenant` via
    the existing `Runtime`, and maps typed results only at the awaited Next boundary. Do not construct a per-request
    runtime or catch Next control-flow errors.
@@ -220,17 +237,61 @@ browser, infrastructure, and handoff evidence remain in Phase 5 rather than dupl
    `NoUsableSession` redirects to `/auth/login`; mismatch invokes `forbidden()` before streaming; service failure
    remains a safe server failure; a usable match renders only bounded identity, tenant, deadline, warning policy, and
    the action control. Revise `app/forbidden.tsx` to generic mismatch copy without tenant/identity details.
-6. Implement the top-level Server Action and serialized `ReferenceActionState`. Re-run all enforcement on submission.
-   For a usable match, set exactly one short-lived host-only receipt cookie and return `Succeeded`; for absence return
-   `Denied` without OIDC/effect; for mismatch call `forbidden()`; for service/tenant failure expose no protected result
-   or receipt. The receipt value has no semantic contract and is never logged or retained.
+6. Implement the Server Action split. `packages/frontend/src/app/(app)/reference-action-state.ts` has neither
+   `"use server"` nor `server-only` and defines:
+
+   ```ts
+   export type ReferenceActionState =
+     | { readonly _tag: "Ready" }
+     | { readonly _tag: "Denied"; readonly message: string }
+     | { readonly _tag: "Succeeded"; readonly message: string }
+
+   export const initialReferenceActionState: ReferenceActionState = {
+     _tag: "Ready"
+   }
+   ```
+
+   `packages/frontend/src/app/(app)/actions.ts` has a file-level `"use server"` directive. Its only runtime export is:
+
+   ```ts
+   export async function runReferenceOperation(
+     previousState: ReferenceActionState,
+     formData: FormData
+   ): Promise<ReferenceActionState>
+   ```
+
+   The client island imports the state type and initial value from the sibling module and the action from the server
+   module. It still receives no tenant config, cookie, session reference, or identity props. Re-run host
+   normalization and all enforcement on submission. For a usable match, set exactly one short-lived host-only receipt
+   cookie and return `Succeeded`; for absence return `Denied` without OIDC/effect; for mismatch call `forbidden()`;
+   for service/tenant failure expose no protected result or receipt. The receipt value has no semantic contract and is
+   never logged or retained.
 7. Implement the minimal client island with installed `Form`, `Button`, and result presentation. Keep a meaningful
    accessible button name, native keyboard behavior, visible focus, disabled/pending state, and a polite status region.
    Do not move data loading or page composition into the client.
-8. Update the earlier missing-session root BDD that currently asserts delegation before tenant-dependent work; that
-   implementation assumption is superseded by the approved tenant-first contract. Add only current-main-tagged bounded
-   scenarios. Extend the issue-level two-process Node workflow for actual HTTP/action/receipt behavior and keep the
-   successful real-login A-to-B case incomplete until B6 works.
+8. Revise the named requirements BDD scenarios as implementation obligations. Do not open Redis or add a pending
+   authenticated scenario. In `tests/bdd/requirements/tenant-oidc-initiation.feature`, replace only
+   `Scenario Outline: Root delegates before tenant-dependent work without protected content`. A valid Springfield
+   tenant, including a fabricated cookie on `springfield.example.test`, still redirects to same-origin `/auth/login`
+   with no protected content. Invalid JSON for the selected Springfield file returns 404 with no login redirect. The
+   bare base host `example.test` returns 404 with no login redirect. Keep
+   `Scenario: First-time browser entry delegates automatically to the selected real provider` and
+   `Scenario Outline: Unavailable preparation leaves access denied with public failure content` as login delegation
+   for the document request at `springfield.localhost:3000`. In `tests/bdd/requirements/tenant-failures.feature`,
+   change only the document request that is itself the tenant failure, to the 404 or 500 that row already expects from
+   `/auth/login`, with no login redirect and no fallback tenant:
+   `capital-city.example.test` becomes 404; `example.test`, `unknown.example.test`, and `127.0.0.1` become 404;
+   directory failures become 500; unusable selected files become 404; missing selected files become 404 in host mode
+   and 500 in static mode; and `Scenario: A static alias with no tenant file is a server failure` changes its document
+   request at `springfield.example.test` to 500. Leave the valid Springfield document requests in the absent-path,
+   host-mode missing-file, and outside-pattern scenarios as login delegation. Leave the absent-path 404 and the
+   `/auth/login` and `/_test/tenant-config` assertions. Replace the feature sentence "Root is a separate
+   session-missing redirect; complete session lookup, authenticated access and other tenant-dependent consumers remain
+   incomplete." with text that `/` resolves the tenant before session admission and that a tenant failure on the
+   document request returns that failure's 404 or 500. Do not revise `tenant-context.feature` or
+   `onsite-prototype.feature`. Add only current-main-tagged bounded scenarios. Extend the issue-level two-process Node
+   workflow for actual HTTP/action/receipt behavior and keep the successful real-login A-to-B case incomplete until B6
+   works. [quickstart.md](quickstart.md) section 4 is the execution checklist for these edits.
 9. Record the delivered path/fixture inventory and downstream categories in the implementation handoff. Then run
    focused behavior checks, the manual procedure, and repository quality gates. No implementation step may broaden
    this reference boundary into #154's comprehensive integration.
@@ -239,7 +300,9 @@ Installed APIs verified for this architecture:
 
 - Effect 4.0.5: existing `Context.Service`, `Schema.TaggedError`, `Effect.fn`, `Layer`, and `ManagedRuntime` declarations;
 - Next.js 16.4.3: async `headers()`/`cookies()`, Server Actions, and `forbidden(): never` for Server Components/Server
-  Functions under the already enabled `authInterrupts`; actual HTTP evidence retained because the API is experimental;
+  Functions under the already enabled `authInterrupts`. A file-level `"use server"` module exports only async
+  functions, so `initialReferenceActionState` stays in the sibling module. Actual HTTP evidence remains required
+  because `forbidden()` is experimental;
 - React 19.3.1: `useActionState` and Server Action form types;
 - `@pathableai/react` 0.3.0: public `Form`, `Button`, page/layout, alert/text, and native attribute forwarding.
 
