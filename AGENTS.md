@@ -21,6 +21,32 @@
 - Introduce modules and capabilities for actual behavior, not speculative future
   consumers. In particular, defer a secrets module/provider contract until there is
   a real secret to read.
+- The frontend Bulletproof preset does not enforce this ownership rule. A same-zone
+  import can pass Fallow and still violate it. Follow this rule, and use the
+  [Fallow workflow](docs/engineering/fallow.md) before changing module layout.
+
+## Fallow
+
+Use Fallow while designing and editing, not only as a final gate. The detailed
+command reference is [Fallow during development](docs/engineering/fallow.md).
+
+- Before a change that introduces modules, modifies imports, reorganizes source
+  files, or changes application structure, inspect the owning workspace's zones
+  with `fallow guard` on the files you will change. Skip that inspection for an
+  ordinary localized edit.
+- While editing, run the workspace-scoped Fallow command for a boundary, cycle,
+  unused-code, complexity, or duplication risk as soon as the edit can introduce
+  it. Structural duplication uses semantic mode and is included in
+  `pnpm check:changes`. Model-based similar-code is an advisory review, not a
+  completion check. Prefer a targeted command over repeating `pnpm check:unused`,
+  `pnpm check:health`, or `pnpm check:changes`.
+- Before completing work, run `pnpm check:unused` and `pnpm check:health` for
+  every scope, then `pnpm check:changes` for findings introduced since the base.
+  The first two are whole-scope checks. `check:changes` is the new-only audit
+  and is also what the pre-commit hook runs.
+- Report unresolved findings, including whether they are pre-existing or
+  introduced. Fix an introduced violation. Ask for human review when a finding
+  looks like a false positive or a legitimate exception.
 
 ## Testing guidance
 
@@ -87,11 +113,17 @@ Effect REST domain layer. See
   rules at the root and workspace-specific rules in that workspace. Root linting
   checks top-level files, then delegates to workspace lint scripts.
 - Validate with `pnpm typecheck`, `pnpm build`, and `pnpm lint`.
-- Run `pnpm check:unused` before committing; investigate findings rather than
-  adding blanket suppressions. `pnpm fallow` provides broader analysis.
+- Before committing, run `pnpm check:unused`, `pnpm check:health`, and
+  `pnpm check:changes`, as described in [Fallow](docs/engineering/fallow.md).
+  Investigate findings rather than adding suppressions. Type-aware analysis is
+  enabled in best-effort mode against each scope's `tsconfig.json`. It does not
+  replace `tsc`. A partial or unavailable checker result keeps the finding and
+  is not evidence that it can be deleted. The `private-type-leaks` rule stays off.
 - Coding agents MUST NOT disable ESLint, Fallow, TypeScript, or any other check
   via comments or suppressions (`eslint-disable`, `@ts-ignore`,
-  `@ts-expect-error`, ignore directives, and similar). Always fix the underlying
+  `@ts-expect-error`, `fallow-ignore`, ignore directives, and similar). Do not
+  add Fallow ignore patterns, baselines, `allowUnmatched` entries, or weaker
+  complexity thresholds to accommodate new code. Always fix the underlying
   error or warning. Only human developers may disable a check; if an agent
   believes a finding truly needs a disable, it must stop and ask the user.
 - Each workspace owns a `dprint.json` inheriting the root settings. Root formatting
@@ -105,5 +137,7 @@ Effect REST domain layer. See
   Preserve default backup and partial-staging protections.
 - After lint-staged, the pre-commit hook runs `pnpm check:changes` once at the
   root. This Fallow audit gates new findings against the automatically resolved
-  base and includes unstaged/untracked work. Keep `prepare` limited to Husky;
-  do not install or rewrite Fallow hooks during dependency installation.
+  base and includes unstaged/untracked work. Whole-scope `pnpm check:unused` and
+  `pnpm check:health` remain required before completing work. Keep `prepare`
+  limited to Husky; do not install or rewrite Fallow hooks during dependency
+  installation.

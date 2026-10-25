@@ -23,6 +23,11 @@ service requirements, typed outcomes, validation locations, and concrete
 implementation/test paths. Read [domain persistence](../../docs/domain-persistence.md)
 and other affected strategy docs before designing features.
 
+This workspace does not configure Fallow architecture zones. Fallow will not
+report a boundary violation for an import that breaks the ownership rules above.
+Follow the root [Fallow workflow](../../docs/engineering/fallow.md) for unused
+code, complexity, and changed-code audits.
+
 From the repository root, run:
 
 - `pnpm --filter @pathableai/pre-ets-backend lint`
