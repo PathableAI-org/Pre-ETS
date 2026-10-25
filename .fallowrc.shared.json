@@ -1,6 +1,11 @@
 {
   "$schema": "./node_modules/fallow/schema.json",
   "minimumVersion": "3.34.1",
+  "typeAware": {
+    "enabled": true,
+    "projects": ["tsconfig.json"],
+    "require": "best-effort"
+  },
   "health": {
     "maxCyclomatic": 10,
     "maxCognitive": 10,
@@ -12,6 +17,7 @@
     "complexity-cyclomatic": "error",
     "complexity-cognitive": "error",
     "complexity-crap": "error",
+    "private-type-leaks": "off",
     "require-suppression-reason": "error"
   }
 }

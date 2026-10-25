@@ -89,6 +89,10 @@ Effect REST domain layer. See
 - Validate with `pnpm typecheck`, `pnpm build`, and `pnpm lint`.
 - Run `pnpm check:unused` before committing; investigate findings rather than
   adding blanket suppressions. `pnpm fallow` provides broader analysis.
+  Type-aware analysis is enabled in best-effort mode against each scope's
+  `tsconfig.json`. It does not replace `tsc`. A partial or unavailable checker
+  result keeps the finding and is not evidence that it can be deleted. The
+  `private-type-leaks` rule stays off.
 - Coding agents MUST NOT disable ESLint, Fallow, TypeScript, or any other check
   via comments or suppressions (`eslint-disable`, `@ts-ignore`,
   `@ts-expect-error`, ignore directives, and similar). Always fix the underlying
