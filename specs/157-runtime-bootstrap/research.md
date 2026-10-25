@@ -29,6 +29,18 @@ malformed.
 That couples build and request evaluation to process startup. A custom health port is not required for the
 listener gate the installed Next.js server already documents.
 
+## Decision: Publish the one runtime on a process-wide symbol
+
+**Rationale**: Turbopack evaluates `runtime.ts` once in the instrumentation chunk and again in each route and
+server-component chunk. A module-level binding set by `installManagedRuntime` stays in the instrumentation
+copy, so request handlers reject `StartupNotReady` after a successful boot. `Symbol.for` resolves one key in
+the process, and every copy reads and writes that `globalThis` property.
+`@pathableai/pre-ets-frontend/ManagedRuntime` holds the single runtime `register` acquired.
+
+**Alternatives considered**: Booting inside each chunk would open another Redis client and observability layer
+per route. A general service locator stays out of scope. This is the existing publisher, stored where the
+process has one identity.
+
 ## Decision: Extend the current OTEL precedence per signal
 
 **Rationale**: `docs/observability.md` and `observability.ts` already define the traces rules this feature must

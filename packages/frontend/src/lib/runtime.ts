@@ -79,21 +79,32 @@ export const applicationLayer = (
   return layer as Layer.Layer<ApplicationServices, ObservabilityInitializationError | Redis.RedisError>
 }
 
-let active: ManagedRuntime.ManagedRuntime<ApplicationServices, unknown> | undefined
+/**
+ * Turbopack evaluates this module separately in the instrumentation chunk and in
+ * each route and server-component chunk. `Symbol.for` is one process-wide key,
+ * so those copies share the runtime `startProductionRuntime` acquired.
+ */
+const managedRuntimeSlot = Symbol.for("@pathableai/pre-ets-frontend/ManagedRuntime")
+
+type InstalledRuntime = ManagedRuntime.ManagedRuntime<ApplicationServices, unknown>
+
+const readInstalledRuntime = (): InstalledRuntime | undefined => {
+  const published: unknown = Reflect.get(globalThis, managedRuntimeSlot)
+  if (published === undefined) return undefined
+  return published as InstalledRuntime
+}
 
 const rejectNotReady = <A>(): Promise<A> => Effect.runPromise(Effect.fail(new StartupNotReady({})))
 
 export const Runtime = {
   runPromise: <A, E>(effect: Effect.Effect<A, E, ApplicationServices>): Promise<A> => {
-    const runtime = active
+    const runtime = readInstalledRuntime()
     if (runtime === undefined) return rejectNotReady()
     return runtime.runPromise(effect)
   }
 }
 
 /** Publishes the runtime `startProductionRuntime` acquired. Request code only reads it. */
-export const installManagedRuntime = (
-  runtime: ManagedRuntime.ManagedRuntime<ApplicationServices, unknown>
-): void => {
-  active = runtime
+export const installManagedRuntime = (runtime: InstalledRuntime): void => {
+  Reflect.set(globalThis, managedRuntimeSlot, runtime)
 }
