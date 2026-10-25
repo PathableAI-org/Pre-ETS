@@ -181,14 +181,14 @@ incomplete.
 Change only the document request that is itself the tenant failure. Its new status is the status that row already
 expects from `/auth/login`, with no login redirect and no fallback tenant:
 
-| Scenario | Document request to change | Document outcome |
-| --- | --- | --- |
-| A host-mode alias with no tenant file is not found | `capital-city.example.test` | 404 |
-| A static alias with no tenant file is a server failure | `springfield.example.test` | 500 |
-| A host outside the tenant pattern is not found | `example.test`, `unknown.example.test`, `127.0.0.1` | 404 |
-| Directory failures produce server failures in both interfaces | `springfield.example.test` | 500 |
-| Unusable selected files are ordinary missing tenants in both interfaces | `springfield.example.test` | 404 |
-| Missing selected files retain the mode-specific response in both interfaces | `springfield.example.test` | 404 in host mode, 500 in static mode |
+| Scenario                                                                    | Document request to change                          | Document outcome                     |
+| --------------------------------------------------------------------------- | --------------------------------------------------- | ------------------------------------ |
+| A host-mode alias with no tenant file is not found                          | `capital-city.example.test`                         | 404                                  |
+| A static alias with no tenant file is a server failure                      | `springfield.example.test`                          | 500                                  |
+| A host outside the tenant pattern is not found                              | `example.test`, `unknown.example.test`, `127.0.0.1` | 404                                  |
+| Directory failures produce server failures in both interfaces               | `springfield.example.test`                          | 500                                  |
+| Unusable selected files are ordinary missing tenants in both interfaces     | `springfield.example.test`                          | 404                                  |
+| Missing selected files retain the mode-specific response in both interfaces | `springfield.example.test`                          | 404 in host mode, 500 in static mode |
 
 Leave these as they are:
 
