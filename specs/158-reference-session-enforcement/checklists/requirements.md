@@ -52,5 +52,7 @@
   plan requires the claim to remain incomplete until the gate is satisfied.
 - Comprehensive default protection, final forbidden/recovery experience, browser history, lifecycle races, and outage
   recovery remain explicitly assigned to #154/#157/#158/#220/#221.
+- The frontend Server Action/browser-consumer fixture is explicitly authorized by delivery issue #219; naming that
+  required evidence fixture does not select the plan's module boundaries or internal implementation contract.
 - `verification.md` records planned evidence only. No runtime, provider, store, browser, accessibility, or operational
   procedure was executed during specification.

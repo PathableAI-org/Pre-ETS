@@ -19,8 +19,8 @@ instance and remain identified as the same user for the same independently resol
 protected consumer can use it without affinity to the instance that established the session.
 
 **Independent Test**: Authenticate through reference application instance A, then access the reference protected path
-and invoke its protected operation through independently running instance B. Observe the same user and tenant identity
-and the expected protected result without returning to instance A.
+and invoke its frontend Server Action through the rendered browser consumer on independently running instance B.
+Observe the same user and tenant identity and the expected protected result without returning to instance A.
 
 **Acceptance Scenarios**:
 
@@ -28,7 +28,8 @@ and the expected protected result without returning to instance A.
    instance B independently resolves the same request tenant and consumes that session, **Then** instance B grants
    access to the reference protected content for the same user and tenant without instance affinity.
 2. **Given** instance B has admitted a usable, tenant-matching session, **When** the user invokes the reference protected
-   operation, **Then** its safe, observable effect occurs once and the user receives its protected result.
+   frontend Server Action through its browser consumer, **Then** its safe, observable effect occurs once and the user
+   receives its protected result.
 3. **Given** a usable session reports its authoritative idle deadline and effective warning policy, **When** the
    reference consumer admits the matching request, **Then** those values remain available to downstream consumers
    without redefining renewal, warning, or recovery behavior in this feature.
@@ -52,9 +53,9 @@ performs the protected effect, while each authoritative HTTP behavior remains di
 1. **Given** a request for the reference protected page has no usable application session and its tenant resolves
    successfully, **When** the request is handled, **Then** protected content is withheld and the resolved tenant's OIDC
    authentication flow begins automatically.
-2. **Given** the reference protected operation receives no usable session, **When** it is invoked, **Then** the operation
-   has no protected side effect and returns no protected result; final recovery presentation and comprehensive Server
-   Action integration remain downstream work.
+2. **Given** the reference protected Server Action receives no usable session, **When** it is invoked through its
+   browser consumer, **Then** the action has no protected side effect and returns no protected result; final recovery
+   presentation and comprehensive Server Action integration remain downstream work.
 3. **Given** a usable session is bound to a different tenant from the independently resolved request tenant, **When**
    the reference protected page or operation is requested, **Then** access is forbidden with actual HTTP 403 semantics,
    protected content and effects are denied, and the session tenant does not replace the request tenant.
@@ -88,9 +89,10 @@ failure mappings.
 2. **Given** an unauthenticated request to `GET /_test/tenant-config`, **When** the diagnostic response completes,
    **Then** no application session is created and the response remains subject to its non-secret configuration and
    no-store obligations.
-3. **Given** a tenant-dependent public or protected reference request cannot resolve or load its tenant configuration,
-   **When** the request is handled, **Then** it preserves the approved tenant 404 or 500 outcome without substituting a
-   fallback tenant or converting the condition into a session outcome.
+3. **Given** a tenant-dependent public or protected reference request cannot select or load its tenant configuration,
+   **When** the request is handled, **Then** host mode preserves the approved invalid or unknown-host 404 outcomes,
+   static mode ignores the request host, and either mode preserves the approved selected-configuration 404 or 500
+   outcome without substituting a fallback tenant or converting the condition into a session outcome.
 
 ---
 
@@ -120,8 +122,9 @@ explicitly accounted for.
 
 - A session is usable but belongs to a tenant other than the independently resolved request tenant: the reference
   boundary returns HTTP 403 and performs no protected effect.
-- A request host is invalid or its tenant configuration is missing or unreadable: the approved tenant 404/500 mapping
-  wins; session state cannot supply a fallback tenant.
+- In host mode, a request host is invalid or unknown: the approved tenant 404 mapping wins. In static mode, the request
+  host does not change selection. Missing, unreadable, or malformed selected configuration preserves its approved
+  mode-specific 404/500 mapping, and session state cannot supply a fallback tenant.
 - A session reference is absent, malformed, forged, or points to no usable record: no identity or protected result is
   exposed. A protected page begins tenant OIDC only after successful request-tenant resolution.
 - The session store becomes unavailable after a cookie is received: the reference consumer distinguishes service
@@ -159,8 +162,9 @@ explicitly accounted for.
 - **FR-008**: A request for the reference protected page with no usable session and a successfully resolved tenant MUST
   automatically begin that tenant's OIDC authentication flow. This feature MUST NOT claim the final refresh,
   back/forward, or post-expiration freshness journeys owned by #158.
-- **FR-009**: A denied reference protected operation MUST make the absence of its safe synthetic effect observable
-  without introducing a new domain workflow or durable business record.
+- **FR-009**: The reference protected operation MUST be an actual frontend Server Action invoked through its browser
+  consumer, and a denied invocation MUST make the absence of its safe synthetic effect observable without introducing
+  a new domain workflow or durable business record.
 - **FR-010**: A malformed, forged, missing-record, expired, or invalidated session reference MUST NOT yield protected
   identity, content, or effects. The feature MUST NOT require retained prior-expiration state solely to choose a
   freshness policy.
@@ -171,8 +175,8 @@ explicitly accounted for.
 - **FR-013**: Public status MUST NOT bypass request-tenant resolution, approved tenant failure mappings, non-secret
   configuration constraints, or separate production-ingress protection where those obligations apply.
 - **FR-014**: `GET /_test/tenant-config` MUST NOT create an application session when exercised without one.
-- **FR-015**: The exercised reference browser consumer MUST expose its protected action, successful result, and denial
-  indication with meaningful accessible names, keyboard operation, and visible focus.
+- **FR-015**: The exercised reference browser consumer MUST expose the protected Server Action, successful result, and
+  denial indication with meaningful accessible names, keyboard operation, and visible focus.
 - **FR-016**: Protected content, session identity, and the protected operation's result MUST NOT appear in a denied
   response or public diagnostic response.
 - **FR-017**: The delivery handoff MUST identify the reusable enforcement outcomes, exercised reference paths, expected
@@ -191,8 +195,8 @@ explicitly accounted for.
 - **Session Enforcement Outcome**: Admission for a usable tenant-matching session; absence for no usable session;
   forbidden for a tenant mismatch; or fail-closed service failure. The exact internal representation is a planning
   decision.
-- **Reference Protected Consumer**: The bounded protected page and protected operation used to demonstrate the
-  enforcement contract. Its observable effect is synthetic and creates no new domain workflow.
+- **Reference Protected Consumer**: The bounded protected page and browser-invoked frontend Server Action used to
+  demonstrate the enforcement contract. Its observable effect is synthetic and creates no new domain workflow.
 - **Public Exception**: A specifically designated resource that does not require an application session but retains
   all separately applicable tenant, configuration-safety, and ingress obligations.
 - **Enforcement Handoff**: The record of exercised paths and outcomes, reusable fixtures, and unexercised integration
@@ -203,7 +207,8 @@ explicitly accounted for.
 ### Measurable Outcomes
 
 - **SC-001**: In every exercised same-tenant usable-session case, independently running instance B returns the
-  reference protected content and operation result for the same user and tenant established through instance A.
+  reference protected content and operation result for the same user and tenant established through instance A, while
+  preserving the session's authoritative idle deadline and effective warning policy unchanged for downstream use.
 - **SC-002**: In 100% of exercised absent, malformed, forged, missing-record, expired, invalidated, mismatched, and
   store-failure cases, no protected content is returned and the reference protected effect does not occur.
 - **SC-003**: In 100% of exercised tenant-mismatch cases, the reference HTTP boundary returns actual 403 semantics and
@@ -215,8 +220,9 @@ explicitly accounted for.
 - **SC-006**: Every exercised public resource remains reachable without an application session; every exercised
   unauthenticated diagnostic request creates zero application sessions and preserves its approved cache/content
   constraints.
-- **SC-007**: Every exercised invalid-host and tenant-configuration failure returns its approved 404 or 500 class with
-  no fallback tenant and no conversion into a successful or forbidden session outcome.
+- **SC-007**: Every exercised host-mode invalid or unknown host returns 404; static-mode requests do not fail because
+  of their host; and every exercised selected-configuration failure returns its approved mode-specific 404 or 500
+  class, with no fallback tenant or conversion into a successful or forbidden session outcome.
 - **SC-008**: A keyboard-only user can reach, invoke, and observe the reference protected operation and its result or
   denial with visible focus in every exercised browser flow.
 - **SC-009**: The delivery handoff accounts for 100% of the bounded reference pages/actions delivered by this feature,
@@ -245,36 +251,37 @@ explicitly accounted for.
 ## Delivery Authority and Scope _(mandatory)_
 
 **Delivery issue**: [#219 — Enforce sessions across application entry points](https://github.com/PathableAI-org/Pre-ETS/issues/219),
-read in its current open state on 2026-10-25
+read in its current open state on 2026-10-26
 
 **Originating delivery slice**: [S2 — Share session identity and authoritative idle state across instances](https://github.com/PathableAI-org/Pre-ETS/blob/e206d165f0f30999220922f57a3f92549c15f4cc/docs/delivery/session-management.md#s2--share-session-identity-and-authoritative-idle-state-across-instances),
 approved baseline revision `e206d165f0f30999220922f57a3f92549c15f4cc`; issue #219 is the maintainer-authorized
 S2-E subdivision. The [S2 step supplement](../../docs/delivery/session-management-s2-steps.md#s2-e--enforce-sessions-across-application-entry-points)
 records that subdivision but still identifies repository review as pending. Current `origin/main` authority was
-inspected at `ace420ae38a7d83f5751e43b818f801c54b587d7`.
+inspected at `f11843150903be95b62a759ea012f1a8bc966e2c`.
 
 ### Accepted requirement coverage
 
 | Requirement                                                                                                                                                   | Acceptance criteria in this slice                             | Feature disposition                                                                                                                                                                                                                 |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [PREETS-SESSION-001](https://github.com/PathableAI-org/Pre-ETS/blob/ace420ae38a7d83f5751e43b818f801c54b587d7/docs/requirements/session/PREETS-SESSION-001.md) | AC1–3, shared enforcement and reference-consumer support only | The reference page/action deny unauthenticated protected content and preserve the exercised public exceptions. Comprehensive coverage of every current and new entry point remains #154 and is not claimed.                         |
-| [PREETS-SESSION-003](https://github.com/PathableAI-org/Pre-ETS/blob/ace420ae38a7d83f5751e43b818f801c54b587d7/docs/requirements/session/PREETS-SESSION-003.md) | AC3, reference consumption                                    | The bounded protected consumer uses the established identity and tenant association. Session establishment remains the delivered #218 prerequisite; comprehensive protected consumption remains #154.                               |
-| [PREETS-SESSION-004](https://github.com/PathableAI-org/Pre-ETS/blob/ace420ae38a7d83f5751e43b818f801c54b587d7/docs/requirements/session/PREETS-SESSION-004.md) | AC1–2, reference valid/missing-session support only           | The no-session reference page begins tenant OIDC and does not replace the separate running-tab or Server Action recovery behavior. Final refresh, history, expiration, and freshness journeys remain #157/#158.                     |
-| [PREETS-SESSION-005](https://github.com/PathableAI-org/Pre-ETS/blob/ace420ae38a7d83f5751e43b818f801c54b587d7/docs/requirements/session/PREETS-SESSION-005.md) | AC1–4, shared capability and reference evidence               | Matching tenants may pass other checks; mismatch produces reference HTTP 403 denial; request-tenant resolution remains independent; no resolution mechanism is imposed. Comprehensive application-wide integration remains #154.    |
-| [PREETS-SESSION-006](https://github.com/PathableAI-org/Pre-ETS/blob/ace420ae38a7d83f5751e43b818f801c54b587d7/docs/requirements/session/PREETS-SESSION-006.md) | AC2, bounded application composition                          | The same user/tenant session established through instance A is consumed through independently running instance B. Renewal, expiration, and invalidation consistency remain #220/#221 and broader application evidence remains #154. |
+| [PREETS-SESSION-001](https://github.com/PathableAI-org/Pre-ETS/blob/f11843150903be95b62a759ea012f1a8bc966e2c/docs/requirements/session/PREETS-SESSION-001.md) | AC1–3, shared enforcement and reference-consumer support only | The reference page/action deny unauthenticated protected content and preserve the exercised public exceptions. Comprehensive coverage of every current and new entry point remains #154 and is not claimed.                         |
+| [PREETS-SESSION-003](https://github.com/PathableAI-org/Pre-ETS/blob/f11843150903be95b62a759ea012f1a8bc966e2c/docs/requirements/session/PREETS-SESSION-003.md) | AC3, reference consumption                                    | The bounded protected consumer uses the established identity and tenant association. Session establishment remains the delivered #218 prerequisite; comprehensive protected consumption remains #154.                               |
+| [PREETS-SESSION-004](https://github.com/PathableAI-org/Pre-ETS/blob/f11843150903be95b62a759ea012f1a8bc966e2c/docs/requirements/session/PREETS-SESSION-004.md) | AC1–2, reference valid/missing-session support only           | The no-session reference page begins tenant OIDC and does not replace the separate running-tab or Server Action recovery behavior. Final refresh, history, expiration, and freshness journeys remain #157/#158.                     |
+| [PREETS-SESSION-005](https://github.com/PathableAI-org/Pre-ETS/blob/f11843150903be95b62a759ea012f1a8bc966e2c/docs/requirements/session/PREETS-SESSION-005.md) | AC1–4, shared capability and reference evidence               | Matching tenants may pass other checks; mismatch produces reference HTTP 403 denial; request-tenant resolution remains independent; no resolution mechanism is imposed. Comprehensive application-wide integration remains #154.    |
+| [PREETS-SESSION-006](https://github.com/PathableAI-org/Pre-ETS/blob/f11843150903be95b62a759ea012f1a8bc966e2c/docs/requirements/session/PREETS-SESSION-006.md) | AC2, bounded application composition                          | The same user/tenant session established through instance A is consumed through independently running instance B. Renewal, expiration, and invalidation consistency remain #220/#221 and broader application evidence remains #154. |
 
 ### Authorized outcome
 
 Establish a reusable fail-closed request/session enforcement capability and demonstrate it through one bounded
-protected page and protected browser operation, including cross-instance identity use, independent tenant binding,
-public exceptions, tenant failures, and explicit handoff limits.
+protected page and one frontend Server Action invoked through its browser consumer, including cross-instance identity
+use, independent tenant binding, public exceptions, tenant failures, and explicit handoff limits.
 
 ### In scope
 
 - Consume usable-session, no-usable-session, and service-failure outcomes at a reusable enforcement boundary.
 - Resolve the request tenant independently and admit only a usable session bound to that tenant.
 - Demonstrate same-tenant protected access across two independently running application instances.
-- Demonstrate absent, mismatch, forged-context, and store-failure denial through bounded HTTP/action consumers.
+- Demonstrate absent, mismatch, forged-context, and store-failure denial through the bounded page and browser-invoked
+  frontend Server Action.
 - Preserve the exercised public exceptions and approved tenant failure mappings.
 - Retain real OIDC/distributed-store and protected-action/browser fixtures for downstream work.
 - Provide a complete handoff of exercised behavior, expected denial outcomes, reusable evidence, and remaining entry
