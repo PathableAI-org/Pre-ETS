@@ -15,7 +15,7 @@ import {
   stopProcess,
   waitUntilReady
 } from "../../support/oidc/harness.ts"
-import { forbidden, NextResponse, notFound, redirect, stubExportsReady, unauthorized } from "./fixture-stubs.mjs"
+import { forbidden, NextResponse, notFound, redirect, stubExportsReady, unauthorized } from "./fixture-stubs.ts"
 
 const directory = path.resolve("fixtures/tenant-config")
 const redisUrl = process.env.REDIS_URL ?? "redis://127.0.0.1:6379"
@@ -85,7 +85,7 @@ const request = (
     incoming.end()
   })
 
-const runFixture = (mode: "delete" | "establish"): Promise<string> =>
+const runFixture = (mode: "delete" | "establish", tenantAlias = "springfield"): Promise<string> =>
   new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [
       "--import",
@@ -98,6 +98,7 @@ const runFixture = (mode: "delete" | "establish"): Promise<string> =>
       env: {
         ...process.env,
         FIXTURE_MODE: mode,
+        FIXTURE_TENANT: tenantAlias,
         REDIS_URL: redisUrl,
         SESSION_KEY_PREFIX: sessionPrefix
       }
@@ -144,12 +145,16 @@ if (process.env.FIXTURE_MODE === "delete") {
     Layer.provide(NodeRedis.layer({ url: process.env.REDIS_URL })),
     Layer.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({ SESSION_KEY_PREFIX: prefix })))
   ))
+  const tenantAlias = process.env.FIXTURE_TENANT ?? "springfield"
+  if (tenantAlias !== "springfield" && tenantAlias !== "shelbyville") {
+    throw new Error("Refusing an unexpected fixture tenant")
+  }
   const established = await sessionRuntime.runPromise(Effect.gen(function*() {
     const service = yield* SessionService
     return yield* service.establish({
       identity: { issuer: "https://provider.test/", subject: "subject-1" },
       policy: { idleTimeoutMinutes: 30, warningLeadMinutes: 5 },
-      tenantAlias: "springfield"
+      tenantAlias
     })
   }))
   process.stdout.write(JSON.stringify({
@@ -168,6 +173,39 @@ assert.equal(typeof redirect, "function")
 assert.equal(typeof unauthorized, "function")
 assert.equal(typeof stubExportsReady, "function")
 assert.equal(typeof NextResponse, "object")
+
+const nonSessionCookieCount = async (context: {
+  cookies: () => Promise<readonly { readonly name: string }[]>
+}): Promise<number> => (await context.cookies()).filter((cookie) => cookie.name !== "pathable-session").length
+
+const assertMismatchedRenderedAction = async (
+  port: number,
+  matchingReference: string,
+  otherReference: string
+): Promise<void> => {
+  const host = `springfield.localhost:${String(port)}`
+  const url = `http://${host}/`
+  const browser = await applicationBrowser(port, [host])
+  try {
+    const context = await browser.browser.newContext()
+    const page = await context.newPage()
+    await context.addCookies([{ name: "pathable-session", url, value: matchingReference }])
+    await page.goto(url)
+    const button = page.getByRole("button", { name: "Record reference operation" })
+    await button.waitFor()
+    await context.clearCookies({ name: "pathable-session" })
+    await context.addCookies([{ name: "pathable-session", url, value: otherReference }])
+    const pending = page.waitForResponse((response) => response.request().method() === "POST")
+    await button.focus()
+    await page.keyboard.press("Enter")
+    const response = await pending
+    assert.equal(response.status(), 403)
+    assert.equal(await nonSessionCookieCount(context), 0)
+    assert.doesNotMatch(await page.locator("body").innerText(), /The reference operation finished\./)
+  } finally {
+    await browser.close()
+  }
+}
 
 void describe("reference session enforcement", () => {
   void it("consumes a confirmed-fresh session from instance A on instance B", {
@@ -227,6 +265,11 @@ void describe("reference session enforcement", () => {
       assert.equal(mismatch.setCookieCount, 0)
       assert.doesNotMatch(mismatch.body, /subject-1|springfield/)
 
+      const otherTenant = JSON.parse(await runFixture("establish", "shelbyville")) as {
+        readonly reference: string
+      }
+      await assertMismatchedRenderedAction(portB, fixture.reference, otherTenant.reference)
+
       const browser = await applicationBrowser(portB, [`springfield.localhost:${String(portB)}`])
       browserClose = browser.close
       const context = await browser.browser.newContext()
@@ -262,14 +305,17 @@ void describe("reference session enforcement", () => {
       assert.equal(focusVisible, true)
       await page.keyboard.press("Enter")
       await page.getByRole("status").filter({ hasText: "The reference operation finished." }).waitFor()
-      const afterSuccess = (await context.cookies()).filter((cookie) => cookie.name !== "pathable-session")
-      assert.equal(afterSuccess.length, 1)
+      assert.equal(await nonSessionCookieCount(context), 1)
+      const sessionCookie = (await context.cookies()).find((cookie) => cookie.name === "pathable-session")
+      assert.ok(sessionCookie)
+      await context.clearCookies()
+      await context.addCookies([{ name: "pathable-session", url: page.url(), value: sessionCookie.value }])
+      assert.equal(await nonSessionCookieCount(context), 0)
 
       await runFixture("delete")
       await button.press("Enter")
       await page.getByRole("status").filter({ hasText: "This operation is unavailable" }).waitFor()
-      const afterDenial = (await context.cookies()).filter((cookie) => cookie.name !== "pathable-session")
-      assert.equal(afterDenial.length, 1)
+      assert.equal(await nonSessionCookieCount(context), 0)
       assert.doesNotMatch(await page.locator("body").innerText(), /The reference operation finished\./)
     } finally {
       if (browserClose !== undefined) await browserClose()
