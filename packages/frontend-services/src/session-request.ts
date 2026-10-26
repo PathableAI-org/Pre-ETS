@@ -55,11 +55,23 @@ const readSession = Effect.fn("readSessionRequest")(function*(
   return { session, tenantAlias }
 })
 
+const errorTag = (error: unknown): string | undefined =>
+  typeof error === "object" && error !== null && "_tag" in error && typeof error._tag === "string" ?
+    error._tag :
+    undefined
+
+const httpStatus = (error: unknown): 404 | 500 | undefined => {
+  if (typeof error !== "object" || error === null || !("status" in error)) return undefined
+  return error.status === 404 || error.status === 500 ? error.status : undefined
+}
+
 const rejectSessionRequest = (error: unknown): never => {
-  if (error instanceof SessionTenantMismatch) forbidden()
-  if (error instanceof SessionServiceUnavailable) throw error
-  if (error instanceof HttpError) httpErrorPage(error)
-  throw error
+  if (error instanceof SessionTenantMismatch || errorTag(error) === SessionTenantMismatch.tag) forbidden()
+  if (error instanceof SessionServiceUnavailable || errorTag(error) === SessionServiceUnavailable.tag) {
+    throw error
+  }
+  if (error instanceof HttpError || httpStatus(error) !== undefined) httpErrorPage(error as HttpError)
+  throw error instanceof Error ? error : new Error("The session request could not be completed")
 }
 
 export const readSessionRequest = async (input: ReadSessionRequestInput): Promise<ResolvedSessionRequest> => {

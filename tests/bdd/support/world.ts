@@ -30,6 +30,7 @@ export class AppWorld extends World {
   secondaryLogs = ""
   secondaryPort = 0
   secondaryProcess: ChildProcess | undefined
+  readonly sessionPrefix = `preets:bdd:session:${randomUUID()}:`
   staticAlias: string | undefined
   readonly transactionPrefix = `preets:bdd:oidc-tx:${randomUUID()}:`
   transactionTtlSeconds = 600

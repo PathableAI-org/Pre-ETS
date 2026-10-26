@@ -20,6 +20,7 @@ export interface SiteOptions {
   readonly directory: string
   readonly redisUrl: string
   readonly runtime: "development" | "production"
+  readonly sessionPrefix: string
   readonly staticAlias: string | undefined
   readonly transactionPrefix: string
   readonly transactionTtlSeconds: number
@@ -98,6 +99,7 @@ function siteEnv(options: SiteOptions): NodeJS.ProcessEnv {
     OIDC_TX_KEY_PREFIX: options.transactionPrefix,
     OIDC_TX_TTL_SECONDS: String(options.transactionTtlSeconds),
     REDIS_URL: options.redisUrl,
+    SESSION_KEY_PREFIX: options.sessionPrefix,
     TENANT_CONFIG_DIR: options.directory,
     TENANT_CONFIG_RECORDS_JSON: "",
     TENANT_LOCAL_CONFIG_JSON: "",
