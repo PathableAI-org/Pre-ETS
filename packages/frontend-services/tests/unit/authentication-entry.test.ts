@@ -1,8 +1,8 @@
 import { NodeServices } from "@effect/platform-node"
 import { fc, it } from "@fast-check/vitest"
-import { ConfigProvider, Effect, Layer, References, Schema } from "effect"
+import { ConfigProvider, Effect, Layer, Schema } from "effect"
 import { NextRequest, NextResponse } from "next/server"
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
+import { mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, describe, expect, vi } from "vitest"
@@ -11,7 +11,6 @@ import { createCallbackHandler } from "../../src/auth/callback.ts"
 import { callbackFreshnessPolicy } from "../../src/auth/freshness.ts"
 import { createLoginHandler } from "../../src/auth/login.ts"
 import { AuthenticationDenied, AuthenticationService, CallbackExpectedFailure } from "../../src/authentication.ts"
-import { hasSession } from "../../src/entry.ts"
 import { SessionService } from "../../src/session.ts"
 import { TenantAlias, TenantConfigService } from "../../src/tenant.ts"
 import { makeSessionMemoryRedis } from "../helpers/session.ts"
@@ -302,52 +301,5 @@ describe("authentication Route Handlers", () => {
     expect(valid.headers.get("set-cookie")).toContain("Max-Age=0")
     expect(valid.headers.get("set-cookie")).not.toContain("pathable-session")
     expect(complete).toHaveBeenCalledTimes(2)
-  })
-})
-
-describe("application entry with the real absent-session capability", () => {
-  it.prop([
-    fc.constantFrom("host", "static"),
-    fc.constantFrom("valid", "malformed", "missing-file", "missing-directory")
-  ], { numRuns: 40 })("keeps the absent-session entry false before tenant-dependent work", async (
-    resolution,
-    world
-  ) => {
-    const directory = await mkdtemp(join(tmpdir(), "preets-entry-"))
-    try {
-      const configDir = join(directory, "tenants")
-      if (world !== "missing-directory") await mkdir(configDir)
-      if (world === "valid" || world === "malformed") {
-        await writeFile(
-          join(configDir, "springfield.json"),
-          world === "malformed" ? "{" : JSON.stringify({
-            displayName: "Entry scenario",
-            oidc: { clientAuth: "public", clientId: "entry-web", issuer: "https://issuer.example.test" }
-          })
-        )
-      }
-      const tenant = resolution === "host" ?
-        { baseHostname: "example.test", configDir, resolution: "host" as const } :
-        { configDir, resolution: "static" as const, staticAlias: "springfield" }
-      const services = Layer.mergeAll(
-        SessionService.layer,
-        TenantConfigService.layer({ env: "test", tenant })
-      ).pipe(
-        Layer.provide(redis.layer),
-        Layer.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({ SESSION_KEY_PREFIX: "test:session" }))),
-        Layer.provide(NodeServices.layer)
-      )
-      runtime.runPromise.mockImplementation((
-        program: Effect.Effect<unknown, unknown, SessionService | TenantConfigService>
-      ) =>
-        Effect.runPromise(program.pipe(
-          Effect.provide(services),
-          Effect.provideService(References.MinimumLogLevel, "Error")
-        ))
-      )
-      expect(await hasSession()).toBe(false)
-    } finally {
-      await rm(directory, { force: true, recursive: true })
-    }
   })
 })

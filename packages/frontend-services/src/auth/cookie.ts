@@ -2,8 +2,9 @@ import type { NextRequest, NextResponse } from "next/server"
 
 import type { SessionReference } from "../session.js"
 
+import { SESSION_COOKIE } from "../session-request.js"
+
 export const CORRELATION_COOKIE = "oidc-correlation"
-const SESSION_COOKIE = "pathable-session"
 
 export const isLoopbackHost = (host: string): boolean => {
   const hostname = host.replace(/^\[|\](?::\d+)?$|:\d+$/g, "")

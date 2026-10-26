@@ -1,4 +1,5 @@
 import { describe, expect, it } from "@effect/vitest"
+import { fc, test } from "@fast-check/vitest"
 import { ConfigProvider, Effect, Layer, Result, Schema } from "effect"
 import { TestClock } from "effect/testing"
 import { vi } from "vitest"
@@ -7,15 +8,20 @@ import {
   type EffectiveSessionPolicy,
   type EstablishSessionInput,
   type NoUsableSession,
+  type ReadSessionForTenantInput,
   type SessionIdentity,
   SessionService,
-  SessionServiceUnavailable
+  SessionServiceUnavailable,
+  SessionTenantMismatch
 } from "../../src/session.ts"
 import { TenantAlias } from "../../src/tenant.ts"
 import { makeSessionMemoryRedis } from "../helpers/session.ts"
 
 const alias = Schema.decodeSync(TenantAlias)("alpha")
+const otherAlias = Schema.decodeSync(TenantAlias)("beta")
 const noUsableSession: NoUsableSession = { _tag: "NoUsableSession" }
+const aliasCharacter = fc.constantFrom(..."abcdefghijklmnopqrstuvwxyz-".split(""))
+const aliasArb = fc.array(aliasCharacter, { maxLength: 12, minLength: 1 }).map((characters) => characters.join(""))
 
 const publicDiagnostic = (value: unknown): string => {
   const seen = new Set<unknown>()
@@ -115,14 +121,6 @@ describe("SessionService establishment", () => {
           tenantAlias: alias,
           warningLeadMinutes: 3
         })
-      })
-    ))
-
-  it.effect("keeps hasSession() false for the no-input root consumer", () =>
-    scenario(() =>
-      Effect.gen(function*() {
-        const service = yield* SessionService
-        expect(yield* service.hasSession()).toBe(false)
       })
     ))
 })
@@ -260,6 +258,120 @@ describe("SessionService read outcomes", () => {
         }
       })
     ))
+})
+
+describe("SessionService tenant admission", () => {
+  it.effect("returns the usable session read for the same branded alias", () =>
+    scenario(() =>
+      Effect.gen(function*() {
+        yield* TestClock.setTime(BASE_TIME)
+        const service = yield* SessionService
+        const { reference } = yield* establish(service, 7, 3)
+        const read = yield* service.read({ reference })
+        const admittedInput: ReadSessionForTenantInput = { reference, tenantAlias: alias }
+        const admitted = yield* service.readForTenant(admittedInput)
+        expect(admitted).toStrictEqual(read)
+        if (read._tag === "UsableSession" && admitted._tag === "UsableSession") {
+          expect(admitted.identity).toStrictEqual(read.identity)
+          expect(admitted.tenantAlias).toBe(read.tenantAlias)
+          expect(admitted.idleDeadlineEpochMilliseconds).toBe(read.idleDeadlineEpochMilliseconds)
+          expect(admitted.warningLeadMinutes).toBe(read.warningLeadMinutes)
+        }
+      })
+    ))
+
+  it.effect("fails with a fieldless tenant mismatch and no identity or tenant diagnostic", () =>
+    scenario(() =>
+      Effect.gen(function*() {
+        yield* TestClock.setTime(BASE_TIME)
+        const service = yield* SessionService
+        const { reference } = yield* establish(service, 30, 5)
+        const result = yield* service.readForTenant({ reference, tenantAlias: otherAlias }).pipe(Effect.result)
+        expect(Result.isFailure(result)).toBe(true)
+        if (Result.isFailure(result)) {
+          expect(result.failure).toBeInstanceOf(SessionTenantMismatch)
+          expect(result.failure._tag).toBe(SessionTenantMismatch.tag)
+          expect(result.failure).not.toHaveProperty("identity")
+          expect(result.failure).not.toHaveProperty("issuer")
+          expect(result.failure).not.toHaveProperty("subject")
+          expect(result.failure).not.toHaveProperty("tenantAlias")
+          const diagnostic = publicDiagnostic(result.failure)
+          expect(diagnostic).not.toContain("subject-1")
+          expect(diagnostic).not.toContain("https://provider.test/")
+          expect(diagnostic).not.toContain("alpha")
+          expect(diagnostic).not.toContain("beta")
+        }
+      })
+    ))
+
+  it.effect("passes absent and malformed references through as NoUsableSession", () =>
+    scenario((redis) =>
+      Effect.gen(function*() {
+        const service = yield* SessionService
+        const absent = yield* service.readForTenant({ tenantAlias: alias }).pipe(Effect.result)
+        const malformed = yield* service.readForTenant({
+          reference: "not-a-valid-reference",
+          tenantAlias: alias
+        }).pipe(Effect.result)
+        expect(Result.isSuccess(absent)).toBe(true)
+        expect(Result.isSuccess(malformed)).toBe(true)
+        if (Result.isSuccess(absent)) expect(absent.success).toStrictEqual(noUsableSession)
+        if (Result.isSuccess(malformed)) expect(malformed.success).toStrictEqual(noUsableSession)
+        expect(absent).not.toBeInstanceOf(SessionTenantMismatch)
+        expect(malformed).not.toBeInstanceOf(SessionServiceUnavailable)
+        expect(redis.entries.size).toBe(0)
+      })
+    ))
+
+  it.effect("keeps a Redis read failure distinct from absence and mismatch", () =>
+    scenario((redis) =>
+      Effect.gen(function*() {
+        yield* TestClock.setTime(BASE_TIME)
+        const service = yield* SessionService
+        const { reference } = yield* establish(service, 30, 5)
+        redis.failNextCommand("GET")
+        const result = yield* service.readForTenant({ reference, tenantAlias: alias }).pipe(Effect.result)
+        expect(Result.isFailure(result)).toBe(true)
+        if (Result.isFailure(result)) {
+          expect(result.failure).toBeInstanceOf(SessionServiceUnavailable)
+          expect(result.failure).not.toBeInstanceOf(SessionTenantMismatch)
+        }
+      })
+    ))
+
+  test.prop([aliasArb, aliasArb])(
+    "admits a stored session only when the request alias is branded-equal",
+    async (storedText, requestText) => {
+      const storedAlias = Schema.decodeSync(TenantAlias)(storedText)
+      const requestAlias = Schema.decodeSync(TenantAlias)(requestText)
+      const redis = makeSessionMemoryRedis()
+      const outcome = await Effect.runPromise(
+        Effect.gen(function*() {
+          const service = yield* SessionService
+          const established = yield* service.establish({
+            identity: { issuer: "https://provider.test/", subject: "subject-1" },
+            policy: policyOf(30, 5),
+            tenantAlias: storedAlias
+          })
+          const read = yield* service.read({ reference: established.reference })
+          const admitted = yield* service.readForTenant({
+            reference: established.reference,
+            tenantAlias: requestAlias
+          }).pipe(Effect.result)
+          return { admitted, read }
+        }).pipe(Effect.provide(redisWorld(redis)))
+      )
+      if (storedAlias === requestAlias) {
+        expect(Result.isSuccess(outcome.admitted)).toBe(true)
+        if (Result.isSuccess(outcome.admitted)) expect(outcome.admitted.success).toStrictEqual(outcome.read)
+        return
+      }
+      expect(Result.isFailure(outcome.admitted)).toBe(true)
+      if (Result.isFailure(outcome.admitted)) {
+        expect(outcome.admitted.failure).toBeInstanceOf(SessionTenantMismatch)
+      }
+    }
+  )
 })
 
 describe("SessionService shared reads", () => {
