@@ -22,7 +22,7 @@
     "thresholdOverrides": [
       {
         "files": [
-          "src/components/onsite/visit-state.ts"
+          "src/features/onsite/visit-state.ts"
         ],
         "functions": [
           "transitionVisit"

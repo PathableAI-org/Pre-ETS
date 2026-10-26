@@ -29,9 +29,9 @@ the public entry. Re-export a child only when a current consumer needs it.
 This workspace does not configure Fallow architecture zones. Fallow will not report a
 boundary violation for an import that breaks the ownership rules above. Follow the root
 [Fallow workflow](../../docs/engineering/fallow.md) for unused code, complexity, and
-changed-code audits. Do not add a Bulletproof preset here. Bulletproof layout of the
-Next app is a separate step; do not invent `src/features` or move React components
-while changing this package.
+changed-code audits. Do not add a Bulletproof preset here. The Next app owns
+Bulletproof feature folders. This package still must not contain React UI or
+import the Next app.
 
 From the repository root, run:
 

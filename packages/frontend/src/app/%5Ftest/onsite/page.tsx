@@ -6,10 +6,9 @@ import {
   ConsumerInformation,
   EmploymentInformation,
   InterventionPlan,
-  SignatureReview
-} from "../../../components/onsite/report-sections.tsx"
-import { VisitLog } from "../../../components/onsite/visit-log.tsx"
-import "../../../components/onsite/onsite.css"
+  SignatureReview,
+  VisitLog
+} from "../../../features/onsite.ts"
 
 export const dynamic = "force-dynamic"
 

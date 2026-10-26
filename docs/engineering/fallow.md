@@ -25,7 +25,7 @@ In the frontend, see which zone and import directions apply to the files you exp
 change:
 
 ```sh
-pnpm --filter @pathableai/pre-ets-frontend exec fallow guard src/components/onsite/visit-state.ts
+pnpm --filter @pathableai/pre-ets-frontend exec fallow guard src/features/onsite/visit-state.ts
 ```
 
 `fallow guard` reports rules for those paths. It does not build the import graph. When the zone
@@ -121,10 +121,17 @@ imports between them. Read the zone from `fallow guard` for the file you are cha
 directory name alone does not grant a permission.
 
 `src/lib` is absent. Effect services for the frontend process live in
-`packages/frontend-services`, not in this zone. `src/features` is absent, and `src/server`
-is empty. Fallow warns that `features` auto-discovery failed and that both zones match no
-files. Leave those directories absent or empty. Do not create them, and do not move
-`src/components`, to satisfy Bulletproof during ordinary work.
+`packages/frontend-services`, not in this zone. The onsite feature lives in
+`src/features`. The public entry `src/features/onsite.ts` owns the private files
+under `src/features/onsite/`. App routes and tests import that entry. Only that
+parent imports its children for external use. Internal sibling imports inside
+the feature remain as they already were. `src/components` and `src/server` are
+absent on purpose. Nothing is shared UI yet, and the Bulletproof `shared` zone
+stays configured for later shared UI. `src/server` stays absent until a server
+module has a real caller that cannot live in `src/app`. Fallow may warn that
+`shared` and `server` match no files. That warning is expected until those
+zones have real files. Do not add empty directories or placeholder modules to
+silence it.
 
 `src/instrumentation.ts` and `src/proxy.ts` are the configured `allowUnmatched` files: they have
 no zone, and their imports are unrestricted. `fallow guard` marks other unmatched paths with
@@ -151,7 +158,7 @@ Shared [`.fallowrc.shared.json`](../../.fallowrc.shared.json) fails complexity a
 10, cognitive 10, and CRAP 30. Two overrides are already authorized, with reasons in config:
 
 - Root [`tests/bdd/support/server.ts`](../../tests/bdd/support/server.ts): CRAP 60 for `response.on("end")`, `signalProcessGroup`, `stopSite`, and `waitUntilReady`.
-- Frontend [`src/components/onsite/visit-state.ts`](../../packages/frontend/src/components/onsite/visit-state.ts): cyclomatic 15 for `transitionVisit`.
+- Frontend [`src/features/onsite/visit-state.ts`](../../packages/frontend/src/features/onsite/visit-state.ts): cyclomatic 15 for `transitionVisit`.
 
 Frontend dead-code analysis runs in production mode. Production code counts as live only when it
 is reachable from Next.js framework entry points, including routes, layouts, proxy, and

@@ -26,9 +26,16 @@ presentation factories; they do not compose Effects.
 
 Own presentation and the Next.js host. Do not move durable domain persistence or
 business authorization into Redis, cookies, or this process; those belong in the
-backend. Do not put services back in `src/lib`. That directory is absent. Do not
-invent `src/features` or move `src/components` during ordinary work; aligning the
-app with Bulletproof feature folders is a separate step.
+backend. Do not put services back in `src/lib`. That directory is absent.
+
+Feature UI belongs under `src/features/<feature>/` with a public entry such as
+`src/features/onsite.ts`. That entry owns the private files under
+`src/features/onsite/`. App routes and tests import that entry. Only that parent
+imports its children for external use. Internal sibling imports inside the
+feature remain as they already were. Do not put feature UI in `src/components`.
+That directory is absent because nothing is shared UI yet. The Bulletproof
+`shared` zone stays configured for later shared UI. `src/server` stays absent
+until a server module has a real caller that cannot live in `src/app`.
 
 When creating or editing UI that uses `@pathableai/react`, locate the installed
 `@pathableai/react` package and read
@@ -42,7 +49,7 @@ This workspace uses Fallow's Bulletproof preset. Read
 modules, imports, or source layout. Inspect the files you will change:
 
 ```sh
-pnpm --filter @pathableai/pre-ets-frontend exec fallow guard src/components/onsite/visit-state.ts
+pnpm --filter @pathableai/pre-ets-frontend exec fallow guard src/features/onsite/visit-state.ts
 ```
 
 Follow the zone and allowed directions that command reports.
