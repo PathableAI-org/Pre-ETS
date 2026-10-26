@@ -27,12 +27,6 @@ missing bindings for scaffolding rather than claiming unwritten steps execute. R
 formatting, and discovery checks; report what they establish and any missing executable bindings. Active scenarios
 must ultimately execute and pass; `@partial` is not permission to skip them or leave pending steps.
 
-When ordinary product behavior cannot expose a precise requirement-driven fact, follow the guide's
-`/_test/*` diagnostic-evidence rules. Use an existing minimal structured diagnostic sparingly, disclose the observation
-and its limits in the evidence slice, and retain user-facing evidence for user-facing promises. If a missing diagnostic
-would require product code or new data authority, report that dependency; do not silently invent the endpoint, expose
-sensitive fields, or encode private/store access in BDD support.
-
 Summarize requirement IDs, baseline revision, evidence slice, remaining gaps, and actual validation results.
 Do not change requirements, product code, runner behavior, historical specifications, or the migration ledger;
 do not generate a separate matrix, promote verification, commit implicitly, or write to GitHub.

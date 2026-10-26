@@ -7,39 +7,49 @@ page and one Server Action. It is not a comprehensive route policy and does not 
 
 The root page is dynamically rendered and private/no-store. Before rendering protected content it:
 
-1. reads `headers().get("host")` and accepts it with the same rules as authentication's `parseRequestHost`;
-2. maps an unparseable host to the existing tenant 404 and stops, without calling `getAlias` or redirecting to login;
-3. passes only the lowercase hostname to `TenantConfigService.getAlias`, then loads that alias with
-   `getConfigFromAlias` (`alias.localhost:3000` calls `getAlias("alias.localhost")`);
-4. reads the opaque `pathable-session` cookie;
-5. calls `SessionService.readForTenant` with the independently resolved alias; and
+1. reads `headers().get("host")` and the opaque `pathable-session` cookie in the Next app;
+2. calls the exported `@pathableai/pre-ets-frontend-services` protected-request adapter with those raw values;
+3. lets that adapter call `TenantConfigService.getAlias` first with the raw Host, preserving static-mode selection for
+   every Host;
+4. after a failed direct selection only, lets the adapter strictly normalize the Host and retry `getAlias` with the
+   lowercase hostname (`alias.localhost:3000` calls `getAlias("alias.localhost")` on the fallback);
+5. loads the selected alias with `getConfigFromAlias` and calls `SessionService.readForTenant`; and
 6. maps the result before rendering starts.
 
 `getAlias`, `getConfigFromHost`, and `GET /_test/tenant-config` keep the raw-host contract. The diagnostic route still
-passes the incoming Host header to `getConfigFromHost`. A parseable hostname in static mode still reaches `getAlias`,
-which ignores that hostname. The adapter example in `packages/frontend/tests/unit/reference-session-enforcement.test.ts`
-asserts that `alias.localhost:3000` does not pass the port into `getAlias`.
+passes the incoming Host header to `getConfigFromHost`. Static mode ignores an empty, malformed, unknown, or otherwise
+unresolvable Host and selects its configured alias. Host mode preserves the existing tenant 404 when direct selection
+fails and fallback normalization is invalid or cannot select an alias. Adapter examples under
+`packages/frontend-services/tests/unit/` establish both the portful host fallback and static Host independence.
 
-| Condition                              | HTTP behavior                                          | Body/content behavior                                                                                             | Cookie/effect behavior                                                                         |
-| -------------------------------------- | ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| Matching `UsableSession`               | `200`                                                  | Shows bounded protected identity/tenant, authoritative deadline, warning policy, and protected-operation control. | Does not create/replace an application session.                                                |
-| `NoUsableSession` after tenant success | `307` to same-origin `/auth/login`                     | No protected identity, content, action, or result is rendered first.                                              | The page sets no application/correlation/effect cookie. Login owns later correlation behavior. |
-| `SessionTenantMismatch`                | `403` through installed `forbidden()` before streaming | Bounded generic forbidden indication; no session tenant, identity, protected content, or effect.                  | No replacement login/session/effect.                                                           |
-| `SessionServiceUnavailable`            | Server failure distinct from redirect/403/success      | Safe failure presentation; no raw cause, stored value, identity, or protected content.                            | No replacement login/session/effect.                                                           |
-| Unparseable host                       | Existing tenant `404`                                  | No fallback tenant, no protected content, and no login redirect.                                                  | `getAlias` is not called. No session-based conversion or effect.                               |
-| Tenant alias/configuration failure     | Existing `404` or `500` mapping                        | No fallback tenant and no protected content.                                                                      | No session-based conversion or effect.                                                         |
+| Condition                              | HTTP behavior                                          | Body/content behavior                                                                                                                                      | Cookie/effect behavior                                                                         |
+| -------------------------------------- | ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| Matching `UsableSession`               | `200`                                                  | Shows bounded protected identity/tenant, the exact authoritative deadline and warning policy returned by the session, and the protected-operation control. | Does not create/replace an application session.                                                |
+| `NoUsableSession` after tenant success | `307` to same-origin `/auth/login`                     | No protected identity, content, action, or result is rendered first.                                                                                       | The page sets no application/correlation/effect cookie. Login owns later correlation behavior. |
+| `SessionTenantMismatch`                | `403` through installed `forbidden()` before streaming | Bounded generic forbidden indication; no session tenant, identity, protected content, or effect.                                                           | No replacement login/session/effect.                                                           |
+| `SessionServiceUnavailable`            | Server failure distinct from redirect/403/success      | Safe failure presentation; no raw cause, stored value, identity, or protected content.                                                                     | No replacement login/session/effect.                                                           |
+| Invalid/unresolvable host in host mode | Existing tenant `404`                                  | No fallback tenant, no protected content, and no login redirect.                                                                                           | Direct selection fails; no session-based conversion or effect.                                 |
+| Any Host with usable static selection  | Continues with the configured static alias             | Host syntax does not replace or reject the configured tenant.                                                                                              | Session admission still occurs only after selected-config loading.                             |
+| Tenant alias/configuration failure     | Existing `404` or `500` mapping                        | No fallback tenant and no protected content.                                                                                                               | No session-based conversion or effect.                                                         |
 
 The root `forbidden.tsx` copy is revised from login-configuration language to a bounded tenant/session forbidden
 indication. It accepts no props and exposes no tenant or identity values.
 
+The admitted page receives the same `UsableSession` object returned by `read`. It does not derive, default, or replace
+`idleDeadlineEpochMilliseconds` or `warningLeadMinutes`; the rendered values are the application-boundary observation
+for V-010.
+
 ## Protected Server Action
 
-The reference page exposes one top-level Server Action through a native form. Every invocation independently repeats
-host normalization, tenant resolution, cookie reading, and `readForTenant`; it does not trust rendered props, form
-fields, client state, or an earlier page admission. An unparseable host is the same tenant 404 as the page, and a
-portful host such as `alias.localhost:3000` passes only `alias.localhost` to `getAlias`.
+The reference page exposes one top-level Server Action through a native rendered form. Every invocation independently
+calls the same package request adapter, repeating mode-aware tenant resolution, cookie reading, and `readForTenant`; it
+does not trust rendered props, form fields, client state, or an earlier page admission. In host mode, a portful Host
+such as `alias.localhost:3000` falls back to `getAlias("alias.localhost")`; in static mode, malformed Host syntax does
+not prevent configured alias selection.
 
-`packages/frontend/src/app/(app)/reference-action-state.ts` has neither `"use server"` nor `server-only`:
+The public Bulletproof entry `packages/frontend/src/features/session-reference.ts` owns the private
+`packages/frontend/src/features/session-reference/action-state.ts` child. That child has neither `"use server"` nor
+`server-only`:
 
 ```ts
 export type ReferenceActionState =
@@ -62,29 +72,33 @@ export async function runReferenceOperation(
 ): Promise<ReferenceActionState>
 ```
 
-The client island imports the state type and `initialReferenceActionState` from the sibling module, and imports
-`runReferenceOperation` from the server module. It receives no tenant config, cookie, session reference, or identity
-props.
+The private `features/session-reference/reference-operation.tsx` client island imports the state type and
+`initialReferenceActionState` from its sibling module. The app page imports the feature's public entry and passes
+`runReferenceOperation` to the island as an action prop. The feature never imports `src/app` and receives no tenant
+config, cookie, session reference, or identity props.
 
 `previousState` and `formData` convey no authority and are not used to select identity or tenant.
 
-| Condition                   | Action behavior                                    | Protected result                            | Synthetic effect                                                                      |
-| --------------------------- | -------------------------------------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------- |
-| Matching `UsableSession`    | Returns `Succeeded` with bounded safe result text. | Present and announced by the client island. | Exactly one short-lived reference-effect receipt cookie is emitted after enforcement. |
-| `NoUsableSession`           | Returns `Denied`; does not start OIDC.             | Absent; denial is announced.                | None.                                                                                 |
-| `SessionTenantMismatch`     | Invokes `forbidden()` before mutation.             | Absent; actual action HTTP response is 403. | None.                                                                                 |
-| `SessionServiceUnavailable` | Fails distinctly as a safe server error.           | Absent.                                     | None.                                                                                 |
-| Unparseable host            | Existing tenant `404`; `getAlias` is not called.   | Absent. No login redirect.                  | None.                                                                                 |
-| Tenant 404/500              | Preserves the existing tenant failure class.       | Absent.                                     | None.                                                                                 |
+| Condition                              | Action behavior                                                | Protected result                                  | Synthetic effect                                                                      |
+| -------------------------------------- | -------------------------------------------------------------- | ------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| Matching `UsableSession`               | Returns `Succeeded` with bounded safe result text.             | Present and announced by the client island.       | Exactly one short-lived reference-effect receipt cookie is emitted after enforcement. |
+| `NoUsableSession`                      | Returns `Denied`; does not start OIDC.                         | Absent; denial is announced.                      | None.                                                                                 |
+| `SessionTenantMismatch`                | Invokes `forbidden()` before mutation.                         | Absent; actual action HTTP response is 403.       | None.                                                                                 |
+| `SessionServiceUnavailable`            | Fails distinctly as a safe server error.                       | Absent.                                           | None.                                                                                 |
+| Invalid/unresolvable host in host mode | Existing tenant `404` after direct selection/fallback failure. | Absent. No login redirect.                        | None.                                                                                 |
+| Any Host with usable static selection  | Continues with the configured static alias and session check.  | Depends only on the tenant-bound session outcome. | Only a matching session may emit one receipt.                                         |
+| Tenant 404/500                         | Preserves the existing tenant failure class.                   | Absent.                                           | None.                                                                                 |
 
 The action's generated transport endpoint and identifiers are Next.js implementation details, not a public HTTP API.
-Evidence invokes the action through its rendered form and records the actual response semantics.
+Automated and manual application evidence must load the rendered page and submit its actual form through the browser,
+thereby invoking the generated frontend Server Action. Directly importing/calling `runReferenceOperation` or inventing
+a stable POST endpoint is framework-unit evidence only and cannot satisfy the application-boundary claim.
 
 ## Reference interaction
 
 - The page remains a Server Component.
-- One minimal client component owns `useActionState`, the form action binding, pending state, and polite result
-  announcement.
+- One minimal client component under the Bulletproof feature owns `useActionState`, the form action binding, pending
+  state, and polite result announcement. Its action arrives from the app page as a prop.
 - The form uses installed `@pathableai/react` `Form` and a `Button type="submit"` with a meaningful visible label.
 - The button remains reachable and operable by keyboard with visible focus.
 - Pending state prevents accidental concurrent submission from the reference control; this does not define domain

@@ -6,16 +6,16 @@ conditions.
 
 ## Claim and boundary map
 
-| Claims                     | Smallest meaningful evidence                                                                           | Do not infer                                                |
-| -------------------------- | ------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------- |
-| V-001, V-003, V-005, V-006 | Public `SessionService.readForTenant` examples/property                                                | Next HTTP status, browser rendering, or real Redis topology |
-| V-001, V-003, V-004, V-005 | Reference page/action adapter scenarios and running application HTTP                                   | Comprehensive page/action coverage                          |
-| V-002                      | Two independently running frontend processes with shared Redis and real confirmed-fresh authentication | Every deployment topology or freshness policy               |
-| V-003, V-007               | Multi-tenant running HTTP matrix plus existing tenant/public-resource BDD                              | Production ingress behavior                                 |
-| V-006                      | Controlled real-Redis outage after startup, followed by restoration/readiness                          | #221's complete outage/recovery guarantees                  |
-| V-007                      | Requirements BDD tagged to accepted current-main requirements                                          | Issue-only service-failure or handoff claims                |
-| V-008                      | Keyboard/focus interaction with the composed reference consumer                                        | Accessibility of final #154/#157 experiences                |
-| V-009                      | Delivered-route/fixture inventory review                                                               | Runtime behavior of inventoried paths                       |
+| Claims                            | Smallest meaningful evidence                                                                           | Do not infer                                                |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------- |
+| V-001, V-003, V-005, V-006, V-010 | Public `SessionService.readForTenant` examples/property                                                | Next HTTP status, browser rendering, or real Redis topology |
+| V-001, V-003, V-004, V-005, V-010 | Frontend-services request-adapter scenarios plus running page/Server Action HTTP                       | Comprehensive page/action coverage                          |
+| V-002                             | Two independently running frontend processes with shared Redis and real confirmed-fresh authentication | Every deployment topology or freshness policy               |
+| V-003, V-007                      | Mode-aware multi-tenant running HTTP matrix plus existing tenant/public-resource BDD                   | Production ingress behavior                                 |
+| V-006                             | Controlled real-Redis outage after startup with a valid reference, followed by restoration/readiness   | #221's complete outage/recovery guarantees                  |
+| V-007                             | Requirements BDD tagged to accepted current-main requirements                                          | Issue-only service-failure or handoff claims                |
+| V-008                             | Keyboard/focus interaction with the composed reference consumer                                        | Accessibility of final #154/#157 experiences                |
+| V-009                             | Delivered-route/fixture inventory review                                                               | Runtime behavior of inventoried paths                       |
 
 Module evidence follows [contracts/modules.md](contracts/modules.md). Page/action semantics follow
 [contracts/reference-application.md](contracts/reference-application.md). Feature claims remain owned by
@@ -36,6 +36,10 @@ Module evidence follows [contracts/modules.md](contracts/modules.md). Page/actio
 - For successful V-002 only: an approved, implemented B6 authentication-time comparison, clock tolerance, and
   provider-support policy. If unavailable, record V-002 incomplete and do not fabricate a session or treat signed
   `auth_time` presence as confirmation.
+- For non-authentication session-dependent checks: an isolated issue-level fixture may establish a real stored session
+  through public `SessionService.establish` under the execution-owned prefix. Its reference is confined to the owned
+  browser/HTTP setup and it cannot count as Cucumber, provider-freshness, PREETS-SESSION-003, or V-002 evidence. If the
+  fixture is unavailable, mark its dependent checks incomplete.
 
 Record the starting revision:
 
@@ -52,11 +56,13 @@ the retained record.
 
 ## 1. Static and module-contract checks
 
-Run the focused service and framework scenarios first:
+Run the focused service/request-adapter scenarios and the frontend presentation/wiring scenario:
 
 ```sh
-pnpm --filter @pathableai/pre-ets-frontend test:unit -- \
+pnpm --filter @pathableai/pre-ets-frontend-services test -- \
   tests/lib/session.test.ts \
+  tests/unit/reference-session-enforcement.test.ts
+pnpm --filter @pathableai/pre-ets-frontend test:unit -- \
   tests/unit/reference-session-enforcement.test.ts
 ```
 
@@ -66,10 +72,12 @@ Expected observations:
 - a different tenant returns only fieldless `SessionTenantMismatch`;
 - absent/malformed/missing/expired state remains `NoUsableSession`;
 - `SessionServiceUnavailable` remains distinguishable;
-- the page resolves tenant first, redirects absence only after tenant success, maps mismatch to forbidden, and does not
-  perform the action effect on any denied/failure path;
-- Host `alias.localhost:3000` calls `getAlias` with `alias.localhost` and does not pass the port; an unparseable host
-  is a tenant 404 and does not call `getAlias`;
+- the frontend-services request adapter resolves tenant first, preserves exact deadline/warning values, maps mismatch
+  to forbidden, and exposes no protected outcome on any denied/failure path;
+- raw Host is offered to mode-aware selection first, so static mode selects its configured alias even for an
+  unresolvable Host; after a raw host-mode failure, `alias.localhost:3000` normalizes and retries `getAlias` with
+  `alias.localhost`; invalid normalization or a failed retry remains host-mode 404;
+- the frontend page redirects absence only after tenant success and passes the Server Action into the feature client;
 - each Server Action invocation re-enforces rather than trusting rendered state.
 
 These checks do not prove actual Next HTTP status, real Redis, provider behavior, or keyboard/focus behavior.
@@ -88,7 +96,7 @@ Expected Redis output: `PONG`.
 Run the existing real-adapter suite, including the planned tenant-bound independent-client case:
 
 ```sh
-pnpm --filter @pathableai/pre-ets-frontend test:integration -- \
+pnpm --filter @pathableai/pre-ets-frontend-services test:integration -- \
   tests/integration/session-redis.test.ts
 ```
 
@@ -116,24 +124,28 @@ Run the issue-level workflow that owns bounded HTTP/action and two-process compo
 node --test tests/bdd/session/reference-session-enforcement.test.ts
 ```
 
-The workflow must reuse `tests/support/oidc/harness.ts`, start two independent production frontend processes against
-the same owned Redis prefixes and tenant fixtures, drive the rendered form through Playwright, and release all owned
-processes/browser contexts in test cleanup.
+The workflow must reuse `tests/support/oidc/harness.ts`, pass an explicit shared `sessionPrefix` and transaction prefix
+to two independent production frontend processes, drive the rendered Server Action form through Playwright, and
+release all owned processes/browser contexts in test cleanup. The issue-level fixture may call public
+`SessionService.establish`; it must not write Redis directly.
 
 Expected automated observations:
 
 - a no-session reference page resolves the tenant and delegates to same-origin `/auth/login` before protected content;
 - a forged/malformed reference obtains no protected content or action result;
+- static mode with an unresolvable Host still selects the configured alias, while host-mode invalid/unknown hosts keep
+  their approved 404 and selected-configuration failures keep their approved mode-specific 404/500;
 - V-003 is a direct HTTP request whose `Host` is tenant B (a portful value such as `shelbyville.localhost:<port>` is
-  valid because the adapter normalizes it before `getAlias`) and whose `Cookie` header carries tenant A's
-  `pathable-session` value. That request returns actual HTTP 403 with bounded forbidden content and no receipt. A
-  browser navigation will not send that host-only cookie across the two hosts, so this observation is not a cross-host
-  page navigation;
-- session-store failure is distinct from redirect/403/success and emits no receipt;
+  valid because failed raw host-mode selection triggers a normalized-hostname retry) and whose `Cookie` header carries
+  tenant A's `pathable-session` value. That request returns actual HTTP 403 with bounded forbidden content and no
+  receipt. A browser navigation will not send that host-only cookie across the two hosts, so this observation is not a
+  cross-host page navigation;
+- a fixture-backed valid reference makes session-store failure distinct from redirect/403/success and emits no receipt;
 - when B6 is approved and functioning, authentication through A is consumed through B with the same safe synthetic
   identity/tenant and the action emits exactly one receipt;
-- when B6 is unavailable, the successful A-to-B case is explicitly skipped/incomplete while refusal and denial cases
-  still execute. A skip is not passing evidence for V-002.
+- when B6 is unavailable, the successful A-to-B case is explicitly skipped/incomplete. Fixture-backed denial and
+  browser/action cases may still execute, but the fixture is never evidence for freshness, PREETS-SESSION-003, or
+  V-002. A skip is not passing evidence for V-002.
 
 Because Server Action identifiers are build-generated and `forbidden()` is experimental, evidence must invoke the
 rendered form through the running application rather than calling an invented stable POST URL.
@@ -232,52 +244,65 @@ is a composed observation, not a duplicate service test.
    image versions, and approved B6 policy reference without recording credentials or prefix values that expose data.
 3. Use a temporary, uncommitted agent probe based on `freePort`, `spawnFrontend`, `applicationBrowser`,
    `waitUntilReady`, and `stopProcess` from `tests/support/oidc/harness.ts` to start instance A and B from the same
-   production build. Both receive the same tenant fixtures, Redis URL, session prefix, transaction prefix, and (if
-   needed by the installed build) shared `NEXT_SERVER_ACTIONS_ENCRYPTION_KEY`. Give them different loopback ports.
+   production build. Both receive the same tenant fixtures, Redis URL, explicit `sessionPrefix`, transaction prefix,
+   and (if needed by the installed build) shared `NEXT_SERVER_ACTIONS_ENCRYPTION_KEY`. Give them different loopback
+   ports.
 4. Ensure the browser proxy routes initial authentication to A and subsequent reference requests/action submission to
    B while preserving the same browser cookies.
+5. When B6 does not permit real login, establish a tenant-A session through the isolated public-service fixture under
+   the owned prefix and place its opaque reference only into an owned tenant-A browser/HTTP context. Record the safe
+   synthetic identity plus exact deadline/warning values expected from `establish`, but never retain the reference.
+   This setup does not satisfy V-002 or any authentication/freshness requirement.
 
 Temporary probe code, screenshots containing sensitive values, and raw browser/network dumps must not be committed.
 
 ### Procedure and expected observations
 
 1. In a fresh browser context, request tenant A's `/` through instance A and complete the real local-provider login
-   only if the approved B6 policy confirms freshness. Otherwise record the refusal/no-session outcome, mark V-002
-   incomplete, and continue with denial/public cases.
-2. Without signing in again, route tenant A's `/` through instance B. Before any interaction, record that the displayed
-   safe synthetic user/tenant description matches A and that the authoritative deadline/warning values are present.
-3. Press `Tab` until the protected-operation button receives visible focus. Record the accessible button name and
-   visible focus indication. Press `Enter` or `Space`; record the announced success result. Inspect browser/network
-   state only far enough to establish that exactly one reference-effect receipt was emitted, without retaining its
-   name/value. This establishes the distinct composed V-008 observation.
+   only if the approved B6 policy confirms freshness. When it does, route the same browser session to tenant A's `/`
+   through B and record V-002. Otherwise record the refusal/no-session outcome and mark V-002 incomplete; do not use the
+   issue-level fixture to replace this step.
+2. For V-001/V-008/V-010 and later denial/outage steps, use either that confirmed-fresh session or the explicitly
+   labeled fixture-backed tenant-A context. Load tenant A's `/` through B and record that the safe synthetic user/tenant
+   description plus the authoritative deadline and warning values exactly match the admitted session outcome.
+3. On that already-rendered form, press `Tab` until the protected-operation button receives visible focus. Record the
+   accessible button name and visible focus indication. Press `Enter` or `Space`; record the announced success result.
+   Inspect browser/network state only far enough to establish that exactly one reference-effect receipt was emitted,
+   without retaining its name/value. This establishes the distinct composed V-008 observation.
 4. Observe V-003 with a direct HTTP request to instance B. Set `Host` to tenant B's host and `Cookie` to tenant A's
-   `pathable-session` value. A portful Host such as `shelbyville.localhost:<B port>` is expected: the adapter
-   normalizes it to the lowercase hostname before `getAlias`. A browser navigation will not send that host-only cookie
-   across the two hosts, so do not use cross-host navigation for this observation. Record actual HTTP 403, bounded
-   forbidden indication, absence of tenant-A identity/content/result, and no new receipt. A tenant 404 means the Host
-   was not normalized or the tenant did not resolve; it is not the mismatch result.
+   `pathable-session` value from the same valid context. A portful Host such as
+   `shelbyville.localhost:<B port>` is expected: raw host-mode selection fails, then the adapter normalizes and retries
+   with the lowercase hostname. A browser navigation will not send that host-only cookie across the two hosts, so do
+   not use cross-host navigation for this observation. Record actual HTTP 403, bounded forbidden indication, absence
+   of tenant-A identity/content/result, and no new receipt. A tenant 404 is not the mismatch result.
 5. Remove or invalidate only the scenario-owned session record, then submit the already-rendered reference operation.
    Record the perceivable no-session denial, no automatic OIDC, no protected result, and no receipt.
 6. In a fresh browser context, request tenant A's `/` through B. Record absence of protected content and automatic
    same-origin OIDC initiation. Stop before a second login.
 7. Without a session, request `GET /_test/tenant-config`. Record 200, private/no-store, safe configured content, no
-   application/correlation/effect cookie, and no protected identity/result. Separately request one invalid host and one
-   selected malformed/unreadable tenant case; record the approved 404/500 classes with no fallback tenant.
-8. Only in an isolated local Compose environment owned by this execution, exercise the real-store failure:
+   application/correlation/effect cookie, and no protected identity/result. Separately record host-mode invalid/unknown
+   Host as 404, static mode with an unresolvable Host still selecting its configured alias, and selected
+   malformed/unreadable configuration returning its approved mode-specific 404/500, all without fallback.
+8. Only in an isolated local Compose environment owned by this execution, create or refresh a fixture-backed tenant-A
+   session, preserve its valid reference cookie, and load the protected form through B before exercising the real-store
+   failure:
 
    ```sh
    docker compose stop redis
    ```
 
-   Request the page and action through B. Record a server failure distinct from login/403/success and zero new
-   receipts. Restore Redis and wait for readiness before any later case:
+   With that same valid reference cookie, request the page through B and submit the already-rendered form. Record a
+   server failure distinct from login/403/success and zero new receipts. A cookie-free or malformed-reference request
+   is not outage evidence because it returns `NoUsableSession` before Redis access. Restore Redis and wait for readiness
+   before any later case:
 
    ```sh
    docker compose start redis
    docker compose exec redis redis-cli ping
    ```
 
-   Skip this step rather than stopping a shared or pre-existing Redis service.
+   Skip this step rather than stopping a shared or pre-existing Redis service. If a valid fixture/confirmed-fresh
+   session and retained form are unavailable, mark the page/action outage checks incomplete.
 
 ### Cleanup
 
@@ -322,10 +347,12 @@ pnpm build
 pnpm lint
 pnpm format:check
 pnpm check:unused
+pnpm check:health
+pnpm check:changes
 ```
 
-Run `pnpm check:changes` through the normal pre-commit hook. Investigate findings; do not add suppressions or weaken a
-check.
+The pre-commit hook repeats `pnpm check:changes`; run it explicitly first so introduced findings are investigated before
+commit. Do not add suppressions or weaken a check.
 
 ## Evidence record
 

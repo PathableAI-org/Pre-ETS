@@ -53,16 +53,16 @@ The input deliberately contains no host, tenant configuration, cookie object, Ne
 
 `SessionService.readForTenant` has four semantic outcomes:
 
-| Outcome                     | Effect channel | Consumer meaning                                                                              |
-| --------------------------- | -------------- | --------------------------------------------------------------------------------------------- |
-| `UsableSession`             | Success        | Admit only the supplied request tenant and preserve the existing identity/deadline/policy.    |
-| `NoUsableSession`           | Success        | No protected identity exists; page and action choose their distinct missing-session mappings. |
-| `SessionTenantMismatch`     | Expected error | Deny as forbidden; do not reveal or substitute either tenant.                                 |
-| `SessionServiceUnavailable` | Expected error | State could not be determined; fail closed and do not begin replacement login.                |
+| Outcome                     | Effect channel | Consumer meaning                                                                               |
+| --------------------------- | -------------- | ---------------------------------------------------------------------------------------------- |
+| `UsableSession`             | Success        | Admit only the supplied request tenant and return the exact existing identity/deadline/policy. |
+| `NoUsableSession`           | Success        | No protected identity exists; page and action choose their distinct missing-session mappings.  |
+| `SessionTenantMismatch`     | Expected error | Deny as forbidden; do not reveal or substitute either tenant.                                  |
+| `SessionServiceUnavailable` | Expected error | State could not be determined; fail closed and do not begin replacement login.                 |
 
 Defects and interruption remain outside the expected error channel.
 
-## Private request-composition values
+## Request-composition values
 
 ### Resolved request context
 
@@ -73,19 +73,27 @@ interface ResolvedRequestContext {
 }
 ```
 
-- Constructed by the private `(app)` adapter. The adapter accepts `headers().get("host")` with the same rules as
-  authentication's `parseRequestHost`, then calls `TenantConfigService.getAlias` with only the lowercase hostname and
-  `getConfigFromAlias` with the resulting alias. `alias.localhost:3000` yields `getAlias("alias.localhost")`.
-- An unparseable host does not produce this context. It is the existing tenant 404 and does not call `getAlias`.
+- Constructed inside `packages/frontend-services/src/session-request.ts`; the Next app supplies only raw request Host
+  and the optional opaque cookie reference.
+- The adapter first calls `TenantConfigService.getAlias` with the raw Host. A success preserves static mode's required
+  Host independence and proceeds directly to `getConfigFromAlias`.
+- After a failed direct selection, the adapter applies authentication's strict `parseRequestHost` acceptance rules and
+  retries `getAlias` with only the lowercase hostname. In host mode, `alias.localhost:3000` therefore falls back to
+  `getAlias("alias.localhost")`. If normalization or the retry fails, the original direct-selection failure is
+  preserved; an invalid/unknown host therefore remains host-mode 404, while a static-selector configuration failure is
+  not rewritten as a Host failure.
+- A malformed or otherwise unresolvable Host still produces the configured static alias in static mode. It does not
+  become a tenant 404 merely because normalization would reject it.
 - `getAlias`, `getConfigFromHost`, and the diagnostic route keep the raw-host contract described in
   [research.md](research.md) Decision 2.
-- Cached only for the current render/request using React request memoization.
+- Scoped only to the current adapter call; no mutable process-wide tenant context is introduced.
 - Does not persist, widen, or serialize the tenant alias.
 
 ### Reference action state
 
-Defined in `packages/frontend/src/app/(app)/reference-action-state.ts`, a sibling with neither `"use server"` nor
-`server-only`:
+Defined in the private `packages/frontend/src/features/session-reference/action-state.ts` child, with neither
+`"use server"` nor `server-only`, and re-exported only through the public
+`packages/frontend/src/features/session-reference.ts` entry:
 
 ```ts
 export type ReferenceActionState =
@@ -98,7 +106,8 @@ export const initialReferenceActionState: ReferenceActionState = {
 }
 ```
 
-`packages/frontend/src/app/(app)/actions.ts` has a file-level `"use server"` directive. Its only runtime export is:
+`packages/frontend/src/app/(app)/actions.ts` remains the Next host edge and has a file-level `"use server"` directive.
+Its only runtime export is:
 
 ```ts
 export async function runReferenceOperation(
@@ -107,13 +116,15 @@ export async function runReferenceOperation(
 ): Promise<ReferenceActionState>
 ```
 
-It imports `ReferenceActionState` as a type and does not export the initial state. The client island imports
-`ReferenceActionState` and `initialReferenceActionState` from the sibling module and `runReferenceOperation` from the
-server module. It receives no tenant config, cookie, session reference, or identity props.
+It imports `ReferenceActionState` as a type from the feature's public entry and does not export the initial state. The
+private client island imports its state type and initial value from its feature sibling. The page passes
+`runReferenceOperation` to that island as an action prop, preserving the Bulletproof direction from app to feature.
+The island receives no tenant config, cookie, session reference, or identity props.
 
 - `Ready` is client initialization only.
 - `Denied` is returned only for `NoUsableSession`; it contains no protected result and starts no OIDC flow.
-- `Succeeded` is returned only after a matching usable session and the synthetic effect.
+- `Succeeded` is returned only after a matching usable session and the synthetic effect. It does not copy or recompute
+  the admitted session's authoritative deadline or warning policy.
 - Tenant mismatch and service failure are not converted into action state; they retain forbidden/server-failure
   semantics.
 
@@ -134,19 +145,21 @@ This is temporary synthetic UI state, not a session store extension or durable b
 
 ```text
 incoming page/action request
-  -> normalize Host with the parseRequestHost acceptance rules
-     -> unparseable: existing tenant 404, stop
-     -> lowercase hostname: getAlias, then getConfigFromAlias
-        -> tenant failure: existing 404/500, stop
-        -> tenant success: read opaque session reference for that tenant
-           -> no usable session
-              -> page: redirect to same-origin /auth/login
-              -> action: return Denied, no effect
-           -> tenant mismatch: forbidden 403, no effect
-           -> service unavailable: server failure, no effect, no replacement login
-           -> usable matching session
-              -> page: render protected identity/policy and action control
-              -> action: emit one receipt, return Succeeded
+  -> getAlias(raw Host)
+     -> success: static or already-normalized host selection
+     -> failure: strictly normalize Host and retry getAlias(lowercase hostname)
+        -> unparseable or second failure: preserve original direct-selection failure, stop
+  -> getConfigFromAlias
+     -> tenant failure: existing 404/500, stop
+     -> tenant success: read opaque session reference for that tenant
+        -> no usable session
+           -> page: redirect to same-origin /auth/login
+           -> action: return Denied, no effect
+        -> tenant mismatch: forbidden 403, no effect
+        -> service unavailable: server failure, no effect, no replacement login
+        -> usable matching session
+           -> page: render the exact identity/deadline/warning values and action control
+           -> action: emit one receipt, return Succeeded
 ```
 
 No transition creates, renews, invalidates, or revives an application session. Session establishment remains owned by
@@ -157,6 +170,8 @@ the validated callback; renewal and invalidation remain #220/#221.
 - The request tenant is resolved before session admission and is never sourced from session state.
 - Only the existing session codec decodes the bearer reference and stored record.
 - Only a matching `UsableSession` can expose identity, deadline, warning policy, protected content, or protected result.
+- Admission returns the same `UsableSession` object. It does not recompute, default, or replace
+  `idleDeadlineEpochMilliseconds` or `warningLeadMinutes` (V-010).
 - Expected errors, page copy, action state, logs, traces, screenshots, and retained evidence contain no cookie values,
   session references, provider tokens, credentials, Redis records, PHI, or identifying partner data.
 - Public resources do not invoke the protected consumer and do not become tenant/configuration bypasses.

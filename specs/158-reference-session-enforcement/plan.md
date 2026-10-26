@@ -1,19 +1,21 @@
 # Implementation Plan: Enforce Sessions in Reference Application Paths
 
-**Branch**: `158-reference-session-enforcement-plan` | **Date**: 2026-10-25 | **Spec**: [spec.md](spec.md)
+**Branch**: `158-reference-session-enforcement-plan` | **Date**: 2026-10-26 | **Spec**: [spec.md](spec.md)
 
 **Input**: Feature contract in `specs/158-reference-session-enforcement/spec.md` and
 `specs/158-reference-session-enforcement/verification.md`
 
 ## Summary
 
-Extend the existing frontend `SessionService` with one tenant-bound read that admits an existing usable session only
-when its tenant equals the independently resolved request tenant. Replace the root's temporary always-absent session
-check with a bounded SSR protected page and independently enforced Server Action. Preserve tenant 404/500 mappings,
-redirect page absence to the selected tenant's existing OIDC initiation, map mismatch to actual Next.js 403 semantics,
-and keep service failure distinct and fail closed. The action returns accessible success/denial state and emits a safe
-short-lived receipt cookie as an independently observable synthetic effect. Existing Redis, OIDC, browser, and BDD
-fixtures are extended; no backend, durable domain record, new runtime, or comprehensive application guard is added.
+Extend `@pathableai/pre-ets-frontend-services`' existing `SessionService` with one tenant-bound read that admits an
+existing usable session only when its tenant equals the independently resolved request tenant. Add one exported request
+adapter in that workspace so the Next app never imports Effect, runtime, tenant, or session internals. Replace the
+root's temporary always-absent check with a bounded SSR protected page and browser-invoked Server Action; keep its UI
+behind a Bulletproof feature entry. Preserve mode-specific tenant 404/500 behavior, redirect page absence to the
+selected tenant's OIDC initiation, map mismatch to actual Next.js 403 semantics, and keep service failure distinct and
+fail closed. The action emits a safe short-lived receipt cookie as an observable synthetic effect. Existing Redis,
+OIDC, browser, and BDD fixtures are extended; no backend, durable domain record, new runtime, or comprehensive guard is
+added.
 
 ## Technical Context
 
@@ -22,8 +24,8 @@ fixtures are extended; no backend, durable domain record, new runtime, or compre
 **Primary Dependencies**: Next.js 16.4.3 App Router, React 19.3.1, Effect 4.0.5,
 `@effect/platform-node` 4.0.5, `@pathableai/react` 0.3.0, Redis client 6.3.0
 
-**Storage**: Existing frontend-owned Redis session records only; one short-lived host-only synthetic response cookie;
-no new durable schema or domain record
+**Storage**: Existing frontend-services-owned Redis session records only; one short-lived host-only synthetic response
+cookie; no new durable schema or domain record
 
 **Testing**: Vitest 5.0.5, `@effect/vitest` 4.0.5, `@fast-check/vitest` 0.5.0, real-Redis integration tests,
 Cucumber 13.3.0 requirements BDD, Playwright 1.64.1 through the shared harness, and issue-level Node test runner
@@ -31,8 +33,9 @@ Cucumber 13.3.0 requirements BDD, Playwright 1.64.1 through the shared harness, 
 **Target Platform**: SSR-first Next.js frontend on Node.js; two independently running host processes sharing local
 Redis and Keycloak for composed evidence
 
-**Project Type**: Existing pnpm monorepo web application; implementation remains in `packages/frontend` with root-owned
-BDD/evidence support
+**Project Type**: Existing pnpm monorepo web application; Effect/session/request workflows remain in
+`packages/frontend-services`, presentation and Server Action hosting remain in `packages/frontend`, and BDD/evidence
+support remains root-owned
 
 **Performance Goals**: No new numeric latency target. Each protected page/action performs one existing tenant
 resolution/configuration read and at most one existing session-store read through the process-owned runtime; no
@@ -49,23 +52,23 @@ Redis/OIDC/action fixtures for later #154/#157/#220/#221 work
 
 ## Constitution Check
 
-_GATE: Passed before Phase 0 research, re-checked after Phase 1 design, and re-checked after the 2026-10-25 critique revision. The revision does not weaken a gate._
+_GATE: Passed before Phase 0 research, re-checked after Phase 1 design, and re-checked after the 2026-10-26 refactor review. The revision does not weaken a gate._
 
-| Principle                                     | Pre-design gate                                                                                                                                                                                     | Post-design result                                                                                                                                                                                                                                                                                                                                                |
-| --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| I. Evidence-grounded specification            | `spec.md`, `verification.md`, issue #219, S2-E, and current `origin/main` PREETS-SESSION-001/003/004/005/006 were read as immutable authorities. #218 is present on `origin/main`; B6 remains open. | Pass. No accepted behavior is changed. B6 limits successful real-login execution and remains an explicit incomplete claim rather than an assumption.                                                                                                                                                                                                              |
-| II. Explicit ownership and authoritative data | Frontend owns OIDC/session/UI state; no business workflow or backend data is needed.                                                                                                                | Pass. Redis session ownership is unchanged; the synthetic receipt is bounded temporary UI state with no business data.                                                                                                                                                                                                                                            |
-| III. Tenant isolation                         | The request tenant must be resolved independently and compared with the session tenant; mismatch must fail closed.                                                                                  | Pass. The reference adapter normalizes Host to the lowercase hostname before unchanged `getAlias`, then `readForTenant`. Unparseable hosts are tenant 404s. Mismatch stays fieldless and maps to forbidden without substitution.                                                                                                                                  |
-| IV. Accessible, server-rendered UI            | The feature changes UI and must use installed `@pathableai/react`, SSR by default, keyboard semantics, visible focus, and perceivable outcomes.                                                     | Pass. The page stays server-rendered; only action state is a client island. Installed component guidance/declarations were read and composed-browser verification remains required.                                                                                                                                                                               |
-| V. Meaningful behavioral tests                | Evidence must name claims and separate module, adapter, real infrastructure, requirements BDD, and manual composed observations.                                                                    | Pass. [contracts/modules.md](contracts/modules.md) and [quickstart.md](quickstart.md) map non-duplicative evidence and preserve BDD/current-main limits. Quickstart records the named root BDD scenario revisions as implementation obligations. No telemetry test is added.                                                                                      |
-| VI. Simplicity and verifiable quality         | Actual consumers must justify public types, services, packages, storage, and tools.                                                                                                                 | Pass. The existing session owner is extended, its placeholder is removed, and existing runtime/harnesses are reused. Host normalization stays a private pure function. The `"use server"` module exports only `runReferenceOperation`; action state is a sibling module. No service, Layer, workspace, dependency, Redis value API, or middleware guard is added. |
+| Principle                                     | Pre-design gate                                                                                                                                                                                     | Post-design result                                                                                                                                                                                                                                                                                                                       |
+| --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| I. Evidence-grounded specification            | `spec.md`, `verification.md`, issue #219, S2-E, and current `origin/main` PREETS-SESSION-001/003/004/005/006 were read as immutable authorities. #218 is present on `origin/main`; B6 remains open. | Pass. No accepted behavior is changed. B6 limits successful real-login execution and remains an explicit incomplete claim rather than an assumption.                                                                                                                                                                                     |
+| II. Explicit ownership and authoritative data | The frontend-services workspace owns OIDC/session workflows; the Next app owns presentation; no business workflow or backend data is needed.                                                        | Pass. Redis session ownership stays in `frontend-services`; the Next app calls its exported adapter and owns only the bounded page, Server Action host edge, feature UI, and temporary receipt presentation.                                                                                                                             |
+| III. Tenant isolation                         | The request tenant must be resolved independently and compared with the session tenant; mismatch must fail closed.                                                                                  | Pass. The request adapter first gives the raw Host to unchanged mode-aware selection. Only a host-mode failure triggers strict normalization and a lowercase-hostname retry. Static mode therefore ignores Host as required; mismatch stays fieldless and cannot substitute session tenant data.                                         |
+| IV. Accessible, server-rendered UI            | The feature changes UI and must use installed `@pathableai/react`, SSR by default, keyboard semantics, visible focus, and perceivable outcomes.                                                     | Pass. The page stays server-rendered; only action state is a client island behind `src/features/session-reference.ts`. Installed component guidance/declarations were read and composed-browser verification remains required.                                                                                                           |
+| V. Meaningful behavioral tests                | Evidence must name claims and separate module, adapter, real infrastructure, requirements BDD, and manual composed observations.                                                                    | Pass. [contracts/modules.md](contracts/modules.md) and [quickstart.md](quickstart.md) map non-duplicative evidence and preserve BDD/current-main limits. Quickstart records the named root BDD scenario revisions as implementation obligations. No telemetry test is added.                                                             |
+| VI. Simplicity and verifiable quality         | Actual consumers must justify public types, services, packages, storage, and tools.                                                                                                                 | Pass. The existing session owner is extended, its placeholder is removed, and one exported request adapter reuses the shared runtime. The `"use server"` module exports only `runReferenceOperation`; action state stays in the feature module. No service, Layer, workspace, dependency, Redis value API, or middleware guard is added. |
 
-Architecture constraints also pass: frontend/backend separation is unchanged; direct installed declarations were
-checked for Effect, Next.js, React, and `@pathableai/react`; the host-owned `ManagedRuntime` is reused; and exact public
-signatures precede private design. Critique findings E1–E3 stay inside those gates. Host normalization reuses
-authentication's pure acceptance rules without a new tenant API. The BDD revisions follow the approved tenant-first
-page. The action-state split removes a runtime export that a file-level `"use server"` module cannot provide, without
-adding a public module.
+Architecture constraints also pass: frontend/backend separation is unchanged; `frontend-services` keeps all Effect
+workflows and the shared `ManagedRuntime`; `frontend` imports only the package's public adapter and owns presentation.
+Direct installed declarations were checked for Effect, Next.js, React, and `@pathableai/react`. Raw-first tenant
+selection preserves static mode before the adapter applies a host-mode normalization retry. The BDD revisions follow
+the approved tenant-first page. The action-state split avoids a runtime object export from a file-level `"use server"`
+module, and the feature public entry preserves the Bulletproof and recursive module boundaries.
 
 ## Project Structure
 
@@ -89,29 +92,33 @@ review.
 ### Source Code (repository root)
 
 ```text
+packages/frontend-services/
+├── src/
+│   ├── auth/cookie.ts               # callback writer consumes the shared public cookie name
+│   ├── entry.ts                     # remove hasSession bridge
+│   ├── index.ts                     # export the bounded request adapter/cookie contract
+│   ├── runtime.ts                   # unchanged shared ManagedRuntime owner
+│   ├── session.ts                   # extend public read contract; remove hasSession placeholder
+│   ├── session/                     # unchanged private codec/store ownership
+│   ├── session-request.ts           # raw-Host/cookie adapter and thin Next outcome mapping
+│   └── tenant.ts                    # unchanged public mode-aware tenant operations
+└── tests/
+    ├── integration/session-redis.test.ts
+    ├── lib/session.test.ts
+    └── unit/reference-session-enforcement.test.ts
+
 packages/frontend/
 ├── src/
 │   ├── app/
 │   │   ├── (app)/
-│   │   │   ├── actions.ts                 # "use server"; only runtime export is runReferenceOperation
-│   │   │   ├── page.tsx                   # replace root placeholder with protected reference page
-│   │   │   ├── reference-action-state.ts  # ReferenceActionState and initial state; no "use server"
-│   │   │   ├── session-context.ts         # planned private tenant/cookie/runtime outcome adapter
-│   │   │   └── tenant-context.ts          # normalize Host, then cache branded alias + config
-│   │   ├── auth/cookie.ts                 # share the existing session-cookie name with protected adapters
-│   │   └── forbidden.tsx                  # bounded tenant/session mismatch indication
-│   ├── components/session/
-│   │   └── reference-operation.tsx        # planned minimal useActionState client island
-│   └── lib/
-│       ├── runtime.ts                     # unchanged host-owned SessionService/TenantConfigService runtime
-│       ├── session.ts                     # extend public read contract; remove hasSession placeholder
-│       ├── session/                       # unchanged private codec/store ownership
-│       └── tenant.ts                      # unchanged public tenant operations consumed by private adapter
-└── tests/
-    ├── integration/session-redis.test.ts  # extend real Redis independent-client evidence
-    ├── lib/session.test.ts                # public tenant-bound service examples/property
-    └── unit/
-        └── reference-session-enforcement.test.ts # framework adapter/page/action mappings
+│   │   │   ├── actions.ts         # "use server" host edge; calls frontend-services
+│   │   │   └── page.tsx           # protected SSR reference page
+│   │   └── forbidden.tsx          # bounded tenant/session mismatch indication
+│   ├── features/session-reference.ts   # public Bulletproof feature entry
+│   └── features/session-reference/
+│       ├── action-state.ts
+│       └── reference-operation.tsx    # client island; receives the action as a prop
+└── tests/unit/reference-session-enforcement.test.ts # page/action/feature wiring and presentation
 
 tests/
 ├── bdd/
@@ -121,13 +128,14 @@ tests/
 │   │   └── reference-session-enforcement.test.ts # issue-level two-process/browser/action evidence
 │   ├── steps/                             # reuse/extend semantic HTTP/auth/presentation steps
 │   └── support/                           # reuse two-process world; no direct session-store access
-└── support/oidc/harness.ts                # reuse runner-neutral real-provider/process/browser fixture
+└── support/oidc/harness.ts                # add explicit shared sessionPrefix alongside transactionPrefix
 ```
 
-**Structure Decision**: The public contract stays in the existing session parent. Framework-specific request state and
-outcome mapping remain private to the `(app)` reference boundary. The client island owns only action state. Root BDD
-keeps stakeholder evidence outside workspace internals, while issue-level infrastructure evidence reuses the existing
-harness.
+**Structure Decision**: The public Effect contract and request adapter stay in `frontend-services`; the Next app does
+not import Effect or recreate tenant/session workflows. The app hosts the Server Action and SSR page, while feature UI
+and action state live behind `features/session-reference.ts`; the client island receives the action as a prop and never
+imports from `src/app`. Root BDD keeps stakeholder evidence outside workspace internals, while issue-level
+infrastructure evidence reuses the existing harness.
 
 ## Complexity Tracking
 
@@ -137,34 +145,33 @@ No constitution violation requires justification.
 
 ### Phase 1 — Module architecture
 
-1. **Extend the existing public session parent**. `lib/session.ts` already owns session establishment, raw read,
-   public usable/absent/failure outcomes, and the private codec/store children. Add tenant-bound read behavior there
-   because #218 explicitly deferred that consumer contract to #219. Do not add an enforcement service, Layer, package,
-   or child module. Remove the temporary `hasSession()` operation after its only production consumer migrates.
-2. **Preserve tenant ownership**. `TenantConfigService` remains the only owner of alias selection, selected file
-   loading, and approved 404/500 errors. The private `(app)` adapter applies the same pure acceptance rules as
-   authentication's unexported `parseRequestHost`, passes only the lowercase hostname to existing `getAlias`, and then
-   calls `getConfigFromAlias`. An unparseable host is the existing tenant 404 and does not call `getAlias`. Do not
-   change `getAlias`, `getConfigFromHost`, or the diagnostic route, and do not add a host-parsing service or Effect
-   wrapper. The session module never sees a host or tenant file. `/_test/onsite` keeps its current `requireTenantConfig`
-   outcomes. Details are in [research.md](research.md) Decision 2.
-3. **Replace the bounded root placeholder**. `/` becomes the reference protected page. A private
-   `session-context.ts` reads async Next headers/cookies, invokes tenant then session public operations through the
-   existing `Runtime`, and returns/maps the result before rendering. Public callback, login/failure/recovery, and
-   `/_test` resources do not import this adapter.
-4. **Add one independently protected action**. `runReferenceOperation` is the only runtime export of the `"use server"`
-   module `(app)/actions.ts`. `ReferenceActionState` and `initialReferenceActionState` live in the sibling
-   `(app)/reference-action-state.ts`, which has no `"use server"` directive. The action repeats host normalization,
-   tenant resolution, cookie reading, and `readForTenant` on every invocation. It does not accept identity/tenant
-   authority from the page or form. A private action helper emits the bounded receipt after admission. This private
-   concern does not warrant a service or public module.
-5. **Keep UI server-first**. The page and protected identity/policy presentation stay server-rendered. One
-   `components/session/reference-operation.tsx` client island owns `useActionState`, pending state, native form submit,
-   and the status announcement because those are browser interactions. Installed `@pathableai/react` supplies the
-   page/layout/form/button primitives.
+1. **Extend the existing public session parent**. `packages/frontend-services/src/session.ts` owns session
+   establishment, raw read, public usable/absent/failure outcomes, and the private codec/store children. Add the
+   tenant-bound read there because #218 explicitly deferred that consumer contract to #219. Do not add an enforcement
+   service, Layer, package, or child module. Remove `hasSession()` and its `entry.ts`/`index.ts` bridge after the root
+   consumer migrates; update runtime, callback, and test service fixtures that implement the interface.
+2. **Preserve mode-aware tenant ownership**. `TenantConfigService` remains the only owner of alias selection, selected
+   file loading, and approved 404/500 errors. The exported request adapter first calls `getAlias(rawHost)`. Static mode
+   therefore ignores even an unresolvable Host. Only when that call fails does the adapter strictly normalize the Host
+   and retry `getAlias(lowercaseHostname)`, allowing portful host-mode requests while preserving host-mode 404s. It
+   then calls `getConfigFromAlias`. Do not change `getAlias`, `getConfigFromHost`, or diagnostic behavior, and never
+   pass a host or tenant file into the session module. Details are in [research.md](research.md) Decision 2.
+3. **Expose one bounded request adapter from frontend services**. `session-request.ts` accepts the raw Host and optional
+   session reference, runs tenant selection and `readForTenant` through the existing `Runtime`, and owns thin Next
+   failure mapping. `index.ts` exports that adapter and the shared session-cookie name. The Next app does not import
+   `Runtime`, `SessionService`, `TenantConfigService`, or Effect.
+4. **Replace the bounded root placeholder and add one protected action**. `/` calls the public adapter and becomes the
+   reference protected page. `runReferenceOperation` is the only runtime export of `(app)/actions.ts`; it rereads
+   headers/cookies and calls the adapter on every invocation, accepting no identity or tenant authority from the form.
+   A private app-edge helper emits the bounded receipt only after admission.
+5. **Keep UI server-first and inside the feature boundary**. The page renders identity and the unchanged authoritative
+   deadline/warning policy. `features/session-reference.ts` owns the action-state type/initial value and private client
+   island. The page passes `runReferenceOperation` into that island as a prop, so the feature never imports `src/app`.
+   Installed `@pathableai/react` supplies the page/layout/form/button primitives.
 6. **Preserve runtime and infrastructure**. `ApplicationServices`, `applicationLayer`, the shared Redis Layer, OIDC
    services, and process lifecycle remain unchanged. The feature adds no backend, config, exporter, runtime, or
-   persistent model.
+   persistent model. Before implementation, run `fallow guard` for every planned app/feature file and follow the
+   reported Bulletproof direction together with the stricter recursive module rule.
 
 These decisions and rejected abstractions are recorded in [contracts/modules.md](contracts/modules.md) and
 [research.md](research.md).
@@ -181,8 +188,8 @@ These decisions and rejected abstractions are recorded in [contracts/modules.md]
 - preserve `establish`, raw `read`, the stored wire format, the Redis adapter, and every existing result field.
 
 The matching operation returns the unchanged `UsableSession`; it does not recompute policy/deadline, decode a host, or
-convert service failures. `TenantConfigService` remains an unchanged upstream dependency. No new runtime service or
-environment requirement is introduced.
+convert service failures. This is the plan-level implementation of V-010. `TenantConfigService` remains unchanged and
+is composed only by the exported request adapter. No new runtime service or environment requirement is introduced.
 
 [contracts/reference-application.md](contracts/reference-application.md) defines the bounded page/action/UI/cookie
 contract. It is an external browser contract, not another public TypeScript service and not a stable Next-generated
@@ -201,11 +208,12 @@ Evidence follows consumer → claim → violation → smallest boundary:
 - Extend the real-Redis test only where it adds infrastructure uncertainty: one client establishes, independently
   scoped clients perform matching/mismatched tenant-bound reads, and disconnected reads remain
   `SessionServiceUnavailable`. This still does not prove running application instances.
-- Framework adapter tests inject public service outcomes to establish tenant-first ordering, page redirect, action
-  denial, forbidden invocation, server-failure distinction, unchanged protected result, and exact zero/one receipt
-  calls. They include the `alias.localhost:3000` example: `getAlias` is called with `alias.localhost` and not the
-  port. An unparseable host, such as `alias.localhost/extra`, is a tenant 404 and does not call `getAlias`. These
-  tests do not claim actual HTTP 403 or browser accessibility.
+- Frontend-services request-adapter tests inject public service outcomes to establish tenant-first ordering,
+  page/action mappings, server-failure distinction, and unchanged V-010 policy values. They establish raw-first static
+  selection for an unresolvable Host and host-mode fallback normalization where `alias.localhost:3000` retries
+  `getAlias` with `alias.localhost`. If raw host-mode selection fails and normalization is invalid or the retry fails,
+  the existing host-mode 404 remains. Frontend tests cover page/action/feature wiring, presentation, and exact zero/one
+  receipt calls without importing Effect. These tests do not claim actual HTTP 403 or browser accessibility.
 - No durable test asserts logs, spans, attributes, exporter output, or raw cookie values. This feature adds no
   observability claim; temporary diagnostics must be removed.
 
@@ -214,31 +222,25 @@ browser, infrastructure, and handoff evidence remain in Phase 5 rather than dupl
 
 ### Phase 4 — Implementation architecture
 
-1. Add `SessionTenantMismatch` and `readForTenant` inside `SessionService.layer`. Implement it by calling the existing
-   local `read`, returning `NoUsableSession` unchanged, returning `UsableSession` unchanged only on strict branded-alias
-   equality, and otherwise failing with the fieldless mismatch. Preserve defects/interruption. Remove `hasSession` and
-   update only its root/test fixtures.
-2. Export the existing session-cookie name, or one narrow read helper, from `app/auth/cookie.ts` so callback writing and
-   protected page/action reading cannot drift. Keep the untrusted string outside browser-visible props and let
-   `SessionService.read` own decoding.
-3. Extend `tenant-context.ts` so the reference adapter reads async `headers().get("host")`, normalizes it with the
-   `parseRequestHost` acceptance rules in [research.md](research.md) Decision 2, and caches a request-scoped
-   `{ tenantAlias, config }` from `TenantConfigService.getAlias(hostname)` and `getConfigFromAlias`. Pass only the
-   lowercase hostname. An unparseable host is the existing tenant 404 and does not call `getAlias`. Keep `getAlias`,
-   `getConfigFromHost`, and `GET /_test/tenant-config` on the raw-host contract. Keep `/_test/onsite`'s current
-   `requireTenantConfig` outcomes. Tenant errors continue through `httpErrorPage`. Add the adapter example that
-   `alias.localhost:3000` calls `getAlias` with `alias.localhost`. During implementation, replace the superseded
-   `docs/authentication.md` and `docs/session-state.md` sentences named in Decision 2. This planning pass does not edit
-   those docs.
-4. Add a private session-context adapter that obtains the cookie through async `cookies()`, calls `readForTenant` via
-   the existing `Runtime`, and maps typed results only at the awaited Next boundary. Do not construct a per-request
-   runtime or catch Next control-flow errors.
-5. Replace root `page.tsx` with a dynamic, private/no-store server page. Resolve the tenant before session access.
-   `NoUsableSession` redirects to `/auth/login`; mismatch invokes `forbidden()` before streaming; service failure
-   remains a safe server failure; a usable match renders only bounded identity, tenant, deadline, warning policy, and
-   the action control. Revise `app/forbidden.tsx` to generic mismatch copy without tenant/identity details.
-6. Implement the Server Action split. `packages/frontend/src/app/(app)/reference-action-state.ts` has neither
-   `"use server"` nor `server-only` and defines:
+1. In `packages/frontend-services/src/session.ts`, add `SessionTenantMismatch` and `readForTenant`. Call the existing
+   local `read`, return `NoUsableSession` unchanged, return the exact `UsableSession` object only on strict branded
+   alias equality, and otherwise fail with the fieldless mismatch. Preserve defects/interruption. Remove `hasSession`
+   from the service, `entry.ts`, `index.ts`, production composition fixtures, root tests, and callback service doubles.
+2. Add `packages/frontend-services/src/session-request.ts`. Export the existing session-cookie name there so
+   `auth/cookie.ts` and protected consumers share one owner. Its public request operation accepts raw Host plus the
+   optional untrusted cookie string, calls `getAlias(rawHost)` first, and only after that failure applies the strict
+   normalization rules and retries `getAlias(lowercaseHostname)`. Then call `getConfigFromAlias` and
+   `readForTenant`. Preserve static Host independence, host-mode port support/404, typed service failure, and Next
+   control-flow. Export the bounded adapter/cookie contract from `index.ts`; do not export Effect services to the app.
+3. Update `docs/authentication.md` and `docs/session-state.md` sentences that still describe the old root `hasSession`
+   flow. Keep `getAlias`, `getConfigFromHost`, `GET /_test/tenant-config`, and `/_test/onsite` behavior unchanged.
+4. Replace root `page.tsx` with a dynamic, private/no-store server page. It reads async headers/cookies and calls only
+   the frontend-services public adapter. `NoUsableSession` redirects to `/auth/login`; mismatch invokes `forbidden()`
+   before streaming; service failure remains a safe server failure; a usable match renders bounded identity, tenant,
+   exact authoritative deadline/warning policy, and the action control. Revise `app/forbidden.tsx` to generic mismatch
+   copy without tenant/identity details.
+5. Implement the feature split. `packages/frontend/src/features/session-reference/action-state.ts` has
+   neither `"use server"` nor `server-only` and defines:
 
    ```ts
    export type ReferenceActionState =
@@ -251,7 +253,9 @@ browser, infrastructure, and handoff evidence remain in Phase 5 rather than dupl
    }
    ```
 
-   `packages/frontend/src/app/(app)/actions.ts` has a file-level `"use server"` directive. Its only runtime export is:
+   `packages/frontend/src/features/session-reference.ts` re-exports the type, initial value, and client component. Only
+   that public entry is imported outside the feature. `packages/frontend/src/app/(app)/actions.ts` has a file-level
+   `"use server"` directive. Its only runtime export is:
 
    ```ts
    export async function runReferenceOperation(
@@ -260,15 +264,23 @@ browser, infrastructure, and handoff evidence remain in Phase 5 rather than dupl
    ): Promise<ReferenceActionState>
    ```
 
-   The client island imports the state type and initial value from the sibling module and the action from the server
-   module. It still receives no tenant config, cookie, session reference, or identity props. Re-run host
-   normalization and all enforcement on submission. For a usable match, set exactly one short-lived host-only receipt
-   cookie and return `Succeeded`; for absence return `Denied` without OIDC/effect; for mismatch call `forbidden()`;
-   for service/tenant failure expose no protected result or receipt. The receipt value has no semantic contract and is
-   never logged or retained.
-7. Implement the minimal client island with installed `Form`, `Button`, and result presentation. Keep a meaningful
+   The client island receives `runReferenceOperation` from the page as a prop; it does not import from `src/app` and
+   receives no tenant config, cookie, session reference, or identity props. The action rereads headers/cookies and
+   calls the public frontend-services adapter on every submission. For a usable match, set exactly one short-lived
+   host-only receipt cookie and return `Succeeded`; for absence return `Denied` without OIDC/effect; for mismatch call
+   `forbidden()`; for service/tenant failure expose no protected result or receipt. The receipt value has no semantic
+   contract and is never logged or retained.
+6. Implement the minimal client island with installed `Form`, `Button`, and result presentation. Keep a meaningful
    accessible button name, native keyboard behavior, visible focus, disabled/pending state, and a polite status region.
-   Do not move data loading or page composition into the client.
+   Do not move data loading or page composition into the client. Run workspace-scoped `fallow guard` before adding the
+   feature/import layout and targeted checks as soon as boundary, unused, health, or duplication risks appear.
+7. Extend `tests/support/oidc/harness.ts` with an explicit `sessionPrefix` in `SiteOptions`/`siteEnv`, parallel to the
+   transaction prefix, so two processes and fixture setup demonstrably share one execution-owned session namespace.
+   Add an isolated issue-level fixture that establishes a real stored application session through public
+   `SessionService.establish`, returns its opaque reference only to the owned browser/HTTP setup, and cleans only its
+   owned prefix. It cannot count as Cucumber, provider freshness, PREETS-SESSION-003, or V-002 evidence. When neither
+   confirmed-fresh login nor this fixture is available, mark every session-dependent mismatch, stale-action, outage,
+   keyboard/action, or policy-handoff check incomplete rather than fabricating state.
 8. Revise the named requirements BDD scenarios as implementation obligations. Do not open Redis or add a pending
    authenticated scenario. In `tests/bdd/requirements/tenant-oidc-initiation.feature`, replace only
    `Scenario Outline: Root delegates before tenant-dependent work without protected content`. A valid Springfield
@@ -291,19 +303,21 @@ browser, infrastructure, and handoff evidence remain in Phase 5 rather than dupl
    document request returns that failure's 404 or 500. Do not revise `tenant-context.feature` or
    `onsite-prototype.feature`. Add only current-main-tagged bounded scenarios. Extend the issue-level two-process Node
    workflow for actual HTTP/action/receipt behavior and keep the successful real-login A-to-B case incomplete until B6
-   works. [quickstart.md](quickstart.md) section 4 is the execution checklist for these edits.
+   works. Static-mode cases must continue selecting the configured alias regardless of Host. The issue-level fixture
+   stays outside Cucumber. [quickstart.md](quickstart.md) section 4 is the execution checklist for these edits.
 9. Record the delivered path/fixture inventory and downstream categories in the implementation handoff. Then run
    focused behavior checks, the manual procedure, and repository quality gates. No implementation step may broaden
    this reference boundary into #154's comprehensive integration.
 
 Installed APIs verified for this architecture:
 
-- Effect 4.0.5: existing `Context.Service`, `Schema.TaggedError`, `Effect.fn`, `Layer`, and `ManagedRuntime` declarations;
+- Effect 4.0.5: existing `Context.Service`, `Schema.TaggedError`, `Effect.fn`, `Layer`, and `ManagedRuntime` declarations
+  in `frontend-services`; the Next app imports none of them;
 - Next.js 16.4.3: async `headers()`/`cookies()`, Server Actions, and `forbidden(): never` for Server Components/Server
   Functions under the already enabled `authInterrupts`. A file-level `"use server"` module exports only async
   functions, so `initialReferenceActionState` stays in the sibling module. Actual HTTP evidence remains required
   because `forbidden()` is experimental;
-- React 19.3.1: `useActionState` and Server Action form types;
+- React 19.3.1: `useActionState`, Server Action form types, and passing the action into the feature client as a prop;
 - `@pathableai/react` 0.3.0: public `Form`, `Button`, page/layout, alert/text, and native attribute forwarding.
 
 ### Phase 5 — Feature verification integration
@@ -316,8 +330,8 @@ execution order:
 3. page/action adapter scenarios;
 4. one production build and the issue-level running HTTP/action/two-process workflow;
 5. current-main requirements BDD for bounded missing-session/public/tenant behavior;
-6. agent-executed real browser keyboard/focus, A-to-B (when B6 permits), cross-tenant, stale-action, public diagnostic,
-   tenant-failure, and controlled outage observations;
+6. agent-executed real browser keyboard/focus, A-to-B (only when B6 permits), fixture-backed cross-tenant/stale-action/
+   controlled-outage checks, public diagnostics, and mode-aware tenant failures;
 7. delivered-route/fixture/downstream inventory review;
 8. cleanup and repository quality gates.
 
@@ -325,8 +339,9 @@ Module evidence does not duplicate framework status or browser claims. Existing 
 decoding and 404/500 rules. Requirements BDD uses feature-level `@partial` and cannot fabricate sessions, open Redis,
 or assert issue-only service-failure/handoff behavior. Actual 403, receipt presence/count, keyboard focus, and two
 running processes are observed through the composed application. Real-login V-002 is recorded incomplete when the B6
-freshness gate is unavailable; skipped execution, direct Redis setup, redirects, or application-session creation alone
-do not satisfy it.
+freshness gate is unavailable. The isolated public-service fixture may support denial, policy-handoff, keyboard/action,
+and outage evidence, but never freshness, Cucumber, PREETS-SESSION-003, or V-002; skipped execution, direct Redis setup,
+redirects, or application-session creation alone do not satisfy those claims.
 
 Evidence records name the exact revision, safe conditions, observed claim/result, cleanup, and limitations. They omit
 credentials, provider/callback values, cookies, session references, Redis records/keys, identity-bearing raw output,

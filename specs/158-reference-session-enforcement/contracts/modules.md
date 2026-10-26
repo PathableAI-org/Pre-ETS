@@ -8,20 +8,21 @@
 
 ## Module architecture decisions
 
-| Concern                           | Current owner and consumers                                                                                  | Decision                                                       | Public boundary                                                                          | Private decomposition                                                                                                              | Rationale and non-goals                                                                                                                                                                                                                                      |
-| --------------------------------- | ------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Session read and tenant admission | `lib/session.ts`; current root placeholder, callback/session evidence, new page/action, later #154 consumers | Extend the existing owner; remove the placeholder operation    | `SessionService`                                                                         | Preserve `session/codec.ts` and `session/store.ts` unchanged                                                                       | #218 explicitly deferred tenant-bound reads to #219. Do not create another service, expose Redis, or absorb request-host resolution.                                                                                                                         |
-| Request-tenant selection          | `lib/tenant.ts`; authentication, diagnostics, and `(app)` request helper                                     | Preserve the service; normalize only in the reference adapter  | `TenantConfigService`, `TenantAlias`                                                     | Preserve `tenant/config.ts`; private pure host normalization in `(app)/tenant-context.ts`                                          | The reference adapter applies `parseRequestHost` rules and passes only the lowercase hostname to `getAlias`, then `getConfigFromAlias`. `getAlias`, `getConfigFromHost`, and the diagnostic route keep the raw-host contract. No new tenant API is required. |
-| Protected page/action mapping     | Current `(app)` root and new action/client island                                                            | Replace the root placeholder and add a bounded private adapter | Next page/Server Action contract in [reference-application.md](reference-application.md) | `(app)/tenant-context.ts`, `(app)/session-context.ts`, `(app)/reference-action-state.ts`, `(app)/actions.ts`, one client component | Next control flow, headers, cookies, and UI state stay outside Effect domain modules. `actions.ts` exports only the async action. This is not default application-wide enforcement.                                                                          |
-| Synthetic protected effect        | New reference Server Action and its running-browser verifier                                                 | Keep private and response-scoped                               | Receipt behavior in [reference-application.md](reference-application.md)                 | Action-owned cookie helper                                                                                                         | A response cookie supplies independent evidence without a domain record, Redis counter, telemetry assertion, or public diagnostic.                                                                                                                           |
-| Runtime/resource composition      | Existing `lib/runtime.ts` process runtime                                                                    | Preserve                                                       | Existing `ApplicationServices` and `Runtime.runPromise`                                  | Existing production runtime                                                                                                        | `SessionService` already lives in the host-owned `ManagedRuntime`; no new service or Layer is required.                                                                                                                                                      |
+| Concern                            | Current owner and consumers                                                                                                         | Decision                                                                | Public boundary                                                                                  | Private decomposition                                                                                                      | Rationale and non-goals                                                                                                                                                                                                                                                |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Session read and tenant admission  | `packages/frontend-services/src/session.ts`; callback/session evidence, new page/action adapter, later #154 consumers               | Extend the existing owner; remove the placeholder operation and export  | `SessionService`                                                                                 | Preserve `session/codec.ts` and `session/store.ts` unchanged                                                               | #218 explicitly deferred tenant-bound reads to #219. Do not create another service, expose Redis, or absorb request-host resolution. Matching admission preserves the exact deadline and warning policy for V-010.                                                     |
+| Request-tenant selection           | `packages/frontend-services/src/tenant.ts`; authentication, diagnostics, existing tenant adapter, and new protected-request adapter | Preserve the service; add mode-aware composition in the request adapter | `TenantConfigService`, `TenantAlias`                                                             | Preserve `tenant/config.ts`; raw-first selection and private fallback normalization in `session-request.ts`                | Raw selection preserves static-mode Host independence. Only a failed direct selection is normalized and retried for portful host-mode requests. `getAlias`, `getConfigFromHost`, and the diagnostic route keep their contracts. No new tenant service API is required. |
+| Protected request composition      | New `packages/frontend-services/src/session-request.ts`; root page, one Server Action, and later #154 consumers                     | Export one bounded Next adapter over the shared runtime                 | Package export plus the browser contract in [reference-application.md](reference-application.md) | Private pure host normalization and typed Effect composition inside `frontend-services`                                    | The Next app must not import Effect, `Runtime`, or private tenant/session children. The adapter accepts raw request values, resolves tenant before session, and maps typed failures at the awaited framework boundary.                                                 |
+| Protected page/action presentation | `packages/frontend/src/app/(app)` and a new Bulletproof `src/features/session-reference.ts` public entry                            | Keep host actions in app and feature UI behind its public entry         | Next page/Server Action contract in [reference-application.md](reference-application.md)         | `(app)/page.tsx`, `(app)/actions.ts`, and private `features/session-reference/{action-state,reference-operation}` children | The app owns Next control flow and passes the action into the client island. The feature does not import `src/app`; `actions.ts` exports only the async action. This is not default application-wide enforcement.                                                      |
+| Synthetic protected effect         | New reference Server Action and its running-browser verifier                                                                        | Keep private and response-scoped                                        | Receipt behavior in [reference-application.md](reference-application.md)                         | Action-owned cookie helper                                                                                                 | A response cookie supplies independent evidence without a domain record, Redis counter, telemetry assertion, or public diagnostic.                                                                                                                                     |
+| Runtime/resource composition       | Existing `packages/frontend-services/src/runtime.ts` process runtime                                                                | Preserve                                                                | Existing `ApplicationServices` and `Runtime.runPromise`                                          | Existing production runtime                                                                                                | `SessionService` and `TenantConfigService` already live in the host-owned `ManagedRuntime`; no new service or Layer is required.                                                                                                                                       |
 
 Every affected concern has a current consumer. File size or feature novelty does not create another public module,
 provider interface, re-export surface, or workspace package.
 
 ## Public contracts
 
-### `packages/frontend/src/lib/session.ts`
+### `packages/frontend-services/src/session.ts`
 
 **Responsibility**: Establish and read the frontend application session, then admit it only when its stored tenant
 matches an independently resolved request tenant, while hiding Redis and wire details.
@@ -31,7 +32,8 @@ matches an independently resolved request tenant, while hiding Redis and wire de
 - OIDC callback Route Handler: continues to establish a session after trusted, freshness-confirmed authentication.
 - Existing independent-client/integration evidence: continues to use raw `read` to establish store behavior without
   claiming request authorization.
-- Reference protected page and Server Action: use `readForTenant` after request-tenant resolution.
+- The exported `session-request.ts` adapter: uses `readForTenant` after request-tenant resolution for the reference
+  page and Server Action.
 - Later #154 integration: reuses `readForTenant` across the comprehensive entry-point inventory.
 
 **Proposed signatures**:
@@ -40,8 +42,8 @@ matches an independently resolved request tenant, while hiding Redis and wire de
 import type { Redis } from "effect/persistence/Redis"
 import { type Config, Context, Effect, Layer, Schema } from "effect"
 
-import type { SessionReference } from "./session/codec.ts"
-import type { TenantAlias } from "./tenant.ts"
+import type { SessionReference } from "./session/codec.js"
+import type { TenantAlias } from "./tenant.js"
 
 export type { SessionReference }
 
@@ -154,56 +156,105 @@ do not enter this module.
 
 **Compatibility and relationships**: `establish`, `read`, public results, `SessionServiceUnavailable`, stored wire
 format, key prefix, and callback behavior are source-compatible. `readForTenant` is additive. Removing `hasSession` is
-an intentional private-workspace cleanup limited to the root placeholder, runtime-composition assertion, and test
-service fixtures. `TenantConfigService` remains upstream; protected consumers must use `readForTenant`, while raw
-`read` remains construction/adapter evidence and is not authorization.
+an intentional private-workspace cleanup covering `SessionService`, `frontend-services/src/entry.ts`, the package
+index export, the root placeholder, runtime-composition assertions, and test service fixtures. `TenantConfigService`
+remains upstream; protected consumers use `readForTenant` through the package request adapter, while raw `read` remains
+construction/adapter evidence and is not authorization.
 
 ### Contract evidence
 
-| Claim                                                                                   | Meaningful violation                                                                             | Durable evidence                                                                                                                       | Manual/transient evidence                                                          | Limitations and non-duplication                                                                           |
-| --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| A matching independently resolved tenant receives the unchanged usable identity/policy. | Admission changes identity/deadline/warning fields or ignores the supplied request tenant.       | Public `@effect/vitest` examples plus a Fast-Check equality property through real `SessionService.layer` and isolated in-memory Redis. | Running page/action evidence compares safe synthetic identity/tenant descriptions. | Does not prove real Redis sharing or HTTP rendering. Existing `read` tests keep codec/deadline ownership. |
-| A different tenant yields only `SessionTenantMismatch`.                                 | Cross-tenant input returns usable/absent state, leaks either tenant, or becomes service failure. | Public service examples for distinct branded aliases; inspect the expected error's public diagnostic for no identity/tenant payload.   | Running HTTP matrix establishes actual 403 and no protected effect.                | Module evidence does not establish Next status or forbidden presentation.                                 |
-| No usable session remains distinct from mismatch and failure.                           | Missing/malformed/expired input becomes forbidden, success, or failure.                          | Existing `read` examples plus focused `readForTenant` pass-through cases; no duplicate codec/store matrix.                             | Page redirect and stale-action denial through the running app.                     | Existing session tests own cause classification; exact expired/invalidated cause may remain unknown.      |
-| Service failure remains distinguishable and fail closed.                                | Store/codec failure becomes `NoUsableSession`, mismatch, or admission.                           | Injected/real service failure at the public operation and existing real-Redis outage evidence.                                         | Controlled running-app Redis outage, restoration, and zero-effect observation.     | Does not establish #221's complete outage/recovery/race guarantees.                                       |
+| Claim                                                                                        | Meaningful violation                                                                                     | Durable evidence                                                                                                                       | Manual/transient evidence                                                                               | Limitations and non-duplication                                                                           |
+| -------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| A matching independently resolved tenant receives the exact usable identity/deadline/policy. | Admission changes identity, recomputes/drops deadline or warning policy, or ignores the supplied tenant. | Public `@effect/vitest` examples plus a Fast-Check equality property through real `SessionService.layer` and isolated in-memory Redis. | The rendered page records the same safe identity, deadline, and warning values supplied by the session. | Does not prove real Redis sharing or HTTP rendering. Existing `read` tests keep codec/deadline ownership. |
+| A different tenant yields only `SessionTenantMismatch`.                                      | Cross-tenant input returns usable/absent state, leaks either tenant, or becomes service failure.         | Public service examples for distinct branded aliases; inspect the expected error's public diagnostic for no identity/tenant payload.   | Running HTTP matrix establishes actual 403 and no protected effect.                                     | Module evidence does not establish Next status or forbidden presentation.                                 |
+| No usable session remains distinct from mismatch and failure.                                | Missing/malformed/expired input becomes forbidden, success, or failure.                                  | Existing `read` examples plus focused `readForTenant` pass-through cases; no duplicate codec/store matrix.                             | Page redirect and stale-action denial through the running app.                                          | Existing session tests own cause classification; exact expired/invalidated cause may remain unknown.      |
+| Service failure remains distinguishable and fail closed.                                     | Store/codec failure becomes `NoUsableSession`, mismatch, or admission.                                   | Injected/real service failure at the public operation and existing real-Redis outage evidence.                                         | Controlled running-app Redis outage, restoration, and zero-effect observation.                          | Does not establish #221's complete outage/recovery/race guarantees.                                       |
+
+The first row is the durable public-service evidence for V-010. Equality is checked against the `UsableSession`
+returned by `read`; deriving the expected deadline or warning values again in the admission test would not establish
+unchanged handoff.
+
+## Exported protected-request adapter
+
+`packages/frontend-services/src/session-request.ts` is a public package adapter, not a new Effect service. It accepts
+raw framework values and runs the existing tenant/session services on the installed shared runtime:
+
+```ts
+export interface ReadSessionRequestInput {
+  readonly host: string
+  readonly reference?: string
+}
+
+export interface ResolvedSessionRequest {
+  readonly session: NoUsableSession | UsableSession
+  readonly tenantAlias: TenantAlias
+}
+
+export const readSessionRequest: (
+  input: ReadSessionRequestInput
+) => Promise<ResolvedSessionRequest>
+```
+
+The package index exports this helper and the one session-cookie name/read surface needed by the app; callback writing
+and protected reading must not duplicate the literal. The adapter:
+
+1. calls `TenantConfigService.getAlias(input.host)` with the raw Host;
+2. on direct failure only, strictly normalizes the Host with authentication's private acceptance rules and retries
+   `getAlias` with the lowercase hostname;
+3. calls `getConfigFromAlias` before session access;
+4. calls `SessionService.readForTenant({ reference, tenantAlias })`; and
+5. maps tenant failure, mismatch, and service failure at the awaited Next boundary without catching Next control flow.
+
+A direct success is required for static mode: malformed and unresolvable hosts still select the configured static
+alias. In host mode, `alias.localhost:3000` takes the fallback and calls `getAlias("alias.localhost")`; an unparseable
+value or failed retry preserves the original direct-selection failure. That is a tenant 404 for invalid/unknown
+host-mode input; a static-selector configuration failure is not rewritten as a Host failure. A matching result contains
+the same `UsableSession` instance, including the exact deadline and warning policy required by V-010.
 
 ## Consumed unchanged public contract
 
 `TenantConfigService.getAlias(host)` continues to return `Result<TenantAlias, TenantFailure>` and
-`getConfigFromAlias(alias)` continues to return `Effect<TenantConfig, TenantFailure>`. The reference adapter calls them
-in that order only after pure host normalization, and it passes `getAlias` the lowercase hostname rather than the raw
-`Host` header. An unparseable host is the existing tenant 404 and does not call `getAlias`. `getConfigFromHost` and
-`GET /_test/tenant-config` still receive the raw Host header. No new tenant method, error, Layer, schema, or re-export
-is planned, and existing authentication/diagnostic consumers remain source-compatible. The
-`alias.localhost:3000` adapter example asserts that the port is not an argument to `getAlias`.
+`getConfigFromAlias(alias)` continues to return `Effect<TenantConfig, TenantFailure>`. The reference adapter first calls
+`getAlias` with the raw Host. Static mode succeeds regardless of that Host. Only a failed direct selection is strictly
+normalized and retried with the lowercase hostname; `alias.localhost:3000` therefore reaches
+`getAlias("alias.localhost")` in host mode. An unparseable Host is a 404 only after direct host-mode selection fails.
+`getConfigFromHost` and `GET /_test/tenant-config` still receive the raw Host header. No new tenant method, error,
+Layer, schema, or re-export is planned, and existing authentication/diagnostic consumers remain source-compatible.
 
 ## Cross-module dependency direction
 
 ```text
 Next page / Server Action
-  -> private pure host normalization (parseRequestHost acceptance rules)
-  -> TenantConfigService.getAlias(lowercase hostname), then getConfigFromAlias
-  -> SessionService.readForTenant
-     -> private session codec and store children
-        -> shared process Redis capability
+  -> @pathableai/pre-ets-frontend-services readSessionRequest(raw Host, opaque reference)
+     -> TenantConfigService.getAlias(raw Host)
+        -> direct failure only: private normalization, then getAlias(lowercase hostname)
+     -> TenantConfigService.getConfigFromAlias
+     -> SessionService.readForTenant
+        -> private session codec and store children
+           -> shared process Redis capability
 ```
 
 `SessionService` may import the public `TenantAlias` type but never tenant private children or `TenantConfigService`.
-The `(app)` adapter imports public tenant/session modules and app-owned cookie helpers; it never imports
-`lib/session/*`. The client component imports `ReferenceActionState` and `initialReferenceActionState` from
-`(app)/reference-action-state.ts` and `runReferenceOperation` from `(app)/actions.ts`. It receives no tenant config,
+Only the `frontend-services` request adapter imports the public tenant/session parents and shared runtime; it never
+imports private `session/*` or `tenant/*` children. The frontend page and action import the adapter from the package
+index and do not import Effect or `Runtime`. The Bulletproof public entry
+`packages/frontend/src/features/session-reference.ts` owns the private action-state and client-island children. The app
+page passes `runReferenceOperation` into the island; the feature never imports `src/app` and receives no tenant config,
 cookie, session reference, or identity props. Public authentication and diagnostics do not import the protected
-session adapter.
+request adapter.
 
 ## Rejected abstractions and alternatives
 
 - Port-stripping inside `getAlias` or `getConfigFromHost`: the raw-host contract and diagnostic route stay unchanged.
-- A public host-parser service or an Effect wrapper around the pure hostname normalization: authentication's private
-  `parseRequestHost` stays unexported, and the reference adapter owns a private pure copy of those acceptance rules.
+- Normalize before direct tenant selection: this would reject Hosts that static mode is required to ignore. Raw
+  selection remains first; authentication's private acceptance rules are copied only for the failed host-mode fallback.
+- A public host-parser service or an Effect service around normalization: authentication's private `parseRequestHost`
+  stays unexported, and the package adapter owns a private pure copy of those acceptance rules.
 - A runtime `initialReferenceActionState` export from the `"use server"` module: that file can export only async
-  functions, so the state constant lives in the sibling module.
+  functions, so the state constant lives in the private Bulletproof feature child.
 - New enforcement service/Layer: no distinct resource, lifecycle, or error owner justifies it.
-- Shared package/backend contract: enforcement is frontend-owned and no cross-process consumer exists.
+- Backend/shared-domain contract: enforcement remains frontend-process-owned in the existing `frontend-services`
+  workspace and no backend consumer exists.
 - Host-aware session service: would mix tenant selection with session persistence and permit substitution.
 - Middleware/Proxy default guard: would claim comprehensive coverage that belongs to #154.
 - Redis-backed synthetic-effect service: arbitrary application-value storage and domain persistence are out of scope.
@@ -221,4 +272,4 @@ session adapter.
 - Exact bounded success/denial/forbidden copy, provided it has meaningful accessible names and exposes no protected
   data on denial.
 - The receipt cookie's non-semantic value and bounded lifetime; neither is a public contract or retained evidence.
-- Focused test filenames and helper decomposition under the private `(app)` boundary.
+- Focused test filenames and private helper decomposition inside `frontend-services` and the Bulletproof feature.

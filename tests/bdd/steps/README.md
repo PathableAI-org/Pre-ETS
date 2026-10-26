@@ -12,13 +12,6 @@ configuration setup and tenant-specific observations. `presentation.ts` compares
 content after navigation; browser requests preserve the logical Host header while routing to the
 owned loopback process, so this does not establish infrastructure ingress behavior.
 
-Structured `/_test/*` responses are application outcomes when the requirements BDD guide authorizes them as a sparse
-evidence seam. Request them through the same owned HTTP boundary; do not import their implementation or use them to
-reach a backing store. Assert only the minimal semantic fields needed by the tagged requirement, and keep the feature's
-description explicit that a diagnostic observation does not establish the ordinary user workflow or production ingress
-blocking. Reuse an existing diagnostic where it owns the required fact. Adding a new endpoint is product work, not step
-scaffolding, and needs the guide's authority, data-minimization, no-store, and side-effect review first.
-
 Shared support under `tests/bdd/support/` owns temporary tenant directories, spawning/stopping the
 frontend, and recording the last HTTP response. Product assertions belong in steps, not in setup
 hooks.

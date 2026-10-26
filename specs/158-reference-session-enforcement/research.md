@@ -2,14 +2,14 @@
 
 **Feature**: `158-reference-session-enforcement`
 
-**Date**: 2026-10-25
+**Date**: 2026-10-26
 
 ## Decision 1: Extend the existing session owner with tenant-bound reads
 
 **Decision**: Add `SessionService.readForTenant(input)` and a fieldless
-`SessionTenantMismatch` expected error to `packages/frontend/src/lib/session.ts`. Preserve `read` for the established
-session-construction and independent-client consumers, and remove the temporary `hasSession()` operation after its only
-production consumer migrates.
+`SessionTenantMismatch` expected error to `packages/frontend-services/src/session.ts`. Preserve `read` for the
+established session-construction and independent-client consumers, and remove the temporary `hasSession()` operation,
+its `entry.ts`/package export, and its root/test consumers after the reference adapter replaces them.
 
 **Rationale**: The approved #218 plan made `SessionService` the public owner of session establishment/read semantics and
 explicitly left `hasSession()` false until #219 supplied an independently tenant-bound read. The new operation consumes
@@ -27,43 +27,47 @@ identity, idle deadline, and warning policy. A mismatch error carries no tenant 
 - Tenant comparison in each page/action: rejected because #154 needs one reusable, framework-independent contract and
   duplicated comparisons could drift.
 
-## Decision 2: Normalize the request host, then resolve the tenant before session enforcement
+## Decision 2: Preserve static selection, then normalize only a failed host-mode candidate
 
-**Decision**: The private `(app)` reference adapter reads `headers().get("host")` and accepts it with the same rules as
-the unexported `parseRequestHost` in `packages/frontend/src/lib/authentication.ts`. A value is rejected when it is
-empty, has surrounding whitespace, contains `/`, `?`, `#`, `@`, or `\`, fails the `opaque://` URL parse, has an empty
-hostname, or has a non-empty path, query, or fragment. Rejection is the existing tenant 404 through `notFound()` (the
-status-404 branch of `httpErrorPage`). It does not call `getAlias`, redirect to `/auth/login`, or read the session.
-An accepted value contributes only its lowercased `hostname` to `TenantConfigService.getAlias`; the port is not passed.
-The adapter then calls `getConfigFromAlias` and only afterward reads the session cookie and calls
-`readForTenant({ reference, tenantAlias })`.
+**Decision**: The exported request adapter in `packages/frontend-services/src/session-request.ts` receives the raw
+request Host and first calls `TenantConfigService.getAlias(rawHost)`. Static mode therefore selects its configured
+alias for every Host, including empty, malformed, unknown, and otherwise unresolvable values, as required by
+PREETS-TENANT-003 AC3 and PREETS-TENANT-005 AC5. A successful direct selection proceeds to `getConfigFromAlias` without
+parsing the Host.
 
-`alias.localhost:3000` is the required adapter example: `getAlias` receives `alias.localhost`. A second example uses a
-value `parseRequestHost` rejects, such as `alias.localhost/extra`, and observes a 404 without a `getAlias` call or a
-login redirect. `127.0.0.1` and a bare base host are parseable; they still reach `getAlias` and keep that operation's
-existing pattern failure.
+When direct selection fails, the adapter applies the same strict acceptance rules as the unexported
+`parseRequestHost` in `packages/frontend-services/src/authentication.ts`: reject an empty value, surrounding whitespace,
+`/`, `?`, `#`, `@`, or `\`, an invalid `opaque://` URL, an empty hostname, or a non-empty path, query, or fragment. A
+valid portful host contributes only its lowercased hostname to a second `getAlias` call. If normalization is invalid or
+the retry still fails, the adapter preserves the original direct-selection failure through `httpErrorPage`; for an
+invalid or unknown host in host mode that failure is the tenant 404, while an invalid static selector retains its own
+configuration-failure mapping. The adapter does not redirect to `/auth/login` or read the session. After alias
+selection, it calls `getConfigFromAlias` and only then calls `readForTenant({ reference, tenantAlias })`.
 
-**Rationale**: Installed `getAlias` rejects any host that still contains a port
-(`packages/frontend/tests/unit/tenant-alias.test.ts`). Login and callback do not pass that string: `parseRequestHost`
-returns the lowercase hostname, and authentication calls `getAlias(requestHost.hostname)`. Running OIDC evidence uses
-hosts such as `springfield.localhost:3000`. Passing the raw `Host` header to `getAlias` would make those requests a
-tenant 404 before session admission or `/auth/login`.
+`alias.localhost:3000` is the required host-mode adapter example: the direct selection fails on the retained port and
+the fallback calls `getAlias("alias.localhost")`. `alias.localhost/extra` remains a host-mode 404 after direct selection
+and normalization fail, but selects the configured static alias in static mode. `127.0.0.1` and a bare base host are
+parseable fallback inputs in host mode and retain `getAlias`'s existing pattern failure.
+
+**Rationale**: Installed `getAlias` rejects a retained port in host mode
+(`packages/frontend-services/tests/unit/tenant-alias.test.ts`). Login and callback avoid that failure because
+`parseRequestHost` returns the lowercase hostname before authentication calls `getAlias`. Running OIDC evidence uses
+hosts such as `springfield.localhost:3000`, so the protected adapter needs the same host-mode fallback. Pre-parsing
+every Host would instead violate static selection by rejecting values that static mode is required to ignore.
 
 This resolves the strategy conflict without changing the service. `docs/multi-tenancy.md` still says a retained port
-fails alias resolution, the diagnostic adapter passes the incoming Host header to the service, and consumers do not
-give the service an independently parsed host. Authentication already normalizes before `getAlias` so the session alias
-and the request alias are the same value. The reference adapter uses that same pre-service normalization. It does not
-change `getAlias`, `getConfigFromHost`, or `GET /_test/tenant-config`, which keep the raw-host contract. A parseable
-hostname in static mode still reaches `getAlias`, which ignores that hostname and selects the configured static alias.
-An unparseable Host is 404 before `getAlias`, including in static mode.
+fails direct host-mode alias resolution, the diagnostic adapter passes the incoming Host header to the service, and
+consumers do not change `getAlias` or `getConfigFromHost`. Authentication still normalizes before its only `getAlias`
+call. The protected adapter instead uses direct selection as the resolution-mode discriminator and normalizes only
+after that selection fails. `GET /_test/tenant-config` keeps its existing raw-host contract.
 
 `/_test/onsite` calls the shared `requireTenantConfig()` helper and must keep its current outcomes: static mode at
-`127.0.0.1` stays 200, host mode at `springfield.example.test` stays 200, and `unknown.example.test` stays 404. Those
-hosts are parseable, so normalization does not change them. The onsite page does not become a session consumer.
+`127.0.0.1` stays 200, host mode at `springfield.example.test` stays 200, and `unknown.example.test` stays 404. The
+onsite page does not become a session consumer.
 
-The normalization is a private pure function in the `(app)` adapter. It is not an Effect wrapper, a new public parser,
-or an export of authentication's `parseRequestHost`. `TenantNotFound` stays module-private; the adapter does not
-construct it.
+The normalization is a private pure function under the public `session-request.ts` package adapter. It is not an
+Effect service, a public parser, or an export of authentication's `parseRequestHost`. `TenantNotFound` stays
+module-private; the adapter preserves service failures rather than constructing one.
 
 **Documentation the implementation pass replaces**: This planning pass does not edit product docs. Implementation
 replaces these superseded sentences:
@@ -74,29 +78,31 @@ replaces these superseded sentences:
   cookies, Redis, or request-tenant identity, and does not turn presence into authorization."
 - `docs/session-state.md`: "The root consumer uses absence to redirect to `/auth/login` before tenant lookup."
 
-The replacement states that the reference page normalizes Host, resolves the tenant, and then reads the session. A
-resolved tenant with no usable session redirects to `/auth/login`. An unparseable host or other tenant failure on `/`
-is that tenant 404 or 500. `hasSession()` is removed.
+The replacement states that the reference page resolves the tenant under the configured mode and then reads the
+session. A resolved tenant with no usable session redirects to `/auth/login`. A host-mode invalid host or other tenant
+failure on `/` is that tenant 404 or 500; static mode remains independent of Host. `hasSession()` is removed.
 
 **Alternatives considered**:
 
-- Pass the raw `Host` header, including a retained port, to `getAlias`: rejected because installed `getAlias` rejects
-  retained ports and the local evidence hosts include a port.
+- Use only the raw `Host` result: rejected because host mode rejects retained ports and the local evidence hosts include
+  a port. The raw attempt remains necessary to preserve static-mode Host independence.
+- Normalize before the first `getAlias` call: rejected because a malformed Host must not prevent static selection.
 - Teach `getAlias` or `getConfigFromHost` to strip ports: rejected. Those operations and the diagnostic route keep the
   raw-host contract.
 - Pass the request host into `SessionService`: rejected because it would move tenant/configuration ownership into the
   session module.
 - Derive the request tenant from `UsableSession.tenantAlias`: rejected because it violates independent tenant
   resolution and enables cross-tenant substitution.
-- Change `TenantConfigService.getConfigFromHost` to return a new public wrapper: rejected because the private request
-  helper can compose the existing `getAlias` and `getConfigFromAlias` operations without a public tenant-contract
+- Change `TenantConfigService.getConfigFromHost` to return a new public wrapper: rejected because the package request
+  adapter can compose the existing `getAlias` and `getConfigFromAlias` operations without a public tenant-service
   change.
 
 ## Decision 3: Use `/` as the bounded protected reference page
 
-**Decision**: Replace the current fail-closed root placeholder with the SSR-first reference consumer at `/`. The page
-resolves the tenant, reads the `pathable-session` cookie, and maps the tenant-bound session result before rendering any
-protected content.
+**Decision**: Replace the current fail-closed root placeholder with the SSR-first reference consumer at `/`. The Next
+page reads request state and calls the exported `@pathableai/pre-ets-frontend-services` request adapter before rendering
+protected content. Effect workflows remain in `packages/frontend-services`; the page owns only presentation and Next
+control flow.
 
 **Rationale**: `/` is already the bounded entry used by the current session/OIDC evidence. Reusing it removes the
 temporary `hasSession()` path and does not imply comprehensive application protection. Public callback, failure,
@@ -115,19 +121,20 @@ recovery, and `/_test` resources remain outside this `(app)` consumer.
 
 **Decision**: The page and Server Action map public session outcomes as follows:
 
-| Condition                   | Page mapping                                     | Server Action mapping                                        |
-| --------------------------- | ------------------------------------------------ | ------------------------------------------------------------ |
-| Tenant 404/500              | Existing `httpErrorPage` mapping                 | Same tenant-first failure; no effect                         |
-| `NoUsableSession`           | `redirect("/auth/login")` after tenant success   | Safe denial state; no OIDC start and no effect               |
-| `SessionTenantMismatch`     | Awaited `forbidden()` before streaming           | `forbidden()` before the effect                              |
-| `SessionServiceUnavailable` | Safe server failure, not login or admission      | Safe server failure, not a returned success/absence          |
-| `UsableSession`             | Render identity/policy and the reference control | Perform one synthetic effect and return the protected result |
+| Condition                   | Page mapping                                                                            | Server Action mapping                                        |
+| --------------------------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| Tenant 404/500              | Existing `httpErrorPage` mapping                                                        | Same tenant-first failure; no effect                         |
+| `NoUsableSession`           | `redirect("/auth/login")` after tenant success                                          | Safe denial state; no OIDC start and no effect               |
+| `SessionTenantMismatch`     | Awaited `forbidden()` before streaming                                                  | `forbidden()` before the effect                              |
+| `SessionServiceUnavailable` | Safe server failure, not login or admission                                             | Safe server failure, not a returned success/absence          |
+| `UsableSession`             | Render identity and the exact stored deadline/warning policy plus the reference control | Perform one synthetic effect and return the protected result |
 
 **Rationale**: Installed Next.js 16.4.3 documents `forbidden()` for Server Components and Server Functions when
 `experimental.authInterrupts` is enabled, which this workspace already does. The installed action handler maps the
 interrupt to HTTP 403, but the API is experimental, so running HTTP evidence remains required. `redirect()` and
 `forbidden()` are framework control flow and must not be swallowed by catches. Every Server Action independently
-re-resolves tenant and session state; it never trusts page-rendered props.
+re-resolves tenant and session state through the package adapter; it never trusts page-rendered props. Matching
+admission hands the exact `idleDeadlineEpochMilliseconds` and `warningLeadMinutes` values through unchanged for V-010.
 
 **Alternatives considered**:
 
@@ -139,9 +146,12 @@ re-resolves tenant and session state; it never trusts page-rendered props.
 
 ## Decision 5: Use a minimal client island for perceivable action state
 
-**Decision**: Keep the page, identity/policy presentation, and request composition server-rendered. Add one client
-component containing an `@pathableai/react` `Form` and `Button` with React `useActionState` for the returned success or
-no-session denial message. Announce the result through a polite status region and keep the native submit semantics.
+**Decision**: Keep the page and identity/policy presentation server-rendered. Add one Bulletproof feature entry at
+`packages/frontend/src/features/session-reference.ts` owning private action-state and client-island children under
+`src/features/session-reference/`. The client component contains an `@pathableai/react` `Form` and `Button` with React
+`useActionState` for the returned success or no-session denial message. The app page passes the top-level Server Action
+as a prop, so the feature does not import `src/app`. Announce the result through a polite status region and keep the
+native submit semantics.
 
 **Rationale**: React action state is the only browser-owned behavior needed. Installed `@pathableai/react` 0.3.0
 forwards native form and button attributes; the control therefore has a real submit button, keyboard activation, and
@@ -177,9 +187,11 @@ its value.
 
 ## Decision 7: Reuse existing session, Redis, OIDC, and BDD fixtures
 
-**Decision**: Extend the existing `@effect/vitest` session service scenarios, real-Redis integration fixture,
+**Decision**: Extend the existing `@effect/vitest` session service scenarios and real-Redis integration fixture under
+`packages/frontend-services/tests`, the Next presentation tests under `packages/frontend/tests`,
 `tests/support/oidc/harness.ts`, two-process Cucumber support, and issue-level `node:test` workflow. Add no second
-browser runner, provider harness, Redis client, or application runtime.
+browser runner, provider harness, Redis client, or application runtime. Running evidence must submit the rendered form
+so it exercises the actual generated frontend Server Action rather than calling a TypeScript action function directly.
 
 **Rationale**: Existing evidence already establishes cookie/reference decoding, missing/expired records, service
 failure, and independent Redis clients. New module evidence should prove only tenant-bound admission. Running
@@ -225,7 +237,8 @@ confirmed fresh authentication.
   `Text`, `Alert`, `Form`, and `Button`. Only `useActionState` requires the client boundary.
 - **Storage**: No new durable storage or schema is introduced. Redis remains the established session store; the
   synthetic effect is an outgoing short-lived response cookie.
-- **Request host**: The reference adapter normalizes with the `parseRequestHost` rules above and does not change
-  `getAlias`. No product clarification remains.
+- **Request host**: The reference adapter tries unchanged raw selection first and applies the `parseRequestHost` rules
+  only as host-mode fallback. Static mode therefore remains Host-independent without changing `getAlias`. No product
+  clarification remains.
 - **Product decisions**: No unresolved product decision blocks this plan. B6 remains a declared execution limitation,
   not an implementation assumption. No `NEEDS CLARIFICATION` remains.

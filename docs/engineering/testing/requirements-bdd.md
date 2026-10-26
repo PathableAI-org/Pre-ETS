@@ -47,45 +47,6 @@ There is no mandatory happy/edge/error matrix, scenario count, coverage percenta
 module tests in BDD. Flag desirable behavior absent from the requirement as a gap for consideration, separately
 from defects; keep it out of the assertions until its requirement basis is merged into main.
 
-## Structured diagnostic evidence under `/_test/*`
-
-An application diagnostic under `/_test/*` may provide structured data for a requirements BDD assertion when the
-required state, selection, or application use cannot be observed precisely through an ordinary user-facing response.
-For example, the existing tenant diagnostic makes selected non-secret configuration observable without requiring a UI
-to display configuration fields. This is an intentional evidence seam, not a requirement-free exception or a default
-substitute for product behavior. Use it sparingly.
-
-Before relying on or proposing a diagnostic, identify:
-
-- the current-main requirement and exact claim the structured response supports;
-- the meaningful violation the asserted fields would detect;
-- why an existing user-facing, HTTP, public-module, or integration observation is insufficient or would create an
-  unrelated presentation promise; and
-- the limitation introduced by observing a diagnostic rather than the ordinary consumer experience.
-
-The diagnostic must exercise the owning application's real public capabilities and selection rules. It must not create
-parallel product logic, import private module children, open a backing store from BDD support, fabricate provider or
-session state, or merely serialize an internal object. Return the smallest stable semantic shape needed for the claim.
-Exclude credentials, tokens, cookie values, bearer/session references, store keys or records, raw error causes, PHI,
-and identifying partner data. Prefer safe derived facts over sensitive values; exposing protected or sensitive fields
-requires explicit authority and synthetic-data controls rather than an inference from the test route's name.
-
-Unless a referenced requirement explicitly needs a mutation, a diagnostic is read-only and must not create, renew,
-replace, or invalidate application or domain state. Apply private/no-store response controls where the observation is
-request- or tenant-specific. Preserve the route's approved authentication/public status and tenant-failure behavior;
-do not add a hidden authentication policy solely for the scenario.
-
-Production network rules may block all ingress to `/_test/*`. That makes a diagnostic safer to ship but does not prove
-the rule from direct application BDD and does not grant permission to expose secrets or unrestricted protected state.
-Verify ingress blocking at the infrastructure boundary separately. The feature description or scenario should disclose
-when its evidence comes from a structured diagnostic and state that the observation establishes only the named claim,
-not the complete user workflow, accessibility, production ingress, or every consumer of the underlying capability.
-
-Keep user-facing evidence when the requirement promises user behavior or presentation. Do not add a diagnostic merely
-to avoid a meaningful module test, real integration, browser interaction, or missing product implementation. If the
-needed response would introduce a new promise or expose data outside current authority, return that decision to the
-requirements or delivery workflow before authoring dependent assertions.
-
 ## Intermediate slices with `@partial`
 
 A PR may establish an intermediate slice of a requirement. Apply `@partial` at feature level when the feature's
@@ -143,17 +104,15 @@ coverage nor inability to read an optional issue is itself a product defect.
 
 Use these cases when reviewing changes to this discipline:
 
-| Case                                                                                       | Expected review                                                                                              |
-| ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
-| A new or stronger promise exists only on the PR branch                                     | Defer dependent BDD assertions until the requirement change is merged into main.                             |
-| A reachability slice asserts a tenant name on the page                                     | Flag the unsupported presentation promise; raise a separate requirement gap if useful.                       |
-| A bounded Gherkin step hides a content assertion in its implementation                     | Flag the implementation's unsupported assertion.                                                             |
-| A tagged partial slice has convincing evidence for its declared outcome                    | Respect its scope; do not demand full requirement coverage in the PR.                                        |
-| A feature fully captures its referenced scope but retains `@partial`                       | Suggest tag removal without declaring runtime verification.                                                  |
-| A linked issue requests behavior absent from the main-branch requirement                   | Flag the gap separately; the issue cannot justify an assertion.                                              |
-| Main-branch requirements or linked-issue context cannot be accessed                        | Report the specific limitation without inventing approval or scope.                                          |
-| A sparse `/_test/*` response exposes a requirement-backed structured fact                  | Accept it when the owning application supplies minimal safe data and the scenario states its evidence limit. |
-| A diagnostic mirrors internals, exposes sensitive data, or replaces required user evidence | Flag the boundary/data problem and require a smaller observation or the owning authority decision.           |
+| Case                                                                     | Expected review                                                                        |
+| ------------------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
+| A new or stronger promise exists only on the PR branch                   | Defer dependent BDD assertions until the requirement change is merged into main.       |
+| A reachability slice asserts a tenant name on the page                   | Flag the unsupported presentation promise; raise a separate requirement gap if useful. |
+| A bounded Gherkin step hides a content assertion in its implementation   | Flag the implementation's unsupported assertion.                                       |
+| A tagged partial slice has convincing evidence for its declared outcome  | Respect its scope; do not demand full requirement coverage in the PR.                  |
+| A feature fully captures its referenced scope but retains `@partial`     | Suggest tag removal without declaring runtime verification.                            |
+| A linked issue requests behavior absent from the main-branch requirement | Flag the gap separately; the issue cannot justify an assertion.                        |
+| Main-branch requirements or linked-issue context cannot be accessed      | Report the specific limitation without inventing approval or scope.                    |
 
 ## Agent workflows
 
