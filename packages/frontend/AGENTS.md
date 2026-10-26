@@ -14,18 +14,21 @@ Read the root [AGENTS.md](../../AGENTS.md) before changing this workspace.
 
 ## Effect
 
-This workspace is Effect-first for agents. Before designing or modifying Effect
-code, read [Effect agent guidance](../../docs/engineering/effect-guidance.md),
-then the local Effect v4 checkout's `LLMS.md` and relevant linked examples/source.
-Verify APIs against this workspace's installed Effect types. Keep React components,
-pure transformations, and Next.js host adapters idiomatic; execute application Effects
-through the host's shared runtime. Product pins come from the named
-`effect` catalog in [`pnpm-workspace.yaml`](../../pnpm-workspace.yaml).
+This workspace is the Next.js App Router application. It is not an Effect workspace.
+Do not import `effect` or `@effect/*`. Do not add Effect workflows, services, or the
+Effect language-service plugin here.
 
-Own presentation, tenant configuration, OIDC orchestration, and temporary
-session/UI state. Effect may be used for frontend workflows and adapters that
-stay within that ownership. Do not move durable domain persistence or business
-authorization into Redis, cookies, or this process; those belong in the backend.
+Tenant configuration, OIDC orchestration, temporary session state, and the shared
+runtime live in [`frontend-services`](../frontend-services/AGENTS.md). Pages, layouts,
+and React call that package. `src/instrumentation.ts` decides when the process boots
+and then calls `startProductionRuntime`. Route files keep segment config and inject
+presentation factories; they do not compose Effects.
+
+Own presentation and the Next.js host. Do not move durable domain persistence or
+business authorization into Redis, cookies, or this process; those belong in the
+backend. Do not put services back in `src/lib`. That directory is absent. Do not
+invent `src/features` or move `src/components` during ordinary work; aligning the
+app with Bulletproof feature folders is a separate step.
 
 When creating or editing UI that uses `@pathableai/react`, locate the installed
 `@pathableai/react` package and read
@@ -39,7 +42,7 @@ This workspace uses Fallow's Bulletproof preset. Read
 modules, imports, or source layout. Inspect the files you will change:
 
 ```sh
-pnpm --filter @pathableai/pre-ets-frontend exec fallow guard src/lib/tenant.ts
+pnpm --filter @pathableai/pre-ets-frontend exec fallow guard src/components/onsite/visit-state.ts
 ```
 
 Follow the zone and allowed directions that command reports.

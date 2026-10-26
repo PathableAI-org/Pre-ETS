@@ -14,10 +14,6 @@
     "plugins": [
       {
         "name": "next"
-      },
-      {
-        "name": "@effect/language-service",
-        "ignoreEffectWarningsInTscExitCode": true
       }
     ],
     "incremental": true
@@ -26,7 +22,6 @@
     "src/**/*",
     "tests/**/*",
     "vitest.config.ts",
-    "vitest.integration.config.ts",
     "next-env.d.ts",
     ".next/types/**/*.ts",
     "next.config.ts"

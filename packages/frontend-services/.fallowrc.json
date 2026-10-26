@@ -1,0 +1,10 @@
+{
+  "$schema": "../../node_modules/fallow/schema.json",
+  "extends": "../../.fallowrc.shared.json",
+  "entry": [
+    "src/index.ts"
+  ],
+  "rules": {
+    "unused-dependencies": "error"
+  }
+}

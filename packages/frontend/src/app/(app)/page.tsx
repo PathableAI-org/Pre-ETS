@@ -1,18 +1,12 @@
-import { Effect } from "effect"
+import { hasSession } from "@pathableai/pre-ets-frontend-services"
 import { redirect } from "next/navigation"
-
-import { Runtime } from "../../lib/runtime"
-import { SessionService } from "../../lib/session.ts"
 
 export const dynamic = "force-dynamic"
 
 export default async function HomePage() {
-  const hasSession = await Effect.gen(function*() {
-    const service = yield* SessionService
-    return yield* service.hasSession()
-  }).pipe(Runtime.runPromise)
+  const present = await hasSession()
 
-  if (!hasSession) redirect("/auth/login")
+  if (!present) redirect("/auth/login")
 
   // Presence cannot authorize protected rendering until stored sessions and
   // independent request-tenant binding are implemented.

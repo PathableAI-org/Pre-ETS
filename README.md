@@ -164,11 +164,13 @@ workflows are not implemented yet.
 
 ## Effect developer setup
 
-Frontend, backend, and domain use the coordinated Effect pins in the named
-`effect` catalog in [`pnpm-workspace.yaml`](pnpm-workspace.yaml). All three
-workspaces enable the Effect language-service plugin; product ownership is
-unchanged (frontend owns Next/OIDC/session, backend owns the Effect REST domain
-layer, and domain owns reusable schemas).
+Frontend-services, backend, and domain use the coordinated Effect pins in the named
+`effect` catalog in [`pnpm-workspace.yaml`](pnpm-workspace.yaml). Those three
+workspaces enable the Effect language-service plugin. The Next.js app does not.
+Product ownership stays split by process: `packages/frontend-services` owns
+tenant configuration, OIDC, and temporary session state for the Next process;
+the Next app owns presentation and calls that package; backend owns the Effect
+REST domain layer; domain owns reusable schemas.
 
 Install dependencies from the repository root:
 
@@ -188,7 +190,7 @@ If no suitable checkout is available, optionally clone source at the tag matchin
 the installed frontend Effect version:
 
 ```sh
-effect_tag="effect@$(node -p "require('./packages/frontend/node_modules/effect/package.json').version")"
+effect_tag="effect@$(node -p "require('./packages/frontend-services/node_modules/effect/package.json').version")"
 mkdir -p ~/.local/share/effect-solutions
 git clone --depth 1 --branch "$effect_tag" \
   https://github.com/Effect-TS/effect.git \
@@ -207,7 +209,7 @@ TypeScript installation and inspect the result:
 pnpm exec effect-language-service patch
 pnpm exec effect-language-service check
 pnpm exec effect-language-service diagnostics --project packages/backend/tsconfig.json
-pnpm exec effect-language-service diagnostics --project packages/frontend/tsconfig.json
+pnpm exec effect-language-service diagnostics --project packages/frontend-services/tsconfig.json
 ```
 
 The current workspaces share the root TypeScript installation. If that changes,
@@ -224,20 +226,25 @@ and editor setup, see [Effect development](docs/engineering/effect-guidance.md).
 
 ## TypeScript
 
-Run `pnpm typecheck` to check both packages without emitting files, and `pnpm build`
-to compile them. The frontend typecheck runs `next typegen` then `tsc`; its
-build emits `.next`. The backend still uses `tsc` and a `dist` directory.
-Each workspace also exposes `build`, `typecheck`, and `start`;
+Run `pnpm typecheck` to check the workspaces without emitting application output,
+and `pnpm build` to compile them. The frontend typecheck builds
+`@pathableai/pre-ets-frontend-services`, runs `next typegen`, then `tsc`; its
+build emits `.next`. Frontend-services, domain, and the backend use `tsc` and a
+`dist` directory. Each workspace also exposes `build` and `typecheck`;
 for example, `pnpm --filter @pathableai/pre-ets-backend typecheck`. Rebuild the
-frontend after source changes before `pnpm start:frontend`.
+frontend after source changes before `pnpm start:frontend`. `pnpm dev:frontend`
+builds frontend-services, then runs its TypeScript watch beside `next dev`.
 
-Both packages inherit `tsconfig.base.json`, which extends `tsconfig.effect.json`.
-Strict checks apply equally to non-Effect code. The backend uses NodeNext
-compilation and explicit `.js` extensions in relative imports. The frontend
-overrides those settings for the Next.js App Router (`jsx: "preserve"`, DOM libs,
-and bundler module resolution) and keeps both the Next.js and Effect
-language-service plugins. Backend build configs enable emission and source maps
-without weakening type checks.
+Workspaces inherit `tsconfig.base.json`, which extends `tsconfig.effect.json`.
+Strict checks apply equally to non-Effect code. Frontend-services, domain, and
+the backend use NodeNext compilation and explicit `.js` extensions in relative
+imports. Frontend-services maps `next/server` and `next/navigation` in its
+`tsconfig` so those imports stay extensionless; a `.js` suffix breaks the Next.js
+production build. The frontend overrides those settings for the Next.js App Router
+(`jsx: "preserve"`, DOM libs, and bundler module resolution) and keeps the
+Next.js plugin. It does not enable the Effect language-service plugin.
+Frontend-services, domain, and backend build configs enable emission and source
+maps without weakening type checks.
 
 ## ESLint
 

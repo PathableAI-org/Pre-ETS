@@ -1,9 +1,11 @@
 # Effect development and agent setup
 
-Applies to `packages/frontend`, `packages/backend`, and future workspaces that
-enable the Effect language-service plugin and extend `tsconfig.effect.json`
-(via `tsconfig.base.json` or directly). Root tooling and Cucumber support code
-remain outside the Effect-first AI workflow unless they explicitly opt in.
+Applies to `packages/frontend-services`, `packages/backend`, `packages/domain`,
+and future workspaces that enable the Effect language-service plugin and extend
+`tsconfig.effect.json` (via `tsconfig.base.json` or directly). The Next.js app
+extends the shared strict compiler settings but does not enable the plugin and is
+not an Effect workspace. Root tooling and Cucumber support code remain outside
+the Effect-first AI workflow unless they explicitly opt in.
 
 ## Before writing Effect code
 
@@ -37,11 +39,12 @@ fit an example.
   [domain persistence](../domain-persistence.md),
   [session state](../session-state.md),
   [authentication](../authentication.md), and
-  [multi-tenancy](../multi-tenancy.md). Frontend owns presentation, tenant
-  configuration, OIDC orchestration, and temporary session/UI state. Backend
-  owns business rules, domain authorization, and durable domain records as a
-  stateless RESTful Effect service. Do not move domain persistence into Redis
-  or session drafts into the backend.
+  [multi-tenancy](../multi-tenancy.md). The Next.js app owns presentation.
+  `packages/frontend-services` owns tenant configuration, OIDC orchestration, and
+  temporary session state for that process. Backend owns business rules, domain
+  authorization, and durable domain records as a stateless RESTful Effect service.
+  Do not move domain persistence into Redis or session drafts into the backend.
+  Do not add Effect workflows to `packages/frontend`.
 - Express effectful business operations as Effects with explicit success, typed error, and
   service requirements. Model expected failures with tagged errors; keep defects
   distinct from recoverable failures.
@@ -106,9 +109,10 @@ formatting, time zones, and calendar operations. Keep time replaceable in tests.
 Outside Effect, native/framework date APIs remain appropriate; do not introduce a
 runtime solely for a UI formatting operation or root harness timestamp.
 
-The frontend host bridges Effects through its shared `ManagedRuntime`; the independent
-backend process owns its runtime entrypoint and shutdown. Keep Promises and framework
-response construction at those execution edges. Root tooling, Cucumber/Playwright,
+`packages/frontend-services` bridges Effects through its shared `ManagedRuntime`.
+The Next.js host starts and disposes that runtime from `instrumentation.ts`. The
+independent backend process owns its runtime entrypoint and shutdown. Keep Promises
+and framework response construction at those execution edges. Root tooling, Cucumber/Playwright,
 React components, pure functions, and existing framework adapters keep their native
 APIs unless a concrete workflow needs Effect. Strict TypeScript and recursive module
 boundaries apply to all of them.
@@ -189,23 +193,24 @@ configuration services only for concrete benefits such as independent validation
 lifecycle, or reduced coupling. Do not multiply Context tags and mapping Layers solely
 for conceptual purity.
 
-Currently, the frontend's `ServerConfig` is a plain interface and
+Currently, `ServerConfig` in `packages/frontend-services` is a plain interface and
 `TenantConfigService.layer(config)` receives it as an argument. Environment-provided
 configuration is guidance for future design work, not a completed migration or a change
 to the existing public interface.
 
 ### Keep framework execution at the host boundary
 
-Next.js server functions, actions, and route handlers should normally invoke application
-Effects through the host's shared `ManagedRuntime`, obtaining concrete results for the
-framework to return. Below that boundary, modules express dependencies through Effect
-and return values or typed failures; the framework adapter interprets those outcomes.
-Keep startup and disposal with the host rather than constructing runtimes per operation.
+Next.js server functions, actions, and route handlers in the Next app should call
+helpers exported by `packages/frontend-services`. Those helpers may depend on Next
+types and run application Effects through the shared `ManagedRuntime`, obtaining
+concrete results for the framework to return. Below that boundary, modules express
+dependencies through Effect and return values or typed failures. Keep startup and
+disposal with the Next host rather than constructing runtimes per operation.
 
-Keep application behavior independent of Next.js where practical. A pure adapter that
-transforms a `NextRequest` can still be appropriate; the goal is that application behavior
-does not unnecessarily depend on Next.js controlling its composition. These frontend
-examples do not change the backend's independent process or domain ownership.
+Keep application behavior independent of React rendering. A helper that accepts a
+`NextRequest` or returns a `NextResponse` can live in `packages/frontend-services`.
+That package must not import the Next app or `@pathableai/react`. These boundaries
+do not change the backend's independent process or domain ownership.
 
 ### Solve the domain the application owns
 
@@ -237,10 +242,11 @@ for properties exercised through the public service.
 ## Workspace configuration
 
 `tsconfig.effect.json` shares strict NodeNext/no-emit compiler settings.
-`tsconfig.base.json` extends it. Frontend and backend enable the Effect
-language-service plugin in their own configs (frontend keeps the Next.js plugin
-alongside it). New Effect workspaces should extend the base, add the plugin,
-provide their own include globs and types, and route agents here.
+`tsconfig.base.json` extends it. `packages/frontend-services`, backend, and domain
+enable the Effect language-service plugin in their own configs. The Next.js app
+keeps the Next.js plugin and does not enable the Effect plugin. New Effect
+workspaces should extend the base, add the plugin, provide their own include globs
+and types, and route agents here.
 
 The plugin keeps default severities with `ignoreEffectWarningsInTscExitCode: true`.
 After a developer manually patches TypeScript, errors block checks while warnings
