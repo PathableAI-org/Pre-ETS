@@ -1,24 +1,68 @@
-import { NodeRedis, NodeServices } from "@effect/platform-node"
-import { Config, Effect, Layer, ManagedRuntime } from "effect"
-import * as Redis from "effect/persistence/Redis"
+import { NodePath, NodeRedis, NodeServices } from "@effect/platform-node"
+import { Effect, Layer, Logger, ManagedRuntime, Path, References } from "effect"
 
-import { ObservabilityInitializationError, selectObservability } from "./observability.js"
-import {
-  applicationLayer,
-  type ApplicationServices,
-  installManagedRuntime,
-  loadProcessStartup,
-  type ProcessStartup,
-  StartupFailure
-} from "./runtime.js"
+import { AppEnv, LogConfig } from "./config/index.js"
+import { applicationLayer, type ApplicationServices, installManagedRuntime, loadProcessStartup } from "./runtime.js"
+
+const getLogConfig = Effect.fnUntraced(
+  function*() {
+    const env = yield* AppEnv
+    const logLevel = yield* LogConfig
+
+    return { env, logLevel } as const
+  },
+  // These Config values should never fail
+  Effect.orDie
+)
+
+const consoleLogger = (env: AppEnv): Logger.Logger<unknown, void> =>
+  env === "development" ? Logger.consolePretty() : Logger.consoleJson
+
+const LoggerLayerLive = Layer.unwrap(Effect.gen(function*() {
+  const { env, logLevel } = yield* getLogConfig()
+  return Layer.mergeAll(
+    Logger.layer([consoleLogger(env)]),
+    Layer.succeed(References.MinimumLogLevel, logLevel)
+  )
+}))
+
+const runtimeLayer = Layer.unwrap(Effect.gen(function*() {
+  const path = yield* Path.Path
+  const cwd = path.resolve()
+  const startup = yield* loadProcessStartup.pipe(
+    Effect.annotateLogs({ cwd }),
+    Effect.tap(() => Effect.logDebug("Loaded server config")),
+    Effect.tapError((error) => Effect.logError("Failed to load server config", { error }))
+  )
+  const infrastructure = Layer.mergeAll(
+    NodeServices.layer,
+    NodeRedis.layer({
+      disableOfflineQueue: true,
+      pingInterval: 1_000,
+      socket: { socketTimeout: 5_000 },
+      url: startup.server.redis.url
+    })
+  )
+  return applicationLayer(startup, infrastructure)
+})).pipe(Layer.provideMerge(Layer.mergeAll(LoggerLayerLive, NodePath.layer)))
+
+const makeRuntime = Effect.fnUntraced(function*(
+  publish: (runtime: ManagedRuntime.ManagedRuntime<ApplicationServices, unknown>) => void
+) {
+  const runtime = ManagedRuntime.make(runtimeLayer)
+  publish(runtime)
+  yield* Effect.tryPromise({
+    catch: (error: unknown) => error,
+    try: () => runtime.runPromise(Effect.void)
+  }).pipe(
+    Effect.tapError(() => Effect.promise(() => runtime.dispose().then(() => undefined, () => undefined))),
+    Effect.orDie
+  )
+  return runtime
+})
 
 const fatalExitMilliseconds = 10_000
-
-type SentenceReason = "acquisition" | "config" | "defect" | "endpoint" | "exporter" | "protocol"
-
-type Signal = ObservabilityInitializationError["signal"]
-
-type StartupStage = StartupFailure["stage"]
+const startupFailed = "pre-ets-frontend: startup failed"
 
 const writeStderr = (sentence: string): void => {
   try {
@@ -28,56 +72,8 @@ const writeStderr = (sentence: string): void => {
   }
 }
 
-const diagnosticReason = (reason: StartupFailure["reason"]): SentenceReason =>
-  reason === "observability-initialization" ? "defect" : reason
-
-const sentenceFor = (
-  failure: StartupFailure,
-  signal: Signal | undefined,
-  signalReason: SentenceReason | undefined
-): string => {
-  if (failure.stage === "observability" && signal !== undefined && signalReason !== undefined) {
-    return `pre-ets-frontend: startup failed during observability signal=${signal} reason=${signalReason}`
-  }
-  return `pre-ets-frontend: startup failed during ${failure.stage} reason=${diagnosticReason(failure.reason)}`
-}
-
-const classify = (error: unknown, stage: StartupStage): {
-  readonly failure: StartupFailure
-  readonly signal: Signal | undefined
-  readonly signalReason: SentenceReason | undefined
-} => {
-  if (error instanceof ObservabilityInitializationError) {
-    return {
-      failure: new StartupFailure({ reason: "observability-initialization", stage: "observability" }),
-      signal: error.signal,
-      signalReason: error.reason
-    }
-  }
-  if (error instanceof Redis.RedisError) {
-    return {
-      failure: new StartupFailure({ reason: "acquisition", stage: "application-acquisition" }),
-      signal: undefined,
-      signalReason: undefined
-    }
-  }
-  if (error instanceof Config.ConfigError) {
-    return {
-      failure: new StartupFailure({ reason: "config", stage: "configuration" }),
-      signal: undefined,
-      signalReason: undefined
-    }
-  }
-  return {
-    failure: new StartupFailure({ reason: "defect", stage }),
-    signal: undefined,
-    signalReason: undefined
-  }
-}
-
 /** Builds the production runtime and publishes it for request handlers. */
 export const startProductionRuntime = (): Promise<void> => {
-  let stage: StartupStage = "configuration"
   let managed: ManagedRuntime.ManagedRuntime<ApplicationServices, unknown> | undefined
   let disposal: Promise<void> | undefined
   let fatal = false
@@ -103,45 +99,20 @@ export const startProductionRuntime = (): Promise<void> => {
   process.on("SIGTERM", onSignal)
   process.on("SIGINT", onSignal)
 
-  const fail = async (error: unknown): Promise<never> => {
+  const fail = async (): Promise<never> => {
     fatal = true
     const timer = setTimeout(() => {
       process.exit(1)
     }, fatalExitMilliseconds)
-    const classified = classify(error, stage)
-    const sentence = sentenceFor(classified.failure, classified.signal, classified.signalReason)
-    if (stage === "application-acquisition" && managed !== undefined) {
-      try {
-        await managed.runPromise(Effect.logError(sentence).pipe(Effect.timeout("1 second")))
-      } catch {
-        writeStderr(sentence)
-      }
-    } else {
-      writeStderr(sentence)
-    }
+    writeStderr(startupFailed)
     await disposeOnce()
     clearTimeout(timer)
     process.exit(1)
   }
 
-  const productionRedis = (url: string) =>
-    Layer.unwrap(Effect.sync(() => {
-      stage = "application-acquisition"
-      return NodeRedis.layer({
-        disableOfflineQueue: true,
-        pingInterval: 1_000,
-        socket: { socketTimeout: 5_000 },
-        url
-      })
-    }))
-
-  return Effect.runPromise(loadProcessStartup).then(async (startup: ProcessStartup) => {
-    stage = "observability"
-    await Effect.runPromise(selectObservability(startup.otel))
-    const infrastructure = Layer.mergeAll(NodeServices.layer, productionRedis(startup.server.redis.url))
-    const layer = applicationLayer(startup, infrastructure)
-    managed = ManagedRuntime.make(layer)
-    await managed.runPromise(Effect.void)
-    installManagedRuntime(managed)
-  }).catch((error: unknown) => fail(error))
+  return Effect.runPromise(makeRuntime((runtime) => {
+    managed = runtime
+  })).then((runtime) => {
+    installManagedRuntime(runtime)
+  }).catch(() => fail())
 }

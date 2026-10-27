@@ -6,6 +6,7 @@ import { RedisUrl } from "./redis.js"
 import { SessionKeyPrefix } from "./session.js"
 import { TenantConfig } from "./tenant-config.js"
 
+export { AppEnv } from "./env.js"
 export { OtelConfig }
 export type { OtelSettings } from "./otel.js"
 export { SessionKeyPrefix } from "./session.js"
@@ -18,9 +19,13 @@ export const ServerConfig = Config.all({
   tenant: TenantConfig
 })
 
+export const LogConfig = Config.LogLevel("LOG_LEVEL").pipe(Config.withDefault("Info"))
+
 /** Process startup settings. URL and protocol selection happen after this decode. */
 export const StartupConfig = Config.all({
-  logLevel: Config.LogLevel("LOG_LEVEL").pipe(Config.withDefault("Info")),
+  logLevel: LogConfig,
   otel: OtelConfig,
   server: ServerConfig
 })
+
+export type StartupConfig = Config.Success<typeof StartupConfig>
