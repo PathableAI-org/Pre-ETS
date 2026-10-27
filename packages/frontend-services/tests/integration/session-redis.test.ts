@@ -5,12 +5,18 @@ import { randomUUID } from "node:crypto"
 import { setTimeout as delay } from "node:timers/promises"
 import { afterAll, describe, expect, it } from "vitest"
 
-import { type NoUsableSession, SessionService, SessionServiceUnavailable } from "../../src/session.ts"
+import {
+  type NoUsableSession,
+  SessionService,
+  SessionServiceUnavailable,
+  SessionTenantMismatch
+} from "../../src/session.ts"
 import { TenantAlias } from "../../src/tenant.ts"
 
 const redisUrl = process.env.REDIS_URL ?? "redis://127.0.0.1:6379"
 const sessionPrefix = `test:session:${randomUUID()}:`
 const alias = Schema.decodeSync(TenantAlias)("alpha")
+const otherAlias = Schema.decodeSync(TenantAlias)("beta")
 const noUsableSession: NoUsableSession = { _tag: "NoUsableSession" }
 const ownedSessionPrefix = /^test:session:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:$/
 
@@ -269,6 +275,62 @@ describe("SessionService with independently scoped NodeRedis clients", () => {
       expect(await read(recovered, established.reference)).toStrictEqual(established.session)
     } finally {
       await recovered.dispose()
+    }
+  })
+
+  it("admits the matching alias from an independently scoped client and rejects a different alias", async () => {
+    const runtimeA = ManagedRuntime.make(sessionLayer(sessionPrefix))
+    const runtimeB = ManagedRuntime.make(sessionLayer(sessionPrefix))
+    try {
+      const established = await establish(runtimeA, 30, 4)
+      const matching = await runtimeB.runPromise(Effect.gen(function*() {
+        const service = yield* SessionService
+        return yield* service.readForTenant({ reference: established.reference, tenantAlias: alias })
+      }))
+      expect(matching).toStrictEqual(established.session)
+      if (matching._tag === "UsableSession") {
+        expect(matching.identity).toStrictEqual(established.session.identity)
+        expect(matching.tenantAlias).toBe(established.session.tenantAlias)
+        expect(matching.idleDeadlineEpochMilliseconds).toBe(established.session.idleDeadlineEpochMilliseconds)
+        expect(matching.warningLeadMinutes).toBe(established.session.warningLeadMinutes)
+      }
+      const mismatched = await runtimeB.runPromise(Effect.gen(function*() {
+        const service = yield* SessionService
+        return yield* service.readForTenant({ reference: established.reference, tenantAlias: otherAlias }).pipe(
+          Effect.result
+        )
+      }))
+      expect(Result.isFailure(mismatched)).toBe(true)
+      if (Result.isFailure(mismatched)) expect(mismatched.failure).toBeInstanceOf(SessionTenantMismatch)
+    } finally {
+      await runtimeA.dispose()
+      await runtimeB.dispose()
+    }
+  })
+
+  it("translates a disconnected client into SessionServiceUnavailable for tenant admission", async () => {
+    const healthy = ManagedRuntime.make(sessionLayer(sessionPrefix))
+    const outage = ManagedRuntime.make(disconnectedLayer(sessionPrefix))
+    try {
+      const established = await establish(healthy, 30)
+      await outage.runPromise(destroyClient)
+      const result = await outage.runPromise(Effect.gen(function*() {
+        const service = yield* SessionService
+        return yield* service.readForTenant({ reference: established.reference, tenantAlias: alias }).pipe(
+          Effect.result
+        )
+      }))
+      expect(Result.isFailure(result)).toBe(true)
+      if (Result.isFailure(result)) {
+        expect(result.failure).toBeInstanceOf(SessionServiceUnavailable)
+        expect(result.failure).not.toBeInstanceOf(SessionTenantMismatch)
+        expect(result.failure.cause).toBeUndefined()
+        expect(String(result.failure)).not.toContain("subject-redis")
+      }
+      expect(await read(healthy, established.reference)).toStrictEqual(established.session)
+    } finally {
+      await healthy.dispose()
+      await outage.dispose()
     }
   })
 

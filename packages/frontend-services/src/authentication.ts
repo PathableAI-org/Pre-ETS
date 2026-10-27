@@ -14,6 +14,7 @@ import {
   TransactionStoreUnavailable
 } from "./authentication/transaction.js"
 import { TransactionStoreConfig } from "./authentication/transaction/store.js"
+import { parseRequestHost, type RequestHost } from "./request-host.js"
 import { type TenantAlias, TenantConfigService } from "./tenant.js"
 
 /** Process-wide authentication settings. Service behavior stays on AuthenticationService. */
@@ -89,23 +90,6 @@ const callbackFailure = (
   reason: AuthenticationDenied | AuthenticationUnavailable | HttpError,
   correlationDisposition: CorrelationDisposition
 ) => new CallbackExpectedFailure({ correlationDisposition, reason })
-
-interface RequestHost {
-  readonly hostname: string
-  readonly port: string
-}
-
-/** Keeps an explicit port. Scheme defaults are applied only once the callback origin is known. */
-const parseRequestHost = (raw: string): RequestHost | undefined => {
-  if (raw.trim() !== raw || raw === "" || /[/?#@\\]/.test(raw)) return undefined
-  try {
-    const url = new URL(`opaque://${raw}`)
-    if (url.hostname === "" || url.pathname !== "" || url.search !== "" || url.hash !== "") return undefined
-    return { hostname: url.hostname.toLowerCase(), port: url.port }
-  } catch {
-    return undefined
-  }
-}
 
 const canonicalPort = (protocol: string, port: string): string | undefined => {
   if (protocol === "https:") return port === "" || port === "443" ? "443" : port

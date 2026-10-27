@@ -139,11 +139,11 @@ describe("runtime composition", () => {
       },
       Effect.gen(function*() {
         const startup = yield* loadProcessStartup
-        const hasSession = yield* Effect.gen(function*() {
-          const session = yield* SessionService
-          return yield* session.hasSession()
+        const session = yield* Effect.gen(function*() {
+          const service = yield* SessionService
+          return yield* service.read({})
         }).pipe(Effect.provide(applicationLayer(startup, Layer.mergeAll(memoryRedis, NodeServices.layer))))
-        assert.isFalse(hasSession)
+        assert.deepStrictEqual(session, { _tag: "NoUsableSession" })
       })
     )
   })
