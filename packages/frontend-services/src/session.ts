@@ -37,6 +37,11 @@ export interface NoUsableSession {
   readonly _tag: "NoUsableSession"
 }
 
+export interface ReadSessionForTenantInput {
+  readonly reference?: string
+  readonly tenantAlias: TenantAlias
+}
+
 export interface SessionIdentity {
   readonly issuer: string
   readonly subject: string
@@ -57,6 +62,15 @@ export class SessionServiceUnavailable extends Schema.TaggedError<SessionService
   {}
 ) {
   static readonly tag = sessionServiceUnavailableTag
+}
+
+const sessionTenantMismatchTag = "@pathableai/pre-ets-frontend/SessionTenantMismatch"
+
+export class SessionTenantMismatch extends Schema.TaggedError<SessionTenantMismatch>()(
+  sessionTenantMismatchTag,
+  {}
+) {
+  static readonly tag = sessionTenantMismatchTag
 }
 
 /** Drops codec and store diagnostics so records, keys, and identity stay off the public error and its span. */
@@ -86,10 +100,12 @@ export class SessionService extends Context.Service<SessionService, {
   readonly establish: (
     input: EstablishSessionInput
   ) => Effect.Effect<EstablishedSession, SessionServiceUnavailable>
-  readonly hasSession: () => Effect.Effect<boolean>
   readonly read: (
     input: { readonly reference?: string }
   ) => Effect.Effect<NoUsableSession | UsableSession, SessionServiceUnavailable>
+  readonly readForTenant: (
+    input: ReadSessionForTenantInput
+  ) => Effect.Effect<NoUsableSession | UsableSession, SessionServiceUnavailable | SessionTenantMismatch>
 }>()("@pathableai/pre-ets-frontend/SessionService") {
   static readonly layer: Layer.Layer<
     SessionService,
@@ -157,10 +173,17 @@ export class SessionService extends Context.Service<SessionService, {
         return toUsableSession(record)
       })
 
+      const readForTenant = Effect.fn("SessionService.readForTenant")(function*(input: ReadSessionForTenantInput) {
+        const session = yield* read(input.reference === undefined ? {} : { reference: input.reference })
+        if (session._tag === "NoUsableSession") return session
+        if (session.tenantAlias === input.tenantAlias) return session
+        return yield* new SessionTenantMismatch({})
+      })
+
       return SessionService.of({
         establish,
-        hasSession: () => Effect.succeed(false),
-        read
+        read,
+        readForTenant
       })
     })
   ).pipe(

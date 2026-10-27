@@ -70,6 +70,7 @@ const siteOptionsFor = (world: AppWorld) => ({
   directory: world.directory,
   redisUrl: world.redisUrl,
   runtime: world.runtime,
+  sessionPrefix: world.sessionPrefix,
   staticAlias: world.staticAlias,
   transactionPrefix: world.transactionPrefix,
   transactionTtlSeconds: world.transactionTtlSeconds

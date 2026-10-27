@@ -11,18 +11,38 @@ Feature: Tenant OIDC initiation
   Scenario Outline: Root delegates before tenant-dependent work without protected content
     Given production tenant sites for Springfield and Shelbyville
     And host resolution uses base hostname "example.test"
-    And the selected Springfield tenant file is "invalid JSON"
     And the visitor supplies application cookie "<cookie>"
-    When a visitor requests the document at "<host>"
+    When a visitor requests the document at "springfield.example.test"
     Then the response delegates to the same-origin login
     And the response contains no protected application content
     And the response is not cacheable
     And the response issues no application or correlation cookie
 
     Examples:
-      | host                     | cookie          |
-      | springfield.example.test | fabricated      |
-      | example.test             | arbitrary-value |
+      | cookie     |
+      | fabricated |
+
+  @preets-session-001
+  @preets-session-004
+  Scenario: Invalid selected tenant configuration does not become a login redirect
+    Given production tenant sites for Springfield and Shelbyville
+    And host resolution uses base hostname "example.test"
+    And the selected Springfield tenant file is "invalid JSON"
+    When a visitor requests the document at "springfield.example.test"
+    Then the response status is 404
+    And the response has no redirect
+    And the response contains no fallback tenant
+
+  @preets-session-001
+  @preets-session-004
+  Scenario: The bare base host does not become a login redirect
+    Given production tenant sites for Springfield and Shelbyville
+    And host resolution uses base hostname "example.test"
+    And the visitor supplies application cookie "arbitrary-value"
+    When a visitor requests the document at "example.test"
+    Then the response status is 404
+    And the response has no redirect
+    And the response contains no fallback tenant
 
   @preets-session-001
   @preets-session-002

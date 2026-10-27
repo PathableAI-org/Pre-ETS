@@ -8,6 +8,7 @@ import { applicationBrowser, freePort, spawnFrontend, stopProcess, waitUntilRead
 
 const host = "springfield.localhost:3000"
 const tenantConfigDir = new URL("../../../fixtures/tenant-config", import.meta.url).pathname
+const sessionPrefix = `preets:session:node-test:${randomUUID()}:`
 const transactionPrefix = `preets:oidc:node-test:${randomUUID()}:`
 
 const startSite = async (t: TestContext, runtime: "development" | "production"): Promise<{ readonly port: number }> => {
@@ -20,6 +21,7 @@ const startSite = async (t: TestContext, runtime: "development" | "production"):
       directory: tenantConfigDir,
       redisUrl: process.env.REDIS_URL ?? "redis://127.0.0.1:6379",
       runtime,
+      sessionPrefix,
       staticAlias: undefined,
       transactionPrefix,
       transactionTtlSeconds: 600

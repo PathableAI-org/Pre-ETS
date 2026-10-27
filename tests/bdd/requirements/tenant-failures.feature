@@ -8,8 +8,9 @@ Feature: Unavailable tenant login outcomes
   failure when static mode selects an alias with no file.
   A parsed directory setting that does not exist or cannot be read is a server
   failure. Unreadable or malformed selected files are ordinary missing tenants
-  in either mode. Root is a separate session-missing redirect; complete session
-  lookup, authenticated access and other tenant-dependent consumers remain incomplete.
+  in either mode. Root resolves the tenant before session admission. A document
+  request that is itself a tenant failure returns that failure's 404 or 500.
+  Complete session lookup and other tenant-dependent consumers may remain incomplete.
 
   Scenario: An absent path on a reachable tenant is not found
     Given production tenant sites for Springfield and Shelbyville
@@ -27,7 +28,9 @@ Feature: Unavailable tenant login outcomes
     When a visitor requests the document at "springfield.example.test"
     Then the response delegates to the same-origin login
     When a visitor requests the document at "capital-city.example.test"
-    Then the response delegates to the same-origin login
+    Then the response status is 404
+    And the response has no redirect
+    And the response contains no fallback tenant
     When a visitor requests "/auth/login" at "capital-city.example.test"
     Then the response status is 404
     And the response has no redirect
@@ -37,7 +40,9 @@ Feature: Unavailable tenant login outcomes
     And static resolution selects an alias with no tenant file
     And BASE_HOSTNAME is not configured
     When a visitor requests the document at "springfield.example.test"
-    Then the response delegates to the same-origin login
+    Then the response status is 500
+    And the response has no redirect
+    And the response contains no fallback tenant
     When a visitor requests "/auth/login" at "springfield.example.test"
     Then the response status is 500
     And the response has no redirect
@@ -48,7 +53,9 @@ Feature: Unavailable tenant login outcomes
     When a visitor requests the document at "springfield.example.test"
     Then the response delegates to the same-origin login
     When a visitor requests the document at "<host>"
-    Then the response delegates to the same-origin login
+    Then the response status is 404
+    And the response has no redirect
+    And the response contains no fallback tenant
     When a visitor requests "/auth/login" at "<host>"
     Then the response status is 404
     And the response has no redirect
@@ -65,7 +72,9 @@ Feature: Unavailable tenant login outcomes
     And tenant resolution uses "<mode>" mode
     And the tenant directory is "<condition>"
     When a visitor requests the document at "springfield.example.test"
-    Then the response delegates to the same-origin login
+    Then the response status is 500
+    And the response has no redirect
+    And the response contains no fallback tenant
     When a visitor requests "/auth/login" at "springfield.example.test"
     Then the response status is 500
     And the response has no redirect
@@ -91,7 +100,9 @@ Feature: Unavailable tenant login outcomes
     And tenant resolution uses "<mode>" mode
     And the selected Springfield tenant file is "<condition>"
     When a visitor requests the document at "springfield.example.test"
-    Then the response delegates to the same-origin login
+    Then the response status is 404
+    And the response has no redirect
+    And the response contains no fallback tenant
     When a visitor requests "/auth/login" at "springfield.example.test"
     Then the response status is 404
     And the response has no redirect
@@ -117,7 +128,9 @@ Feature: Unavailable tenant login outcomes
     And tenant resolution uses "<mode>" mode
     And the selected Springfield tenant file is "missing"
     When a visitor requests the document at "springfield.example.test"
-    Then the response delegates to the same-origin login
+    Then the response status is <status>
+    And the response has no redirect
+    And the response contains no fallback tenant
     When a visitor requests "/auth/login" at "springfield.example.test"
     Then the response status is <status>
     And the response has no redirect

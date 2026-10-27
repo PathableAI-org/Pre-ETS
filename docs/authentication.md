@@ -1,17 +1,18 @@
 # Authentication strategy
 
-The root uses `SessionService.hasSession()` before request-tenant lookup. The
-current production capability always reports absence and redirects to `/auth/login`;
-it does not read cookies, Redis or tenant files. The enclosing layout performs no
-eager tenant read and this feature has no positive-session rendering path.
+`/` resolves the tenant under the configured mode and then reads the session.
+A resolved tenant with no usable session redirects to `/auth/login`. A host-mode
+invalid host or other tenant failure on `/` remains that tenant 404 or 500. Static
+mode stays independent of Host. `hasSession()` is removed. The enclosing layout
+performs no eager tenant read.
 
 The public login Route Handler resolves the request tenant through `TenantConfigService`
 and prepares the configured provider's authorization request using `openid-client`.
 It requests code/openid, PKCE S256, fresh state/nonce and `max_age=0`, then returns a
 dynamic HTTP 307. Provider preparation has one five-second cancellable deadline.
 Tenant errors retain actual login 404/500 outcomes; expected provider, credential, or
-transaction failure redirects to `/login-unavailable`. Root's separate first hop remains
-307 even when tenant lookup will fail.
+transaction failure redirects to `/login-unavailable`. A document request that is
+itself a tenant failure keeps that failure's 404 or 500 and does not redirect to login.
 
 Before redirecting, login stores a versioned recoverable attempt in Redis with atomic
 `SET ... NX PX` and gives the browser only a 32-byte opaque, unpadded base64url
