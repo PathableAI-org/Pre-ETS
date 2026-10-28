@@ -19,8 +19,8 @@ the server before the session's authoritative idle deadline.
 application instances.
 
 **Independent Test**: Establish a session with a known deadline, submit qualifying activity before that deadline
-through an independent session consumer, and observe a later deadline together with the effective timeout and warning
-policy used for the renewal.
+through an independent session consumer, and observe the resulting authoritative deadline together with the effective
+timeout and warning policy used for the renewal.
 
 **Acceptance Scenarios**:
 

@@ -26,7 +26,7 @@ behavior. Issue #219 reference fixtures are optional bounded evidence.
 | ID    | Claim to establish                                                                                                                                            | Authoritative source                                                                   | Meaningful violation                                                                                                     | Required observation                                                                                                      |
 | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------- |
 | V-001 | Initialization and usable reads expose one authoritative deadline and effective warning policy with the authenticated user and tenant.                        | #220 in-scope contract and #218 handoff; PREETS-SESSION-011 AC2 after a refresh        | A consumer receives usable identity without the applicable deadline/policy or sees inconsistent state across clients.    | Independent consumers observe the same complete usable-session state before a lifecycle change.                           |
-| V-002 | Every claimed qualifying activity category received strictly before the current deadline, including Continue or Keep working, renews the session.             | PREETS-SESSION-008 AC3; PREETS-SESSION-009 AC1; PREETS-SESSION-011 AC3                 | A claimed timely deliberate activity category leaves the session expired or renews without a new authoritative deadline. | Each presented positive category renews and exposes a later deadline derived from effective policy.                       |
+| V-002 | Every claimed qualifying activity category received strictly before the current deadline, including Continue or Keep working, renews the session.             | PREETS-SESSION-008 AC3; PREETS-SESSION-009 AC1; PREETS-SESSION-011 AC3                 | A claimed timely deliberate activity category leaves the session expired or renews without a new authoritative deadline. | Each presented positive category renews and exposes an authoritative deadline derived from the effective policy.          |
 | V-003 | A qualifying refresh adopts the then-effective timeout and warning policy; unrefreshed sessions retain established state and may adopt changes independently. | PREETS-SESSION-008 AC3; PREETS-SESSION-011 AC2                                         | Policy changes mutate unrefreshed sessions, fail to apply on refresh, or force simultaneous adoption.                    | Refreshed and unrefreshed sessions expose the expected different policy/deadline states until their respective refreshes. |
 | V-004 | Automatic/background traffic, raw movement, and programmatic focus alone never renew.                                                                         | PREETS-SESSION-008 AC5; PREETS-SESSION-009 AC1–3                                       | An excluded activity changes the authoritative deadline.                                                                 | Deadline before and after each excluded category is identical.                                                            |
 | V-005 | At or after the deadline, no activity, Continue action, or later timeout increase can revive usable identity.                                                 | PREETS-SESSION-008 AC4; PREETS-SESSION-009 AC4; PREETS-SESSION-011 AC4                 | Equality, late delivery, or a longer current policy restores expired state.                                              | Every at/after-deadline case returns no usable session and remains unusable on later reads.                               |
@@ -74,15 +74,16 @@ and cleanup observations beyond deterministic public-capability and bounded auto
 
 1. Record the revision, date/time, store version, client/probe arrangement, owned key prefix, synthetic tenant aliases,
    initial policy, changed policy, and clock-control method. Confirm the store and both clients are ready.
-2. Through client A, initialize a synthetic authenticated session under the initial policy. Through client B, read it
-   and record matching safe user/tenant labels, authoritative deadline, effective warning policy, and usable outcome.
-3. Change the selected synthetic tenant policy without refreshing the session. Read through both clients and confirm
-   that the established deadline and warning policy remain unchanged.
-4. Advance time to strictly before the established deadline and present Continue or Keep working through client B.
-   Record the renewed deadline and changed effective warning policy; read through client A and confirm it observes the
-   same renewed state.
-5. Establish a second independent session that retains the initial policy. Confirm the first and second sessions expose
-   different accepted policies until the second receives its own qualifying refresh.
+2. Through client A, initialize two synthetic authenticated sessions under the initial policy. Through client B, read
+   both and record matching safe user/tenant labels, authoritative deadlines, effective warning policies, and usable
+   outcomes.
+3. Change the selected synthetic tenant policy without refreshing either session. Read both through both clients and
+   confirm that their established deadlines and warning policies remain unchanged.
+4. Advance time to strictly before the first session's established deadline and present Continue or Keep working
+   through client B. Record the renewed deadline and changed effective warning policy; read through client A and
+   confirm it observes the same renewed state.
+5. Compare the refreshed first session with the unrefreshed second session. Confirm they expose different accepted
+   policies until the second receives its own qualifying refresh.
 6. For the first session, record its current deadline, then present one excluded background activity and confirm the
    deadline is unchanged. Advance to exactly the deadline and present qualifying activity, then increase the tenant
    timeout and try again after the deadline. Confirm every attempt yields no usable session through both clients.
