@@ -97,8 +97,10 @@ direction and proves invalid policy is rejected before it reaches renewal.
 
 **Decision**: Combine deterministic public-service examples/properties, a faithful memory Redis test adapter, actual
 tenant-consumer composition, separately gated two-client real Redis renewal-first and expiration-first cases, and the
-mandatory manual procedure. Assert both operation outcomes and later reads from both clients in each forced ordering;
-an uncontrolled race is supplementary only.
+mandatory manual procedure. Add a third mandatory case that releases both independently scoped clients from one start
+barrier without awaiting either operation, bounds completion, accepts either permitted atomic winner, and asserts both
+operation outcomes plus later reads from both clients. The overlap case and forced-order cases establish distinct
+uncertainties and cannot substitute for one another.
 
 **Rationale**: Each layer proves a different meaningful risk. Real Redis is necessary for command/script ordering;
 Effect `TestClock` is necessary for exact boundary behavior; the tenant consumer is necessary for invalid-policy
@@ -117,7 +119,7 @@ claiming all concurrency schedules from a finite race matrix.
   rollback is not assumed.
 - **Mismatch precedence**: tenant-bound refresh returns mismatch without mutation before considering expiration.
 - **Race evidence**: renewal-first and expiration-first are separately gated and asserted, not inferred from an
-  either-outcome race.
+  either-outcome race; a third mandatory barrier-released case establishes actual overlapping dispatch.
 - **Data retention**: missing and expired may share the same result; no tombstone is required.
 - **Operational telemetry**: no new monitoring claim; existing safe transient session annotation is preserved.
 

@@ -143,8 +143,11 @@ transitions faithfully, but tests continue to import only public parent modules.
 Real Redis evidence uses two independently scoped clients/runtimes with one scenario-owned prefix. Bounded dispatch
 gates exercise two distinct schedules: release and observe renewal before expiration dispatch, then invert the gates
 so expiration completes before renewal dispatch. Each case asserts both operation results and later reads from both
-clients. An uncontrolled simultaneous race may supplement these forced orderings, but cannot replace either one.
-Bounded generated inputs and schedules support only the exercised cases; they are not a proof of all deployment timing.
+clients. A third mandatory overlapping case holds both clients at one start barrier, releases both dispatches without
+awaiting either result, bounds both completions, accepts either permitted winner, asserts both operation outcomes, and
+confirms later reads from both clients converge. The overlapping case cannot replace either forced ordering, and the
+forced orderings cannot replace actual overlap. Bounded generated inputs and schedules support only the exercised
+cases; they are not a proof of all deployment timing.
 
 ### Phase 4 — Implementation architecture
 
@@ -180,8 +183,9 @@ Implementation order:
 5. Compose it in `SessionService` using Effect clock, tenant binding, validated policy inputs, and existing errors.
 6. Add deterministic example/property/concurrency tests, including malformed-record and expired-mismatch
    non-mutation, plus tenant-consumer composition evidence.
-7. Add two-client real Redis evidence that separately gates renewal-first and expiration-first dispatch, asserts both
-   operation results, and confirms convergence from both clients.
+7. Add two-client real Redis evidence that separately gates renewal-first and expiration-first dispatch, plus a
+   mandatory start-barrier case that releases both operations without awaiting either; assert both operation results
+   and confirm convergence from both clients in all three cases.
 8. Run the manual procedure, feature-specific checks, and all repository quality gates, recording only safe results.
 
 ### Phase 5 — Feature verification integration

@@ -41,8 +41,11 @@ and missing/expired/failure outcomes. A malformed complete-record case must retu
 changing the stored bytes. A tenant-bound refresh of an expired record for another tenant must return
 `SessionTenantMismatch` without changing its bytes or TTL. Real-Redis evidence must separately gate renewal-first and
 expiration-first dispatch, assert both operation results, and confirm later reads from both clients converge; a single
-uncontrolled either-outcome race is not sufficient. The integration suite must remove only its owned keys and close
-both clients/runtimes. Stop Compose only if this procedure started it.
+ordering case is not sufficient. It must also hold both clients at one start barrier, release both operations without
+awaiting either result, bound completion, accept either permitted winner, assert both public operation outcomes, and
+confirm both clients converge afterward. This overlapping case cannot substitute for the two forced orderings. The
+integration suite must remove only its owned keys and close both clients/runtimes. Stop Compose only if this procedure
+started it.
 
 Requirements-backed BDD is intentionally absent: #154–#156 own the running request/browser producers. An optional
 #219 fixture may add bounded composition evidence but is not required and cannot establish comprehensive protection.

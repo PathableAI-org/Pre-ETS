@@ -148,7 +148,7 @@ module does not import the tenant config child or duplicate its defaults.
 | Malformed state cannot be partially updated             | A corrupt record is deleted or rewritten before decoding fails            | Public-service malformed-record cases asserting `SessionServiceUnavailable` and identical stored bytes |
 | Mismatch wins before tenant-bound expiration mutation   | A wrong-tenant refresh deletes an expired record                          | Expired mismatch case asserting `SessionTenantMismatch`, unchanged bytes, and unchanged TTL            |
 | Equality/lateness never revives identity                | At-deadline, late Continue, or timeout increase returns usable state      | Before/equal/after deterministic matrix and properties                                                 |
-| Independent clients converge on both ordered outcomes   | One legal ordering is never exercised, or stale state overwrites expiry   | Separately gated renewal-first and expiration-first real Redis cases; both results and both clients    |
+| Independent clients converge under ordering and overlap | An order is missed, overlap is untested, or stale state overwrites expiry | Two forced-order cases plus one barrier-released overlapping real Redis race; both results and clients |
 | Missing/expired/failure stay distinguishable            | Dependency failure becomes no-session or identity                         | Public failure controls and real missing/expiry cases                                                  |
 | Invalid selected policy never reaches refresh           | Invalid values produce an effective policy                                | Actual `TenantConfigService` composition tests; existing invalid-policy matrix reused where sufficient |
 | No browser timer is required                            | Session stays usable after deadline without a client timer                | Public read/refresh after TestClock advancement and real-store manual observation                      |
@@ -183,6 +183,6 @@ composes the two public capabilities.
 
 No product or public-contract decision is open. Implementation may choose an exhaustive internal Lua result encoding,
 bounded property sample count, and bounded dispatch-gate primitive. It may not change the prepare-then-single-mutation
-invariant, mismatch precedence, or the requirement to exercise both ordered outcomes. Each choice must fail closed,
-preserve the public signatures above, and be verified against installed Effect 4.0.5 declarations and real Redis
-8.10.2.
+invariant, mismatch precedence, or the requirement to exercise both ordered outcomes and one genuinely overlapping
+dispatch. Each choice must fail closed, preserve the public signatures above, and be verified against installed Effect
+4.0.5 declarations and real Redis 8.10.2.
