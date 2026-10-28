@@ -13,8 +13,8 @@
 
 ## Prerequisites
 
-1. Use a clean checkout of the implementation revision and record it. The planning baseline is `origin/main`
-   `c1d87a22a55cd5190bc702a6a3c33cfed2ca23ef` plus the approved specification/plan stack.
+1. Use a clean checkout of the implementation revision and record it. The refreshed planning baseline is `origin/main`
+   `ebe3eb31589b7b06bccccaadb2c8836b12513316` plus the approved specification/plan stack.
 2. Install the repository's pinned Node.js and pnpm dependencies from the root.
 3. Have Docker Compose available for the repository's pinned Redis 8.10.2 service.
 4. Use only synthetic tenant/identity data and a scenario-owned Redis key prefix. Never use production credentials,
@@ -37,8 +37,12 @@ REDIS_URL=redis://127.0.0.1:6379 pnpm --filter @pathableai/pre-ets-frontend-serv
 ```
 
 Expected observations include all activity categories, strict before/equal/after behavior, policy-change separation,
-tenant mismatch, missing/expired/failure outcomes, and permitted two-client ordering. The integration suite must remove
-only its owned keys and close both clients/runtimes. Stop Compose only if this procedure started it.
+and missing/expired/failure outcomes. A malformed complete-record case must return `SessionServiceUnavailable` without
+changing the stored bytes. A tenant-bound refresh of an expired record for another tenant must return
+`SessionTenantMismatch` without changing its bytes or TTL. Real-Redis evidence must separately gate renewal-first and
+expiration-first dispatch, assert both operation results, and confirm later reads from both clients converge; a single
+uncontrolled either-outcome race is not sufficient. The integration suite must remove only its owned keys and close
+both clients/runtimes. Stop Compose only if this procedure started it.
 
 Requirements-backed BDD is intentionally absent: #154–#156 own the running request/browser producers. An optional
 #219 fixture may add bounded composition evidence but is not required and cannot establish comprehensive protection.

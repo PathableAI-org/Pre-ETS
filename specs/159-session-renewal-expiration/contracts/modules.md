@@ -101,6 +101,10 @@ export class SessionService extends Context.Service<SessionService, {
 
 - Equality is expired.
 - No successful path returns identity without its authoritative deadline, tenant, and warning policy.
+- Complete exact `StoredSessionV1` validation and all fallible result/replacement construction finish before the
+  script issues any mutation. Malformed state returns `SessionServiceUnavailable` and remains byte-for-byte unchanged.
+- On tenant-bound refresh, stored-tenant mismatch takes precedence over deadline evaluation, including for an expired
+  record, and leaves the stored value and TTL unchanged.
 - A stale operation never recreates missing/expired state or overwrites an atomic winner.
 - No public error or trace contains a raw reference, key, stored record, identity, token, policy document, or partner
   name.
@@ -141,8 +145,10 @@ module does not import the tenant config child or duplicate its defaults.
 | A trusted adapter can present every authorized category | A positive category does not renew or an excluded category writes         | Public service table tests over every literal, with TestClock-controlled deadlines                     |
 | Current policy is adopted only on refresh               | An unrefreshed/excluded session changes, or refresh uses old/mixed fields | Two-session policy-change examples plus bounded deadline properties                                    |
 | Tenant binding protects policy application              | Another tenant's policy mutates the session                               | Mismatch test through `refreshForTenant`, asserting fieldless failure and unchanged later read         |
+| Malformed state cannot be partially updated             | A corrupt record is deleted or rewritten before decoding fails            | Public-service malformed-record cases asserting `SessionServiceUnavailable` and identical stored bytes |
+| Mismatch wins before tenant-bound expiration mutation   | A wrong-tenant refresh deletes an expired record                          | Expired mismatch case asserting `SessionTenantMismatch`, unchanged bytes, and unchanged TTL            |
 | Equality/lateness never revives identity                | At-deadline, late Continue, or timeout increase returns usable state      | Before/equal/after deterministic matrix and properties                                                 |
-| Independent clients converge on one winner              | Stale state overwrites expiry or mixed candidates appear                  | Two-runtime real Redis races; final public state equals one complete permitted candidate               |
+| Independent clients converge on both ordered outcomes   | One legal ordering is never exercised, or stale state overwrites expiry   | Separately gated renewal-first and expiration-first real Redis cases; both results and both clients    |
 | Missing/expired/failure stay distinguishable            | Dependency failure becomes no-session or identity                         | Public failure controls and real missing/expiry cases                                                  |
 | Invalid selected policy never reaches refresh           | Invalid values produce an effective policy                                | Actual `TenantConfigService` composition tests; existing invalid-policy matrix reused where sufficient |
 | No browser timer is required                            | Session stays usable after deadline without a client timer                | Public read/refresh after TestClock advancement and real-store manual observation                      |
@@ -176,5 +182,7 @@ composes the two public capabilities.
 ## Open implementation decisions
 
 No product or public-contract decision is open. Implementation may choose an exhaustive internal Lua result encoding,
-bounded property sample count, and race synchronization primitive. Each choice must fail closed, preserve the public
-signatures above, and be verified against installed Effect 4.0.5 declarations and real Redis 8.10.2.
+bounded property sample count, and bounded dispatch-gate primitive. It may not change the prepare-then-single-mutation
+invariant, mismatch precedence, or the requirement to exercise both ordered outcomes. Each choice must fail closed,
+preserve the public signatures above, and be verified against installed Effect 4.0.5 declarations and real Redis
+8.10.2.

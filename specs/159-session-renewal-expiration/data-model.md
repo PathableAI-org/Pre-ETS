@@ -69,14 +69,15 @@ No migration is needed. Redis TTL is an eventual cleanup bound and is not part o
 
 ## State transitions
 
-| Current state and input                 | Atomic transition                           | Public result                      |
-| --------------------------------------- | ------------------------------------------- | ---------------------------------- |
-| Missing/invalid reference               | None                                        | `NoUsableSession`                  |
-| Stored deadline `<= receivedAt`         | Delete owned key if present                 | `NoUsableSession`                  |
-| Usable, tenant mismatch                 | None                                        | `SessionTenantMismatch`            |
-| Usable, excluded activity               | None                                        | Existing `UsableSession` unchanged |
-| Usable, qualifying activity             | Replace deadline, warning, and TTL together | Renewed `UsableSession`            |
-| Malformed state or store/script failure | None or Redis atomic rollback               | `SessionServiceUnavailable`        |
+| Current state and input                                      | Atomic transition                           | Public result                      |
+| ------------------------------------------------------------ | ------------------------------------------- | ---------------------------------- |
+| Missing/invalid reference                                    | None                                        | `NoUsableSession`                  |
+| Malformed or non-V1 state                                    | None; validation finishes before mutation   | `SessionServiceUnavailable`        |
+| Tenant-bound refresh with stored tenant mismatch             | None, regardless of the stored deadline     | `SessionTenantMismatch`            |
+| Tenantless read or tenant-matching refresh at/after deadline | Delete owned key as the one final mutation  | `NoUsableSession`                  |
+| Usable, excluded activity                                    | None                                        | Existing `UsableSession` unchanged |
+| Usable, qualifying activity                                  | Replace deadline, warning, and TTL together | Renewed `UsableSession`            |
+| Store/script command failure                                 | No successful public outcome                | `SessionServiceUnavailable`        |
 
 The new deadline is `receivedAt + idleTimeoutMinutes * 60_000`. No timeout increase is applied until a qualifying
 operation succeeds; therefore an expired session cannot be revived by a later policy change.
@@ -84,8 +85,12 @@ operation succeeds; therefore an expired session cannot be revived by a later po
 ## Concurrency invariants
 
 - The Redis script is the linearization point for each read/expiration or refresh evaluation.
+- The script validates every V1 field, constraint, version, and excess-property condition; checks tenant admission for
+  tenant-bound refresh; and constructs the complete result/replacement before issuing any mutation.
+- Each operation issues no mutation or exactly one final `DEL` or `SET ... PX`; it never depends on script rollback.
 - Every successful result represents one complete stored record; policy fields from competing candidates are never
   combined.
+- A tenant mismatch precedes expiration for tenant-bound refresh and leaves the stored value and TTL unchanged.
 - When qualifying pre-deadline renewal linearizes first, later consumers may observe its new deadline.
 - When expiration, missing-state removal, or another winning transition linearizes first, a stale operation does not
   recreate the key or retry its old policy.

@@ -1,6 +1,6 @@
 # Implementation Plan: Renew and Expire Authoritative Sessions
 
-**Branch**: `159-session-renewal-expiration-plan` | **Date**: 2026-10-27 | **Spec**: [spec.md](spec.md)
+**Branch**: `159-session-renewal-expiration-plan` | **Date**: 2026-10-28 | **Spec**: [spec.md](spec.md)
 
 **Input**: Feature specification from `specs/159-session-renewal-expiration/spec.md`
 
@@ -32,8 +32,10 @@ Redis Compose service
 atomic Redis operation rather than an application-level read/write sequence
 
 **Constraints**: The encoded deadline and Effect clock remain authoritative; Redis TTL is cleanup only. Equality is
-expired. Tenant mismatch fails closed before mutation. No PHI, credentials, tokens, raw references, keys, or stored
-records may enter public errors, durable evidence, or telemetry.
+expired. The atomic script completes full stored-record validation, tenant admission, and result/replacement
+construction before any write, then performs at most one final `DEL` or `SET ... PX`. Tenant mismatch takes precedence
+over expiration for tenant-bound refresh and fails closed without mutation. No PHI, credentials, tokens, raw
+references, keys, or stored records may enter public errors, durable evidence, or telemetry.
 
 **Scale/Scope**: One existing public session service, its private Redis child and test adapter, the real tenant-policy
 consumer, deterministic unit/property evidence, and bounded two-client Redis integration evidence
@@ -132,15 +134,17 @@ service, root-package re-export, provider contract, error type, or stored-record
 
 Evidence starts from the public consumer claims in [contracts/modules.md](contracts/modules.md): deterministic
 `@effect/vitest` examples and bounded properties cover all activity literals, policy adoption, before/equal/after
-boundaries, missing/malformed/failure outcomes, tenant mismatch, and non-revival. A real tenant consumer test proves
-that selected configuration supplies effective policy and rejects invalid policy before refresh. The memory Redis
-helper must model the installed script API and atomic state transitions faithfully, but tests continue to import only
-public parent modules.
+boundaries, missing/malformed/failure outcomes, tenant mismatch, and non-revival. Malformed-state cases prove the
+stored bytes remain unchanged, and an expired record belonging to another tenant proves mismatch precedence and
+non-mutation. A real tenant consumer test proves that selected configuration supplies effective policy and rejects
+invalid policy before refresh. The memory Redis helper must model the installed script API and atomic state
+transitions faithfully, but tests continue to import only public parent modules.
 
-Real Redis evidence uses two independently scoped clients/runtimes with one scenario-owned prefix. Controlled races
-must converge on one complete candidate: a renewal that linearizes first may remain usable, while an expiration or
-missing-state result that linearizes first cannot be overwritten by a stale operation. Bounded generated inputs and
-schedules support only the exercised cases; they are not a proof of all deployment timing.
+Real Redis evidence uses two independently scoped clients/runtimes with one scenario-owned prefix. Bounded dispatch
+gates exercise two distinct schedules: release and observe renewal before expiration dispatch, then invert the gates
+so expiration completes before renewal dispatch. Each case asserts both operation results and later reads from both
+clients. An uncontrolled simultaneous race may supplement these forced orderings, but cannot replace either one.
+Bounded generated inputs and schedules support only the exercised cases; they are not a proof of all deployment timing.
 
 ### Phase 4 — Implementation architecture
 
@@ -149,17 +153,23 @@ sample authoritative receipt time from Effect `Clock`, validate the opaque refer
 script that reads the current payload and linearizes the applicable transition. The script will:
 
 1. return missing when the key does not exist;
-2. strictly fail when the record cannot be evaluated;
-3. compare the encoded deadline with the supplied receipt time and delete/return expired when `deadline <= now`;
-4. reject a tenant mismatch without changing state;
-5. return the unchanged record for excluded activity; or
-6. for qualifying activity, replace deadline and warning policy together, reset the cleanup TTL, and return the
-   complete renewed record.
+2. decode and validate the complete exact `StoredSessionV1` shape and constraints, failing without mutation when any
+   field, type, constraint, version, or excess property is invalid;
+3. for tenant-bound refresh, compare the stored tenant before deadline evaluation and return mismatch without changing
+   even an already-expired record;
+4. prepare the complete internal result and, where applicable, the fully encoded replacement plus TTL before any
+   mutation;
+5. for a tenantless read or tenant-matching refresh, return expired and perform one final `DEL` when `deadline <= now`;
+6. return the unchanged record for excluded activity; or
+7. for qualifying activity, perform one final `SET ... PX` with the prepared complete record so deadline and warning
+   policy change together.
 
-The parent strictly decodes every returned payload/result, maps private defects to the existing fieldless public
-failure, and annotates only usable operations with the existing transient `session.id`. Redis TTL may outlive the
-encoded deadline by command latency but can never authorize identity because every public read evaluates the encoded
-deadline. No retry may apply a stale policy after another transition wins.
+The script performs no write during preparation and never relies on rollback: malformed input or failed preparation
+returns an internal failure before a mutation is issued. The parent strictly decodes every returned payload/result,
+maps private defects to the existing fieldless public failure, and annotates only usable operations with the existing
+transient `session.id`. Redis TTL may outlive the encoded deadline by command latency but can never authorize identity
+because every public read evaluates the encoded deadline. No retry may apply a stale policy after another transition
+wins.
 
 Implementation order:
 
@@ -168,8 +178,10 @@ Implementation order:
 3. Extend the memory Redis helper with faithful script loading/evaluation and bounded failure controls.
 4. Add private atomic read/expire/refresh storage behavior and exhaustive result decoding.
 5. Compose it in `SessionService` using Effect clock, tenant binding, validated policy inputs, and existing errors.
-6. Add deterministic example/property/concurrency tests and tenant-consumer composition evidence.
-7. Add two-client real Redis ordering and missing/expiry race evidence.
+6. Add deterministic example/property/concurrency tests, including malformed-record and expired-mismatch
+   non-mutation, plus tenant-consumer composition evidence.
+7. Add two-client real Redis evidence that separately gates renewal-first and expiration-first dispatch, asserts both
+   operation results, and confirms convergence from both clients.
 8. Run the manual procedure, feature-specific checks, and all repository quality gates, recording only safe results.
 
 ### Phase 5 — Feature verification integration

@@ -2,8 +2,8 @@
 
 ## Evidence consulted
 
-- Issue #220 and its accepted requirement/delivery authorities at `origin/main` revision
-  `c1d87a22a55cd5190bc702a6a3c33cfed2ca23ef`.
+- Issue #220 and its accepted requirement/delivery authorities, refreshed at `origin/main` revision
+  `ebe3eb31589b7b06bccccaadb2c8836b12513316`.
 - The existing `SessionService`, private codec/store, `TenantConfigService`, host runtime, deterministic session tests,
   memory Redis helper, and real Redis integration tests.
 - Repository Effect and testing guidance, the full local Effect v4 `LLMS.md` at checkout
@@ -50,12 +50,15 @@ tenant-bound read contract.
 
 **Decision**: Use one-key Lua evaluation through the installed Effect Redis script API. Both public reads and refresh
 operations pass the Effect-clock receipt time so the store can atomically observe the record and return missing,
-expired, mismatch, unchanged, or renewed state. Expiration deletes the key; qualifying renewal replaces the complete
-record and TTL in the same atomic operation.
+expired, mismatch, unchanged, or renewed state. The script fully validates the exact V1 record, performs tenant
+admission for tenant-bound refresh, and constructs its complete result/replacement before any mutation. It then issues
+no mutation or one final `DEL`/`SET ... PX`; it never relies on script rollback. Tenant mismatch precedes expiration
+for tenant-bound refresh.
 
 **Rationale**: Application-level `GET` followed by `SET`, even with compare-and-replace, can expose expired state and
-then allow a stale write. One atomic transition establishes an unambiguous winner across independent clients. Effect
-clock remains the behavioral authority; TTL remains cleanup.
+then allow a stale write. One prepare-then-commit transition establishes an unambiguous winner across independent
+clients without risking a partial mutation on malformed input. Mismatch-first admission preserves the public
+non-mutation contract. Effect clock remains the behavioral authority; TTL remains cleanup.
 
 **Rejected**: Unconditional `GET`/`SET`, optimistic retry of stale policy, process locks, Redis `TIME` as policy
 authority, retained tombstones, or grace windows.
@@ -93,7 +96,9 @@ direction and proves invalid policy is rejected before it reaches renewal.
 ### R-008 — Use layered evidence, not application claims
 
 **Decision**: Combine deterministic public-service examples/properties, a faithful memory Redis test adapter, actual
-tenant-consumer composition, bounded two-client real Redis races, and the mandatory manual procedure.
+tenant-consumer composition, separately gated two-client real Redis renewal-first and expiration-first cases, and the
+mandatory manual procedure. Assert both operation outcomes and later reads from both clients in each forced ordering;
+an uncontrolled race is supplementary only.
 
 **Rationale**: Each layer proves a different meaningful risk. Real Redis is necessary for command/script ordering;
 Effect `TestClock` is necessary for exact boundary behavior; the tenant consumer is necessary for invalid-policy
@@ -108,6 +113,11 @@ claiming all concurrency schedules from a finite race matrix.
 - **Equality**: `deadline <= receivedAt` is expired.
 - **Policy adoption**: only a successful qualifying refresh adopts the current validated policy.
 - **Concurrency**: the atomic Redis operation is the linearization point; no stale retry overwrites its winner.
+- **Mutation safety**: all validation and fallible construction precede no more than one final mutation; Redis script
+  rollback is not assumed.
+- **Mismatch precedence**: tenant-bound refresh returns mismatch without mutation before considering expiration.
+- **Race evidence**: renewal-first and expiration-first are separately gated and asserted, not inferred from an
+  either-outcome race.
 - **Data retention**: missing and expired may share the same result; no tombstone is required.
 - **Operational telemetry**: no new monitoring claim; existing safe transient session annotation is preserved.
 
