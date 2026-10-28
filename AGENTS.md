@@ -76,6 +76,11 @@ Before specifying, planning, or implementing a delivery-issue feature, read
 existing authority. The workflow decides how that work is branched, reviewed,
 and merged.
 
+`specs/{number}-{slug}/` is that feature's historic Spec Kit record. A pull request
+may modify `specs/` only inside the feature directory it belongs to. When later work
+changes behavior, record the current behavior in `docs/`. Do not edit another
+feature's specification, plan, or supporting Spec Kit files to catch them up.
+
 ## Effect workspace routing
 
 Before designing or modifying Effect code in `packages/frontend-services`,

@@ -114,7 +114,9 @@ After a clean rebase, `gh stack push`. Then validate.
 
 For each open layer, compare `gh pr diff` with the paths allowed for that phase in the workflow guide. Report files
 that belong to another phase, especially requirement or delivery-plan edits. A specification diff that adds module
-contracts, or an implementation diff that changes acceptance criteria, is a phase violation.
+contracts, or an implementation diff that changes acceptance criteria, is a phase violation. Report any `specs/`
+path outside that feature's `specs/{number}-{slug}/` directory. Other feature directories are historic. Leave them
+unchanged when later behavior belongs in `docs/`.
 
 Run formatting for a specification or plan change. For implementation, run the affected typecheck, lint, unit,
 property, and BDD checks the change claims. Report checks that were not run. Name decisions whose content changed

@@ -16,3 +16,6 @@ contract. Use [Git and pull request workflow](../../docs/engineering/git-workflo
 - Do not redefine acceptance criteria, delivery scope, or accepted requirements.
 - If the diff only records execution results in `quickstart.md`, review those results as evidence rather than as a
   new architecture decision.
+- Flag any path under `specs/` outside this pull request's single `specs/{number}-{slug}/` directory. Those
+  files are historic. Do not ask for another feature's plan or contracts to be revised. Current behavior belongs
+  in `docs/`.

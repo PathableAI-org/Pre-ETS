@@ -1,0 +1,23 @@
+---
+description: Spec Kit files under specs/ are historic; a pull request may edit only its own feature directory
+alwaysApply: true
+---
+
+# Historic Spec Kit artifacts
+
+`specs/{number}-{slug}/` records the specification and plan for that feature.
+After it lands, it stays history. Living documentation belongs in `docs/`.
+
+## Required
+
+- A pull request may modify `specs/` only inside the single feature directory that pull request is for.
+- A correction to a merged feature still uses that feature's directory, on a pull request for that feature.
+- When behavior changes after a feature has merged, record the current behavior in `docs/`.
+
+## Forbidden
+
+- Editing another feature's `plan.md`, `spec.md`, contracts, research, tasks, or quickstart so they match later code.
+- Rewriting old Spec Kit files because requirements, delivery plans, or engineering docs changed.
+
+A session-renewal pull request may change `specs/159-session-renewal-expiration/`.
+If idle behavior has since changed, describe that current behavior in `docs/`.

@@ -13,3 +13,6 @@ branch, the reviewed delivery plan, and [Git and pull request workflow](../../do
 - Flag unsupported behavioral assumptions and unauthorized product decisions.
 - Do not request module interfaces, public types, internal algorithms, or runtime composition.
 - Do not request edits to accepted requirements or approved delivery plans. Name that owning workflow instead.
+- Flag any path under `specs/` outside this pull request's single `specs/{number}-{slug}/` directory. Those
+  files are historic. Do not ask for another feature's Spec Kit files to be revised. Current behavior belongs in
+  `docs/`.
