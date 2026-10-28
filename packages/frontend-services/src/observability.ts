@@ -3,7 +3,6 @@ import type { DiagLogger } from "@opentelemetry/api"
 import type { LogRecordExporter } from "@opentelemetry/sdk-logs"
 import type { PushMetricExporter } from "@opentelemetry/sdk-metrics"
 import type { SpanExporter } from "@opentelemetry/sdk-trace-base"
-import type { LogLevel } from "effect/LogLevel"
 
 import { NodeSdk } from "@effect/opentelemetry"
 import { diag, DiagLogLevel } from "@opentelemetry/api"
@@ -17,7 +16,7 @@ import { BatchLogRecordProcessor } from "@opentelemetry/sdk-logs"
 import { PeriodicExportingMetricReader } from "@opentelemetry/sdk-metrics"
 import { AlwaysOnSampler, BatchSpanProcessor } from "@opentelemetry/sdk-trace-base"
 import { NodeTracerProvider } from "@opentelemetry/sdk-trace-node"
-import { Cause, Effect, Layer, Logger, Option, References, Schema } from "effect"
+import { Cause, Effect, Layer, Logger, Option, Schema } from "effect"
 
 import type { OtelSettings } from "./config/index.js"
 
@@ -144,9 +143,6 @@ const installQuietDiagnostics = (): void => {
   diag.setLogger(quietDiagnostics, DiagLogLevel.ERROR)
 }
 
-const consoleLogger = (serverEnv: "development" | "production" | "test"): Logger.Logger<unknown, void> =>
-  serverEnv === "production" ? Logger.consoleJson : Logger.consolePretty()
-
 const redactRedisClientError = (
   logger: Logger.Logger<unknown, unknown>
 ): Logger.Logger<unknown, unknown> =>
@@ -170,12 +166,6 @@ const redactLayer = Layer.unwrap(Effect.gen(function*() {
   for (const logger of current) wrapped.add(redactRedisClientError(logger))
   return Layer.succeed(Logger.CurrentLoggers, wrapped)
 }))
-
-const consoleLayer = (logLevel: LogLevel, serverEnv: "development" | "production" | "test") =>
-  Layer.mergeAll(
-    Logger.layer([consoleLogger(serverEnv)]),
-    Layer.succeed(References.MinimumLogLevel, logLevel)
-  )
 
 let capturedProvider: NodeTracerProvider | undefined
 
@@ -240,8 +230,6 @@ const httpLayer = Layer.effectDiscard(Effect.gen(function*() {
 
 const selectedLayer = (
   selection: ObservabilitySelection,
-  logLevel: LogLevel,
-  serverEnv: "development" | "production" | "test",
   serviceName: string
 ) => {
   installQuietDiagnostics()
@@ -276,31 +264,27 @@ const selectedLayer = (
           restore()
         })
     ))
-  const sdkReady = sdk.pipe(Layer.provideMerge(Layer.mergeAll(consoleLayer(logLevel, serverEnv), patch)))
+  const sdkReady = sdk.pipe(Layer.provideMerge(patch))
   const side = selection.traces === undefined ? redactLayer : Layer.mergeAll(httpLayer, redactLayer)
   return side.pipe(Layer.provideMerge(sdkReady))
 }
 
-const consoleOnlyLayer = (logLevel: LogLevel, serverEnv: "development" | "production" | "test") =>
-  redactLayer.pipe(Layer.provideMerge(
-    NodeSdk.layerEmpty.pipe(Layer.provideMerge(consoleLayer(logLevel, serverEnv)))
-  ))
+const unselectedLayer = redactLayer.pipe(Layer.provideMerge(NodeSdk.layerEmpty))
 
 const anySelected = (selection: ObservabilitySelection): boolean =>
   selection.logs !== undefined || selection.metrics !== undefined || selection.traces !== undefined
 
 /**
- * Console logger plus one Node SDK for the signals `selectObservability` accepts.
+ * One Node SDK for the signals `selectObservability` accepts.
  * A selection failure fails this layer before exporters are constructed.
+ * The console logger stays in the surrounding context; this layer does not replace it.
  */
 export const observabilityLayer = (input: {
-  readonly logLevel: LogLevel
   readonly otel: OtelSettings
-  readonly serverEnv: "development" | "production" | "test"
 }): Layer.Layer<Resource, ObservabilityInitializationError> =>
   Layer.unwrap(Effect.gen(function*() {
     const selection = yield* selectObservability(input.otel)
-    if (!anySelected(selection)) return consoleOnlyLayer(input.logLevel, input.serverEnv)
+    if (!anySelected(selection)) return unselectedLayer
     const serviceName = Option.getOrElse(input.otel.serviceName, () => defaultServiceName)
-    return selectedLayer(selection, input.logLevel, input.serverEnv, serviceName)
+    return selectedLayer(selection, serviceName)
   }))

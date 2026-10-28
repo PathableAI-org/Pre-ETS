@@ -9,7 +9,6 @@ import { type ObservabilityInitializationError, observabilityLayer } from "./obs
 import { SessionService } from "./session.js"
 import { TenantConfigService } from "./tenant.js"
 
-const startupFailureTag = "@pathableai/pre-ets-frontend/StartupFailure"
 const startupNotReadyTag = "@pathableai/pre-ets-frontend/StartupNotReady"
 
 export type ApplicationServices = AuthenticationService | SessionService | TenantConfigService
@@ -22,18 +21,10 @@ export interface ProcessStartup {
   readonly server: Config.Success<typeof ServerConfig>
 }
 
-export class StartupFailure extends Schema.TaggedError<StartupFailure>()(
-  startupFailureTag,
-  {
-    reason: Schema.Literals(["acquisition", "config", "defect", "observability-initialization"]),
-    stage: Schema.Literals(["application-acquisition", "configuration", "observability"])
-  }
-) {}
 export class StartupNotReady extends Schema.TaggedError<StartupNotReady>()(startupNotReadyTag, {}) {}
 
 export const loadProcessStartup: Effect.Effect<ProcessStartup, Config.ConfigError> = Effect.gen(function*() {
-  const env: Record<string, string | undefined> = { ...process.env }
-  const configProvider = ConfigProvider.fromEnvRecord(env)
+  const configProvider = ConfigProvider.fromEnv()
   const startup = yield* Effect.provideService(StartupConfig, ConfigProvider.ConfigProvider, configProvider)
   const authentication = yield* Effect.provideService(
     AuthenticationProcessConfig,
@@ -56,12 +47,12 @@ const applicationCore = (startup: ProcessStartup) =>
   )
 
 /**
- * Observability is merged into the runtime context so the console logger and
- * selected signals stay available after acquisition. Redis stays behind
- * `Layer.provide`, so it is not a sibling and is not part of `ApplicationServices`.
- * The public error channel omits `ConfigError` because this Effect version has
- * no layer error map that preserves services; a runtime config failure is still
- * classified as configuration.
+ * Observability is merged into the runtime context so the selected signals stay
+ * available after acquisition. Redis stays behind `Layer.provide`, so it is not
+ * a sibling and is not part of `ApplicationServices`. The console logger is a
+ * separate layer supplied by the caller. The public error channel omits
+ * `ConfigError` because this Effect version has no layer error map that preserves
+ * services.
  */
 export const applicationLayer = (
   startup: ProcessStartup,
@@ -70,9 +61,7 @@ export const applicationLayer = (
   const layer = applicationCore(startup).pipe(
     Layer.provide(infrastructure),
     Layer.provideMerge(observabilityLayer({
-      logLevel: startup.logLevel,
-      otel: startup.otel,
-      serverEnv: startup.server.env
+      otel: startup.otel
     })),
     Layer.provide(ConfigProvider.layer(startup.configProvider))
   )
