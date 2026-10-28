@@ -35,7 +35,8 @@ atomic Redis operation rather than an application-level read/write sequence
 expired. The atomic script completes full stored-record validation, tenant admission, and result/replacement
 construction before any write, then performs at most one final `DEL` or `SET ... PX`. Tenant mismatch takes precedence
 over expiration for tenant-bound refresh and fails closed without mutation. No PHI, credentials, tokens, raw
-references, keys, or stored records may enter public errors, durable evidence, or telemetry.
+references, keys, or stored records may enter public errors, durable evidence, or telemetry. Receipt time determines
+renewal eligibility, but the parent must sample Effect clock again after storage and before exposing identity.
 
 **Scale/Scope**: One existing public session service, its private Redis child and test adapter, the real tenant-policy
 consumer, deterministic unit/property evidence, and bounded two-client Redis integration evidence
@@ -93,6 +94,9 @@ packages/frontend-services/
     │   ├── session.test.ts         # public contract, time, activity, outcome, property evidence
     │   ├── session-policy-refresh.test.ts # real tenant-consumer composition evidence
     │   └── tenant-policy.test.ts   # existing invalid-policy consumption evidence
+    ├── unit/
+    │   ├── authentication-entry-failures.test.ts # migrate complete SessionService doubles
+    │   └── reference-session-enforcement.test.ts # migrate complete SessionService doubles
     └── integration/
         └── session-redis.test.ts   # independent-client real Redis ordering evidence
 ```
@@ -122,13 +126,16 @@ premature application wiring.
 
 [contracts/modules.md](contracts/modules.md) records the exact `RefreshSessionForTenantInput` union and
 `SessionService.refreshForTenant` signature. Qualifying variants require the current validated
-`EffectiveSessionPolicy`; excluded variants cannot carry policy and therefore cannot accidentally adopt it. Every
+`EffectiveSessionPolicy`; excluded variants declare `policy?: never`, so non-literal excluded inputs cannot carry
+policy and therefore cannot accidentally adopt it. Every
 variant carries `tenantAlias`, and stored-tenant mismatch returns the existing fieldless `SessionTenantMismatch`
 without mutation. Missing/expired state remains `NoUsableSession`; store, codec, script, and unknown-result failures
 remain the existing fieldless `SessionServiceUnavailable`.
 
 The tenant module's relevant signatures are recorded as preserved, not newly exported. There is no new public
-service, root-package re-export, provider contract, error type, or stored-record version.
+service, root-package re-export, provider contract, error type, or stored-record version. Existing callers remain
+source-compatible, while every complete `SessionService["Service"]` implementation or test double must add the new
+required member; the known doubles in both unit-test files named above are part of this migration.
 
 ### Phase 3 — Module contract evidence
 
@@ -136,8 +143,11 @@ Evidence starts from the public consumer claims in [contracts/modules.md](contra
 `@effect/vitest` examples and bounded properties cover all activity literals, policy adoption, before/equal/after
 boundaries, missing/malformed/failure outcomes, tenant mismatch, and non-revival. Malformed-state cases prove the
 stored bytes remain unchanged, and an expired record belonging to another tenant proves mismatch precedence and
-non-mutation. A real tenant consumer test proves that selected configuration supplies effective policy and rejects
-invalid policy before refresh. The memory Redis helper must model the installed script API and atomic state
+non-mutation. A controlled delayed-store case advances Effect time across the returned deadline before the storage
+result completes and proves the parent returns `NoUsableSession`. A controlled commit-then-fail case proves a late
+failure returns `SessionServiceUnavailable`, does not retry stale policy, and leaves the eventual state observable only
+through a later public read. A real tenant consumer test proves that selected configuration supplies effective policy
+and rejects invalid policy before refresh. The memory Redis helper must model the installed script API and atomic state
 transitions faithfully, but tests continue to import only public parent modules.
 
 Real Redis evidence uses two independently scoped clients/runtimes with one scenario-owned prefix. Bounded dispatch
@@ -147,13 +157,17 @@ clients. A third mandatory overlapping case holds both clients at one start barr
 awaiting either result, bounds both completions, accepts either permitted winner, asserts both operation outcomes, and
 confirms later reads from both clients converge. The overlapping case cannot replace either forced ordering, and the
 forced orderings cannot replace actual overlap. Bounded generated inputs and schedules support only the exercised
-cases; they are not a proof of all deployment timing.
+cases; they are not a proof of all deployment timing. A separate real-Redis case stores an otherwise valid record with
+a valid tenant and future deadline but an invalid or missing identity field, invokes public refresh, and asserts
+`SessionServiceUnavailable` plus byte-for-byte unchanged storage and no TTL reset or extension.
 
 ### Phase 4 — Implementation architecture
 
 Implement public-contract types and initially failing evidence before private behavior. For every read or refresh,
 sample authoritative receipt time from Effect `Clock`, validate the opaque reference, and execute one private Redis
-script that reads the current payload and linearizes the applicable transition. The script will:
+script that reads the current payload and linearizes the applicable transition. After a usable store result returns,
+sample Effect clock again and compare that fresh time with the returned deadline before annotating or exposing identity.
+The script will:
 
 1. return missing when the key does not exist;
 2. decode and validate the complete exact `StoredSessionV1` shape and constraints, failing without mutation when any
@@ -168,24 +182,29 @@ script that reads the current payload and linearizes the applicable transition. 
    policy change together.
 
 The script performs no write during preparation and never relies on rollback: malformed input or failed preparation
-returns an internal failure before a mutation is issued. The parent strictly decodes every returned payload/result,
-maps private defects to the existing fieldless public failure, and annotates only usable operations with the existing
-transient `session.id`. Redis TTL may outlive the encoded deadline by command latency but can never authorize identity
-because every public read evaluates the encoded deadline. No retry may apply a stale policy after another transition
-wins.
+returns an internal failure before a mutation is issued. Once its one final mutation is issued, a later transport or
+result-decoding failure may leave committed state while the parent returns `SessionServiceUnavailable`; the service
+does not retry stale input, and callers must use a later public read to determine the authoritative state. The parent
+strictly decodes every returned payload/result and annotates only results that remain usable at the fresh post-storage
+clock sample with the existing transient `session.id`. Redis TTL may outlive the encoded deadline by command latency
+but can never authorize identity because every public read rechecks the encoded deadline after storage. No retry may
+apply a stale policy after another transition wins.
 
 Implementation order:
 
 1. Inspect Fallow zones for the changed session source and tests.
-2. Add the public activity/input contract and failing public-boundary evidence.
+2. Add the public activity/input contract, update complete `SessionService["Service"]` doubles in
+   `tests/unit/reference-session-enforcement.test.ts` and `tests/unit/authentication-entry-failures.test.ts`, and add
+   initially failing public-boundary evidence.
 3. Extend the memory Redis helper with faithful script loading/evaluation and bounded failure controls.
 4. Add private atomic read/expire/refresh storage behavior and exhaustive result decoding.
 5. Compose it in `SessionService` using Effect clock, tenant binding, validated policy inputs, and existing errors.
 6. Add deterministic example/property/concurrency tests, including malformed-record and expired-mismatch
-   non-mutation, plus tenant-consumer composition evidence.
-7. Add two-client real Redis evidence that separately gates renewal-first and expiration-first dispatch, plus a
-   mandatory start-barrier case that releases both operations without awaiting either; assert both operation results
-   and confirm convergence from both clients in all three cases.
+   non-mutation, a delayed storage result that crosses the returned deadline, a commit-then-fail result with no retry,
+   and tenant-consumer composition evidence.
+7. Add a real-Redis malformed-record non-mutation case, plus two-client evidence that separately gates renewal-first
+   and expiration-first dispatch and a mandatory start-barrier case that releases both operations without awaiting
+   either; assert both operation results and confirm convergence from both clients in all three race cases.
 8. Run the manual procedure, feature-specific checks, and all repository quality gates, recording only safe results.
 
 ### Phase 5 — Feature verification integration

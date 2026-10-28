@@ -42,13 +42,15 @@ export type RefreshSessionForTenantInput =
   }
   | {
     readonly activity: ExcludedSessionActivity
+    readonly policy?: never
     readonly reference?: string
     readonly tenantAlias: TenantAlias
   }
 ```
 
 These are semantic server-side categories. Downstream adapters must establish their provenance; callers cannot add
-categories or pass a boolean that bypasses classification. The union makes policy unavailable to excluded activity.
+categories or pass a boolean that bypasses classification. The `policy?: never` member prevents excluded activity
+from carrying policy even when a non-literal object is assigned before it is passed to the service.
 
 ### Extended service signature
 
@@ -90,11 +92,15 @@ export class SessionService extends Context.Service<SessionService, {
 - Qualifying activity strictly before the deadline atomically returns the complete renewed `UsableSession` whose new
   deadline and warning policy come from one input policy.
 - Missing state and state at or beyond the deadline return `NoUsableSession`; expired state may be deleted.
+- Before exposing identity from any store result, the session parent samples a fresh post-storage Effect-clock time
+  and returns `NoUsableSession` when the returned authoritative deadline has been reached during the operation.
 
 **Expected errors**
 
 - `SessionTenantMismatch`: selected tenant does not match stored tenant; no mutation occurs.
-- `SessionServiceUnavailable`: Redis, codec, script, or result-decoding failure. It remains fieldless.
+- `SessionServiceUnavailable`: Redis, codec, script, or result-decoding failure. It remains fieldless. Validation and
+  preparation failures occur before mutation, but a transport or result-decoding failure observed after the script's
+  one final write may mean that write committed; callers must not infer unchanged state or retry stale policy.
 - Defects and interruption are not translated into domain outcomes.
 
 **Invariants**
@@ -103,8 +109,13 @@ export class SessionService extends Context.Service<SessionService, {
 - No successful path returns identity without its authoritative deadline, tenant, and warning policy.
 - Complete exact `StoredSessionV1` validation and all fallible result/replacement construction finish before the
   script issues any mutation. Malformed state returns `SessionServiceUnavailable` and remains byte-for-byte unchanged.
+- Once the script issues its one final mutation, a later transport or result-decoding failure may return
+  `SessionServiceUnavailable` with committed state. The service performs no automatic stale retry; a later read is the
+  only public way to observe the resulting authoritative state.
 - On tenant-bound refresh, stored-tenant mismatch takes precedence over deadline evaluation, including for an expired
   record, and leaves the stored value and TTL unchanged.
+- Receipt time decides whether activity may renew, while a fresh post-storage Effect-clock check against the returned
+  deadline decides whether identity may be exposed to the caller.
 - A stale operation never recreates missing/expired state or overwrites an atomic winner.
 - No public error or trace contains a raw reference, key, stored record, identity, token, policy document, or partner
   name.
@@ -113,7 +124,10 @@ export class SessionService extends Context.Service<SessionService, {
 
 - Calling a provided `SessionService` requires no additional Effect environment; its existing layer continues to
   require `Redis` and configuration.
-- Existing methods and public types are source-compatible. The package-root export remains unchanged because current
+- Existing callers of the current methods remain source-compatible. Adding required `refreshForTenant` is an
+  implementation-level breaking change for complete `SessionService["Service"]` values, so the implementation must
+  update the doubles in `tests/unit/reference-session-enforcement.test.ts` and
+  `tests/unit/authentication-entry-failures.test.ts`. The package-root export remains unchanged because current
   consumers import the session parent internally and downstream application wiring is not part of #220.
 - Stored V1 records remain readable without migration.
 
@@ -140,18 +154,20 @@ module does not import the tenant config child or duplicate its defaults.
 
 ## Contract evidence
 
-| Consumer claim                                          | Meaningful violation                                                      | Evidence                                                                                               |
-| ------------------------------------------------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| A trusted adapter can present every authorized category | A positive category does not renew or an excluded category writes         | Public service table tests over every literal, with TestClock-controlled deadlines                     |
-| Current policy is adopted only on refresh               | An unrefreshed/excluded session changes, or refresh uses old/mixed fields | Two-session policy-change examples plus bounded deadline properties                                    |
-| Tenant binding protects policy application              | Another tenant's policy mutates the session                               | Mismatch test through `refreshForTenant`, asserting fieldless failure and unchanged later read         |
-| Malformed state cannot be partially updated             | A corrupt record is deleted or rewritten before decoding fails            | Public-service malformed-record cases asserting `SessionServiceUnavailable` and identical stored bytes |
-| Mismatch wins before tenant-bound expiration mutation   | A wrong-tenant refresh deletes an expired record                          | Expired mismatch case asserting `SessionTenantMismatch`, unchanged bytes, and unchanged TTL            |
-| Equality/lateness never revives identity                | At-deadline, late Continue, or timeout increase returns usable state      | Before/equal/after deterministic matrix and properties                                                 |
-| Independent clients converge under ordering and overlap | An order is missed, overlap is untested, or stale state overwrites expiry | Two forced-order cases plus one barrier-released overlapping real Redis race; both results and clients |
-| Missing/expired/failure stay distinguishable            | Dependency failure becomes no-session or identity                         | Public failure controls and real missing/expiry cases                                                  |
-| Invalid selected policy never reaches refresh           | Invalid values produce an effective policy                                | Actual `TenantConfigService` composition tests; existing invalid-policy matrix reused where sufficient |
-| No browser timer is required                            | Session stays usable after deadline without a client timer                | Public read/refresh after TestClock advancement and real-store manual observation                      |
+| Consumer claim                                          | Meaningful violation                                                            | Evidence                                                                                                                                        |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| A trusted adapter can present every authorized category | A positive category does not renew or an excluded category writes               | Public service table tests over every literal, with TestClock-controlled deadlines                                                              |
+| Current policy is adopted only on refresh               | An unrefreshed/excluded session changes, or refresh uses old/mixed fields       | Two-session policy-change examples plus bounded deadline properties                                                                             |
+| Tenant binding protects policy application              | Another tenant's policy mutates the session                                     | Mismatch test through `refreshForTenant`, asserting fieldless failure and unchanged later read                                                  |
+| Malformed state cannot be partially updated             | A corrupt record is deleted or rewritten before decoding fails                  | Public-service cases plus a real-Redis invalid-identity case asserting `SessionServiceUnavailable`, identical bytes, and no TTL reset/extension |
+| Mismatch wins before tenant-bound expiration mutation   | A wrong-tenant refresh deletes an expired record                                | Expired mismatch case asserting `SessionTenantMismatch`, unchanged bytes, and unchanged TTL                                                     |
+| Equality/lateness never revives identity                | At-deadline, late Continue, or timeout increase returns usable state            | Before/equal/after deterministic matrix and properties                                                                                          |
+| Delayed reads cannot expose expired identity            | A pre-I/O read completes after its returned deadline and still returns identity | Controlled delayed-store public-service case that crosses the deadline and returns `NoUsableSession`                                            |
+| Ambiguous post-write failure is not retried             | A committed refresh is repeated with stale policy after its result fails        | Controlled commit-then-fail case asserting `SessionServiceUnavailable`, no retry, and later-read state                                          |
+| Independent clients converge under ordering and overlap | An order is missed, overlap is untested, or stale state overwrites expiry       | Two forced-order cases plus one barrier-released overlapping real Redis race; both results and clients                                          |
+| Missing/expired/failure stay distinguishable            | Dependency failure becomes no-session or identity                               | Public failure controls and real missing/expiry cases                                                                                           |
+| Invalid selected policy never reaches refresh           | Invalid values produce an effective policy                                      | Actual `TenantConfigService` composition tests; existing invalid-policy matrix reused where sufficient                                          |
+| No browser timer is required                            | Session stays usable after deadline without a client timer                      | Public read/refresh after TestClock advancement and real-store manual observation                                                               |
 
 The memory Redis helper may understand the script protocol but is test infrastructure, not a second production
 contract. Tests import public parent modules only. Durable telemetry assertions are prohibited.

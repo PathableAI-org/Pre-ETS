@@ -3,7 +3,7 @@
 ## Evidence consulted
 
 - Issue #220 and its accepted requirement/delivery authorities, refreshed at `origin/main` revision
-  `ebe3eb31589b7b06bccccaadb2c8836b12513316`.
+  `3f54c577a076c8139c5be6986e0b7c3e81106af7`.
 - The existing `SessionService`, private codec/store, `TenantConfigService`, host runtime, deterministic session tests,
   memory Redis helper, and real Redis integration tests.
 - Repository Effect and testing guidance, the full local Effect v4 `LLMS.md` at checkout
@@ -27,7 +27,8 @@ future-shaped boundary without a distinct consumer.
 ### R-002 — Use a closed semantic activity union
 
 **Decision**: Model the authorized positive and excluded categories as string-literal unions. Use a discriminated
-input so only qualifying activity can carry the current effective policy.
+input so only qualifying activity can carry the current effective policy; the excluded variant declares
+`policy?: never` so the restriction also applies to non-literal assigned objects.
 
 **Rationale**: The service owns the closed classification required by FR-005/FR-006, while downstream adapters remain
 free to map trusted page/form/browser provenance without exposing DOM events or HTTP request objects in the service.
@@ -53,12 +54,15 @@ operations pass the Effect-clock receipt time so the store can atomically observ
 expired, mismatch, unchanged, or renewed state. The script fully validates the exact V1 record, performs tenant
 admission for tenant-bound refresh, and constructs its complete result/replacement before any mutation. It then issues
 no mutation or one final `DEL`/`SET ... PX`; it never relies on script rollback. Tenant mismatch precedes expiration
-for tenant-bound refresh.
+for tenant-bound refresh. After storage returns a usable record, the parent samples Effect clock again and refuses to
+expose identity when the returned deadline has been reached. A transport or result-decoding failure after the final
+write may leave committed state while returning `SessionServiceUnavailable`; no stale automatic retry is permitted.
 
 **Rationale**: Application-level `GET` followed by `SET`, even with compare-and-replace, can expose expired state and
 then allow a stale write. One prepare-then-commit transition establishes an unambiguous winner across independent
 clients without risking a partial mutation on malformed input. Mismatch-first admission preserves the public
-non-mutation contract. Effect clock remains the behavioral authority; TTL remains cleanup.
+non-mutation contract. Effect clock remains the behavioral authority: receipt time governs renewal eligibility, the
+post-storage sample governs identity exposure, and TTL remains cleanup.
 
 **Rejected**: Unconditional `GET`/`SET`, optimistic retry of stale policy, process locks, Redis `TIME` as policy
 authority, retained tombstones, or grace windows.
@@ -76,7 +80,8 @@ expiration marker has no authorized consumer.
 ### R-006 — Preserve public outcome and error semantics
 
 **Decision**: Missing or expired state returns `NoUsableSession`; usable unchanged/renewed state returns
-`UsableSession`; tenant mismatch and dependency/codec/script failure use the existing fieldless errors.
+`UsableSession`; tenant mismatch and dependency/codec/script failure use the existing fieldless errors. A failure
+after a final script write does not promise unchanged state and cannot trigger a stale retry.
 
 **Rationale**: The vocabulary already distinguishes no session, tenancy failure, and store failure without exposing
 sensitive state. Unknown script results and malformed records fail closed as service unavailability.
@@ -111,12 +116,14 @@ claiming all concurrency schedules from a finite race matrix.
 
 ## Resolved questions
 
-- **Clock authority**: Effect clock at the service boundary, not browser timers or Redis server time.
+- **Clock authority**: Effect clock at the service boundary, not browser timers or Redis server time; sample once for
+  receipt/renewal eligibility and again after storage before exposing returned identity.
 - **Equality**: `deadline <= receivedAt` is expired.
 - **Policy adoption**: only a successful qualifying refresh adopts the current validated policy.
 - **Concurrency**: the atomic Redis operation is the linearization point; no stale retry overwrites its winner.
 - **Mutation safety**: all validation and fallible construction precede no more than one final mutation; Redis script
-  rollback is not assumed.
+  rollback is not assumed. Failure after that final mutation may leave committed state and still maps to
+  `SessionServiceUnavailable`; it is never retried with stale input.
 - **Mismatch precedence**: tenant-bound refresh returns mismatch without mutation before considering expiration.
 - **Race evidence**: renewal-first and expiration-first are separately gated and asserted, not inferred from an
   either-outcome race; a third mandatory barrier-released case establishes actual overlapping dispatch.

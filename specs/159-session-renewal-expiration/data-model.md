@@ -29,8 +29,9 @@ These categories may observe the current public outcome but never write, extend 
 ### RefreshSessionForTenantInput
 
 All variants carry an optional opaque session reference and the selected `TenantAlias`. Qualifying variants also
-carry the current `EffectiveSessionPolicy`; excluded variants structurally cannot carry policy. Inputs contain no
-identity, provider token, credential, HTTP object, DOM event, or raw Redis address.
+carry the current `EffectiveSessionPolicy`; excluded variants declare `policy?: never`, so even a previously assigned
+non-literal object cannot carry policy through the excluded branch. Inputs contain no identity, provider token,
+credential, HTTP object, DOM event, or raw Redis address.
 
 ## Existing validated values
 
@@ -77,10 +78,13 @@ No migration is needed. Redis TTL is an eventual cleanup bound and is not part o
 | Tenantless read or tenant-matching refresh at/after deadline | Delete owned key as the one final mutation  | `NoUsableSession`                  |
 | Usable, excluded activity                                    | None                                        | Existing `UsableSession` unchanged |
 | Usable, qualifying activity                                  | Replace deadline, warning, and TTL together | Renewed `UsableSession`            |
-| Store/script command failure                                 | No successful public outcome                | `SessionServiceUnavailable`        |
+| Validation/preparation failure                               | None; failure occurs before mutation        | `SessionServiceUnavailable`        |
+| Transport/result failure after the final mutation is issued  | Commit state may be unknown to the caller   | `SessionServiceUnavailable`        |
 
 The new deadline is `receivedAt + idleTimeoutMinutes * 60_000`. No timeout increase is applied until a qualifying
-operation succeeds; therefore an expired session cannot be revived by a later policy change.
+operation succeeds; therefore an expired session cannot be revived by a later policy change. A public failure after
+the final write does not promise unchanged storage: the write may have committed, the service does not retry stale
+input, and a later public read determines the authoritative state.
 
 ## Concurrency invariants
 
@@ -88,8 +92,13 @@ operation succeeds; therefore an expired session cannot be revived by a later po
 - The script validates every V1 field, constraint, version, and excess-property condition; checks tenant admission for
   tenant-bound refresh; and constructs the complete result/replacement before issuing any mutation.
 - Each operation issues no mutation or exactly one final `DEL` or `SET ... PX`; it never depends on script rollback.
+- A transport or result-decoding failure after that final mutation may make the committed state unknown to the caller;
+  it still maps to `SessionServiceUnavailable` and never triggers an automatic stale retry.
 - Every successful result represents one complete stored record; policy fields from competing candidates are never
   combined.
+- After storage returns a usable record, the session parent samples Effect clock again and exposes identity only when
+  the returned authoritative deadline is still in the future. The earlier receipt time remains the renewal-eligibility
+  input.
 - A tenant mismatch precedes expiration for tenant-bound refresh and leaves the stored value and TTL unchanged.
 - When qualifying pre-deadline renewal linearizes first, later consumers may observe its new deadline.
 - When expiration, missing-state removal, or another winning transition linearizes first, a stale operation does not

@@ -14,7 +14,7 @@
 ## Prerequisites
 
 1. Use a clean checkout of the implementation revision and record it. The refreshed planning baseline is `origin/main`
-   `ebe3eb31589b7b06bccccaadb2c8836b12513316` plus the approved specification/plan stack.
+   `3f54c577a076c8139c5be6986e0b7c3e81106af7` plus the approved specification/plan stack.
 2. Install the repository's pinned Node.js and pnpm dependencies from the root.
 3. Have Docker Compose available for the repository's pinned Redis 8.10.2 service.
 4. Use only synthetic tenant/identity data and a scenario-owned Redis key prefix. Never use production credentials,
@@ -37,8 +37,13 @@ REDIS_URL=redis://127.0.0.1:6379 pnpm --filter @pathableai/pre-ets-frontend-serv
 ```
 
 Expected observations include all activity categories, strict before/equal/after behavior, policy-change separation,
-and missing/expired/failure outcomes. A malformed complete-record case must return `SessionServiceUnavailable` without
-changing the stored bytes. A tenant-bound refresh of an expired record for another tenant must return
+and missing/expired/failure outcomes. A controlled storage response that completes after its returned deadline must
+return `NoUsableSession` despite its pre-I/O receipt time. A controlled post-commit result failure must return
+`SessionServiceUnavailable` without a stale retry; a later public read, not the failed call, determines whether the
+write committed. A real-Redis record with a valid tenant and future deadline but an invalid or missing identity field
+must return `SessionServiceUnavailable` from public refresh with identical stored bytes and no TTL reset or extension.
+A tenant-bound
+refresh of an expired record for another tenant must return
 `SessionTenantMismatch` without changing its bytes or TTL. Real-Redis evidence must separately gate renewal-first and
 expiration-first dispatch, assert both operation results, and confirm later reads from both clients converge; a single
 ordering case is not sufficient. It must also hold both clients at one start barrier, release both operations without
@@ -58,14 +63,14 @@ codec children.
 
 1. Record revision, date/time, Node/pnpm/Redis versions, synthetic tenant aliases, initial and changed policies, the
    owned prefix label (not raw keys), client topology, and clock-control method.
-2. Through A, establish a synthetic session under policy A. Through B, read for the same tenant and record only the
-   public usable outcome, synthetic identity labels, deadline, and warning lead.
-3. Change the selected synthetic tenant to policy B. Read through both clients without activity and confirm the
-   established deadline/warning remain from A.
+2. Through A, establish two independent synthetic sessions under policy A. Through B, read both for the same tenant and
+   record only the public usable outcomes, synthetic identity labels, deadlines, and warning leads.
+3. Change the selected synthetic tenant to policy B. Read both sessions through both clients without activity and
+   confirm their established deadlines/warnings remain from A.
 4. Move controlled application time strictly before the deadline. Through B, present `continue-session` with policy B.
    Confirm A and B then observe the same renewed deadline and warning policy B.
-5. Establish a second independent session under A. Confirm it stays on A while the first remains on B until the second
-   receives its own qualifying refresh.
+5. Compare the already-established second session with the refreshed first session. Confirm the second stays on A
+   while the first remains on B until the second receives its own qualifying refresh.
 6. Present `unrelated-background-traffic` to the first session and confirm its deadline is unchanged.
 7. Advance to exactly that deadline and present qualifying activity. Then increase timeout and try again after the
    deadline. Confirm both clients return `NoUsableSession` and later reads cannot revive it.
