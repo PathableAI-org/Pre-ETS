@@ -15,3 +15,5 @@ match that policy without copying it.
 - Refuse force-push, hard reset, and rewriting commits already on the default branch.
 - Confirm plan and implementation branches keep the specification's Spec Kit number and are not created with
   `speckit.git.feature`.
+- Confirm a pull request changes `specs/` only inside its own `specs/{number}-{slug}/` directory. Other feature
+  directories stay historic. Living documentation belongs in `docs/`.

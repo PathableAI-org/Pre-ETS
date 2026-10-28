@@ -197,7 +197,13 @@ shows the expected parents and pull request bases.
 ## Artifacts
 
 Retain the decision record. Do not treat a merged feature specification or plan as a living description of the
-system. Current behavior is the code together with the requirements register, delivery plans, and engineering docs.
+system. Current behavior is the code together with the requirements register, delivery plans, and engineering docs
+under `docs/`.
+
+A pull request may change `specs/` only inside the one feature directory it belongs to, `specs/{number}-{slug}/`.
+That includes a later correction whose pull request is for that same feature. Every other directory under `specs/`
+is a historic artifact. Leave it unchanged when later code, requirements, or documentation move on. Do not revise
+an old `plan.md`, `spec.md`, contract, research note, task list, or quickstart so it matches the current system.
 
 | Artifact                                                          | Treatment                                                                                                      |
 | ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |

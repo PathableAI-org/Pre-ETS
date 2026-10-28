@@ -13,3 +13,6 @@ Review the implementation against the approved specification and engineering pla
 - A planned `quickstart.md` procedure is not defective because it has not yet been executed. On an implementation
   review, identify evidence the pull request claims but does not show.
 - Do not treat a Copilot suggestion as approval to change an accepted requirement, delivery slice, or public contract.
+- Flag any path under `specs/` outside this pull request's single `specs/{number}-{slug}/` directory. This phase
+  may update that feature's `tasks.md` and `quickstart.md`. Other feature directories are historic. Current
+  behavior belongs in `docs/`.
