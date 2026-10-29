@@ -114,3 +114,102 @@ Manual results:
 Cleanup completed:
 Limitations or skipped cases:
 ```
+
+## Execution record
+
+The procedure above is unchanged. This record is the execution evidence for implementation
+`77e41f88cafbb5585834398d6bccebafb666166c`.
+
+```text
+Revision:
+Implementation 77e41f88cafbb5585834398d6bccebafb666166c on 159-session-renewal-expiration-impl.
+Planning baseline origin/main 3f54c577a076c8139c5be6986e0b7c3e81106af7.
+Issue #220 was open. Its in-scope session criteria matched the accepted requirement files at
+c1d87a22a55cd5190bc702a6a3c33cfed2ca23ef, e206d165f0f30999220922f57a3f92549c15f4cc, and origin/main.
+No material drift.
+
+Date/time and environment:
+2026-10-29T09:08:18Z through the quality-gate run on the same date.
+Node.js v26.2.0, pnpm 12.15.0, Darwin.
+
+Dependency/store versions:
+effect 4.0.5, @effect/platform-node 4.0.5, @effect/vitest 4.0.5, @fast-check/vitest 0.5.0.
+Redis server v=8.10.2 in the already-running local container. redis-cli ping returned PONG.
+compose.yaml pins redis:8.10.3. This run did not start or stop Compose and did not recreate that container.
+The installed Redis script API expressed one key and one final DEL or SET PX. Effect clock remained the
+deadline authority.
+
+Safe synthetic inputs and topology:
+Tenant alias alpha on host alpha.example.test. Policies 30/5, then 12/0, then a later 30/5 timeout.
+Invalid tenant classes: fractional 5.5, numeric string, below 4, above 31, warning equal to timeout, and
+warning greater than timeout. Subjects subject-one and subject-two.
+Manual topology: two ManagedRuntime clients, one scenario-owned test:session prefix, and one mutable
+Effect clock. Automated races used the same two-client shape with per-call clocks. No raw keys, records,
+credentials, or partner identifiers were retained.
+
+Claim IDs exercised:
+V-001, V-002, V-003, V-004, V-005, V-006, V-007, V-008, V-009, V-010.
+
+Observed public outcomes:
+V-001: usable reads expose deadline, warning, synthetic identity, and tenant. NoUsableSession,
+SessionTenantMismatch, and SessionServiceUnavailable expose no protected identity. The existing #219
+reference fixture already observes that and was not given a new case or a refreshForTenant call.
+V-002: every qualifying literal, including continue-session, renews a still-usable session to
+receivedAt plus the selected idle timeout.
+V-003: a policy change applies only to the session that is refreshed. An unrefreshed sibling keeps its
+establishment deadline and warning. The real tenant consumer supplies that policy.
+V-004: every excluded literal, including unrelated-background-traffic, returns the current session and
+does not write.
+V-005: a qualifying refresh at or after the deadline returns NoUsableSession. Raising the timeout later
+does not revive it.
+V-006: two real clients agree after renewal-first, expiration-first, and one overlapping start barrier.
+Either barrier winner is accepted, and later reads converge. Finite schedules are not every topology.
+V-007: missing and expired outcomes stay NoUsableSession. Malformed, unrecognized, and transport failures
+stay fieldless SessionServiceUnavailable and do not mutate. A result failure after the one final write
+is unavailable without a stale retry; a later read shows the committed renewal.
+V-008: expiry and a missing record use one final DEL or no key. No tombstone is written.
+V-009: each invalid policy class fails tenant consumption with status 404 before establish or
+refreshForTenant. Redis receives no SET or EVALSHA. This is not a PREETS-TENANT-004 HTTP mapping.
+V-010: deadline equality is decided by the Effect clock and a second sample after storage. No browser
+timer is involved.
+
+Automated results:
+pnpm --filter @pathableai/pre-ets-frontend-services test: 14 files, 326 passed.
+REDIS_URL=redis://127.0.0.1:6379 pnpm --filter @pathableai/pre-ets-frontend-services test:integration:
+2 files, 18 passed, against Redis 8.10.2. Redis was not skipped.
+pnpm typecheck, pnpm build, pnpm lint, and pnpm format:check passed.
+pnpm check:unused, pnpm check:health, and pnpm check:changes passed.
+fallow health --complexity on src/session.ts and src/session/store.ts found no function over the
+configured ceilings.
+check:changes reported one advisory 5-line SET-shape clone between tests/helpers/authentication.ts and
+tests/helpers/session.ts. That SET shape already existed before this slice. The new-only gate reported
+it as a warning and exited successfully. It was not extracted and no threshold was weakened.
+
+Manual results:
+An uncommitted probe imported only the public session and tenant parents. Client A established two
+sessions under 30/5. Client B read both with the same usable labels, deadlines, and warnings. Changing
+the selected tenant file to 12/0 did not change unread-refreshed deadlines. continue-session through B
+renewed the first session to the 12-minute warning-0 policy, and A observed that same public result.
+The second session stayed on 30/5 until its own qualifying refresh. unrelated-background-traffic left
+the renewed deadline unchanged. At that exact deadline, qualifying activity returned NoUsableSession
+for both clients, and a later timeout increase did not revive it. A fractional timeout file was
+rejected by TenantConfigService with status 404 before an effective policy existed. The probe passed
+once and was deleted with its temporary runner config.
+
+Cleanup completed:
+The probe disposed both runtimes and removed its two sessions through public expiration. Integration
+tests removed only their owned keys and closed both clients. Shared Redis was not flushed. Compose was
+not started or stopped. git status after probe deletion showed no probe, transcript, credential, or
+generated report.
+
+Limitations or skipped cases:
+Requirements BDD was not added. No browser or rendered session page was exercised; this slice has no
+session-store UI. Application routes, warning accessibility, cross-tab behavior, logout, and HTTP
+enforcement remain #154–#158. The #219 fixture was reused and does not establish that coverage.
+No durable log, span, attribute, telemetry-payload, or exporter test was added. session.id remains
+annotated only when a session is usable. Effect time is not Redis time. Outage recovery remains #221.
+The Compose image pin is 8.10.3 while the evidence store was the already-running 8.10.2. Source union
+order is sorted for repository lint; the accepted activity sets and policy?: never are unchanged.
+Issue #220 server-side renewal and expiration evidence for this slice is satisfied. The issue was not
+closed, and running-application evidence remains outside this implementation.
+```

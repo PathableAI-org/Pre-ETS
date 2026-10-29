@@ -7,10 +7,10 @@
 **Branch**: `159-session-renewal-expiration-impl` · **Delivery**: #220 / S2-F · **Design revision**: approved
 specification and plan documents on this branch
 
-**Status**: Planned implementation work. Every task remains unchecked until its stated behavior or evidence has been
-completed at an identified implementation revision. Passing static checks does not establish runtime renewal or
-expiration. `verification.md` and `quickstart.md` stay planned procedures; execution records are written separately
-and do not edit those files.
+**Status**: Tasks T001–T034 are checked against implementation `77e41f88cafbb5585834398d6bccebafb666166c` and the
+execution record appended to `quickstart.md`. Passing static checks does not by itself establish runtime renewal or
+expiration. `verification.md` stays the planned procedure. The quickstart procedure above its execution record is
+unchanged.
 
 **Tests**: Required by the approved verification plan. Write the named public-service, tenant-consumer, and real-Redis
 evidence before the private behavior it protects, observe a meaningful failing result, and then make it pass.
@@ -173,7 +173,7 @@ sessions after a policy change and observe that the other keeps its established 
       `Effect.annotateCurrentSpan("session.id", telemetryId)`. Annotate only a result that is still usable at that
       second sample. Do not retry, do not import `packages/frontend-services/src/tenant/config.ts`, and do not add a
       public error. Make T008 and T009 pass.
-- [ ] T013 [US1] Run the User Story 1 scenarios in `packages/frontend-services/tests/lib/session.test.ts` and record
+- [x] T013 [US1] Run the User Story 1 scenarios in `packages/frontend-services/tests/lib/session.test.ts` and record
       the revision, command, and V-001/V-002/V-003 public-service results in the implementation PR using the
       execution template in `specs/159-session-renewal-expiration/quickstart.md`. State the limits: a deterministic
       store does not prove real Redis ordering, invalid tenant files, browser timers, or HTTP protection.
@@ -224,7 +224,7 @@ session. Advance time without a browser timer and observe that consumers no long
       before exposing identity or annotating `session.id`. Keep `readForTenant` as admission of an already usable
       read: mismatch on a still-usable session remains `SessionTenantMismatch`, and an expired record follows `read`
       to `NoUsableSession`. The mismatch-before-expiration rule stays on `refreshForTenant`. Make T014 pass.
-- [ ] T018 [US2] Run the User Story 2 scenarios in `packages/frontend-services/tests/lib/session.test.ts` and record
+- [x] T018 [US2] Run the User Story 2 scenarios in `packages/frontend-services/tests/lib/session.test.ts` and record
       V-004, V-005, and V-010 deterministic results, including the changed expiry assertion, in the implementation PR
       using `specs/159-session-renewal-expiration/quickstart.md`. Real Redis ordering and storage-failure races
       remain User Story 3.
@@ -284,7 +284,7 @@ storage failure is not reported as no-session or as identity.
       `SessionServiceUnavailable` for `establish` where already required, and for `read`, `readForTenant`, and
       `refreshForTenant`. Do not retry a failed refresh with the stale policy. Leave defects and interruption
       untranslated. Make T019 pass.
-- [ ] T024 [US3] Start the pinned Redis with `docker compose up -d --wait redis`, confirm `docker compose exec redis
+- [x] T024 [US3] Start the pinned Redis with `docker compose up -d --wait redis`, confirm `docker compose exec redis
       redis-cli ping`, and run `packages/frontend-services/tests/lib/session.test.ts` plus `REDIS_URL=redis://127.0.0.1:6379`
       for `packages/frontend-services/tests/integration/session-redis.test.ts`. Record V-006, V-007, and V-008, and
       the distributed portion of V-002, V-003, V-005, and V-010, in the implementation PR using
@@ -319,7 +319,7 @@ rejection without an effective session policy being supplied to `establish` or `
       exposes that timeout and warning lead, including a change and a transition to or from a disabled warning of
       `0`. An unrefreshed second session keeps the policy from its own establishment (V-003, SC-003). This task waits
       until T012 has replaced the `refreshForTenant` defect.
-- [ ] T027 [US4] Run `packages/frontend-services/tests/lib/tenant-policy.test.ts` and
+- [x] T027 [US4] Run `packages/frontend-services/tests/lib/tenant-policy.test.ts` and
       `packages/frontend-services/tests/lib/session-policy-refresh.test.ts`. Record V-003 and V-009 tenant-consumer
       results in the implementation PR using `specs/159-session-renewal-expiration/quickstart.md`. Do not change
       `packages/frontend-services/src/tenant.ts` or `packages/frontend-services/src/tenant/config.ts` to make renewal
@@ -334,7 +334,7 @@ under a policy the tenant consumer has already accepted.
 **Purpose**: Optional bounded #219 observation, the mandatory manual procedure, cleanup, repository gates, and a
 claim-level execution record. Depends on the stories required by each procedure.
 
-- [ ] T028 Record the bounded #219 fixture already delivered in
+- [x] T028 Record the bounded #219 fixture already delivered in
       `packages/frontend-services/tests/unit/reference-session-enforcement.test.ts`. Reuse it only to observe that a
       usable `readSessionRequest` result still exposes `idleDeadlineEpochMilliseconds` and `warningLeadMinutes`, and
       that `NoUsableSession`, `SessionTenantMismatch`, and `SessionServiceUnavailable` expose no protected identity.
@@ -342,7 +342,7 @@ claim-level execution record. Depends on the stories required by each procedure.
       application routes, and do not treat the fixture as comprehensive HTTP enforcement. If no case is added, record
       that reuse and the unexercised application paths in the implementation PR. The fixture is optional evidence for
       V-001–V-010 and is not a completion dependency.
-- [ ] T029 Execute the manual procedure in `specs/159-session-renewal-expiration/quickstart.md` and the matching steps
+- [x] T029 Execute the manual procedure in `specs/159-session-renewal-expiration/quickstart.md` and the matching steps
       in `specs/159-session-renewal-expiration/verification.md`. Create an uncommitted probe at
       `packages/frontend-services/tests/manual/session-renewal.probe.ts` that imports only the public session and
       tenant parents. Instantiate two independently scoped clients against one owned prefix and a controllable Effect
@@ -362,23 +362,23 @@ claim-level execution record. Depends on the stories required by each procedure.
       telemetry-payload, or exporter test. If a temporary trace or log probe was used to diagnose a race, remove it
       before T031 and retain only safe revision-attributable observations. An empty log, Tempo, Loki, or Prometheus
       result is not evidence of renewal or expiration.
-- [ ] T031 Delete `packages/frontend-services/tests/manual/session-renewal.probe.ts` and any local transcript. Remove
+- [x] T031 Delete `packages/frontend-services/tests/manual/session-renewal.probe.ts` and any local transcript. Remove
       only scenario-owned session and tenant fixtures, dispose both clients and runtimes, and stop only Compose or
       processes that T024 or T029 started. Never flush or broadly clear a shared Redis. Confirm `git status` contains
       no probe, generated report, credential, or temporary instrumentation.
-- [ ] T032 Run the automated evidence in `specs/159-session-renewal-expiration/quickstart.md` from the repository
+- [x] T032 Run the automated evidence in `specs/159-session-renewal-expiration/quickstart.md` from the repository
       root: `pnpm --filter @pathableai/pre-ets-frontend-services test`, then `docker compose up -d --wait redis`,
       `docker compose exec redis redis-cli ping`, and
       `REDIS_URL=redis://127.0.0.1:6379 pnpm --filter @pathableai/pre-ets-frontend-services test:integration`. Record
       commands, revision, store version, owned-prefix cleanup, and failures separately from the plan. Do not treat a
       skipped Redis as a passed race.
-- [ ] T033 Run the root `package.json` scripts `pnpm typecheck`, `pnpm build`, `pnpm lint`, `pnpm format:check`,
+- [x] T033 Run the root `package.json` scripts `pnpm typecheck`, `pnpm build`, `pnpm lint`, `pnpm format:check`,
       `pnpm check:unused`, `pnpm check:health`, and `pnpm check:changes`, plus
       `pnpm --filter @pathableai/pre-ets-frontend-services exec fallow health --complexity` on
       `packages/frontend-services/src/session.ts` and `packages/frontend-services/src/session/store.ts` when those
       files grew large enough to split. Fix underlying findings. Apply lint fixes before formatting. These gates are
       repository quality, not V-001–V-010 execution evidence.
-- [ ] T034 Reconcile the completion map in `specs/159-session-renewal-expiration/tasks.md` with the implementation PR
+- [x] T034 Reconcile the completion map in `specs/159-session-renewal-expiration/tasks.md` with the implementation PR
       record: exact revision, environment and dependency versions, safe inputs, public outcomes by claim ID,
       automated and manual results, cleanup, and limitations. Every checked task must have its named evidence or an
       explicit approved limitation. Do not edit requirements, delivery plans,
@@ -483,6 +483,11 @@ a fresh memory Redis per case.
 | Manual procedure                                                                           | T029–T031, T034                    | Live two-client observation beyond the automated matrices. The probe is deleted.                                                        |
 | Operational observability                                                                  | T030                               | No new monitoring claim and no durable telemetry test.                                                                                  |
 
+Execution of this map is the record appended to `quickstart.md` for
+`77e41f88cafbb5585834398d6bccebafb666166c`. No claim row was narrowed or expanded. The Compose Redis image pin
+is 8.10.3; the executed store was the already-running Redis 8.10.2, and Compose was not started. Requirements
+BDD, browser/HTTP enforcement, and telemetry assertions stay outside this map.
+
 ## Intentionally reused evidence and approved limitations
 
 - `packages/frontend-services/tests/lib/tenant-policy.test.ts` remains the exhaustive owner of integral timeout 5–30,
@@ -507,5 +512,5 @@ a fresh memory Redis per case.
   outcome.
 - Fresh-authentication comparison, clock tolerance, and provider compatibility remain outside ordinary idle
   renewal evidence.
-- No store, application, browser, or operational procedure has been executed by this task list. Checked boxes belong
-  to implementation, after evidence exists.
+- The execution record in `quickstart.md` is the claim-level result for this implementation. Checked boxes below
+  match that record. Browser, HTTP, and requirements-BDD paths named above were not executed.
