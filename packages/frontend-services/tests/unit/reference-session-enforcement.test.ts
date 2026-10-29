@@ -111,7 +111,8 @@ const sessionDouble = (
   readForTenant: (input) => {
     recorded.events.push(`read:${input.tenantAlias}`)
     return readForTenant(input)
-  }
+  },
+  refreshForTenant: () => Effect.die("refreshForTenant must remain unused")
 })
 
 const publicDiagnostic = (value: unknown): string => {

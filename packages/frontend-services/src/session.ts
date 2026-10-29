@@ -32,15 +32,45 @@ export interface EstablishSessionInput {
   readonly tenantAlias: TenantAlias
 }
 
+export type ExcludedSessionActivity =
+  | "automatic-polling"
+  | "programmatic-focus"
+  | "raw-pointer-movement"
+  | "unrelated-background-traffic"
+
 /** Missing, malformed, expired, and deleted references. No identity or policy. */
 export interface NoUsableSession {
   readonly _tag: "NoUsableSession"
 }
 
+export type QualifyingSessionActivity =
+  | "continue-session"
+  | "deliberate-form-submission"
+  | "deliberate-page-request"
+  | "intentional-control-activation"
+  | "keyboard-interaction"
+  | "text-entry"
+  | "touch-interaction"
+  | "user-driven-meaningful-input-focus"
+
 export interface ReadSessionForTenantInput {
   readonly reference?: string
   readonly tenantAlias: TenantAlias
 }
+
+export type RefreshSessionForTenantInput =
+  | {
+    readonly activity: ExcludedSessionActivity
+    readonly policy?: never
+    readonly reference?: string
+    readonly tenantAlias: TenantAlias
+  }
+  | {
+    readonly activity: QualifyingSessionActivity
+    readonly policy: EffectiveSessionPolicy
+    readonly reference?: string
+    readonly tenantAlias: TenantAlias
+  }
 
 export interface SessionIdentity {
   readonly issuer: string
@@ -96,6 +126,50 @@ const toUsableSession = (
   warningLeadMinutes: record.warningLeadMinutes
 })
 
+const qualifyingActivities: ReadonlySet<string> = new Set([
+  "continue-session",
+  "deliberate-form-submission",
+  "deliberate-page-request",
+  "intentional-control-activation",
+  "keyboard-interaction",
+  "text-entry",
+  "touch-interaction",
+  "user-driven-meaningful-input-focus"
+])
+
+const isQualifyingActivity = (
+  activity: ExcludedSessionActivity | QualifyingSessionActivity
+): activity is QualifyingSessionActivity => qualifyingActivities.has(activity)
+
+const isQualifyingRefresh = (
+  input: RefreshSessionForTenantInput
+): input is Extract<RefreshSessionForTenantInput, { readonly activity: QualifyingSessionActivity }> =>
+  isQualifyingActivity(input.activity)
+
+const exposeIfStillUsable = Effect.fnUntraced(function*(payload: string) {
+  const record = yield* serviceUnavailable(decodeStoredSession(payload))
+  if (record.idleDeadlineEpochMilliseconds <= (yield* Clock.currentTimeMillis)) return noUsableSession
+  yield* Effect.annotateCurrentSpan("session.id", record.telemetryId)
+  return toUsableSession(record)
+})
+
+const refreshRequest = (
+  input: RefreshSessionForTenantInput,
+  receivedAt: number,
+  reference: string
+) => {
+  const shared = { receivedAt, reference, tenantAlias: input.tenantAlias }
+  if (!isQualifyingRefresh(input)) {
+    return { ...shared, activity: "excluded" as const, idleTimeoutMilliseconds: 0, warningLeadMinutes: 0 }
+  }
+  return {
+    ...shared,
+    activity: "qualifying" as const,
+    idleTimeoutMilliseconds: input.policy.idleTimeoutMinutes * 60_000,
+    warningLeadMinutes: input.policy.warningLeadMinutes
+  }
+}
+
 export class SessionService extends Context.Service<SessionService, {
   readonly establish: (
     input: EstablishSessionInput
@@ -105,6 +179,9 @@ export class SessionService extends Context.Service<SessionService, {
   ) => Effect.Effect<NoUsableSession | UsableSession, SessionServiceUnavailable>
   readonly readForTenant: (
     input: ReadSessionForTenantInput
+  ) => Effect.Effect<NoUsableSession | UsableSession, SessionServiceUnavailable | SessionTenantMismatch>
+  readonly refreshForTenant: (
+    input: RefreshSessionForTenantInput
   ) => Effect.Effect<NoUsableSession | UsableSession, SessionServiceUnavailable | SessionTenantMismatch>
 }>()("@pathableai/pre-ets-frontend/SessionService") {
   static readonly layer: Layer.Layer<
@@ -158,19 +235,11 @@ export class SessionService extends Context.Service<SessionService, {
 
       const read = Effect.fn("SessionService.read")(function*(input: { readonly reference?: string }) {
         const reference = decodeSessionReference(input.reference)
-        if (Option.isNone(reference)) {
-          return noUsableSession
-        }
-        const payload = yield* serviceUnavailable(store.read({ reference: reference.value }))
-        if (payload === undefined) {
-          return noUsableSession
-        }
-        const record = yield* serviceUnavailable(decodeStoredSession(payload))
-        if (record.idleDeadlineEpochMilliseconds <= (yield* Clock.currentTimeMillis)) {
-          return noUsableSession
-        }
-        yield* Effect.annotateCurrentSpan("session.id", record.telemetryId)
-        return toUsableSession(record)
+        if (Option.isNone(reference)) return noUsableSession
+        const receivedAt = yield* Clock.currentTimeMillis
+        const outcome = yield* serviceUnavailable(store.read({ receivedAt, reference: reference.value }))
+        if (outcome._tag === "Missing" || outcome._tag === "Expired") return noUsableSession
+        return yield* exposeIfStillUsable(outcome.payload)
       })
 
       const readForTenant = Effect.fn("SessionService.readForTenant")(function*(input: ReadSessionForTenantInput) {
@@ -180,10 +249,23 @@ export class SessionService extends Context.Service<SessionService, {
         return yield* new SessionTenantMismatch({})
       })
 
+      const refreshForTenant = Effect.fn("SessionService.refreshForTenant")(function*(
+        input: RefreshSessionForTenantInput
+      ) {
+        const reference = decodeSessionReference(input.reference)
+        if (Option.isNone(reference)) return noUsableSession
+        const receivedAt = yield* Clock.currentTimeMillis
+        const outcome = yield* serviceUnavailable(store.refresh(refreshRequest(input, receivedAt, reference.value)))
+        if (outcome._tag === "Missing" || outcome._tag === "Expired") return noUsableSession
+        if (outcome._tag === "Mismatch") return yield* new SessionTenantMismatch({})
+        return yield* exposeIfStillUsable(outcome.payload)
+      })
+
       return SessionService.of({
         establish,
         read,
-        readForTenant
+        readForTenant,
+        refreshForTenant
       })
     })
   ).pipe(

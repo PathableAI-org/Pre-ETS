@@ -1,5 +1,5 @@
 import { NodeRedis } from "@effect/platform-node"
-import { ConfigProvider, Effect, Layer, ManagedRuntime, Result, Schema } from "effect"
+import { Clock, ConfigProvider, Deferred, Effect, Layer, ManagedRuntime, Result, Schema } from "effect"
 import * as Redis from "effect/persistence/Redis"
 import { randomUUID } from "node:crypto"
 import { setTimeout as delay } from "node:timers/promises"
@@ -9,7 +9,8 @@ import {
   type NoUsableSession,
   SessionService,
   SessionServiceUnavailable,
-  SessionTenantMismatch
+  SessionTenantMismatch,
+  type UsableSession
 } from "../../src/session.ts"
 import { TenantAlias } from "../../src/tenant.ts"
 
@@ -354,6 +355,301 @@ describe("SessionService with independently scoped NodeRedis clients", () => {
     } finally {
       await healthy.dispose()
       await outage.dispose()
+    }
+  })
+})
+
+const clockAt = (millis: number): Clock.Clock => ({
+  currentTimeMillis: Effect.succeed(millis),
+  currentTimeMillisUnsafe: () => millis,
+  currentTimeNanos: Effect.succeed(BigInt(millis) * 1_000_000n),
+  currentTimeNanosUnsafe: () => BigInt(millis) * 1_000_000n,
+  monotonicTimeNanos: Effect.succeed(BigInt(millis) * 1_000_000n),
+  monotonicTimeNanosUnsafe: () => BigInt(millis) * 1_000_000n,
+  sleep: () => Effect.void
+})
+
+const changedPolicy = { idleTimeoutMinutes: 15, warningLeadMinutes: 2 }
+
+const refreshAt = (
+  runtime: ManagedRuntime.ManagedRuntime<SessionService, unknown>,
+  reference: string,
+  receivedAt: number,
+  policy: { readonly idleTimeoutMinutes: number; readonly warningLeadMinutes: number }
+) =>
+  runtime.runPromise(
+    Effect.gen(function*() {
+      const service = yield* SessionService
+      return yield* service.refreshForTenant({
+        activity: "continue-session",
+        policy,
+        reference,
+        tenantAlias: alias
+      })
+    }).pipe(Effect.provideService(Clock.Clock, clockAt(receivedAt)))
+  )
+
+const readAt = (
+  runtime: ManagedRuntime.ManagedRuntime<SessionService, unknown>,
+  reference: string,
+  receivedAt: number
+) =>
+  runtime.runPromise(
+    Effect.gen(function*() {
+      const service = yield* SessionService
+      return yield* service.read({ reference })
+    }).pipe(Effect.provideService(Clock.Clock, clockAt(receivedAt)))
+  )
+
+const withClients = async (
+  use: (
+    runtimeA: ManagedRuntime.ManagedRuntime<SessionService, unknown>,
+    runtimeB: ManagedRuntime.ManagedRuntime<SessionService, unknown>,
+    prefix: string
+  ) => Promise<void>
+) => {
+  const prefix = `test:session:${randomUUID()}:`
+  const runtimeA = ManagedRuntime.make(sessionLayer(prefix))
+  const runtimeB = ManagedRuntime.make(sessionLayer(prefix))
+  try {
+    await use(runtimeA, runtimeB, prefix)
+  } finally {
+    await runtimeA.dispose()
+    await runtimeB.dispose()
+    await deleteOwnedPrefix(prefix)
+  }
+}
+
+const corruptSinglePayload = async (prefix: string, corrupt: (payload: string) => string) => {
+  if (!ownedSessionPrefix.test(prefix)) throw new Error("Refusing to edit an unvalidated session prefix")
+  const runtime = ManagedRuntime.make(redisLayer())
+  try {
+    return await runtime.runPromise(Effect.gen(function*() {
+      const redis = yield* Redis.Redis
+      let cursor = "0"
+      let key: string | undefined
+      let payload = ""
+      let ttlMilliseconds = -2
+      do {
+        const page = yield* redis.send<readonly [string, readonly string[]]>(
+          "SCAN",
+          cursor,
+          "MATCH",
+          `${prefix}*`,
+          "COUNT",
+          "100"
+        )
+        const keys = page[1].filter((candidate) => candidate.startsWith(prefix))
+        const found = keys[0]
+        if (found !== undefined) {
+          key = found
+          payload = yield* redis.send<string>("GET", found)
+          ttlMilliseconds = yield* redis.send<number>("PTTL", found)
+        }
+        cursor = page[0]
+      } while (cursor !== "0" && key === undefined)
+      if (key === undefined) throw new Error("Expected one owned session record")
+      const next = corrupt(payload)
+      yield* redis.send("SET", key, next, "KEEPTTL")
+      return { payload: next, ttlMilliseconds }
+    }))
+  } finally {
+    await runtime.dispose()
+  }
+}
+
+const renewedDeadline = (receivedAt: number) => receivedAt + changedPolicy.idleTimeoutMinutes * 60_000
+
+const expectRenewed = (value: NoUsableSession | UsableSession, receivedAt: number) => {
+  expect(value).toMatchObject({
+    _tag: "UsableSession",
+    idleDeadlineEpochMilliseconds: renewedDeadline(receivedAt),
+    warningLeadMinutes: changedPolicy.warningLeadMinutes
+  })
+}
+
+describe("SessionService renewal and expiration on real Redis", () => {
+  it("adopts one client's refresh on the other client and leaves a sibling unchanged", async () => {
+    await withClients(async (runtimeA, runtimeB) => {
+      const first = await establish(runtimeA, 30, 5)
+      const second = await runtimeA.runPromise(Effect.gen(function*() {
+        const service = yield* SessionService
+        return yield* service.establish({
+          identity: { issuer: "https://provider.test/", subject: "subject-sibling" },
+          policy: { idleTimeoutMinutes: 20, warningLeadMinutes: 4 },
+          tenantAlias: alias
+        })
+      }))
+      const renewed = await runtimeB.runPromise(Effect.gen(function*() {
+        const service = yield* SessionService
+        return yield* service.refreshForTenant({
+          activity: "continue-session",
+          policy: changedPolicy,
+          reference: first.reference,
+          tenantAlias: alias
+        })
+      }))
+      expect(renewed).toMatchObject({ _tag: "UsableSession", warningLeadMinutes: 2 })
+      expect(await read(runtimeA, first.reference)).toStrictEqual(renewed)
+      expect(await read(runtimeB, second.reference)).toStrictEqual(second.session)
+    })
+  })
+
+  it("observes renewal before a later expiration attempt", async () => {
+    await withClients(async (runtimeA, runtimeB) => {
+      const established = await establish(runtimeA, 30, 5)
+      const deadline = established.session.idleDeadlineEpochMilliseconds
+      const receivedAt = deadline - 60_000
+      const renewed = await refreshAt(runtimeB, established.reference, receivedAt, changedPolicy)
+      expectRenewed(renewed, receivedAt)
+      const expiration = await readAt(runtimeA, established.reference, deadline)
+      expect(expiration).toStrictEqual(renewed)
+      expect(await readAt(runtimeA, established.reference, receivedAt)).toStrictEqual(renewed)
+      expect(await readAt(runtimeB, established.reference, receivedAt)).toStrictEqual(renewed)
+    })
+  })
+
+  it("does not recreate a session after expiration wins", async () => {
+    await withClients(async (runtimeA, runtimeB, prefix) => {
+      const established = await establish(runtimeA, 30, 5)
+      const deadline = established.session.idleDeadlineEpochMilliseconds
+      const expired = await readAt(runtimeA, established.reference, deadline)
+      const stale = await refreshAt(runtimeB, established.reference, deadline - 60_000, changedPolicy)
+      expect(expired).toStrictEqual(noUsableSession)
+      expect(stale).toStrictEqual(noUsableSession)
+      expect(await read(runtimeA, established.reference)).toStrictEqual(noUsableSession)
+      expect(await read(runtimeB, established.reference)).toStrictEqual(noUsableSession)
+      expect((await ownedKeyMetadata(prefix)).count).toBe(0)
+    })
+  })
+
+  it("accepts either winner when renewal and expiration overlap", async () => {
+    await withClients(async (runtimeA, runtimeB, prefix) => {
+      const established = await establish(runtimeA, 30, 5)
+      const deadline = established.session.idleDeadlineEpochMilliseconds
+      const receivedAt = deadline - 60_000
+      const start = Deferred.makeUnsafe<undefined>()
+      const renewalReady = Deferred.makeUnsafe<undefined>()
+      const expirationReady = Deferred.makeUnsafe<undefined>()
+      const renewalPromise = runtimeB.runPromise(
+        Effect.gen(function*() {
+          yield* Deferred.succeed(renewalReady, undefined)
+          yield* Deferred.await(start)
+          const service = yield* SessionService
+          return yield* service.refreshForTenant({
+            activity: "keyboard-interaction",
+            policy: changedPolicy,
+            reference: established.reference,
+            tenantAlias: alias
+          })
+        }).pipe(Effect.provideService(Clock.Clock, clockAt(receivedAt)))
+      )
+      const expirationPromise = runtimeA.runPromise(
+        Effect.gen(function*() {
+          yield* Deferred.succeed(expirationReady, undefined)
+          yield* Deferred.await(start)
+          const service = yield* SessionService
+          return yield* service.read({ reference: established.reference })
+        }).pipe(Effect.provideService(Clock.Clock, clockAt(deadline)))
+      )
+      await Effect.runPromise(Deferred.await(renewalReady))
+      await Effect.runPromise(Deferred.await(expirationReady))
+      await Effect.runPromise(Deferred.succeed(start, undefined))
+      const [renewal, expiration] = await Promise.all([renewalPromise, expirationPromise])
+      const laterA = await readAt(runtimeA, established.reference, receivedAt)
+      const laterB = await readAt(runtimeB, established.reference, receivedAt)
+      if (renewal._tag === "UsableSession") {
+        expectRenewed(renewal, receivedAt)
+        expect(expiration).toStrictEqual(renewal)
+        expect(laterA).toStrictEqual(renewal)
+        expect(laterB).toStrictEqual(renewal)
+        return
+      }
+      expect(renewal).toStrictEqual(noUsableSession)
+      expect(expiration).toStrictEqual(noUsableSession)
+      expect(laterA).toStrictEqual(noUsableSession)
+      expect(laterB).toStrictEqual(noUsableSession)
+      expect((await ownedKeyMetadata(prefix)).count).toBe(0)
+    })
+  })
+
+  it("rejects an unsafe integer warning without renewing or deleting the record", async () => {
+    const prefix = `test:session:${randomUUID()}:`
+    const runtime = ManagedRuntime.make(sessionLayer(prefix))
+    try {
+      const established = await establish(runtime, 30, 4)
+      await shortenOwnedTtl(prefix, 90_000)
+      const stored = await corruptSinglePayload(prefix, (payload) => {
+        const record = JSON.parse(payload) as Record<string, unknown>
+        record.warningLeadMinutes = 9_007_199_254_740_992
+        return JSON.stringify(record)
+      })
+      const refreshed = await runtime.runPromise(Effect.gen(function*() {
+        const service = yield* SessionService
+        return yield* service.refreshForTenant({
+          activity: "continue-session",
+          policy: changedPolicy,
+          reference: established.reference,
+          tenantAlias: alias
+        }).pipe(Effect.result)
+      }))
+      expect(Result.isFailure(refreshed)).toBe(true)
+      if (Result.isFailure(refreshed)) {
+        expect(refreshed.failure).toBeInstanceOf(SessionServiceUnavailable)
+        expect(String(refreshed.failure)).not.toContain("subject-redis")
+      }
+      const expired = await runtime.runPromise(
+        Effect.gen(function*() {
+          const service = yield* SessionService
+          return yield* service.read({ reference: established.reference }).pipe(Effect.result)
+        }).pipe(Effect.provideService(Clock.Clock, clockAt(established.session.idleDeadlineEpochMilliseconds)))
+      )
+      expect(Result.isFailure(expired)).toBe(true)
+      if (Result.isFailure(expired)) expect(expired.failure).toBeInstanceOf(SessionServiceUnavailable)
+      const after = await corruptSinglePayload(prefix, (payload) => payload)
+      expect(after.payload).toBe(stored.payload)
+      expect(after.ttlMilliseconds).toBeLessThanOrEqual(stored.ttlMilliseconds)
+      expect(after.ttlMilliseconds).toBeGreaterThan(0)
+      expect(after.ttlMilliseconds).toBeLessThan(120_000)
+    } finally {
+      await runtime.dispose()
+      await deleteOwnedPrefix(prefix)
+    }
+  })
+
+  it("rejects a future record with a missing identity field without resetting TTL", async () => {
+    const prefix = `test:session:${randomUUID()}:`
+    const runtime = ManagedRuntime.make(sessionLayer(prefix))
+    try {
+      const established = await establish(runtime, 30, 4)
+      await shortenOwnedTtl(prefix, 90_000)
+      const stored = await corruptSinglePayload(prefix, (payload) => {
+        const record = JSON.parse(payload) as Record<string, unknown>
+        delete record.subject
+        return JSON.stringify(record)
+      })
+      const result = await runtime.runPromise(Effect.gen(function*() {
+        const service = yield* SessionService
+        return yield* service.refreshForTenant({
+          activity: "continue-session",
+          policy: changedPolicy,
+          reference: established.reference,
+          tenantAlias: alias
+        }).pipe(Effect.result)
+      }))
+      expect(Result.isFailure(result)).toBe(true)
+      if (Result.isFailure(result)) {
+        expect(result.failure).toBeInstanceOf(SessionServiceUnavailable)
+        expect(String(result.failure)).not.toContain("subject-redis")
+      }
+      const after = await corruptSinglePayload(prefix, (payload) => payload)
+      expect(after.payload).toBe(stored.payload)
+      expect(after.ttlMilliseconds).toBeLessThanOrEqual(stored.ttlMilliseconds)
+      expect(after.ttlMilliseconds).toBeGreaterThan(0)
+      expect(after.ttlMilliseconds).toBeLessThan(120_000)
+    } finally {
+      await runtime.dispose()
+      await deleteOwnedPrefix(prefix)
     }
   })
 })
