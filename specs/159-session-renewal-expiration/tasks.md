@@ -51,7 +51,7 @@ public store contract, tombstones, or an absolute lifetime.
 
 **Purpose**: Reconfirm read-only authority and the installed APIs before any session edit.
 
-- [ ] T001 Refresh `origin/main` and record its SHA. Re-read issue #220 and compare the accepted requirement files at
+- [x] T001 Refresh `origin/main` and record its SHA. Re-read issue #220 and compare the accepted requirement files at
       `c1d87a22a55cd5190bc702a6a3c33cfed2ca23ef` plus the S2 baseline at `e206d165f0f30999220922f57a3f92549c15f4cc`
       with current `origin/main` for the in-scope criteria named in `specs/159-session-renewal-expiration/spec.md`:
       PREETS-SESSION-008 AC3–5, the service/store portion of PREETS-SESSION-006 AC3, the server
@@ -59,13 +59,13 @@ public store contract, tombstones, or an absolute lifetime.
       PREETS-SESSION-011 AC2–4. Stop for the owning specification or planning workflow on material drift. Do not edit
       `specs/159-session-renewal-expiration/spec.md`, `specs/159-session-renewal-expiration/verification.md`, or
       `specs/159-session-renewal-expiration/plan.md`.
-- [ ] T002 [P] Confirm the installed Effect 4.0.5 and `@effect/platform-node` 4.0.5 declarations used by
+- [x] T002 [P] Confirm the installed Effect 4.0.5 and `@effect/platform-node` 4.0.5 declarations used by
       `packages/frontend-services/src/session.ts` and `packages/frontend-services/src/session/store.ts`:
       `Clock.currentTimeMillis`, `TestClock`, `Effect.fn`, `Redis.script` / `Redis.eval`, `Effect.all`, `Deferred`,
       and `Latch`, plus `@effect/vitest` 4.0.5 and `@fast-check/vitest` 0.5.0. Confirm Compose Redis 8.10.2. The
       script API must be able to express one key, full validation, and at most one final `DEL` or `SET ... PX`. Stop
       if the installed API cannot. Effect clock remains the deadline authority; Redis TTL stays cleanup.
-- [ ] T003 [P] Run `pnpm --filter @pathableai/pre-ets-frontend-services exec fallow guard src/session.ts src/session/store.ts`
+- [x] T003 [P] Run `pnpm --filter @pathableai/pre-ets-frontend-services exec fallow guard src/session.ts src/session/store.ts`
       from `packages/frontend-services` before adding a module. `docs/engineering/fallow.md` says this workspace has
       no boundary zones; leave it unconfigured. Keep activity classification private in
       `packages/frontend-services/src/session.ts`. Split a child only when `fallow health --complexity` on that file
@@ -79,7 +79,7 @@ together after T001.
 **Purpose**: Publish the shared activity vocabulary and `refreshForTenant` signature that every story consumes.
 Depends on T001–T003.
 
-- [ ] T004 Add the closed activity and refresh input types to `packages/frontend-services/src/session.ts` exactly as
+- [x] T004 Add the closed activity and refresh input types to `packages/frontend-services/src/session.ts` exactly as
       specified in `specs/159-session-renewal-expiration/contracts/modules.md`. Export `QualifyingSessionActivity` as
       `"deliberate-page-request" | "deliberate-form-submission" | "intentional-control-activation" |
       "keyboard-interaction" | "text-entry" | "touch-interaction" | "user-driven-meaningful-input-focus" |
@@ -91,7 +91,7 @@ Depends on T001–T003.
       `policy?: never`, optional `reference?: string`, and `tenantAlias: TenantAlias`. Callers cannot add categories
       or pass a boolean that bypasses classification. Do not export these types from
       `packages/frontend-services/src/index.ts`.
-- [ ] T005 Extend `SessionService` in `packages/frontend-services/src/session.ts` with `refreshForTenant(input:
+- [x] T005 Extend `SessionService` in `packages/frontend-services/src/session.ts` with `refreshForTenant(input:
       RefreshSessionForTenantInput): Effect.Effect<NoUsableSession | UsableSession, SessionServiceUnavailable |
       SessionTenantMismatch>`. Keep `establish`, `read`, and `readForTenant` source-compatible. The existing layer
       continues to require `Redis` and configuration; callers of a provided `SessionService` gain no new environment
@@ -99,12 +99,12 @@ Depends on T001–T003.
       map the unimplemented member to `NoUsableSession` or `SessionServiceUnavailable`. Do not change
       `packages/frontend-services/src/runtime.ts`, `packages/frontend-services/src/session-request.ts`, or
       `packages/frontend-services/src/session/codec.ts`.
-- [ ] T006 [P] Add `refreshForTenant` to the complete `SessionService["Service"]` double in
+- [x] T006 [P] Add `refreshForTenant` to the complete `SessionService["Service"]` double in
       `packages/frontend-services/tests/unit/reference-session-enforcement.test.ts`. Match the T005 signature and die
       when called, using the same unused-member pattern as `establish` and `read`. This migration is required because
       `refreshForTenant` is a required member of `SessionService["Service"]`; it does not add renewal behavior to the
       #219 reference consumer.
-- [ ] T007 [P] Add the same unused `refreshForTenant` member to both `Layer.succeed(SessionService, ...)` objects in
+- [x] T007 [P] Add the same unused `refreshForTenant` member to both `Layer.succeed(SessionService, ...)` objects in
       `packages/frontend-services/tests/unit/authentication-entry-failures.test.ts`. Preserve the existing safe
       failure pages, correlation disposition, and the assertions that failed tenant lookup or failed establishment
       does not emit a session cookie.
@@ -126,7 +126,7 @@ sessions after a policy change and observe that the other keeps its established 
 
 ### Public evidence before private behavior
 
-- [ ] T008 [US1] Add failing public-service scenarios to `packages/frontend-services/tests/lib/session.test.ts` for
+- [x] T008 [US1] Add failing public-service scenarios to `packages/frontend-services/tests/lib/session.test.ts` for
       `SessionService.refreshForTenant`, using `TestClock` and `makeSessionMemoryRedis` from
       `packages/frontend-services/tests/helpers/session.ts`. Import only `packages/frontend-services/src/session.ts`.
       For each qualifying literal in T004, activity strictly before the stored deadline returns `UsableSession` whose
@@ -138,7 +138,7 @@ sessions after a policy change and observe that the other keeps its established 
       lookup. A `tenantAlias` that differs from the stored tenant returns fieldless `SessionTenantMismatch`,
       including when the stored deadline is already expired, and a later read shows unchanged bytes and unchanged TTL
       (contracts/modules.md mismatch invariant). Observe a meaningful failure before T010–T012.
-- [ ] T009 [US1] Add bounded `@fast-check/vitest` properties in `packages/frontend-services/tests/lib/session.test.ts`
+- [x] T009 [US1] Add bounded `@fast-check/vitest` properties in `packages/frontend-services/tests/lib/session.test.ts`
       that, for generated receipt times strictly before the stored deadline and generated valid policy pairs, the
       renewed deadline equals `receivedAt + idleTimeoutMinutes * 60_000` and the stored warning lead equals that same
       input's `warningLeadMinutes`. Properties must not mix deadline and warning fields from two policies. A finite
@@ -147,12 +147,12 @@ sessions after a policy change and observe that the other keeps its established 
 
 ### Private renewal behavior
 
-- [ ] T010 [US1] Extend `packages/frontend-services/tests/helpers/session.ts` so the memory Redis used by
+- [x] T010 [US1] Extend `packages/frontend-services/tests/helpers/session.ts` so the memory Redis used by
       `packages/frontend-services/tests/lib/session.test.ts` models the script operation confirmed in T002. Preserve
       existing `GET` and `SET key payload NX PX ttl` behavior for establishment. Script evaluation for a qualifying
       refresh must apply at most one final `SET ... PX` after validation, and must perform no write on tenant
       mismatch or malformed payload. This helper is test infrastructure, not a second production contract.
-- [ ] T011 [US1] Extend the private `SessionStore` in `packages/frontend-services/src/session/store.ts` with one
+- [x] T011 [US1] Extend the private `SessionStore` in `packages/frontend-services/src/session/store.ts` with one
       one-key script for tenant-bound refresh. Validate the complete exact `StoredSessionV1` shape, including
       version, field types, constraints, and excess properties, and finish every fallible result or replacement
       before any mutation. Compare `tenantAlias` before deadline evaluation. On mismatch, return a store mismatch and
@@ -163,7 +163,7 @@ sessions after a policy change and observe that the other keeps its established 
       `receivedAt + idleTimeoutMinutes * 60_000`. Missing keys and invalid references stay non-mutating. Same-tenant
       expiry may return non-usable without `SET` here; the one final `DEL` is T016. Do not edit
       `packages/frontend-services/src/session/codec.ts`. Use `Effect.fnUntraced` for the store operation.
-- [ ] T012 [US1] Replace the T005 defect in `packages/frontend-services/src/session.ts` with
+- [x] T012 [US1] Replace the T005 defect in `packages/frontend-services/src/session.ts` with
       `Effect.fn("SessionService.refreshForTenant")`. Sample `Clock.currentTimeMillis` as receipt time before
       storage. Decode `reference` with the existing parent decoder; absent or invalid input returns `NoUsableSession`
       without Redis. Pass `tenantAlias`, receipt time, the closed activity, and `policy` only for a qualifying
@@ -194,7 +194,7 @@ session. Advance time without a browser timer and observe that consumers no long
 
 ### Public evidence before private behavior
 
-- [ ] T014 [US2] Extend `packages/frontend-services/tests/lib/session.test.ts` with failing scenarios for every
+- [x] T014 [US2] Extend `packages/frontend-services/tests/lib/session.test.ts` with failing scenarios for every
       excluded literal from T004. Before the deadline, `refreshForTenant` returns the current `UsableSession` and
       leaves the stored payload and TTL unchanged (V-004, FR-006, SC-002). The excluded variant's `policy?: never`
       must reject an input that carries policy. At the stored deadline and after it, qualifying activity and
@@ -209,16 +209,16 @@ session. Advance time without a browser timer and observe that consumers no long
 
 ### Expiration behavior
 
-- [ ] T015 [US2] Extend `packages/frontend-services/tests/helpers/session.ts` so script evaluation can return the
+- [x] T015 [US2] Extend `packages/frontend-services/tests/helpers/session.ts` so script evaluation can return the
       current record with no write for excluded activity, issue one final `DEL` for same-tenant or tenantless expiry,
       and delay a usable result long enough for the public parent to advance `TestClock` past the returned deadline.
       Preserve the T010 qualifying-write and mismatch non-mutation behavior.
-- [ ] T016 [US2] Complete the private script in `packages/frontend-services/src/session/store.ts`. Excluded activity
+- [x] T016 [US2] Complete the private script in `packages/frontend-services/src/session/store.ts`. Excluded activity
       returns the current valid record and performs no write. For a tenantless read, or a tenant-matching refresh,
       `deadline <= receivedAt` returns expired and performs one final `DEL`. Mismatch still precedes that deletion
       and leaves bytes and TTL unchanged. Malformed state still fails before any mutation. Issue no mutation or
       exactly one final `DEL` or `SET ... PX`; do not rely on script rollback.
-- [ ] T017 [US2] Route `read` in `packages/frontend-services/src/session.ts` through the same receipt-time script so
+- [x] T017 [US2] Route `read` in `packages/frontend-services/src/session.ts` through the same receipt-time script so
       authoritative expiration does not depend on a separate `GET` plus a browser timer (V-010, FR-008). Keep the
       absent or malformed reference short-circuit with no Redis lookup. Apply the post-storage Effect-clock sample
       before exposing identity or annotating `session.id`. Keep `readForTenant` as admission of an already usable
@@ -245,7 +245,7 @@ storage failure is not reported as no-session or as identity.
 
 ### Public and real-store evidence before the remaining private behavior
 
-- [ ] T019 [P] [US3] Extend `packages/frontend-services/tests/lib/session.test.ts` with failing public scenarios that
+- [x] T019 [P] [US3] Extend `packages/frontend-services/tests/lib/session.test.ts` with failing public scenarios that
       distinguish outcomes (V-007, V-008, FR-010, FR-011, SC-005). Missing state and state removed by the T016 `DEL`
       both return `NoUsableSession` with no tombstone or expiration marker. Reuse the existing establishment and read
       failure scenarios; add refresh cases where a controlled Redis, script, or result-decoding failure returns
@@ -256,7 +256,7 @@ storage failure is not reported as no-session or as identity.
       and a later public read observes whatever authoritative state the single final write committed. Public
       diagnostics contain no raw reference, key, stored record, identity, token, policy document, or partner name.
       Import only the session parent.
-- [ ] T020 [P] [US3] Extend `packages/frontend-services/tests/integration/session-redis.test.ts` with two
+- [x] T020 [P] [US3] Extend `packages/frontend-services/tests/integration/session-redis.test.ts` with two
       independently scoped `SessionService` runtimes and one scenario-owned prefix. Preserve the existing
       establish-on-A/read-on-B case and the disconnected-client `SessionServiceUnavailable` cases for establishment,
       read, and tenant admission. Add: refresh through client B and read the new deadline and warning policy through
@@ -272,15 +272,15 @@ storage failure is not reported as no-session or as identity.
 
 ### Failure and ordering behavior
 
-- [ ] T021 [US3] Extend `packages/frontend-services/tests/helpers/session.ts` with the bounded failure controls T019
+- [x] T021 [US3] Extend `packages/frontend-services/tests/helpers/session.ts` with the bounded failure controls T019
       needs: malformed payload left unchanged, and a script result that fails after the helper has applied the one
       final mutation. Do not add a second production store.
-- [ ] T022 [US3] Finish exhaustive result decoding in `packages/frontend-services/src/session/store.ts`. Unknown
+- [x] T022 [US3] Finish exhaustive result decoding in `packages/frontend-services/src/session/store.ts`. Unknown
       script results and malformed records fail closed before mutation. A transport or decoding failure after the one
       final `DEL` or `SET ... PX` surfaces as store unavailability without another mutation. The private result
       encoding may be chosen here; it must be exhaustive and fail closed, and it must preserve mismatch precedence
       and the prepare-then-single-mutation invariant from `specs/159-session-renewal-expiration/contracts/modules.md`.
-- [ ] T023 [US3] In `packages/frontend-services/src/session.ts`, map those store failures to fieldless
+- [x] T023 [US3] In `packages/frontend-services/src/session.ts`, map those store failures to fieldless
       `SessionServiceUnavailable` for `establish` where already required, and for `read`, `readForTenant`, and
       `refreshForTenant`. Do not retry a failed refresh with the stale policy. Leave defects and interruption
       untranslated. Make T019 pass.
@@ -304,7 +304,7 @@ rejection without an effective session policy being supplied to `establish` or `
 
 ### Tenant-consumer evidence
 
-- [ ] T025 [P] [US4] Create `packages/frontend-services/tests/lib/session-policy-refresh.test.ts`. Compose the real
+- [x] T025 [P] [US4] Create `packages/frontend-services/tests/lib/session-policy-refresh.test.ts`. Compose the real
       `TenantConfigService` from `packages/frontend-services/src/tenant.ts` with `SessionService`. Do not import
       `packages/frontend-services/src/tenant/config.ts` or private session children. Keep the exhaustive invalid and
       valid domain matrix in `packages/frontend-services/tests/lib/tenant-policy.test.ts`: integral timeout values
@@ -314,7 +314,7 @@ rejection without an effective session policy being supplied to `establish` or `
       equal to or greater than the effective timeout—rejected by that consumer before `establish` or
       `refreshForTenant` is invoked (V-009, FR-012, SC-006). Use distinguishable synthetic tenant files. Do not claim
       PREETS-TENANT-004 HTTP failure mapping.
-- [ ] T026 [US4] Extend `packages/frontend-services/tests/lib/session-policy-refresh.test.ts` so a selected valid
+- [x] T026 [US4] Extend `packages/frontend-services/tests/lib/session-policy-refresh.test.ts` so a selected valid
       configuration supplies `effectiveSessionPolicy` only to a qualifying refresh. The renewed public session
       exposes that timeout and warning lead, including a change and a transition to or from a disabled warning of
       `0`. An unrefreshed second session keeps the policy from its own establishment (V-003, SC-003). This task waits
@@ -357,7 +357,7 @@ claim-level execution record. Depends on the stories required by each procedure.
       record rejection before an effective session policy exists. Write the execution record from the quickstart
       template in the implementation PR, including V-001, V-002, V-003, V-004, V-005, V-006, V-009, and V-010. Do not
       edit `verification.md`. Do not retain raw records, credentials, tokens, or partner identifiers.
-- [ ] T030 Leave operational observability unclaimed. Preserve the existing `session.id` annotation in
+- [x] T030 Leave operational observability unclaimed. Preserve the existing `session.id` annotation in
       `packages/frontend-services/src/session.ts` only on usable paths. Do not add a durable log, span, attribute,
       telemetry-payload, or exporter test. If a temporary trace or log probe was used to diagnose a race, remove it
       before T031 and retain only safe revision-attributable observations. An empty log, Tempo, Loki, or Prometheus

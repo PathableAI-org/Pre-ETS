@@ -202,7 +202,8 @@ describe("callback session-establishment failure mapping", () => {
         session: Layer.succeed(SessionService, {
           establish,
           read: () => Effect.die("read must remain unused"),
-          readForTenant: () => Effect.succeed({ _tag: "NoUsableSession" })
+          readForTenant: () => Effect.succeed({ _tag: "NoUsableSession" }),
+          refreshForTenant: () => Effect.die("refreshForTenant must remain unused")
         }),
         tenant: tenantLayer(missingDirectory)
       })
@@ -235,7 +236,8 @@ describe("callback session-establishment failure mapping", () => {
         session: Layer.succeed(SessionService, {
           establish,
           read: () => Effect.die("read must remain unused"),
-          readForTenant: () => Effect.succeed({ _tag: "NoUsableSession" })
+          readForTenant: () => Effect.succeed({ _tag: "NoUsableSession" }),
+          refreshForTenant: () => Effect.die("refreshForTenant must remain unused")
         }),
         tenant: tenantLayer(directory)
       })
