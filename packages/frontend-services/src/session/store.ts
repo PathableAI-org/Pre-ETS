@@ -96,7 +96,8 @@ local function nonempty(value)
 end
 
 local function integral(value)
-  return type(value) == "number" and value == math.floor(value) and value > -math.huge and value < math.huge
+  local max_safe = 9007199254740991
+  return type(value) == "number" and value == math.floor(value) and value >= -max_safe and value <= max_safe
 end
 
 local function is_uuid(value)

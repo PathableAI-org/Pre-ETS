@@ -50,7 +50,7 @@ const uuidPattern =
 
 const failableCommands = new Set(["EVALSHA", "GET", "SCRIPT", "SET"])
 
-const isInteger = (value: unknown): value is number => typeof value === "number" && Number.isInteger(value)
+const isInteger = (value: unknown): value is number => typeof value === "number" && Number.isSafeInteger(value)
 
 const isNonEmptyString = (value: unknown): value is string => typeof value === "string" && value.length > 0
 

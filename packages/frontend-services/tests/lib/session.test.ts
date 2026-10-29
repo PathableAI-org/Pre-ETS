@@ -749,6 +749,33 @@ describe("SessionService storage failures", () => {
       })
     ))
 
+  it.effect("does not renew or delete a record with an unsafe integer warning", () =>
+    scenario((redis) =>
+      Effect.gen(function*() {
+        yield* TestClock.setTime(BASE_TIME)
+        const service = yield* SessionService
+        const established = yield* establish(service, 30, 5)
+        for (const [key, payload] of redis.entries) {
+          const record = JSON.parse(payload) as Record<string, unknown>
+          redis.entries.set(key, JSON.stringify({ ...record, warningLeadMinutes: 9_007_199_254_740_992 }))
+        }
+        const before = storedSnapshot(redis)
+        const refreshed = yield* service.refreshForTenant({
+          activity: "continue-session",
+          policy: policyOf(12, 1),
+          reference: established.reference,
+          tenantAlias: alias
+        }).pipe(Effect.result)
+        expect(Result.isFailure(refreshed)).toBe(true)
+        if (Result.isFailure(refreshed)) expect(refreshed.failure).toBeInstanceOf(SessionServiceUnavailable)
+        yield* TestClock.setTime(established.session.idleDeadlineEpochMilliseconds)
+        const expired = yield* service.read({ reference: established.reference }).pipe(Effect.result)
+        expect(Result.isFailure(expired)).toBe(true)
+        if (Result.isFailure(expired)) expect(expired.failure).toBeInstanceOf(SessionServiceUnavailable)
+        expect(storedSnapshot(redis)).toEqual(before)
+      })
+    ))
+
   it.effect("returns SessionServiceUnavailable when refresh cannot evaluate or decode", () =>
     scenario((redis) =>
       Effect.gen(function*() {

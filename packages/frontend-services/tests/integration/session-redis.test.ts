@@ -573,6 +573,50 @@ describe("SessionService renewal and expiration on real Redis", () => {
     })
   })
 
+  it("rejects an unsafe integer warning without renewing or deleting the record", async () => {
+    const prefix = `test:session:${randomUUID()}:`
+    const runtime = ManagedRuntime.make(sessionLayer(prefix))
+    try {
+      const established = await establish(runtime, 30, 4)
+      await shortenOwnedTtl(prefix, 90_000)
+      const stored = await corruptSinglePayload(prefix, (payload) => {
+        const record = JSON.parse(payload) as Record<string, unknown>
+        record.warningLeadMinutes = 9_007_199_254_740_992
+        return JSON.stringify(record)
+      })
+      const refreshed = await runtime.runPromise(Effect.gen(function*() {
+        const service = yield* SessionService
+        return yield* service.refreshForTenant({
+          activity: "continue-session",
+          policy: changedPolicy,
+          reference: established.reference,
+          tenantAlias: alias
+        }).pipe(Effect.result)
+      }))
+      expect(Result.isFailure(refreshed)).toBe(true)
+      if (Result.isFailure(refreshed)) {
+        expect(refreshed.failure).toBeInstanceOf(SessionServiceUnavailable)
+        expect(String(refreshed.failure)).not.toContain("subject-redis")
+      }
+      const expired = await runtime.runPromise(
+        Effect.gen(function*() {
+          const service = yield* SessionService
+          return yield* service.read({ reference: established.reference }).pipe(Effect.result)
+        }).pipe(Effect.provideService(Clock.Clock, clockAt(established.session.idleDeadlineEpochMilliseconds)))
+      )
+      expect(Result.isFailure(expired)).toBe(true)
+      if (Result.isFailure(expired)) expect(expired.failure).toBeInstanceOf(SessionServiceUnavailable)
+      const after = await corruptSinglePayload(prefix, (payload) => payload)
+      expect(after.payload).toBe(stored.payload)
+      expect(after.ttlMilliseconds).toBeLessThanOrEqual(stored.ttlMilliseconds)
+      expect(after.ttlMilliseconds).toBeGreaterThan(0)
+      expect(after.ttlMilliseconds).toBeLessThan(120_000)
+    } finally {
+      await runtime.dispose()
+      await deleteOwnedPrefix(prefix)
+    }
+  })
+
   it("rejects a future record with a missing identity field without resetting TTL", async () => {
     const prefix = `test:session:${randomUUID()}:`
     const runtime = ManagedRuntime.make(sessionLayer(prefix))
