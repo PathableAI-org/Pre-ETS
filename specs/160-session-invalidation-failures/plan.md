@@ -29,7 +29,8 @@ or a general revocation system.
 **Storage**: Redis 8.10.3 through the existing private session store and owned, SHA-256-addressed session keys
 
 **Testing**: Vitest 5.0.5, `@effect/vitest` 4.0.5, deterministic memory Redis scenarios, the pinned real Redis
-service, and a temporary uncommitted manual probe around the existing bounded reference consumer
+service, a separate opt-in dedicated-store outage suite, and a temporary uncommitted manual probe around the existing
+bounded reference consumer
 
 **Target Platform**: Node.js frontend-services process used by the Next.js frontend
 
@@ -88,6 +89,9 @@ specs/160-session-invalidation-failures/
 
 ```text
 packages/frontend-services/
+├── package.json                    # add the opt-in dedicated-store outage command
+├── vitest.integration.config.ts   # exclude the dedicated-store outage suite
+├── vitest.outage.config.ts        # include only the dedicated-store outage suite
 ├── src/
 │   ├── session.ts                  # extend public session contract/orchestration with invalidate
 │   ├── session/
@@ -104,7 +108,8 @@ packages/frontend-services/
     │   ├── authentication-entry-failures.test.ts # migrate complete SessionService doubles
     │   └── reference-session-enforcement.test.ts # migrate complete SessionService doubles
     └── integration/
-        └── session-redis.test.ts   # independent-client, race, and real outage evidence
+        ├── session-redis.test.ts   # independent-client and race evidence on the shared test store
+        └── session-redis-outage.test.ts # opt-in owned-store pre-dispatch and mid-flight loss evidence
 ```
 
 **Structure Decision**: Preserve the recursive session module. `session.ts` remains the public owner and the only
@@ -169,14 +174,19 @@ the authoritative ordering evidence. Renewal may return usable only when it line
 completed schedule must end with both clients observing no usable state. Existing #220 expiration/renewal tests remain
 authoritative and are retained rather than duplicated.
 
-A disconnected real adapter exercises pre-dispatch read, refresh, and invalidate failure through the public service.
-The manual dedicated-store procedure separately pauses command processing, dispatches bounded read, refresh, and
-invalidate calls, confirms that each caller remains pending, and stops only that store before the pause expires. This
-establishes adapter loss while each public operation is in flight without claiming that Redis accepted or mutated
-state. After restart, every affected reference is authoritatively re-evaluated because a failure does not claim
-mutation status. The same manual procedure reuses the bounded reference consumer with temporary uncommitted
+A disconnected real adapter in the normal integration suite exercises pre-dispatch read, refresh, and invalidate
+failure through the public service. A separate opt-in outage suite exclusively owns a uniquely named Redis 8.10.3
+Compose project and loopback endpoint. It covers both store loss before dispatch and a mid-flight case that pauses
+command processing, dispatches bounded read, refresh, and invalidate calls, confirms that each caller remains pending,
+and stops only that store before the pause expires. This establishes adapter loss while each public operation is in
+flight without claiming that Redis accepted or mutated state. After restart, every affected reference is
+authoritatively re-evaluated because a failure does not claim mutation status. The suite owns readiness, bounded
+timeouts, restart, client disposal, owned-prefix cleanup, and unconditional Compose teardown, and it is excluded from
+the normal shared-store `test:integration` command.
+
+The manual procedure repeats those outage conditions around the bounded reference consumer with temporary uncommitted
 public-service invalidation support, showing success before invalidation, denial afterward, and explicit failure
-during the dedicated-store outage. Those composed observations are not duplicated in automated evidence.
+during a dedicated-store outage. That composed observation remains distinct from the retained automated outage suite.
 
 ### Phase 4 — Implementation architecture
 
@@ -213,20 +223,23 @@ Implementation order:
    no-retry, and no-protected-fields evidence.
 6. Add real-Redis independent-client evidence, both forced invalidation/renewal orderings, a concurrent-release
    overlap attempt with its limitation, and pre-dispatch disconnected-adapter failure with healthy re-evaluation.
-7. Prepare temporary uncommitted public-service invalidation support for the manual #219 consumer procedure without
+7. Add the opt-in dedicated-store outage config, command, and suite. Prove pre-dispatch and bounded mid-flight loss for
+   read, refresh, and invalidate; restore and re-evaluate every reference; dispose clients and remove the uniquely
+   owned Compose project unconditionally.
+8. Prepare temporary uncommitted public-service invalidation support for the manual #219 consumer procedure without
    changing the retained fixture or its application-coverage claim.
-8. Run the manual procedure, including bounded dedicated-store loss after read, refresh, and invalidate are dispatched;
-   restore the store, authoritatively re-evaluate each reference, remove temporary support, and run feature-specific
-   checks and all repository quality gates, recording only safe results.
+9. Run the manual composed procedure, including its additional bounded dedicated-store-loss observation; restore the
+   store, re-evaluate each reference, remove temporary support, and run feature-specific checks and all repository
+   quality gates, recording only safe results.
 
 ### Phase 5 — Feature verification integration
 
 [verification.md](verification.md) remains the approved claim map; [quickstart.md](quickstart.md) turns it into
 implementation-aware commands and a safe execution record. Public-service evidence establishes V-001, V-002, V-005,
-V-007, and V-008. Real Redis evidence establishes V-001–V-004 and V-006–V-008 at the shared adapter boundary. The
-mandatory manual procedure establishes V-001–V-003 and V-005–V-007, including the limited composed observation
-requested by the issue, without replacing #154's application-wide ownership or duplicating an automated fixture
-scenario. V-004 remains with the retained #220 expiration/renewal evidence.
+V-007, and V-008. The independent shared-store suite establishes V-001–V-004 and V-008, while the opt-in dedicated-store
+outage suite establishes V-005–V-007. The mandatory manual procedure establishes V-001–V-003 and V-005–V-007, including
+the limited composed observation requested by the issue, without replacing #154's application-wide ownership or
+duplicating an automated fixture scenario. V-004 remains with the retained #220 expiration/renewal evidence.
 
 Requirements-backed Gherkin is not completion evidence for this service/store slice. Browser logout coordination,
 cookie clearing, recovery presentation, provider freshness, and comprehensive protected-request mapping remain
