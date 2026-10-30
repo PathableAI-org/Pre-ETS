@@ -162,16 +162,21 @@ read/refresh outcome tests remain the evidence that only `UsableSession` carries
 
 Real Redis evidence uses independently scoped clients with one scenario-owned prefix. Client A establishes, client B
 reads and invalidates, and both later read/refresh attempts return `NoUsableSession`. Three race schedules are
-distinct: renewal completes before invalidation dispatch; invalidation completes before renewal dispatch; and both
-operations cross a start barrier before either is awaited. Renewal may return usable only when it linearizes before
-invalidation, but every completed schedule must end with both clients observing no usable state. Existing #220
-expiration/renewal tests remain authoritative and are retained rather than duplicated.
+distinct: renewal completes before invalidation dispatch; invalidation completes before renewal dispatch; and a
+concurrent-release overlap attempt in which both operations cross a start barrier before either is awaited. The third
+schedule establishes concurrent invocation, not command-boundary overlap inside Redis; the two forced schedules are
+the authoritative ordering evidence. Renewal may return usable only when it linearizes before invalidation, but every
+completed schedule must end with both clients observing no usable state. Existing #220 expiration/renewal tests remain
+authoritative and are retained rather than duplicated.
 
-A disconnected real adapter exercises read, refresh, and invalidate failure through the public service. Healthy
-re-evaluation after the controlled outage is required because a failure does not claim mutation status. The manual
-procedure reuses the bounded reference consumer with temporary uncommitted public-service invalidation support,
-showing success before invalidation, denial afterward, and explicit failure during a dedicated-store outage. Those
-composed observations are not duplicated in automated evidence.
+A disconnected real adapter exercises pre-dispatch read, refresh, and invalidate failure through the public service.
+The manual dedicated-store procedure separately pauses command processing, dispatches bounded read, refresh, and
+invalidate calls, confirms that each caller remains pending, and stops only that store before the pause expires. This
+establishes adapter loss while each public operation is in flight without claiming that Redis accepted or mutated
+state. After restart, every affected reference is authoritatively re-evaluated because a failure does not claim
+mutation status. The same manual procedure reuses the bounded reference consumer with temporary uncommitted
+public-service invalidation support, showing success before invalidation, denial afterward, and explicit failure
+during the dedicated-store outage. Those composed observations are not duplicated in automated evidence.
 
 ### Phase 4 — Implementation architecture
 
@@ -206,20 +211,22 @@ Implementation order:
 4. Add private `SessionStore.invalidate` using the existing key owner and compose it through the parent.
 5. Add success, no-op, malformed-reference, malformed-stored-state deletion, service-failure, post-delete failure,
    no-retry, and no-protected-fields evidence.
-6. Add real-Redis independent-client evidence, both forced invalidation/renewal orderings, actual overlap, and
-   disconnected-adapter failure with healthy re-evaluation.
+6. Add real-Redis independent-client evidence, both forced invalidation/renewal orderings, a concurrent-release
+   overlap attempt with its limitation, and pre-dispatch disconnected-adapter failure with healthy re-evaluation.
 7. Prepare temporary uncommitted public-service invalidation support for the manual #219 consumer procedure without
    changing the retained fixture or its application-coverage claim.
-8. Run the manual procedure, remove its temporary support, and run feature-specific checks and all repository quality
-   gates, recording only safe results.
+8. Run the manual procedure, including bounded dedicated-store loss after read, refresh, and invalidate are dispatched;
+   restore the store, authoritatively re-evaluate each reference, remove temporary support, and run feature-specific
+   checks and all repository quality gates, recording only safe results.
 
 ### Phase 5 — Feature verification integration
 
 [verification.md](verification.md) remains the approved claim map; [quickstart.md](quickstart.md) turns it into
 implementation-aware commands and a safe execution record. Public-service evidence establishes V-001, V-002, V-005,
 V-007, and V-008. Real Redis evidence establishes V-001–V-004 and V-006–V-008 at the shared adapter boundary. The
-mandatory manual bounded-reference procedure establishes the limited composed observation requested by the issue
-without replacing #154's application-wide ownership or duplicating an automated fixture scenario.
+mandatory manual procedure establishes V-001–V-003 and V-005–V-007, including the limited composed observation
+requested by the issue, without replacing #154's application-wide ownership or duplicating an automated fixture
+scenario. V-004 remains with the retained #220 expiration/renewal evidence.
 
 Requirements-backed Gherkin is not completion evidence for this service/store slice. Browser logout coordination,
 cookie clearing, recovery presentation, provider freshness, and comprehensive protected-request mapping remain
