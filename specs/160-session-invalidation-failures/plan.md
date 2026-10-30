@@ -184,9 +184,10 @@ authoritatively re-evaluated because a failure does not claim mutation status. T
 timeouts, restart, client disposal, owned-prefix cleanup, and unconditional Compose teardown, and it is excluded from
 the normal shared-store `test:integration` command.
 
-The manual procedure repeats those outage conditions around the bounded reference consumer with temporary uncommitted
-public-service invalidation support, showing success before invalidation, denial afterward, and explicit failure
-during a dedicated-store outage. That composed observation remains distinct from the retained automated outage suite.
+The manual procedure uses a pre-dispatch dedicated-store outage around the bounded reference consumer, with temporary
+uncommitted public-service invalidation support for the earlier denial observation. It shows success before
+invalidation, denial afterward, and explicit consumer failure while the store is unavailable. That composed
+observation remains distinct from the automated service/store outage suite.
 
 ### Phase 4 — Implementation architecture
 
@@ -228,9 +229,9 @@ Implementation order:
    owned Compose project unconditionally.
 8. Prepare temporary uncommitted public-service invalidation support for the manual #219 consumer procedure without
    changing the retained fixture or its application-coverage claim.
-9. Run the manual composed procedure, including its additional bounded dedicated-store-loss observation; restore the
-   store, re-evaluate each reference, remove temporary support, and run feature-specific checks and all repository
-   quality gates, recording only safe results.
+9. Run the manual composed invalidation and pre-dispatch outage procedure around the bounded reference consumer;
+   restore the store, re-evaluate each reference, remove temporary support, and run feature-specific checks and all
+   repository quality gates, recording only safe results.
 
 ### Phase 5 — Feature verification integration
 

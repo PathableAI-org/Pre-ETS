@@ -141,8 +141,9 @@ targets the normal shared integration store. Neither failure outcome claims muta
 control does not claim that Redis accepted a command before loss.
 The #219 harness already composes a real Next process, public session service, browser action, and Redis. The manual
 procedure may surround it with temporary uncommitted public-service invalidation support to observe denial of the old
-reference. No durable automated fixture extension is planned, so the composed journey remains distinct from automated
-service/store evidence. It still does not prove comprehensive application enforcement.
+reference, then stop the dedicated store before the composed outage call. Mid-flight service/store loss remains solely
+with the opt-in automated suite. No durable automated fixture extension is planned, so the composed journey remains
+distinct from automated service/store evidence. It still does not prove comprehensive application enforcement.
 
 **Alternatives rejected**:
 
