@@ -8,7 +8,7 @@
 | --------------------------------- | ---------------------------------------------------------------------------------------------- |
 | V-001, V-002, V-005, V-007, V-008 | Public `SessionService` tests with the controlled memory Redis adapter                         |
 | V-001–V-004, V-006–V-008          | Independently scoped clients against real Redis, including race and outage cases               |
-| V-001–V-007                       | Mandatory manual dedicated-store procedure with two clients and the bounded reference consumer |
+| V-001–V-003, V-005–V-007          | Mandatory manual dedicated-store procedure with two clients and the bounded reference consumer |
 
 ## Prerequisites
 
@@ -56,17 +56,20 @@ clients subsequently return `NoUsableSession` for read and renewal. It must exer
 1. renewal completes before invalidation is dispatched;
 2. invalidation completes before renewal is dispatched; and
 3. both clients cross a start barrier, both operations are released without awaiting either result, and both
-   completions are bounded.
+   completions are bounded as a concurrent-release overlap attempt.
 
 In schedule 1, the renewal call may return a usable renewed value before invalidation deletes it. In schedules 2 and
-3, renewal may return no usable state depending on order. Every schedule must end with later reads and renewals from
-both clients returning `NoUsableSession`; no replacement key/session may appear. Existing #220 expiration/renewal
-tests remain in the suite and must continue to pass.
+3, renewal may return no usable state depending on order. Schedule 3 establishes concurrent invocation, not that the
+commands overlapped at the Redis execution boundary; schedules 1 and 2 remain the authoritative ordering evidence.
+Every schedule must end with later reads and renewals from both clients returning `NoUsableSession`; no replacement
+key/session may appear. Existing #220 expiration/renewal tests remain in the suite and must continue to pass.
 
-The real-adapter failure scenario uses a deliberately disconnected client Layer, not a stopped shared store. Read,
-refresh, and invalidate through that client must each return `SessionServiceUnavailable`. A healthy client must then
-re-evaluate the owned reference; the failed call itself does not claim whether mutation occurred. Integration cleanup
-removes only owned keys and closes all clients/runtimes. Stop Compose only if this procedure started it.
+The automated real-adapter failure scenario uses a deliberately disconnected client Layer, not a stopped shared
+store. It establishes pre-dispatch failure: read, refresh, and invalidate through that client must each return
+`SessionServiceUnavailable`. A healthy client must then re-evaluate the owned reference; the failed call itself does
+not claim whether mutation occurred. Integration cleanup removes only owned keys and closes all clients/runtimes. Stop
+Compose only if this procedure started it. The manual procedure below separately covers loss after operations are
+dispatched.
 
 Requirements-backed Gherkin is intentionally absent. #154–#158 own comprehensive application, browser logout,
 recovery, and provider-freshness behavior.
@@ -128,9 +131,11 @@ raw transcripts must remain uncommitted and be removed during cleanup.
 
 ### Observe explicit outage failure
 
-1. Establish a separate owned synthetic session and confirm the bounded reference operation succeeds.
-2. Stop only the dedicated Redis service. Without rebuilding or replacing application state, attempt public read,
-   refresh, and invalidate through the two-client probe and invoke the bounded reference operation.
+1. Establish separate owned synthetic sessions for read, refresh, invalidation, and the bounded reference consumer;
+   confirm each corresponding operation succeeds before the outage.
+2. Establish the pre-dispatch case. Stop only the dedicated Redis service. Without rebuilding or replacing
+   application state, attempt public read, refresh, and invalidate through the two-client probe and invoke the bounded
+   reference operation.
 
    ```sh
    docker compose --project-name "$MANUAL_REDIS_PROJECT" --file "$MANUAL_REDIS_FILE" stop redis
@@ -139,12 +144,29 @@ raw transcripts must remain uncommitted and be removed during cleanup.
 3. Confirm each service operation returns `SessionServiceUnavailable`; the bounded consumer must fail without a
    protected result or receipt. Ordinary `NoUsableSession`, usable identity, successful authorization, and silent
    replacement are not acceptable outage results.
-4. Do not infer whether the failed invalidation committed. Restart the same dedicated store, wait for health, and
-   re-evaluate the reference through the public service.
+4. Restart the same dedicated store, wait for health, and authoritatively re-evaluate every affected reference through
+   the public service. Do not infer whether a failed operation committed from its failure result.
 
    ```sh
    docker compose --project-name "$MANUAL_REDIS_PROJECT" --file "$MANUAL_REDIS_FILE" start --wait redis
    ```
+
+5. Establish fresh owned synthetic sessions for read, refresh, and invalidation. Through the dedicated store's
+   control connection, pause all normal client command processing for a bounded 30 seconds; this command returns
+   immediately while subsequent client commands remain queued by Redis:
+
+   ```sh
+   docker compose --project-name "$MANUAL_REDIS_PROJECT" --file "$MANUAL_REDIS_FILE" \
+     exec redis redis-cli CLIENT PAUSE 30000 ALL
+   ```
+
+6. Dispatch one public read, refresh, and invalidate from independently scoped clients without awaiting them. Use the
+   temporary probe's bounded pending check to confirm that none settles within 250 milliseconds. Before the Redis
+   pause expires, stop only the dedicated store. Bound each public completion by 10 seconds and require exact
+   `SessionServiceUnavailable`.
+7. Restart the same dedicated store, wait for health, and authoritatively re-evaluate all three references. Record
+   only their public outcome categories. This case establishes public operations awaiting the adapter when the
+   connection is lost; it does not claim that Redis accepted a particular command or mutated a record.
 
 ### Cleanup
 
@@ -164,8 +186,8 @@ raw transcripts must remain uncommitted and be removed during cleanup.
 - Before invalidation, both clients and the bounded consumer observe the same usable session details.
 - After the race and completed invalidation, both clients return `NoUsableSession` for read/renewal and the bounded
   consumer produces no protected success.
-- During outage, read, renewal, invalidation, and the bounded consumer remain explicit failures rather than absence or
-  success.
+- During both pre-dispatch outage and bounded mid-flight connection loss, read, renewal, and invalidation remain
+  explicit failures rather than absence or success; the bounded consumer also fails in the pre-dispatch outage case.
 - After restart, authoritative state is re-evaluated; cleanup removes only owned fixtures.
 
 Retain only revision/environment, safe labels, operation ordering, public outcome categories, claim-level pass/fail,
