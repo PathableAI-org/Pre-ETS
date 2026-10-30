@@ -94,9 +94,9 @@ recovery, and provider-freshness behavior.
 
 This procedure reuses the existing #219 reference harness and uses the delivered public service only. It is the sole
 composed reference-consumer journey; the dedicated automated suite covers service/store outage outcomes but does not
-duplicate this application-consumer observation. The manual mid-flight steps below are an additional composed repeat,
-not the sole retained evidence of service/store loss. Temporary probe/override files and raw transcripts must remain
-uncommitted and be removed during cleanup.
+duplicate this application-consumer observation. Its outage observation begins with the store unavailable before
+dispatch; the automated suite owns mid-flight service/store loss. Temporary probe/override files and raw transcripts
+must remain uncommitted and be removed during cleanup.
 
 ### Prepare an exclusively owned store
 
@@ -169,23 +169,6 @@ uncommitted and be removed during cleanup.
    docker compose --project-name "$MANUAL_REDIS_PROJECT" --file "$MANUAL_REDIS_FILE" start --wait redis
    ```
 
-5. Establish fresh owned synthetic sessions for read, refresh, and invalidation. Through the dedicated store's
-   control connection, pause all normal client command processing for a bounded 30 seconds; this command returns
-   immediately while subsequent client commands remain queued by Redis:
-
-   ```sh
-   docker compose --project-name "$MANUAL_REDIS_PROJECT" --file "$MANUAL_REDIS_FILE" \
-     exec redis redis-cli CLIENT PAUSE 30000 ALL
-   ```
-
-6. Dispatch one public read, refresh, and invalidate from independently scoped clients without awaiting them. Use the
-   temporary probe's bounded pending check to confirm that none settles within 250 milliseconds. Before the Redis
-   pause expires, stop only the dedicated store. Bound each public completion by 10 seconds and require exact
-   `SessionServiceUnavailable`.
-7. Restart the same dedicated store, wait for health, and authoritatively re-evaluate all three references. Record
-   only their public outcome categories. This case establishes public operations awaiting the adapter when the
-   connection is lost; it does not claim that Redis accepted a particular command or mutated a record.
-
 ### Cleanup
 
 1. Explicitly invalidate any re-evaluated usable owned sessions through the public service.
@@ -204,8 +187,8 @@ uncommitted and be removed during cleanup.
 - Before invalidation, both clients and the bounded consumer observe the same usable session details.
 - After the race and completed invalidation, both clients return `NoUsableSession` for read/renewal and the bounded
   consumer produces no protected success.
-- During both pre-dispatch outage and bounded mid-flight connection loss, read, renewal, and invalidation remain
-  explicit failures rather than absence or success; the bounded consumer also fails in the pre-dispatch outage case.
+- During the pre-dispatch outage, read, renewal, invalidation, and the bounded consumer remain explicit failures rather
+  than absence or success.
 - After restart, authoritative state is re-evaluated; cleanup removes only owned fixtures.
 
 Retain only revision/environment, safe labels, operation ordering, public outcome categories, claim-level pass/fail,
