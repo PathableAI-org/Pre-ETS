@@ -126,17 +126,19 @@ usable result and needs no new operational claim.
 
 ## Decision 7: Separate evidence by consumer claim
 
-**Decision**: Use public-service scenarios for contract semantics, real Redis for cross-client atomic ordering and
-adapter outages, and reserve the existing #219 reference consumer for one manual composed denial observation.
-Distinguish pre-dispatch failure through a disconnected real adapter from bounded mid-flight connection loss through
-an exclusively owned store whose command processing is paused before public operations are dispatched and whose
-process is then stopped before the pause expires.
+**Decision**: Use public-service scenarios for contract semantics, the normal real Redis integration store for
+cross-client atomic ordering, a separate opt-in automated owned-store suite for adapter outages, and the existing #219
+reference consumer for one manual composed denial observation. Distinguish pre-dispatch failure through a disconnected
+real adapter from bounded mid-flight connection loss through an exclusively owned store whose command processing is
+paused before public operations are dispatched and whose process is then stopped before the pause expires.
 
 **Rationale**: The public service is the smallest meaningful boundary for outcome and privacy claims. A memory
 adapter cannot establish real Redis serialization or real client failure, so those claims need integration evidence.
-The two outage controls establish different conditions: immediate adapter rejection and callers awaiting operations
-when the adapter connection is lost. Restoration and public re-evaluation remain mandatory because neither failure
-outcome claims mutation status. The mid-flight control does not claim that Redis accepted a command before loss.
+The opt-in suite retains the two outage conditions as automated evidence: immediate adapter rejection and callers
+awaiting operations when the adapter connection is lost. It owns a uniquely named Compose project, bounded timeouts,
+restoration, public re-evaluation, client disposal, owned-prefix cleanup, and unconditional teardown, and it never
+targets the normal shared integration store. Neither failure outcome claims mutation status, and the mid-flight
+control does not claim that Redis accepted a command before loss.
 The #219 harness already composes a real Next process, public session service, browser action, and Redis. The manual
 procedure may surround it with temporary uncommitted public-service invalidation support to observe denial of the old
 reference. No durable automated fixture extension is planned, so the composed journey remains distinct from automated

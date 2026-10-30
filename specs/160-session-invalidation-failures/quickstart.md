@@ -7,7 +7,8 @@
 | Claims                            | Planned boundary                                                                               |
 | --------------------------------- | ---------------------------------------------------------------------------------------------- |
 | V-001, V-002, V-005, V-007, V-008 | Public `SessionService` tests with the controlled memory Redis adapter                         |
-| V-001–V-004, V-006–V-008          | Independently scoped clients against real Redis, including race and outage cases               |
+| V-001–V-004, V-008                | Independently scoped clients against the normal shared Redis integration store                 |
+| V-005–V-007                       | Opt-in automated outage suite against an exclusively owned Redis Compose project               |
 | V-001–V-003, V-005–V-007          | Mandatory manual dedicated-store procedure with two clients and the bounded reference consumer |
 
 ## Prerequisites
@@ -68,8 +69,23 @@ The automated real-adapter failure scenario uses a deliberately disconnected cli
 store. It establishes pre-dispatch failure: read, refresh, and invalidate through that client must each return
 `SessionServiceUnavailable`. A healthy client must then re-evaluate the owned reference; the failed call itself does
 not claim whether mutation occurred. Integration cleanup removes only owned keys and closes all clients/runtimes. Stop
-Compose only if this procedure started it. The manual procedure below separately covers loss after operations are
-dispatched.
+Compose only if this procedure started it.
+
+Run the opt-in automated outage suite separately. It must not target or stop the normal integration store:
+
+```sh
+pnpm --filter @pathableai/pre-ets-frontend-services test:integration:outage
+```
+
+The suite creates a uniquely named Redis 8.10.3 Compose project with a dynamically selected loopback endpoint. It
+first stops that store before dispatch and requires read, refresh, and invalidate to fail as exact
+`SessionServiceUnavailable`. It then restarts the store, creates fresh owned sessions, issues `CLIENT PAUSE 30000 ALL`
+through a control connection, dispatches read, refresh, and invalidate through independently scoped public clients,
+and confirms each call remains pending for a bounded 250 milliseconds. Before the pause expires, it stops the store;
+all three calls must fail within 10 seconds as exact `SessionServiceUnavailable`. After restart it re-evaluates every
+reference without inferring mutation status from the failures. The test owns bounded readiness, client/runtime
+disposal, owned-prefix cleanup, and unconditional Compose teardown. The dedicated outage file is included only by
+`vitest.outage.config.ts`, not by the normal `test:integration` configuration.
 
 Requirements-backed Gherkin is intentionally absent. #154–#158 own comprehensive application, browser logout,
 recovery, and provider-freshness behavior.
@@ -77,8 +93,10 @@ recovery, and provider-freshness behavior.
 ## Manual feature verification
 
 This procedure reuses the existing #219 reference harness and uses the delivered public service only. It is the sole
-composed reference-consumer journey; no equivalent automated scenario is planned. Temporary probe/override files and
-raw transcripts must remain uncommitted and be removed during cleanup.
+composed reference-consumer journey; the dedicated automated suite covers service/store outage outcomes but does not
+duplicate this application-consumer observation. The manual mid-flight steps below are an additional composed repeat,
+not the sole retained evidence of service/store loss. Temporary probe/override files and raw transcripts must remain
+uncommitted and be removed during cleanup.
 
 ### Prepare an exclusively owned store
 
