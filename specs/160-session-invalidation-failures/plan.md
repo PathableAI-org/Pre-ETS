@@ -16,8 +16,9 @@ no retained cause distinction. Store transport or reply failure remains the dist
 Redis command serialization on the one addressed key is the invalidation/renewal linearization boundary. If renewal
 wins first, invalidation deletes its replacement; if invalidation wins first, renewal sees missing state and cannot
 recreate it. Existing atomic expiration/renewal behavior remains authoritative. Independent-client, controlled
-failure, real-Redis race, and bounded reference-consumer evidence establish the slice without adding logout UI,
-application-wide enforcement, fresh-provider recovery, or a general revocation system.
+failure, and real-Redis race evidence establish the service/store slice. A manual bounded reference-consumer journey
+adds a distinct composed observation without adding logout UI, application-wide enforcement, fresh-provider recovery,
+or a general revocation system.
 
 ## Technical Context
 
@@ -27,8 +28,8 @@ application-wide enforcement, fresh-provider recovery, or a general revocation s
 
 **Storage**: Redis 8.10.3 through the existing private session store and owned, SHA-256-addressed session keys
 
-**Testing**: Vitest 5.0.5, `@effect/vitest` 4.0.5, deterministic memory Redis scenarios, Node test/Playwright for the
-existing bounded reference fixture, and the pinned real Redis service
+**Testing**: Vitest 5.0.5, `@effect/vitest` 4.0.5, deterministic memory Redis scenarios, the pinned real Redis
+service, and a temporary uncommitted manual probe around the existing bounded reference consumer
 
 **Target Platform**: Node.js frontend-services process used by the Next.js frontend
 
@@ -44,8 +45,8 @@ session, policy/deadline response, or new telemetry attribute is permitted. A tr
 delete may leave the committed state unknown to the caller; a later public read determines authoritative state.
 
 **Scale/Scope**: One existing public session service, its private Redis child and memory adapter, known complete
-service doubles, deterministic public-contract evidence, bounded two-client Redis integration, and the existing #219
-reference fixture
+service doubles, deterministic public-contract evidence, bounded two-client Redis integration, and one manual #219
+reference-consumer observation
 
 ## Constitution Check
 
@@ -53,11 +54,11 @@ _GATE: Passed before Phase 0 research and re-checked after Phase 1 design._
 
 | Principle or constraint                       | Gate result                                                                                                                                                                                                                                                 |
 | --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| I. Evidence-grounded specification            | Pass. The plan follows issue #221, accepted requirements at current `origin/main` `db4b5615c10aa3948ea91919a524a3ed6b743cb2`, [spec.md](spec.md), and [verification.md](verification.md). No authority or sibling Spec Kit record is edited.                |
+| I. Evidence-grounded specification            | Pass. The plan follows issue #221, accepted requirements at current `origin/main` `c62c521152c7c8e3869a1575c4c1b3b07c481e8b`, [spec.md](spec.md), and [verification.md](verification.md). No authority or sibling Spec Kit record is edited.                |
 | II. Explicit ownership and authoritative data | Pass. Temporary session state remains owned by frontend-services and its private Redis store; no backend or durable domain state is introduced.                                                                                                             |
 | III. Tenant isolation                         | Pass. Invalidation accepts only an opaque reference, exposes no identity, tenant, policy, or existence distinction, and cannot create or admit a session. Tenant-bound reads and renewal keep their existing mismatch checks.                               |
 | IV. Accessible, server-rendered UI            | Not applicable. This slice changes no UI or browser interaction. Logout coordination and recovery presentation remain #155–#157.                                                                                                                            |
-| V. Meaningful behavioral tests                | Pass. Evidence starts at the public service, adds real Redis only for adapter/ordering claims, and uses the existing bounded application consumer for a distinct composed observation. Durable telemetry assertions are excluded.                           |
+| V. Meaningful behavioral tests                | Pass. Automated evidence starts at the public service and adds real Redis only for adapter/ordering claims. The existing bounded application consumer is reserved for a distinct manual composed observation. Durable telemetry assertions are excluded.    |
 | VI. Simplicity and verifiable quality         | Pass. The design extends the existing parent/private-child modules and outcome vocabulary. It adds no package, public service, dependency, stored schema, tombstone, retry policy, or speculative provider.                                                 |
 | Effect and module routing                     | Pass. Installed Effect 4.0.5 declarations and the local Effect v4 guidance were checked. The existing host-owned runtime and `Redis.Redis` service are reused; only `session.ts` imports private session children. Fallow reports no configured zones here. |
 
@@ -104,16 +105,14 @@ packages/frontend-services/
     │   └── reference-session-enforcement.test.ts # migrate complete SessionService doubles
     └── integration/
         └── session-redis.test.ts   # independent-client, race, and real outage evidence
-
-tests/bdd/session/
-└── reference-session-enforcement.test.ts # bounded explicit-invalidation consumer observation
 ```
 
 **Structure Decision**: Preserve the recursive session module. `session.ts` remains the public owner and the only
 module that imports private `session/*` children. `session/store.ts` owns Redis key construction and deletion.
 `session/codec.ts`, `session-request.ts`, runtime composition, root package exports, Next.js production code,
-requirements Gherkin, and backend/domain workspaces do not change. The existing bounded reference fixture may call the
-public service from its temporary fixture process; it must not import the private store or codec.
+requirements Gherkin, and backend/domain workspaces do not change. The existing bounded reference consumer may call
+the public service only through temporary uncommitted manual probe support; it must not import the private store or
+codec.
 
 ## Complexity Tracking
 
@@ -134,9 +133,10 @@ addressing and breach recursive ownership. Preserve `StoredSessionV1` and its co
 nor rewrites a record. Preserve the existing renewal script: Redis serializes its one-key transition with `DEL`, which
 provides the required linearization without a second script or tombstone.
 
-The existing #219 fixture is the only current composed consumer needed for bounded denial evidence. It may extend its
-fixture process with an `invalidate` mode that calls the public service, but production application adapters, cookie
-clearing, logout controls, recovery pages, and provider freshness remain downstream.
+The existing #219 reference consumer supplies the distinct manual composed observation. Temporary uncommitted probe
+support may invalidate through the public service while the consumer is running; no durable fixture extension is
+planned. Production application adapters, cookie clearing, logout controls, recovery pages, and provider freshness
+remain downstream.
 
 ### Phase 2 — Public module contracts
 
@@ -168,9 +168,10 @@ invalidation, but every completed schedule must end with both clients observing 
 expiration/renewal tests remain authoritative and are retained rather than duplicated.
 
 A disconnected real adapter exercises read, refresh, and invalidate failure through the public service. Healthy
-re-evaluation after the controlled outage is required because a failure does not claim mutation status. The bounded
-reference fixture replaces its raw-key deletion observation with public invalidation, showing success before and
-denial afterward; dedicated-store outage behavior remains manual unless the fixture owns the store it stops.
+re-evaluation after the controlled outage is required because a failure does not claim mutation status. The manual
+procedure reuses the bounded reference consumer with temporary uncommitted public-service invalidation support,
+showing success before invalidation, denial afterward, and explicit failure during a dedicated-store outage. Those
+composed observations are not duplicated in automated evidence.
 
 ### Phase 4 — Implementation architecture
 
@@ -207,17 +208,18 @@ Implementation order:
    no-retry, and no-protected-fields evidence.
 6. Add real-Redis independent-client evidence, both forced invalidation/renewal orderings, actual overlap, and
    disconnected-adapter failure with healthy re-evaluation.
-7. Extend the bounded #219 fixture to invalidate through the public service and observe denial without expanding its
-   application-coverage claim.
-8. Run the manual procedure, feature-specific checks, and all repository quality gates, recording only safe results.
+7. Prepare temporary uncommitted public-service invalidation support for the manual #219 consumer procedure without
+   changing the retained fixture or its application-coverage claim.
+8. Run the manual procedure, remove its temporary support, and run feature-specific checks and all repository quality
+   gates, recording only safe results.
 
 ### Phase 5 — Feature verification integration
 
 [verification.md](verification.md) remains the approved claim map; [quickstart.md](quickstart.md) turns it into
 implementation-aware commands and a safe execution record. Public-service evidence establishes V-001, V-002, V-005,
 V-007, and V-008. Real Redis evidence establishes V-001–V-004 and V-006–V-008 at the shared adapter boundary. The
-bounded reference fixture and mandatory manual procedure establish the limited composed observation requested by the
-issue without replacing #154's application-wide ownership.
+mandatory manual bounded-reference procedure establishes the limited composed observation requested by the issue
+without replacing #154's application-wide ownership or duplicating an automated fixture scenario.
 
 Requirements-backed Gherkin is not completion evidence for this service/store slice. Browser logout coordination,
 cookie clearing, recovery presentation, provider freshness, and comprehensive protected-request mapping remain

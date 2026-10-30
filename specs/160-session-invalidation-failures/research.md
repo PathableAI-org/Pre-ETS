@@ -8,10 +8,11 @@
 
 - Delivery issue: [#221](https://github.com/PathableAI-org/Pre-ETS/issues/221)
 - Accepted requirements: PREETS-SESSION-006 AC1–3, PREETS-SESSION-008 AC4, and PREETS-SESSION-013 AC2 at current
-  `origin/main` revision `db4b5615c10aa3948ea91919a524a3ed6b743cb2`
+  `origin/main` revision `c62c521152c7c8e3869a1575c4c1b3b07c481e8b`
 - Feature contract: [spec.md](spec.md)
 - Verification contract: [verification.md](verification.md)
-- Implemented predecessor: issue #220 renewal/expiration behavior in the same current main revision
+- Implemented predecessor: issue #220 renewal/expiration commit
+  `db4b5615c10aa3948ea91919a524a3ed6b743cb2`, an ancestor of current `origin/main`
 - Architecture strategies: `docs/session-state.md`, `docs/authentication.md`, and the repository constitution
 
 The sources agree on explicit shared invalidation, non-revival, distinct absence/failure outcomes, and real-store
@@ -126,13 +127,14 @@ usable result and needs no new operational claim.
 ## Decision 7: Separate evidence by consumer claim
 
 **Decision**: Use public-service scenarios for contract semantics, real Redis for cross-client atomic ordering and
-adapter outages, and the existing #219 fixture for one bounded composed denial observation.
+adapter outages, and reserve the existing #219 reference consumer for one manual composed denial observation.
 
 **Rationale**: The public service is the smallest meaningful boundary for outcome and privacy claims. A memory
 adapter cannot establish real Redis serialization or real client failure, so those claims need integration evidence.
-The #219 fixture already composes a real Next process, public session service, browser action, and Redis; extending its
-fixture with public invalidation adds distinct evidence that the application consumer denies the old reference. It
-still does not prove comprehensive application enforcement.
+The #219 harness already composes a real Next process, public session service, browser action, and Redis. The manual
+procedure may surround it with temporary uncommitted public-service invalidation support to observe denial of the old
+reference. No durable automated fixture extension is planned, so the composed journey remains distinct from automated
+service/store evidence. It still does not prove comprehensive application enforcement.
 
 **Alternatives rejected**:
 
@@ -155,15 +157,15 @@ No external documentation or new dependency is needed.
 
 ## Resolved questions
 
-| Question                                            | Resolution                                                                                                  |
-| --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| Must invalidation reveal whether a record existed?  | No. Every completed terminal case is `NoUsableSession`.                                                     |
-| Must corrupt stored state block invalidation?       | No. A valid reference may delete its key without decoding protected payload.                                |
-| Is a tombstone required for renewal races?          | No. Single-key command serialization and refresh's no-create behavior make deletion final.                  |
-| Can a failed delete be reported as absence?         | No. It is `SessionServiceUnavailable`, including indeterminate post-commit reply loss.                      |
-| Must invalidation carry tenant or policy?           | No. It grants no access, returns no protected state, and addresses one opaque reference.                    |
-| Is application/browser logout included?             | No. Only the existing bounded reference consumer is extended; comprehensive integration remains downstream. |
-| Are new telemetry or retained cause records needed? | No. Neither is an authorized requirement or current consumer need.                                          |
+| Question                                            | Resolution                                                                                             |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| Must invalidation reveal whether a record existed?  | No. Every completed terminal case is `NoUsableSession`.                                                |
+| Must corrupt stored state block invalidation?       | No. A valid reference may delete its key without decoding protected payload.                           |
+| Is a tombstone required for renewal races?          | No. Single-key command serialization and refresh's no-create behavior make deletion final.             |
+| Can a failed delete be reported as absence?         | No. It is `SessionServiceUnavailable`, including indeterminate post-commit reply loss.                 |
+| Must invalidation carry tenant or policy?           | No. It grants no access, returns no protected state, and addresses one opaque reference.               |
+| Is application/browser logout included?             | No. The bounded reference consumer is observed manually; comprehensive integration remains downstream. |
+| Are new telemetry or retained cause records needed? | No. Neither is an authorized requirement or current consumer need.                                     |
 
 ## Remaining implementation choices
 
@@ -171,5 +173,5 @@ No external documentation or new dependency is needed.
   private and map identically to `NoUsableSession`.
 - Test-helper control names may follow existing conventions as long as they model before-mutation and
   after-mutation failure distinctly and do not leak into production contracts.
-- The bounded reference fixture may add a dedicated invalidation mode or replace its raw owned-key deletion step;
-  either approach must call only the public `SessionService` and preserve unconditional owned cleanup.
+- The manual procedure may use a temporary uncommitted invalidation mode or companion probe. It must call only the
+  public `SessionService`, preserve unconditional owned cleanup, and be removed before completion.

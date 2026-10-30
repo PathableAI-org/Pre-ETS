@@ -8,15 +8,15 @@
 
 ## Module architecture decisions
 
-| Concern                     | Current owner and consumers                                                | Decision                                 | Public boundary                                 | Private decomposition       | Rationale and non-goals                                                                             |
-| --------------------------- | -------------------------------------------------------------------------- | ---------------------------------------- | ----------------------------------------------- | --------------------------- | --------------------------------------------------------------------------------------------------- |
-| Session lifecycle outcomes  | `src/session.ts`; request/session consumers and bounded #219 fixture       | Extend existing owner with `invalidate`  | `SessionService`                                | Existing `session/*`        | Keeps lifecycle vocabulary, privacy, and failure mapping together; no new service or logout adapter |
-| Redis addressing/deletion   | `src/session/store.ts`; consumed only by `session.ts`                      | Extend private child with single-key DEL | None; parent owns the public contract           | Existing private store      | Reuses hashing/prefix ownership and Redis dependency; no direct consumer access                     |
-| Reference and record codecs | `src/session/codec.ts`; consumed only by `session.ts`                      | Preserve                                 | Existing exported `SessionReference` via parent | Existing private codec      | Validate the reference; do not decode or migrate stored state for deletion                          |
-| Renewal/expiration ordering | Private one-key script in `src/session/store.ts`; `refreshForTenant` users | Preserve and compose through Redis order | Existing `refreshForTenant`                     | Existing transition script  | Atomic DEL and the existing one-key script serialize without a new script mode or tombstone         |
-| Request/application mapping | `session-request.ts` and Next.js #219 reference consumers                  | Preserve production code; extend fixture | Existing `readSessionRequest`                   | Existing test fixture       | Adds bounded denial evidence only; #154–#158 retain application/logout/recovery/provider work       |
-| Runtime/configuration       | `runtime.ts`, `SessionService.layer`, `SessionKeyPrefix`                   | Preserve                                 | Existing `ApplicationServices`/session Layer    | Existing config/store child | No new dependency, Layer, environment value, runtime, or package export                             |
-| Telemetry                   | `session.ts` usable-session annotation                                     | Preserve                                 | Existing safe usable-session behavior           | None                        | Invalidation returns no usable identity and adds no annotation or durable telemetry test            |
+| Concern                     | Current owner and consumers                                                | Decision                                 | Public boundary                                 | Private decomposition       | Rationale and non-goals                                                                              |
+| --------------------------- | -------------------------------------------------------------------------- | ---------------------------------------- | ----------------------------------------------- | --------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Session lifecycle outcomes  | `src/session.ts`; request/session consumers and bounded #219 fixture       | Extend existing owner with `invalidate`  | `SessionService`                                | Existing `session/*`        | Keeps lifecycle vocabulary, privacy, and failure mapping together; no new service or logout adapter  |
+| Redis addressing/deletion   | `src/session/store.ts`; consumed only by `session.ts`                      | Extend private child with single-key DEL | None; parent owns the public contract           | Existing private store      | Reuses hashing/prefix ownership and Redis dependency; no direct consumer access                      |
+| Reference and record codecs | `src/session/codec.ts`; consumed only by `session.ts`                      | Preserve                                 | Existing exported `SessionReference` via parent | Existing private codec      | Validate the reference; do not decode or migrate stored state for deletion                           |
+| Renewal/expiration ordering | Private one-key script in `src/session/store.ts`; `refreshForTenant` users | Preserve and compose through Redis order | Existing `refreshForTenant`                     | Existing transition script  | Atomic DEL and the existing one-key script serialize without a new script mode or tombstone          |
+| Request/application mapping | `session-request.ts` and Next.js #219 reference consumers                  | Preserve production code and fixture     | Existing `readSessionRequest`                   | Temporary manual probe      | Adds manual bounded denial evidence only; #154–#158 retain application/logout/recovery/provider work |
+| Runtime/configuration       | `runtime.ts`, `SessionService.layer`, `SessionKeyPrefix`                   | Preserve                                 | Existing `ApplicationServices`/session Layer    | Existing config/store child | No new dependency, Layer, environment value, runtime, or package export                              |
+| Telemetry                   | `session.ts` usable-session annotation                                     | Preserve                                 | Existing safe usable-session behavior           | None                        | Invalidation returns no usable identity and adds no annotation or durable telemetry test             |
 
 Every affected concern has an explicit decision. The feature novelty does not justify another public module,
 provider interface, package, root re-export, stored schema, or future-shaped logout contract.
@@ -34,8 +34,8 @@ explicit invalidation, public outcome vocabulary, and redaction of private stora
   not change.
 - Issue #221 lifecycle consumers need to terminate one opaque reference without learning whether state existed or
   receiving protected session fields.
-- The existing #219 bounded reference fixture needs public invalidation to observe composed denial after the shared
-  state is terminated.
+- The manual procedure around the existing #219 bounded reference consumer needs public invalidation to observe
+  composed denial after the shared state is terminated; temporary probe support is not retained.
 - Future #155 logout coordination may call this capability, but it does not shape this slice's browser/cookie API.
 
 **Proposed signature addition in context**:
@@ -155,5 +155,5 @@ continues to call frontend-services and does not import Effect.
 
 - Choose private success literal names for Redis reply `0` and `1`; both must remain private and map identically.
 - Name test-helper failure controls consistently with the existing memory Redis helper.
-- Extend or replace the bounded fixture's current raw delete step with a public-service invalidation mode while
-  preserving owned-prefix validation and cleanup.
+- Choose a temporary uncommitted invalidation mode or companion probe for the manual procedure while preserving
+  owned-prefix validation and cleanup; remove it before completion.

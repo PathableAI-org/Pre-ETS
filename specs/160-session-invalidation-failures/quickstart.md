@@ -8,13 +8,13 @@
 | --------------------------------- | ---------------------------------------------------------------------------------------------- |
 | V-001, V-002, V-005, V-007, V-008 | Public `SessionService` tests with the controlled memory Redis adapter                         |
 | V-001–V-004, V-006–V-008          | Independently scoped clients against real Redis, including race and outage cases               |
-| V-001, V-002, V-005               | Existing #219 bounded reference fixture extended to invalidate through the public service      |
 | V-001–V-007                       | Mandatory manual dedicated-store procedure with two clients and the bounded reference consumer |
 
 ## Prerequisites
 
 1. Use a clean checkout of the implementation revision and record it. The planning baseline is `origin/main`
-   `db4b5615c10aa3948ea91919a524a3ed6b743cb2` plus the approved specification/plan stack.
+   `c62c521152c7c8e3869a1575c4c1b3b07c481e8b` plus the approved specification/plan stack. Issue #220's implementation
+   commit is `db4b5615c10aa3948ea91919a524a3ed6b743cb2`.
 2. Install the repository's pinned Node.js and pnpm dependencies from the root.
 3. Have Docker available with the repository-pinned Redis 8.10.3 image. Automated integration may use the normal
    Compose Redis service. The manual outage observation requires a dedicated instance with no other users.
@@ -68,25 +68,14 @@ refresh, and invalidate through that client must each return `SessionServiceUnav
 re-evaluate the owned reference; the failed call itself does not claim whether mutation occurred. Integration cleanup
 removes only owned keys and closes all clients/runtimes. Stop Compose only if this procedure started it.
 
-Run the bounded reference fixture separately:
-
-```sh
-pnpm build
-REDIS_URL=redis://127.0.0.1:6379 node --test tests/bdd/session/reference-session-enforcement.test.ts
-```
-
-The retained case must establish a usable reference and successful reference operation, invalidate the reference
-through the public `SessionService`, then observe denial and no protected receipt from the already-rendered action.
-It remains bounded #219 evidence and does not establish application-wide protection. The fixture validates and cleans
-only its owned prefix.
-
 Requirements-backed Gherkin is intentionally absent. #154–#158 own comprehensive application, browser logout,
 recovery, and provider-freshness behavior.
 
 ## Manual feature verification
 
-This procedure extends the existing #219 reference harness and uses the delivered public service only. Temporary
-probe/override files and raw transcripts must remain uncommitted and be removed during cleanup.
+This procedure reuses the existing #219 reference harness and uses the delivered public service only. It is the sole
+composed reference-consumer journey; no equivalent automated scenario is planned. Temporary probe/override files and
+raw transcripts must remain uncommitted and be removed during cleanup.
 
 ### Prepare an exclusively owned store
 
@@ -120,8 +109,9 @@ probe/override files and raw transcripts must remain uncommitted and be removed 
    export REDIS_URL="redis://127.0.0.1:${MANUAL_REDIS_PORT}"
    ```
 
-4. Point the bounded reference harness at that `REDIS_URL`. Keep its existing random owned
-   `SESSION_KEY_PREFIX` validation. Do not reuse or stop a store with other users.
+4. Point the bounded reference harness and a temporary uncommitted public-service invalidation probe at that
+   `REDIS_URL`. Keep the harness's existing random owned `SESSION_KEY_PREFIX` validation. Do not reuse or stop a store
+   with other users.
 
 ### Observe success, race finality, and consumer denial
 
@@ -132,8 +122,8 @@ probe/override files and raw transcripts must remain uncommitted and be removed 
    control. Release both without awaiting either first; bound both completions.
 3. Through both clients, read and try to renew the old reference. Confirm every later outcome is exact
    `NoUsableSession`, regardless of whether the racing renewal itself returned usable before invalidation.
-4. Use the #219 reference fixture with a separate synthetic session. Confirm the page/action succeeds before
-   invalidation, invoke public `SessionService.invalidate` from the fixture process, then invoke the already-rendered
+4. Use the #219 reference consumer with a separate synthetic session. Confirm the page/action succeeds before
+   invalidation, invoke public `SessionService.invalidate` from the temporary probe, then invoke the already-rendered
    reference action again. Confirm denial, no protected receipt, and no successful protected result.
 
 ### Observe explicit outage failure
