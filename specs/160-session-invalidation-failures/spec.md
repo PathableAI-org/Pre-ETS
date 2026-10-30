@@ -163,7 +163,7 @@ observe a distinct failure outcome with no usable identity, successful authoriza
 
 **Delivery issue**: [#221 — Complete session invalidation and failure behavior](https://github.com/PathableAI-org/Pre-ETS/issues/221)
 
-**Originating delivery slice**: [Approved S2 baseline at revision `e206d165f0f30999220922f57a3f92549c15f4cc`](https://github.com/PathableAI-org/Pre-ETS/blob/e206d165f0f30999220922f57a3f92549c15f4cc/docs/delivery/session-management.md#s2--share-session-identity-and-authoritative-idle-state-across-instances), subdivided as [S2-G at current `origin/main` revision `db4b5615c10aa3948ea91919a524a3ed6b743cb2`](https://github.com/PathableAI-org/Pre-ETS/blob/db4b5615c10aa3948ea91919a524a3ed6b743cb2/docs/delivery/session-management-s2-steps.md#s2-g--complete-session-invalidation-and-failure-behavior). Issue #221 records the maintainer-authorized seven-step subdivision and publication on 2026-10-17.
+**Originating delivery slice**: [Approved S2 baseline at revision `e206d165f0f30999220922f57a3f92549c15f4cc`](https://github.com/PathableAI-org/Pre-ETS/blob/e206d165f0f30999220922f57a3f92549c15f4cc/docs/delivery/session-management.md#s2--share-session-identity-and-authoritative-idle-state-across-instances), subdivided as [S2-G at current `origin/main` revision `c62c521152c7c8e3869a1575c4c1b3b07c481e8b`](https://github.com/PathableAI-org/Pre-ETS/blob/c62c521152c7c8e3869a1575c4c1b3b07c481e8b/docs/delivery/session-management-s2-steps.md#s2-g--complete-session-invalidation-and-failure-behavior). Issue #221 records the maintainer-authorized seven-step subdivision and publication on 2026-10-17.
 
 ### Accepted requirement coverage
 
@@ -206,8 +206,9 @@ concurrent renewal or stale state.
 
 ### Dependencies and blockers
 
-- Start prerequisite #220 is closed, and its implementation is present at current `origin/main` revision
-  `db4b5615c10aa3948ea91919a524a3ed6b743cb2`.
+- Start prerequisite #220 is closed. Its implementation commit
+  `db4b5615c10aa3948ea91919a524a3ed6b743cb2` is an ancestor of current `origin/main` revision
+  `c62c521152c7c8e3869a1575c4c1b3b07c481e8b`.
 - Issue #219's bounded reference consumer is available for limited evidence but does not establish comprehensive
   application enforcement.
 - No unresolved product decision blocks basic invalidation, race, or outage behavior. B6 authentication-time

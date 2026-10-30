@@ -11,13 +11,14 @@
 This plan covers the invalidation/consistency support assigned from PREETS-SESSION-006 AC1–3, the no-revival race
 support assigned from PREETS-SESSION-008 AC4, and the old-session denial support assigned from PREETS-SESSION-013
 AC2. Sources are the accepted requirement files at current `origin/main` revision
-`db4b5615c10aa3948ea91919a524a3ed6b743cb2`, issue #221, the approved S2 baseline at
+`c62c521152c7c8e3869a1575c4c1b3b07c481e8b`, issue #221, the approved S2 baseline at
 `e206d165f0f30999220922f57a3f92549c15f4cc`, and S2-G at current `origin/main`.
 
 Evidence is limited to explicit invalidation, independent session consumers, lifecycle races, public outcome
 distinctions, and controlled real-store failure. It does not claim comprehensive application protection, browser
 logout coordination, recovery presentation, fresh-provider behavior, backend persistence, or a general revocation
-policy. Issue #219's bounded reference consumer adds limited composed evidence without replacing #154's ownership.
+policy. Issue #219's bounded reference consumer adds limited manual composed evidence without replacing #154's
+ownership.
 
 ## Claims and traceability
 
@@ -39,7 +40,6 @@ policy. Issue #219's bounded reference consumer adds limited composed evidence w
 | V-001, V-002, V-005, V-007, V-008 | Public session capability with controlled dependencies       | Exercise successful invalidation; reads and renewals before and after invalidation; stale prior observations; missing/expired/invalidated/removed states; and controlled read/change failures.                            | Establishes the complete outcome contract seen by a consumer without asserting private steps.    | Controlled dependencies do not establish real shared-store ordering or real outage behavior.                     |
 | V-001–V-004, V-008                | Real shared session store with independent clients           | Establish through client A; read and invalidate through client B; race renewal against invalidation and expiration with bounded synchronization; then read and renew through both clients after each operation ordering.  | Addresses cross-client visibility, atomic lifecycle ordering, and revival risks in real storage. | Finite schedules do not prove every possible timing, load pattern, topology, or deployment.                      |
 | V-005, V-006, V-007               | Real shared-store outage through the public session boundary | Make a dedicated real store unreachable before and during read, renewal, and invalidation; distinguish failure from no usable session and success; restore access only for owned cleanup and authoritative re-evaluation. | Establishes the actual adapter/service failure contract rather than a simulated failure alone.   | A local controlled outage does not establish every network partition, managed-service failure, or recovery mode. |
-| V-001, V-002, V-005, V-006        | Bounded issue #219 reference consumer                        | With the delivered reference fixture, compare a valid composed outcome with post-invalidation denial and a controlled service-failure outcome; record every unexercised application path.                                 | Adds a limited consumer interpretation check beyond isolated session operations.                 | Does not establish comprehensive page, handler, action, browser, recovery, or application-wide enforcement.      |
 
 Requirements-backed BDD is not planned as completion evidence for this service/store slice. The repository's BDD
 boundary is the running application, while comprehensive request enforcement, browser logout coordination, recovery,
@@ -52,7 +52,8 @@ current-`origin/main` requirement tags and feature-level `@partial`; a dry run w
 
 Directly inspect the delivered bounded reference consumer while real shared session state is invalidated and made
 unavailable. This adds a composed consumer observation—success before invalidation, denial afterward, and explicit
-failure during outage—without claiming the comprehensive application coverage owned by #154.
+failure during outage—without claiming the comprehensive application coverage owned by #154. This composed journey
+is reserved for manual verification and is not duplicated in the automated evidence table.
 
 ### Prerequisites
 
@@ -62,8 +63,10 @@ failure during outage—without claiming the comprehensive application coverage 
   a bounded readiness check and permission to stop or isolate only that dedicated store.
 - Two independently instantiated session clients or temporary probes, A and B, using the same isolated store and
   owned prefix.
-- One synthetic tenant-bound identity and session established through the delivered public capability; no production
-  credentials, provider tokens, PHI, client data, cookie values, or identifying partner information.
+- One synthetic tenant-bound identity and session established through the delivered public capability. Its owned
+  synthetic reference and cookie value may exist transiently inside the clients, probes, and bounded consumer only;
+  they must not be logged, published, or retained. Do not use production credentials, provider tokens, PHI, client
+  data, or identifying partner information.
 - The delivered bounded synchronization mechanism for lifecycle races, or an equivalent temporary agent probe that
   can pause and release owned renewal/invalidation operations without changing production code.
 
@@ -106,9 +109,9 @@ failure during outage—without claiming the comprehensive application coverage 
 ## Operational observability verification
 
 No operational observability claim in this slice. PREETS-SESSION-006, PREETS-SESSION-008, and PREETS-SESSION-013
-introduce no additional operational monitoring obligation. Public capability, real-store, bounded consumer, and
-manual outcome observations are the planned evidence; an empty log, trace, metric, Loki result, or Prometheus result
-is not evidence of invalidation or failure correctness.
+introduce no additional operational monitoring obligation. Public capability, real-store, and manual bounded-consumer
+outcomes are the planned evidence; an empty log, trace, metric, Loki result, or Prometheus result is not evidence of
+invalidation or failure correctness.
 
 Temporary logs or traces may diagnose a race or outage only when removed before completion. Retain safe,
 revision-attributable outcome observations and limitations, not durable telemetry-output tests, probe source, raw
@@ -117,7 +120,9 @@ transcripts, credentials, references, or session data.
 ## Environment and data controls
 
 - Use only repository-owned synthetic tenants, identities, sessions, and isolated key prefixes.
-- Do not use or retain PHI, production credentials, provider tokens, cookie values, session references, raw store
+- Owned synthetic cookie/session references may be used transiently in memory by the clients, probes, and bounded
+  consumer required by this procedure. Never log, publish, or retain their values.
+- Do not use or retain PHI, production credentials, provider tokens, production cookie/session references, raw store
   records, protected content, or identifying partner names.
 - Run destructive outage control only against a dedicated local store instance; never interrupt or flush a shared or
   non-test environment.
