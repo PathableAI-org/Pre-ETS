@@ -8,8 +8,8 @@ instrumentation are out of scope.
 config decides which signals are selected. `OTEL_SDK_DISABLED=true` skips every
 signal, including a malformed endpoint or protocol. A signal whose exporter is
 `none`, or that has neither its own endpoint nor the base endpoint, is absent and
-its protocol is ignored. When traces are selected, `@effect/opentelemetry`
-`NodeSdk` is the sole tracer provider. The observability module then patches Node
+its protocol is ignored. When traces are selected, `@effect/opentelemetry/NodeSdk`
+is the sole tracer provider. The observability module then patches Node
 `http`/`https` and `fetch` and records client spans without query strings. Next.js
 still emits the server span through that registered global tracer. When traces
 are not selected, the process does not register a provider and does not patch

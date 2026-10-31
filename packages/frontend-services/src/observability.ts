@@ -4,7 +4,7 @@ import type { LogRecordExporter } from "@opentelemetry/sdk-logs"
 import type { PushMetricExporter } from "@opentelemetry/sdk-metrics"
 import type { SpanExporter } from "@opentelemetry/sdk-trace-base"
 
-import { NodeSdk } from "@effect/opentelemetry"
+import * as NodeSdk from "@effect/opentelemetry/NodeSdk"
 import { diag, DiagLogLevel } from "@opentelemetry/api"
 import { OTLPLogExporter as OtlpJsonLogExporter } from "@opentelemetry/exporter-logs-otlp-http"
 import { OTLPLogExporter as OtlpProtoLogExporter } from "@opentelemetry/exporter-logs-otlp-proto"
