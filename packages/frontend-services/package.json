@@ -43,7 +43,7 @@
     "@opentelemetry/semantic-conventions": "1.43.0",
     "effect": "catalog:effect",
     "openid-client": "6.8.8",
-    "redis": "6.3.0",
+    "redis": "6.3.1",
     "server-only": "0.0.1"
   },
   "devDependencies": {

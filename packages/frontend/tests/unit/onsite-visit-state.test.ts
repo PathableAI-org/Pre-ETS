@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { transitionVisit, type Visit } from "../../src/features/onsite.ts"
+import { transitionVisit, type Visit } from "../../src/features/onsite/visit-state.ts"
 
 const emptyVisit: Visit = { date: "", end: "", id: 1, running: false, start: "" }
 
