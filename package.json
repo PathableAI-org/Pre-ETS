@@ -44,7 +44,7 @@
     "dprint-plugin-yaml": "0.6.0",
     "eslint": "10.13.0",
     "eslint-plugin-perfectionist": "5.13.0",
-    "fallow": "3.35.0",
+    "fallow": "3.37.0",
     "gherkin-refine": "1.4.6",
     "globals": "17.13.0",
     "husky": "9.1.7",
@@ -55,7 +55,7 @@
     "typescript": "6.0.3",
     "typescript-eslint": "8.72.1"
   },
-  "packageManager": "pnpm@12.15.0",
+  "packageManager": "pnpm@12.16.1",
   "engines": {
     "node": ">=26"
   }
