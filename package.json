@@ -39,7 +39,7 @@
     "@dprint/typescript": "0.96.1",
     "@effect/language-service": "0.87.5",
     "@eslint/js": "10.0.1",
-    "@types/node": "26.6.5",
+    "@types/node": "26.6.6",
     "dprint": "0.64.3",
     "dprint-plugin-yaml": "0.6.0",
     "eslint": "10.13.0",

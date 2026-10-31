@@ -2,6 +2,8 @@ import { Deferred, Effect, Layer } from "effect"
 import * as Redis from "effect/persistence/Redis"
 import { createHash } from "node:crypto"
 
+import { makeRedis } from "./redis.ts"
+
 export interface EvaluationHold {
   readonly release: Deferred.Deferred<undefined>
   readonly started: Deferred.Deferred<undefined>
@@ -281,7 +283,7 @@ export const makeSessionMemoryRedis = (): SessionMemoryRedis => {
   const state = { entries, ttls }
   const evaluateSha = makeEvaluateSha(state, scripts, controls)
   const send = makeSend(state, scripts, commands, failures, evaluateSha)
-  const service = Redis.make({ send, subscribe: () => Effect.succeed(Effect.never) })
+  const service = makeRedis(send)
   return {
     commands,
     entries,

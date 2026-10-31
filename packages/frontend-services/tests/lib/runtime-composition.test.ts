@@ -10,6 +10,7 @@ import { toNext } from "../../src/next.ts"
 import { ObservabilityInitializationError } from "../../src/observability.ts"
 import { applicationLayer, loadProcessStartup, Runtime, StartupNotReady } from "../../src/runtime.ts"
 import { SessionService } from "../../src/session.ts"
+import { makeRedis } from "../helpers/redis.ts"
 
 const restoreEnv = (previous: NodeJS.ProcessEnv) => {
   for (const key of Object.keys(process.env)) {
@@ -29,16 +30,15 @@ const withEnv = <A, E, R>(
   })))
 }
 
+const unreachableRedisSend = () => Effect.die("startup composition must not send Redis commands")
+
 const recordingInfrastructure = () => {
   let acquired = false
   const redisLayer = Layer.effect(
     Redis.Redis,
     Effect.gen(function*() {
       acquired = true
-      return yield* Redis.make({
-        send: () => Effect.die("startup composition must not send Redis commands"),
-        subscribe: () => Effect.succeed(Effect.never)
-      })
+      return yield* makeRedis(unreachableRedisSend)
     })
   )
   return {
@@ -59,13 +59,7 @@ const clearInstalledRuntime = (): void => {
   Reflect.deleteProperty(globalThis, managedRuntimeSlot)
 }
 
-const memoryRedis = Layer.effect(
-  Redis.Redis,
-  Redis.make({
-    send: () => Effect.die("startup composition must not send Redis commands"),
-    subscribe: () => Effect.succeed(Effect.never)
-  })
-)
+const memoryRedis = Layer.effect(Redis.Redis, makeRedis(unreachableRedisSend))
 
 // Runtime and authentication contracts: one startup value before infrastructure (V-006, V-001, V-008).
 describe("runtime composition", () => {
