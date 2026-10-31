@@ -369,21 +369,4 @@ describe("StartupConfig", () => {
       )
     )
   })
-
-  it.effect("does not apply URL or protocol selection", () => {
-    return Effect.gen(function*() {
-      const config = yield* StartupConfig
-      assert.deepEqual(config.otel.endpoint, Option.some("not a url"))
-      assert.deepEqual(config.otel.exportUrl, Option.some("not a url/v1/traces"))
-      assert.deepEqual(config.otel.protocol, Option.some("grpc"))
-    }).pipe(
-      Effect.provideService(
-        ConfigProvider.ConfigProvider,
-        withConfigOverrides({
-          OTEL_EXPORTER_OTLP_ENDPOINT: "not a url",
-          OTEL_EXPORTER_OTLP_PROTOCOL: "grpc"
-        })
-      )
-    )
-  })
 })

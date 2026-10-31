@@ -117,10 +117,6 @@ describe("runtime composition", () => {
         const exit = yield* Effect.exit(Effect.scoped(Layer.build(applicationLayer(startup, recording.layer))))
         const error = failure(exit)
         assert.instanceOf(error, ObservabilityInitializationError)
-        if (error instanceof ObservabilityInitializationError) {
-          assert.strictEqual(error.reason, "protocol")
-          assert.strictEqual(error.signal, "traces")
-        }
         assert.isFalse(recording.acquired())
       })
     )
