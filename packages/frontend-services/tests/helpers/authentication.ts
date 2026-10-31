@@ -1,6 +1,8 @@
 import { Effect, Layer } from "effect"
 import * as Redis from "effect/persistence/Redis"
 
+import { makeRedis } from "./redis.ts"
+
 export interface Entry {
   readonly expiresAt: number
   readonly payload: string
@@ -64,9 +66,6 @@ export const makeMemoryRedis = (): MemoryRedis => {
     })
   }
 
-  const service = Redis.make({
-    send,
-    subscribe: () => Effect.succeed(Effect.never)
-  })
+  const service = makeRedis(send)
   return { entries, failNextConsume, layer: Layer.effect(Redis.Redis, service) }
 }
