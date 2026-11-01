@@ -201,6 +201,7 @@ describe("callback session-establishment failure mapping", () => {
       runConfirmed({
         session: Layer.succeed(SessionService, {
           establish,
+          invalidate: () => Effect.die("invalidate must remain unused"),
           read: () => Effect.die("read must remain unused"),
           readForTenant: () => Effect.succeed({ _tag: "NoUsableSession" }),
           refreshForTenant: () => Effect.die("refreshForTenant must remain unused")
@@ -235,6 +236,7 @@ describe("callback session-establishment failure mapping", () => {
       runConfirmed({
         session: Layer.succeed(SessionService, {
           establish,
+          invalidate: () => Effect.die("invalidate must remain unused"),
           read: () => Effect.die("read must remain unused"),
           readForTenant: () => Effect.succeed({ _tag: "NoUsableSession" }),
           refreshForTenant: () => Effect.die("refreshForTenant must remain unused")

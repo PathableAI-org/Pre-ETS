@@ -174,6 +174,9 @@ export class SessionService extends Context.Service<SessionService, {
   readonly establish: (
     input: EstablishSessionInput
   ) => Effect.Effect<EstablishedSession, SessionServiceUnavailable>
+  readonly invalidate: (
+    input: { readonly reference?: string }
+  ) => Effect.Effect<NoUsableSession, SessionServiceUnavailable>
   readonly read: (
     input: { readonly reference?: string }
   ) => Effect.Effect<NoUsableSession | UsableSession, SessionServiceUnavailable>
@@ -233,6 +236,15 @@ export class SessionService extends Context.Service<SessionService, {
         return yield* attempt(COLLISION_RETRIES)
       })
 
+      const invalidate = Effect.fn("SessionService.invalidate")(function*(
+        input: { readonly reference?: string }
+      ) {
+        const reference = decodeSessionReference(input.reference)
+        if (Option.isNone(reference)) return noUsableSession
+        yield* serviceUnavailable(store.invalidate({ reference: reference.value }))
+        return noUsableSession
+      })
+
       const read = Effect.fn("SessionService.read")(function*(input: { readonly reference?: string }) {
         const reference = decodeSessionReference(input.reference)
         if (Option.isNone(reference)) return noUsableSession
@@ -263,6 +275,7 @@ export class SessionService extends Context.Service<SessionService, {
 
       return SessionService.of({
         establish,
+        invalidate,
         read,
         readForTenant,
         refreshForTenant

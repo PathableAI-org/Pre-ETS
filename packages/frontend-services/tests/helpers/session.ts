@@ -12,10 +12,12 @@ export interface EvaluationHold {
 export interface SessionMemoryRedis {
   readonly commands: string[]
   readonly entries: Map<string, string>
-  readonly failNextCommand: (command: "EVALSHA" | "GET" | "SCRIPT" | "SET", cause?: unknown) => void
+  readonly failNextCommand: (command: SessionMemoryRedisFailableCommand, cause?: unknown) => void
+  readonly failNextDeletionAfterMutation: () => void
   readonly failNextEvaluationAfterMutation: () => void
   readonly holdNextEvaluation: (hold: EvaluationHold) => void
   readonly layer: Layer.Layer<Redis.Redis>
+  readonly returnNextDeletion: (value: unknown) => void
   readonly returnNextEvaluation: (value: unknown) => void
   readonly ttls: Map<string, number>
 }
@@ -50,7 +52,9 @@ const allowedFields = new Set([
 const uuidPattern =
   /^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|[fF]{8}-[fF]{4}-[fF]{4}-[fF]{4}-[fF]{12})$/
 
-const failableCommands = new Set(["EVALSHA", "GET", "SCRIPT", "SET"])
+export type SessionMemoryRedisFailableCommand = "DEL" | "EVALSHA" | "GET" | "SCRIPT" | "SET"
+
+const failableCommands = new Set<SessionMemoryRedisFailableCommand>(["DEL", "EVALSHA", "GET", "SCRIPT", "SET"])
 
 const isInteger = (value: unknown): value is number => typeof value === "number" && Number.isSafeInteger(value)
 
@@ -202,6 +206,14 @@ const readEntry = (state: MemoryState, args: readonly string[]): null | string =
   return state.entries.get(key) ?? null
 }
 
+const deleteEntry = (state: MemoryState, args: readonly string[]): 0 | 1 => {
+  const [key, ...rest] = args
+  if (key === undefined || rest.length > 0) throw new Error("Unexpected DEL shape")
+  if (!state.entries.delete(key)) return 0
+  state.ttls.delete(key)
+  return 1
+}
+
 const loadScript = (scripts: Map<string, string>, args: readonly string[]): string => {
   const [subcommand, source] = args
   if (subcommand !== "LOAD" || source === undefined) throw new Error("Unexpected SCRIPT")
@@ -212,6 +224,11 @@ const loadScript = (scripts: Map<string, string>, args: readonly string[]): stri
 
 const redisFailure = (cause: unknown) => new Redis.RedisError({ cause })
 
+interface DeletionControls {
+  failAfterMutation: boolean
+  injected: unknown
+}
+
 interface EvaluationControls {
   failAfterMutation: boolean
   readonly holds: EvaluationHold[]
@@ -219,11 +236,11 @@ interface EvaluationControls {
 }
 
 const commandFailure = (
-  failures: Map<"EVALSHA" | "GET" | "SCRIPT" | "SET", unknown>,
+  failures: Map<SessionMemoryRedisFailableCommand, unknown>,
   command: string
 ): unknown => {
-  if (!failableCommands.has(command)) return undefined
-  const typed = command as "EVALSHA" | "GET" | "SCRIPT" | "SET"
+  if (!failableCommands.has(command as SessionMemoryRedisFailableCommand)) return undefined
+  const typed = command as SessionMemoryRedisFailableCommand
   const cause = failures.get(typed)
   failures.delete(typed)
   return cause
@@ -254,11 +271,25 @@ const makeEvaluateSha = (
     return yield* redisFailure(new Error("controlled post-mutation failure"))
   })
 
+const makeDelete = (state: MemoryState, controls: DeletionControls) =>
+  Effect.fnUntraced(function*(args: readonly string[]) {
+    if (controls.injected !== undefined) {
+      const value = controls.injected
+      controls.injected = undefined
+      return value
+    }
+    const reply = deleteEntry(state, args)
+    if (!controls.failAfterMutation) return reply
+    controls.failAfterMutation = false
+    return yield* redisFailure(new Error("controlled post-deletion failure"))
+  })
+
 const makeSend = (
   state: MemoryState,
   scripts: Map<string, string>,
   commands: string[],
-  failures: Map<"EVALSHA" | "GET" | "SCRIPT" | "SET", unknown>,
+  failures: Map<SessionMemoryRedisFailableCommand, unknown>,
+  deleteEntryEffect: (args: readonly string[]) => Effect.Effect<unknown, Redis.RedisError>,
   evaluateSha: (args: readonly string[]) => Effect.Effect<unknown, Redis.RedisError>
 ) =>
 <A>(command: string, ...args: readonly string[]) =>
@@ -266,6 +297,7 @@ const makeSend = (
     commands.push(command)
     const cause = commandFailure(failures, command)
     if (cause !== undefined) return yield* redisFailure(cause)
+    if (command === "DEL") return (yield* deleteEntryEffect(args)) as A
     if (command === "SCRIPT") return loadScript(scripts, args) as A
     if (command === "EVALSHA") return (yield* evaluateSha(args)) as A
     if (command === "GET") return readEntry(state, args) as A
@@ -278,17 +310,22 @@ export const makeSessionMemoryRedis = (): SessionMemoryRedis => {
   const ttls = new Map<string, number>()
   const scripts = new Map<string, string>()
   const commands: string[] = []
-  const failures = new Map<"EVALSHA" | "GET" | "SCRIPT" | "SET", unknown>()
+  const failures = new Map<SessionMemoryRedisFailableCommand, unknown>()
+  const deletionControls: DeletionControls = { failAfterMutation: false, injected: undefined }
   const controls: EvaluationControls = { failAfterMutation: false, holds: [], injected: undefined }
   const state = { entries, ttls }
+  const deleteEntryEffect = makeDelete(state, deletionControls)
   const evaluateSha = makeEvaluateSha(state, scripts, controls)
-  const send = makeSend(state, scripts, commands, failures, evaluateSha)
+  const send = makeSend(state, scripts, commands, failures, deleteEntryEffect, evaluateSha)
   const service = makeRedis(send)
   return {
     commands,
     entries,
     failNextCommand: (command, cause) => {
       failures.set(command, cause ?? new Error(`controlled ${command} failure`))
+    },
+    failNextDeletionAfterMutation: () => {
+      deletionControls.failAfterMutation = true
     },
     failNextEvaluationAfterMutation: () => {
       controls.failAfterMutation = true
@@ -297,6 +334,9 @@ export const makeSessionMemoryRedis = (): SessionMemoryRedis => {
       controls.holds.push(hold)
     },
     layer: Layer.effect(Redis.Redis, service),
+    returnNextDeletion: (value) => {
+      deletionControls.injected = value
+    },
     returnNextEvaluation: (value) => {
       controls.injected = value
     },

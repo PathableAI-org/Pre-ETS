@@ -19,6 +19,7 @@
     "src/**/*.ts",
     "tests/**/*.ts",
     "vitest.config.ts",
-    "vitest.integration.config.ts"
+    "vitest.integration.config.ts",
+    "vitest.outage.config.ts"
   ]
 }
