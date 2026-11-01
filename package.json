@@ -42,7 +42,7 @@
     "@types/node": "26.6.6",
     "dprint": "0.64.3",
     "dprint-plugin-yaml": "0.6.0",
-    "eslint": "10.13.0",
+    "eslint": "10.14.0",
     "eslint-plugin-perfectionist": "5.13.0",
     "fallow": "3.37.0",
     "gherkin-refine": "1.4.6",
