@@ -1,6 +1,6 @@
 # Quickstart: Complete Session Invalidation and Failure Behavior
 
-**Status**: Planned procedure — commands and outcomes below are not execution evidence
+**Status**: Implemented and executed — the revision-specific record below is separate from the planned procedure
 
 ## Evidence map
 
@@ -231,4 +231,82 @@ Cleanup completed:
 Limitations or skipped cases:
 ```
 
-No execution record is present yet. Planning and pull-request creation do not establish feature verification.
+## Execution record
+
+### Revision and environment
+
+- Branch: `160-session-invalidation-failures-impl`, stacked directly on PR #302 at
+  `43f105fbb36ccc963558a59f691b6e5b8a3ea635`.
+- Implementation revision: `12512ef8868cff37a6e08d5e6f1525d96a24688f`. The manual observations were produced
+  from the working tree captured by that commit; the pre-commit hook subsequently applied formatting only, with no
+  behavioral change.
+- Executed on 2026-11-01 at approximately 05:33 EST with Node.js 26.2.0 and pnpm 12.16.1.
+- The fetched stack had advanced from the planning pins to Effect 4.1.1 and node-redis 6.3.1. Their installed
+  `Context.Service`, `@effect/vitest`, and `Redis.send<A>(command, ...args)` declarations were revalidated before
+  implementation and required no contract change. Redis evidence used the repository-pinned Redis 8.10.3 image.
+- Synthetic labels used only the `manual-*`, `outage-*`, `springfield`, and owned test-prefix categories. No cookie
+  value, session reference, Redis key/record, credential, provider token, protected content, PHI, or identifying
+  partner/client name is retained.
+
+### Automated results
+
+- `pnpm --filter @pathableai/pre-ets-frontend-services test` passed 14 files and 340 tests. Public invalidation
+  scenarios cover malformed/absent references without a store command, current/expired/corrupt/missing/already
+  removed state, strict `DEL` replies, redacted failure, and apply-delete-then-fail without retry.
+- `REDIS_URL=redis://127.0.0.1:6379 pnpm --filter @pathableai/pre-ets-frontend-services test:integration` passed two
+  files and 23 tests. The run included independent-client invalidation, renewal-first, invalidation-first, and
+  concurrent-release schedules, disconnected-adapter failure, healthy re-evaluation, and the retained #220
+  expiration/renewal cases that establish V-004.
+- `pnpm --filter @pathableai/pre-ets-frontend-services test:integration:outage` passed one file and two tests in
+  18.41 seconds. A unique Compose project exercised pre-dispatch stop and `CLIENT PAUSE 30000 ALL` mid-flight loss;
+  read, refresh, and invalidation stayed pending for the bounded 250 milliseconds, failed within 10 seconds as exact
+  fieldless `SessionServiceUnavailable`, and were authoritatively re-evaluated after restart. Teardown removed the
+  project unconditionally.
+- `pnpm typecheck`, `pnpm build`, `pnpm lint`, `pnpm format:check`, `pnpm check:unused`, `pnpm check:health`, and
+  `FALLOW_AUDIT_BASE=origin/main pnpm check:changes` passed. The first sandboxed format/audit attempt could not write
+  dprint's user cache or Fallow's temporary worktrees; the host-access rerun passed. Fallow reported the existing
+  Vitest-config and test-helper clone blocks as warning-level structural duplication, with no introduced gate
+  failure; the existing empty frontend `shared`/`server` zone warnings also remained unchanged.
+
+### Manual bounded-consumer result
+
+- A temporary uncommitted probe used two independently scoped public `SessionService` clients, the existing #219
+  bounded reference consumer, a production frontend build, a unique `preets-session-invalidation-221-codex` Compose
+  project, loopback port 6380, and an owned synthetic prefix. The probe and Compose definition were removed after the
+  run.
+- Before invalidation, both clients observed a usable synthetic session and the bounded consumer completed its
+  protected reference operation. A renewal and invalidation were released from the same barrier; after both
+  completed, later public reads and refreshes from the two clients returned `NoUsableSession` (V-001–V-003).
+- For a separate rendered consumer session, the action succeeded before public `SessionService.invalidate`, then the
+  already-rendered action denied the old reference afterward with no protected success receipt (V-001, V-002,
+  V-005).
+- With the exclusively owned Redis service stopped before dispatch, public read, refresh, and invalidation returned
+  exact `SessionServiceUnavailable`; the bounded consumer action returned a server failure rather than absence or a
+  protected success, and emitted no receipt (V-005–V-007).
+- Redis was restarted and answered `PONG`. Every owned reference was re-evaluated through the public service, any
+  surviving usable session was explicitly invalidated, both runtimes and the frontend/browser processes were
+  disposed, the dedicated Compose project/network were removed, and both temporary files were deleted.
+
+### Claim disposition
+
+| Claim | Result                    | Evidence and limit                                                                                                                                                                                          |
+| ----- | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| V-001 | Pass                      | Public, two-client Redis, and bounded-consumer observations all ended with the old reference unusable.                                                                                                      |
+| V-002 | Pass                      | Later renewal/read produced no usable or replacement session; finite exercised schedules do not prove every topology.                                                                                       |
+| V-003 | Pass                      | Renewal-first, invalidation-first, and concurrent-release schedules ended terminally; concurrent release does not prove Redis command-boundary overlap.                                                     |
+| V-004 | Pass by retained evidence | Existing #220 deterministic and real-Redis expiration/renewal cases passed; no duplicate expiration matrix was added.                                                                                       |
+| V-005 | Pass                      | Usable, fieldless no-usable, and fieldless service-failure outcomes remained distinct; only usable results carried protected fields.                                                                        |
+| V-006 | Pass                      | Disconnected-adapter, dedicated-store pre-dispatch, mid-flight loss, and bounded-consumer outage observations failed explicitly. Local outages do not establish every partition or managed-service failure. |
+| V-007 | Pass                      | Controlled delete-then-fail issued one delete with no retry/success claim; real outage failures required later re-evaluation and created no replacement session.                                            |
+| V-008 | Pass                      | Missing, expired, removed, malformed, and invalidated cases denied without a tombstone or retained cause distinction.                                                                                       |
+
+### Approved limitations
+
+- This record establishes the shared session service/store slice and one bounded #219 consumer only. Comprehensive
+  page, Route Handler, Server Action, direct/new-resource, and protected HTTP enforcement remains #154.
+- Browser logout/activity/warning coordination, recovery presentation, fresh-provider recovery, authentication-time
+  comparison, clock tolerance, and provider/broker behavior remain #155–#158/B6.
+- Finite race schedules are not a proof of every timing or deployment topology. Local Compose outages are not every
+  network partition or managed Redis recovery mode. No operational telemetry claim was introduced or tested.
+- Requirements-backed Gherkin remains intentionally absent for this slice; the executed service/store and composed
+  manual evidence does not expand the accepted requirements or close issue #221 by itself.
