@@ -4,8 +4,9 @@ import * as NodeSdk from "@effect/opentelemetry/NodeSdk"
 import { Effect, type Layer, Schema } from "effect"
 
 import type { OtelSettings } from "./config/index.js"
+import type { OtelSdkError } from "./observability/error.ts"
 
-import { makeNodeSdkConfiguration, type OtelSdkError } from "./observability/sdk.js"
+import { makeNodeSdkConfiguration } from "./observability/sdk.js"
 
 const ObservabilityInitializationErrorTag = "@pathableai/pre-ets-frontend/ObservabilityInitializationError"
 
@@ -14,7 +15,11 @@ export class ObservabilityInitializationError extends Schema.TaggedError<Observa
   {
     cause: Schema.instanceOf(globalThis.Error)
   }
-) {}
+) {
+  public static new(cause: OtelSdkError) {
+    return new ObservabilityInitializationError({ cause })
+  }
+}
 
 export const observabilityLayer = (input: {
   readonly otel: OtelSettings
@@ -24,9 +29,10 @@ export const observabilityLayer = (input: {
   } else {
     const configuration = makeNodeSdkConfiguration(input.otel).pipe(
       Effect.mapError(
-        (cause: OtelSdkError) => new ObservabilityInitializationError({ cause })
+        (cause) => ObservabilityInitializationError.new(cause)
       )
     )
+
     return NodeSdk.layer(configuration)
   }
 }
