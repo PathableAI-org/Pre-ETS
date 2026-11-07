@@ -170,7 +170,10 @@ Backend and root analysis keep their normal test and tooling reachability.
 
 The root configuration records the dprint npm plugins and the Effect language-service schema
 dependency as tooling references. It also ignores the `effect` and `@effect/platform-node`
-dependencies declared at the root.
+dependencies declared at the root. The shared configuration lists `dprint`, `eslint`, `fallow`,
+and `tsc` as root-provided binaries. The backend, domain, and frontend-services configurations
+list `@effect/language-service` as a root-provided dependency for their inherited TypeScript
+configuration; these tools do not need duplicate workspace declarations.
 
 Type-aware analysis is enabled in best-effort mode against each scope's `tsconfig.json`. It
 confirms symbol use for Fallow findings and does not replace `pnpm typecheck`. A partial or

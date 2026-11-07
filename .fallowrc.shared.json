@@ -1,6 +1,7 @@
 {
   "$schema": "./node_modules/fallow/schema.json",
   "minimumVersion": "3.34.1",
+  "ignoreBinaries": ["dprint", "eslint", "fallow", "tsc"],
   "typeAware": {
     "enabled": true,
     "projects": ["tsconfig.json"],
