@@ -36,7 +36,7 @@
     "@cucumber/cucumber": "13.3.0",
     "@dprint/json": "0.26.0",
     "@dprint/markdown": "0.29.0",
-    "@dprint/typescript": "0.98.0",
+    "@dprint/typescript": "0.98.1",
     "@effect/language-service": "0.87.5",
     "@eslint/js": "10.0.1",
     "@types/node": "26.6.6",
