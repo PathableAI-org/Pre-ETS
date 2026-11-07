@@ -163,13 +163,15 @@ node --test tests/bdd/session/shared-session-parent.manual.test.ts
    Compose project on a free loopback port with a validated unique session prefix.
 2. Use the `sessionLayer` and `withClients` patterns to create two independently scoped public `SessionService`
    clients A and B using the same owned Redis URL and prefix.
-3. Use synthetic tenant `parent-evidence`, issuers under `.test`, and two synthetic subjects. Prepare policy P1
-   (`30/5`) and policy P2 (`5/0`).
+3. Use the repository's synthetic `springfield` tenant fixture consistently for both service clients and the bounded
+   frontend, issuers under `.test`, and two synthetic subjects. `fixtures/tenant-config/springfield.json` is test data,
+   not a client or production tenant. Prepare policy P1 (`30/5`) and policy P2 (`5/0`).
 4. Adapt the `siteOptions` pattern in `tests/bdd/session/reference-session-enforcement.test.ts`: use
    `path.resolve("fixtures/tenant-config")`, `runtime: "production"`, the owned `redisUrl` and `sessionPrefix`, and a
    probe-owned `transactionPrefix`. Start the bounded consumer with `spawnFrontend` on a `freePort`, wait with
-   `waitUntilReady`, then observe the bounded page/action through `applicationBrowser`. Do not use real provider
-   credentials; fixture establishment is explicitly bounded evidence, not freshness proof.
+   `waitUntilReady`, then call `applicationBrowser` with the concrete `springfield.localhost:<port>` host. Capture its
+   returned browser/proxy handle and every Playwright context created from it before observing the bounded page/action.
+   Do not use real provider credentials; fixture establishment is explicitly bounded evidence, not freshness proof.
 5. Record revision, runtime/dependency versions, safe client labels, policy values, commands, and start time. Keep all
    opaque values in memory only.
 
@@ -198,8 +200,11 @@ assertion or command failure:
 2. Re-evaluate and invalidate every still-readable synthetic session, then use `deleteOwnedPrefix` and verify the
    validated owned prefix has no remaining keys.
 3. Dispose both scoped clients/runtimes.
-4. Stop the bounded frontend process with `stopProcess`.
-5. Remove the owned Compose project, containers, volumes, and temporary Compose directory with the
+4. Close every acquired Playwright page/context, then await the `applicationBrowser` handle's `close` callback so its
+   browser and proxy cannot keep the exact `node --test` command alive. Guard each handle because setup may fail before
+   acquisition.
+5. Stop the bounded frontend process with `stopProcess`.
+6. Remove the owned Compose project, containers, volumes, and temporary Compose directory with the
    `destroyOutageStore` pattern.
 
 After the process exits, remove only the known temporary probe and verify that it and generated output are absent:
