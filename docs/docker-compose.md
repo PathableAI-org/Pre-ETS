@@ -134,14 +134,17 @@ Local OpenTelemetry + Grafana is **opt-in**. Default
 
 Pinned image: `grafana/otel-lgtm:0.37.0` (digest pinned in `compose.yaml`).
 Compose service name: **`otel-lgtm`**. Compose profile: **`observability`**.
-The image runs Grafana plus Tempo, Loki, and Prometheus. The frontend exports
-traces only; empty Loki or Prometheus data is not application evidence.
+The image runs Grafana plus Tempo, Loki, and Prometheus. With OTEL enabled, the
+frontend exports traces, Effect logs, and Effect/Node runtime metrics together.
+With `OTEL_SDK_DISABLED=true`, it exports none of them. Empty query results are
+not conclusive application evidence; check configuration, traffic, export
+timing, and collector delivery.
 
 | Host binding     | Container | Purpose                            |
 | ---------------- | --------- | ---------------------------------- |
 | `127.0.0.1:3300` | `3000`    | Grafana UI (Next.js keeps `:3000`) |
-| `127.0.0.1:4317` | `4317`    | OTLP gRPC                          |
-| `127.0.0.1:4318` | `4318`    | OTLP HTTP (Next default)           |
+| `127.0.0.1:4317` | `4317`    | OTLP gRPC (not used by Next)       |
+| `127.0.0.1:4318` | `4318`    | OTLP HTTP protobuf (Next exporter) |
 
 Anonymous Grafana org role is **Viewer** (`GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer`)
 for least-privilege local MCP reads. Do not treat anonymous Admin or
@@ -155,9 +158,9 @@ docker compose --profile observability up -d --wait
 
 - Grafana: `http://127.0.0.1:3300`
 - OTLP HTTP for Next: `http://127.0.0.1:4318`
-- Request spans from the Next demo routes are typically visible in Grafana
-  Explore / Tempo within ~30 seconds of traffic when
-  `OTEL_EXPORTER_OTLP_ENDPOINT` points at that endpoint.
+- With the required endpoint and service-name configuration, request spans and
+  Effect logs are typically visible within ~30 seconds of traffic. Allow ~60
+  seconds for Effect and Node runtime metrics in Prometheus.
 
 Port notes: Grafana is on **3300** so it does not collide with Next on **3000**.
 Keycloak remains on **8080** (unchanged).

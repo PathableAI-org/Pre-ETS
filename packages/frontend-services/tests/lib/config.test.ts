@@ -7,6 +7,7 @@ import { ServerConfig, StartupConfig } from "../../src/config/index.ts"
 const BaseConfigProvider = ConfigProvider.fromUnknown({
   BASE_HOSTNAME: "example.test",
   NODE_ENV: "development",
+  OTEL_SDK_DISABLED: true,
   TENANT_CONFIG_DIR: "/absolute/path/to/packages/frontend/fixtures/tenant-config",
   TENANT_RESOLUTION: "host",
   TENANT_STATIC_ALIAS: "springfield"
@@ -366,23 +367,6 @@ describe("StartupConfig", () => {
       Effect.provideService(
         ConfigProvider.ConfigProvider,
         withConfigOverrides({ LOG_LEVEL: "loud" })
-      )
-    )
-  })
-
-  it.effect("does not apply URL or protocol selection", () => {
-    return Effect.gen(function*() {
-      const config = yield* StartupConfig
-      assert.deepEqual(config.otel.endpoint, Option.some("not a url"))
-      assert.deepEqual(config.otel.exportUrl, Option.some("not a url/v1/traces"))
-      assert.deepEqual(config.otel.protocol, Option.some("grpc"))
-    }).pipe(
-      Effect.provideService(
-        ConfigProvider.ConfigProvider,
-        withConfigOverrides({
-          OTEL_EXPORTER_OTLP_ENDPOINT: "not a url",
-          OTEL_EXPORTER_OTLP_PROTOCOL: "grpc"
-        })
       )
     )
   })
