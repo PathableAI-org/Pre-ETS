@@ -15,6 +15,7 @@ import { Effect } from "effect"
 import type { OtelEnabled } from "../config/otel.js"
 
 import { OtelSdkError } from "./error.ts"
+import type { Instrumentation, InstrumentationConfig } from "@opentelemetry/instrumentation"
 
 const wrapConstructor = <
   Args extends unknown[],
@@ -77,6 +78,38 @@ const makeMetricReader = pipeExporter(makeOTLPMetricsExporter, makePeriodicExpor
 
 const makeOtelSdk = wrapConstructor(otelSdk.NodeSDK)
 
+const makeHttpInstrumentation = wrapConstructor(HttpInstrumentation);
+const makeRedisInstrumentation = wrapConstructor(RedisInstrumentation);
+const makeRuntimeNodeInstrumentation = wrapConstructor(RuntimeNodeInstrumentation);
+
+const makeInstrumentations: {
+  (): Effect.Effect<Instrumentation<InstrumentationConfig>[], OtelSdkError>
+} = Effect.fn(
+  function*(){
+    const redacted = [
+      'sig',
+      'Signature',
+      'AWSAccessKeyId',
+      'X-Goog-Signature',
+      'X-Amz-Signature',
+      'X-Amz-Credential',
+      'X-Amz-Security-Token',
+      'api_key',
+      'code',
+      'state',
+    ];
+
+    return yield *Effect.all([
+      makeHttpInstrumentation({
+        redactedQueryParams: redacted,
+        redactedQueryParamsServer: redacted,
+      }),
+      makeRedisInstrumentation(),
+      makeRuntimeNodeInstrumentation(),
+    ])
+  }
+)
+
 export const makeNodeSdkConfiguration: (settings: OtelEnabled) => Effect.Effect<NodeSdk.Configuration, OtelSdkError> =
   Effect.fnUntraced(
     function*(settings: OtelEnabled) {
@@ -87,13 +120,10 @@ export const makeNodeSdkConfiguration: (settings: OtelEnabled) => Effect.Effect<
       const metricReader = yield* makeMetricReader(
         `${settings.endpoint.toString()}v1/metrics`
       )
+      const instrumentations = yield *makeInstrumentations()
 
       const sdk = yield* makeOtelSdk({
-        instrumentations: [
-          new HttpInstrumentation(),
-          new RedisInstrumentation(),
-          new RuntimeNodeInstrumentation()
-        ],
+        instrumentations,
         logRecordProcessors: [logRecordProcessor],
         metricReaders: [metricReader],
         spanProcessors: [spanProcessor]
