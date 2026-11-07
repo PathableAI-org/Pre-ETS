@@ -67,8 +67,7 @@ const freeLoopbackPort = async (): Promise<number> => {
   return address.port
 }
 
-const composeDefinition = (port: number): string =>
-  `services:
+const composeDefinition = (port: number): string => `services:
   redis:
     image: redis:8.10.3
     ports:
