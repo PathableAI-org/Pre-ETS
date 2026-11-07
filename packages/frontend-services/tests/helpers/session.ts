@@ -284,26 +284,27 @@ const makeDelete = (state: MemoryState, controls: DeletionControls) =>
     return yield* redisFailure(new Error("controlled post-deletion failure"))
   })
 
-const makeSend = (
-  state: MemoryState,
-  scripts: Map<string, string>,
-  commands: string[],
-  failures: Map<SessionMemoryRedisFailableCommand, unknown>,
-  deleteEntryEffect: (args: readonly string[]) => Effect.Effect<unknown, Redis.RedisError>,
-  evaluateSha: (args: readonly string[]) => Effect.Effect<unknown, Redis.RedisError>
-) =>
-<A>(command: string, ...args: readonly string[]) =>
-  Effect.gen(function*() {
-    commands.push(command)
-    const cause = commandFailure(failures, command)
-    if (cause !== undefined) return yield* redisFailure(cause)
-    if (command === "DEL") return (yield* deleteEntryEffect(args)) as A
-    if (command === "SCRIPT") return loadScript(scripts, args) as A
-    if (command === "EVALSHA") return (yield* evaluateSha(args)) as A
-    if (command === "GET") return readEntry(state, args) as A
-    if (command === "SET") return createEntry(state, args) as A
-    return yield* redisFailure(new Error(`Unexpected Redis command: ${command}`))
-  })
+const makeSend =
+  (
+    state: MemoryState,
+    scripts: Map<string, string>,
+    commands: string[],
+    failures: Map<SessionMemoryRedisFailableCommand, unknown>,
+    deleteEntryEffect: (args: readonly string[]) => Effect.Effect<unknown, Redis.RedisError>,
+    evaluateSha: (args: readonly string[]) => Effect.Effect<unknown, Redis.RedisError>
+  ) =>
+  <A>(command: string, ...args: readonly string[]) =>
+    Effect.gen(function*() {
+      commands.push(command)
+      const cause = commandFailure(failures, command)
+      if (cause !== undefined) return yield* redisFailure(cause)
+      if (command === "DEL") return (yield* deleteEntryEffect(args)) as A
+      if (command === "SCRIPT") return loadScript(scripts, args) as A
+      if (command === "EVALSHA") return (yield* evaluateSha(args)) as A
+      if (command === "GET") return readEntry(state, args) as A
+      if (command === "SET") return createEntry(state, args) as A
+      return yield* redisFailure(new Error(`Unexpected Redis command: ${command}`))
+    })
 
 export const makeSessionMemoryRedis = (): SessionMemoryRedis => {
   const entries = new Map<string, string>()
