@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { displayDuration, durationMs, visitClockMs } from "../../src/features/onsite.ts"
+import { displayDuration, durationMs, visitClockMs } from "../../src/features/onsite/visit-time.ts"
 
 describe("on-site prototype visit time", () => {
   it("counts an overnight visit across the date boundary", () => {

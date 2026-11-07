@@ -131,28 +131,29 @@ const idToken = (
 
 const invalidSigningKey = generateKeyPairSync("rsa", { modulusLength: 2048 }).privateKey
 
-const completionTransport = (
-  readNonce: () => string,
-  claims: Readonly<Record<string, unknown>> = {},
-  signingKey?: KeyObject
-) =>
-(input: globalThis.Request | string | URL): Promise<Response> => {
-  const url = new URL(input instanceof Request ? input.url : input.toString())
-  switch (url.pathname) {
-    case "/.well-known/openid-configuration":
-      return Promise.resolve(metadata())
-    case "/jwks":
-      return Promise.resolve(Response.json({ keys: [publicJwk] }))
-    case "/token":
-      return Promise.resolve(Response.json({
-        access_token: "controlled-access-token",
-        id_token: idToken(readNonce(), claims, signingKey),
-        token_type: "Bearer"
-      }))
-    default:
-      return Promise.reject(new Error(`Unexpected provider URL: ${url.href}`))
+const completionTransport =
+  (
+    readNonce: () => string,
+    claims: Readonly<Record<string, unknown>> = {},
+    signingKey?: KeyObject
+  ) =>
+  (input: globalThis.Request | string | URL): Promise<Response> => {
+    const url = new URL(input instanceof Request ? input.url : input.toString())
+    switch (url.pathname) {
+      case "/.well-known/openid-configuration":
+        return Promise.resolve(metadata())
+      case "/jwks":
+        return Promise.resolve(Response.json({ keys: [publicJwk] }))
+      case "/token":
+        return Promise.resolve(Response.json({
+          access_token: "controlled-access-token",
+          id_token: idToken(readNonce(), claims, signingKey),
+          token_type: "Bearer"
+        }))
+      default:
+        return Promise.reject(new Error(`Unexpected provider URL: ${url.href}`))
+    }
   }
-}
 
 const requestUrl = (input: RequestInfo | URL): URL =>
   new URL(typeof input === "string" || input instanceof URL ? input : input.url)
@@ -172,21 +173,22 @@ const confidentialOptions = {
   credentialMap: JSON.stringify({ "alpha-secret": confidentialSecret })
 }
 
-const confidentialProvider = (
-  methods: readonly string[] | undefined,
-  readNonce: () => string,
-  onToken?: (request: { authorization: string; body: string }) => void,
-  observed?: string[]
-): typeof fetch =>
-async (input, init) => {
-  const url = requestUrl(input)
-  observed?.push(url.href, bodyText(init?.body), authorizationText(init?.headers))
-  if (url.pathname === "/token") {
-    onToken?.({ authorization: authorizationText(init?.headers), body: bodyText(init?.body) })
+const confidentialProvider =
+  (
+    methods: readonly string[] | undefined,
+    readNonce: () => string,
+    onToken?: (request: { authorization: string; body: string }) => void,
+    observed?: string[]
+  ): typeof fetch =>
+  async (input, init) => {
+    const url = requestUrl(input)
+    observed?.push(url.href, bodyText(init?.body), authorizationText(init?.headers))
+    if (url.pathname === "/token") {
+      onToken?.({ authorization: authorizationText(init?.headers), body: bodyText(init?.body) })
+    }
+    if (url.pathname === "/.well-known/openid-configuration") return metadata("https://provider.test", methods)
+    return completionTransport(readNonce)(input)
   }
-  if (url.pathname === "/.well-known/openid-configuration") return metadata("https://provider.test", methods)
-  return completionTransport(readNonce)(input)
-}
 
 const expectConfidentialWire = (
   request: undefined | { authorization: string; body: string },

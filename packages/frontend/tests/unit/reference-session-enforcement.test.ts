@@ -5,9 +5,10 @@ import { fileURLToPath } from "node:url"
 import { renderToStaticMarkup } from "react-dom/server"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
+import type { ReferenceActionState } from "../../src/features/session-reference.ts"
+
 import { runReferenceOperation } from "../../src/app/(app)/actions.ts"
 import HomePage from "../../src/app/(app)/page.tsx"
-import { initialReferenceActionState } from "../../src/features/session-reference.ts"
 import {
   cookieWriteCount,
   cookieWriteOptions,
@@ -17,10 +18,10 @@ import {
 } from "./next-headers-stub.ts"
 import { ForbiddenError, NotFoundError, RedirectError } from "./next-navigation-stub.ts"
 
+const initialReferenceActionState: ReferenceActionState = { _tag: "Ready" }
 const operationProps = vi.hoisted(() => [] as unknown[])
 
 vi.mock("../../src/features/session-reference.ts", () => ({
-  initialReferenceActionState: { _tag: "Ready" },
   ReferenceOperation: (props: unknown) => {
     operationProps.push(props)
     return null

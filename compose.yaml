@@ -11,7 +11,7 @@ services:
       start_period: 2s
 
   keycloak:
-    image: quay.io/keycloak/keycloak:26.8.1
+    image: quay.io/keycloak/keycloak:26.8.2
     # Import tracked realm JSON on first boot (realm absent). Recreate the
     # container to re-import after editing docker/keycloak/pre-ets-realm.json.
     command: ["start-dev", "--import-realm"]
@@ -48,7 +48,7 @@ services:
       start_period: 10s
 
   flyway:
-    image: redgate/flyway:13.12.0
+    image: redgate/flyway:13.12.1
     profiles: ["tools"]
     depends_on:
       postgres:
@@ -67,7 +67,7 @@ services:
   # Optional local OTLP + Grafana (Tempo). Opt-in only — default `docker compose up`
   # for redis/keycloak does not start this service.
   otel-lgtm:
-    image: grafana/otel-lgtm:0.39.0@sha256:4c8056c9c05fcb3c8fd93800e85334bfd79b4d0271b47a54a121a64af41fe1fe
+    image: grafana/otel-lgtm:0.40.0@sha256:72e05804790e6e0d8c0b70a6d5ff1f721ef7b203463374631e99aa3429bd0cf6
     profiles: ["observability"]
     ports:
       - "127.0.0.1:3300:3000"

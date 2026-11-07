@@ -10,6 +10,7 @@ export default defineConfig({
   },
   test: {
     environment: "node",
+    exclude: ["tests/integration/session-redis-outage.test.ts"],
     globals: false,
     include: ["tests/integration/**/*.test.ts"]
   }

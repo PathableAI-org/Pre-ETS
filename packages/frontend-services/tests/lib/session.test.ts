@@ -128,6 +128,141 @@ describe("SessionService establishment", () => {
     ))
 })
 
+describe("SessionService invalidation", () => {
+  it.effect.each([undefined, "not-a-valid-reference"])(
+    "returns NoUsableSession for %s input without a Redis command",
+    (reference) =>
+      scenario((redis) =>
+        Effect.gen(function*() {
+          const service = yield* SessionService
+          const result = yield* service.invalidate(reference === undefined ? {} : { reference })
+          expect(result).toStrictEqual(noUsableSession)
+          expect(redis.commands).toStrictEqual([])
+          expect(Object.keys(result)).toStrictEqual(["_tag"])
+        })
+      )
+  )
+
+  it.effect.each(["current", "expired", "malformed", "unknown-version"] as const)(
+    "removes %s addressed state without exposing its prior contents",
+    (state) =>
+      scenario((redis) =>
+        Effect.gen(function*() {
+          yield* TestClock.setTime(BASE_TIME)
+          const service = yield* SessionService
+          const established = yield* establish(service, 30, 5)
+          const commandCountBeforeInvalidation = redis.commands.length
+          if (state === "expired") yield* TestClock.adjust("30 minutes")
+          if (state === "malformed") {
+            for (const key of redis.entries.keys()) redis.entries.set(key, "not-json")
+          }
+          if (state === "unknown-version") {
+            for (const [key, payload] of redis.entries) {
+              const record = JSON.parse(payload) as Record<string, unknown>
+              redis.entries.set(key, JSON.stringify({ ...record, version: 2 }))
+            }
+          }
+
+          const result = yield* service.invalidate({ reference: established.reference })
+
+          expect(result).toStrictEqual(noUsableSession)
+          expect(Object.keys(result)).toStrictEqual(["_tag"])
+          expect(redis.entries.size).toBe(0)
+          expect(redis.ttls.size).toBe(0)
+          expect(redis.commands.slice(commandCountBeforeInvalidation)).toStrictEqual(["DEL"])
+          expect(redis.commands.filter((command) => command === "DEL")).toHaveLength(1)
+        })
+      )
+  )
+
+  it.effect("returns the same terminal outcome for missing and already invalidated state", () =>
+    scenario((redis) =>
+      Effect.gen(function*() {
+        yield* TestClock.setTime(BASE_TIME)
+        const service = yield* SessionService
+        const established = yield* establish(service, 30, 5)
+        redis.entries.clear()
+        redis.ttls.clear()
+
+        const missing = yield* service.invalidate({ reference: established.reference })
+        const alreadyInvalidated = yield* service.invalidate({ reference: established.reference })
+
+        expect(missing).toStrictEqual(noUsableSession)
+        expect(alreadyInvalidated).toStrictEqual(noUsableSession)
+        expect(redis.commands.filter((command) => command === "DEL")).toHaveLength(2)
+      })
+    ))
+
+  it.effect.each([2, -1, "1", null])(
+    "fails closed for the unexpected DEL reply %#",
+    (reply) =>
+      scenario((redis) =>
+        Effect.gen(function*() {
+          yield* TestClock.setTime(BASE_TIME)
+          const service = yield* SessionService
+          const established = yield* establish(service, 30, 5)
+          redis.returnNextDeletion(reply)
+
+          const result = yield* service.invalidate({ reference: established.reference }).pipe(Effect.result)
+
+          expect(Result.isFailure(result)).toBe(true)
+          if (Result.isFailure(result)) {
+            expect(result.failure).toBeInstanceOf(SessionServiceUnavailable)
+            expect(Object.keys(result.failure)).toStrictEqual(["_tag"])
+            expect(publicDiagnostic(result.failure)).not.toContain(established.reference)
+            expect(publicDiagnostic(result.failure)).not.toContain("subject-1")
+            expect(publicDiagnostic(result.failure)).not.toContain("https://provider.test/")
+            expect(publicDiagnostic(result.failure)).not.toContain("test:session")
+          }
+        })
+      )
+  )
+
+  it.effect("returns a fieldless service failure when DEL cannot be dispatched", () =>
+    scenario((redis) =>
+      Effect.gen(function*() {
+        yield* TestClock.setTime(BASE_TIME)
+        const service = yield* SessionService
+        const established = yield* establish(service, 30, 5)
+        redis.failNextCommand("DEL", new Error("private Redis diagnostic"))
+
+        const result = yield* service.invalidate({ reference: established.reference }).pipe(Effect.result)
+
+        expect(Result.isFailure(result)).toBe(true)
+        if (Result.isFailure(result)) {
+          expect(result.failure).toBeInstanceOf(SessionServiceUnavailable)
+          expect(result.failure.cause).toBeUndefined()
+          const diagnostic = publicDiagnostic(result.failure)
+          expect(diagnostic).not.toContain("private Redis diagnostic")
+          expect(diagnostic).not.toContain(established.reference)
+          expect(diagnostic).not.toContain("subject-1")
+        }
+      })
+    ))
+
+  it.effect("does not retry or claim success when DEL applies before its reply fails", () =>
+    scenario((redis) =>
+      Effect.gen(function*() {
+        yield* TestClock.setTime(BASE_TIME)
+        const service = yield* SessionService
+        const established = yield* establish(service, 30, 5)
+        redis.failNextDeletionAfterMutation()
+
+        const indeterminate = yield* service.invalidate({ reference: established.reference }).pipe(Effect.result)
+
+        expect(Result.isFailure(indeterminate)).toBe(true)
+        if (Result.isFailure(indeterminate)) {
+          expect(indeterminate.failure).toBeInstanceOf(SessionServiceUnavailable)
+        }
+        expect(redis.commands.filter((command) => command === "DEL")).toHaveLength(1)
+        expect(redis.entries.size).toBe(0)
+        expect(yield* service.read({ reference: established.reference })).toStrictEqual(noUsableSession)
+        expect(yield* service.invalidate({ reference: established.reference })).toStrictEqual(noUsableSession)
+        expect(redis.commands.filter((command) => command === "DEL")).toHaveLength(2)
+      })
+    ))
+})
+
 describe("SessionService read outcomes", () => {
   it.effect("returns NoUsableSession for an absent reference without a Redis lookup", () =>
     scenario((redis) =>

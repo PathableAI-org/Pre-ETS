@@ -157,16 +157,17 @@ const failTenant = <E extends TenantFailure>(reason: TenantFailureReason, error:
     reason
   }).pipe(Effect.andThen(Effect.fail(error)))
 
-const tenantConfigPathFromAlias = (
-  config: TenantResolutionConfig,
-  path: Path.Path
-) =>
-(alias: TenantAlias) =>
-  pipe(
-    `${alias}.json`,
-    (f) => path.join(config.configDir, f),
-    path.normalize
-  )
+const tenantConfigPathFromAlias =
+  (
+    config: TenantResolutionConfig,
+    path: Path.Path
+  ) =>
+  (alias: TenantAlias) =>
+    pipe(
+      `${alias}.json`,
+      (f) => path.join(config.configDir, f),
+      path.normalize
+    )
 
 const tenantConfigFromAlias = (
   config: TenantResolutionConfig,

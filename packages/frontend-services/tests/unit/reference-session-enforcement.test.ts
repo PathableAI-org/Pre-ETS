@@ -107,6 +107,7 @@ const sessionDouble = (
   readForTenant: SessionService["Service"]["readForTenant"]
 ): SessionService["Service"] => ({
   establish: () => Effect.die("establish must remain unused"),
+  invalidate: () => Effect.die("invalidate must remain unused"),
   read: () => Effect.die("read must remain unused"),
   readForTenant: (input) => {
     recorded.events.push(`read:${input.tenantAlias}`)

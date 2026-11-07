@@ -10,6 +10,8 @@ import { SessionKeyPrefix } from "../config/index.js"
  */
 type CreateOutcome = "created" | "exists"
 
+type InvalidateOutcome = "missing" | "removed"
+
 type ReadOutcome =
   | { readonly _tag: "Current"; readonly payload: string }
   | { readonly _tag: "Expired" }
@@ -222,6 +224,16 @@ const makeCreate = (redis: Redis.Redis["Service"], prefix: string) =>
     return result === "OK" ? "created" : "exists"
   })
 
+const makeInvalidate = (redis: Redis.Redis["Service"], prefix: string) =>
+  Effect.fnUntraced(function*(address: SessionStoreAddress) {
+    const reply = yield* redis.send("DEL", keyFor(prefix, address.reference)).pipe(
+      Effect.mapError(unavailable)
+    )
+    if (reply === 0) return "missing" as const
+    if (reply === 1) return "removed" as const
+    return yield* unavailable()
+  })
+
 const makeTransition = (redis: Redis.Redis["Service"], prefix: string) =>
   Effect.fnUntraced(function*(input: TransitionInput) {
     const reply = yield* redis.eval(sessionTransition)(
@@ -276,6 +288,9 @@ export class SessionStore extends Context.Service<SessionStore, {
     payload: string,
     ttlMilliseconds: number
   ) => Effect.Effect<CreateOutcome, SessionStoreUnavailable>
+  readonly invalidate: (
+    address: SessionStoreAddress
+  ) => Effect.Effect<InvalidateOutcome, SessionStoreUnavailable>
   readonly read: (
     input: { readonly receivedAt: number; readonly reference: string }
   ) => Effect.Effect<ReadOutcome, SessionStoreUnavailable>
@@ -291,6 +306,7 @@ export class SessionStore extends Context.Service<SessionStore, {
       const transition = makeTransition(redis, prefix)
       return SessionStore.of({
         create: makeCreate(redis, prefix),
+        invalidate: makeInvalidate(redis, prefix),
         read: makeRead(transition),
         refresh: makeRefresh(transition)
       })

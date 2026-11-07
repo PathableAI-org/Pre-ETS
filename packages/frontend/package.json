@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "pnpm --filter @pathableai/pre-ets-frontend-services build && { pnpm --filter @pathableai/pre-ets-frontend-services dev & watch=$!; trap 'kill \"$watch\" 2>/dev/null; wait \"$watch\" 2>/dev/null' EXIT INT TERM; next dev; }",
+    "dev": "pnpm --filter @pathableai/pre-ets-frontend-services build || exit $?; pnpm --filter @pathableai/pre-ets-frontend-services dev & watch=$!; trap 'kill \"$watch\" 2>/dev/null; wait \"$watch\" 2>/dev/null' EXIT INT TERM; next dev",
     "build": "pnpm --filter @pathableai/pre-ets-frontend-services build && next build",
     "typecheck": "pnpm --filter @pathableai/pre-ets-frontend-services build && next typegen && tsc --noEmit -p tsconfig.json",
     "start": "pnpm --filter @pathableai/pre-ets-frontend-services build && next start",
@@ -19,17 +19,17 @@
   "dependencies": {
     "@pathableai/pre-ets-frontend-services": "workspace:*",
     "@pathableai/react": "0.3.0",
-    "next": "16.4.3",
+    "next": "16.4.5",
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "server-only": "0.0.1"
   },
   "devDependencies": {
-    "@next/eslint-plugin-next": "16.4.3",
+    "@next/eslint-plugin-next": "16.4.5",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "eslint-plugin-react-hooks": "7.1.1",
-    "globals": "17.13.0",
-    "vitest": "5.0.5"
+    "globals": "17.14.0",
+    "vitest": "5.1.0"
   }
 }

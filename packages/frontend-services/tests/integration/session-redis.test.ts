@@ -77,6 +77,14 @@ const read = (runtime: ManagedRuntime.ManagedRuntime<SessionService, unknown>, r
     })
   )
 
+const invalidate = (runtime: ManagedRuntime.ManagedRuntime<SessionService, unknown>, reference: string) =>
+  runtime.runPromise(
+    Effect.gen(function*() {
+      const service = yield* SessionService
+      return yield* service.invalidate({ reference })
+    })
+  )
+
 const deleteOwnedPrefix = async (prefix: string) => {
   if (!ownedSessionPrefix.test(prefix)) {
     throw new Error("Refusing to clean an unvalidated session prefix")
@@ -226,6 +234,22 @@ describe("SessionService with independently scoped NodeRedis clients", () => {
     }
   })
 
+  it("invalidates a session across independent clients without recreating it", async () => {
+    await withClients(async (runtimeA, runtimeB, prefix) => {
+      const established = await establish(runtimeA, 30)
+      expect(await read(runtimeB, established.reference)).toStrictEqual(established.session)
+
+      expect(await invalidate(runtimeB, established.reference)).toStrictEqual(noUsableSession)
+
+      const receivedAt = established.session.idleDeadlineEpochMilliseconds - 60_000
+      expect(await read(runtimeA, established.reference)).toStrictEqual(noUsableSession)
+      expect(await read(runtimeB, established.reference)).toStrictEqual(noUsableSession)
+      expect(await refreshAt(runtimeA, established.reference, receivedAt, changedPolicy)).toStrictEqual(noUsableSession)
+      expect(await refreshAt(runtimeB, established.reference, receivedAt, changedPolicy)).toStrictEqual(noUsableSession)
+      expect((await ownedKeyMetadata(prefix)).count).toBe(0)
+    })
+  })
+
   it("returns NoUsableSession after Redis evicts the owned record", async () => {
     const prefix = `test:session:${randomUUID()}:`
     const runtime = ManagedRuntime.make(sessionLayer(prefix))
@@ -335,23 +359,42 @@ describe("SessionService with independently scoped NodeRedis clients", () => {
     }
   })
 
-  it("translates a disconnected NodeRedis client into SessionServiceUnavailable for a read", async () => {
+  it("fails read, refresh, and invalidation explicitly through a disconnected adapter", async () => {
     const healthy = ManagedRuntime.make(sessionLayer(sessionPrefix))
     const outage = ManagedRuntime.make(disconnectedLayer(sessionPrefix))
     try {
-      const established = await establish(healthy, 30)
+      const forRead = await establish(healthy, 30)
+      const forRefresh = await establish(healthy, 30)
+      const forInvalidation = await establish(healthy, 30)
       await outage.runPromise(destroyClient)
-      const result = await outage.runPromise(Effect.gen(function*() {
+      const results = await outage.runPromise(Effect.gen(function*() {
         const service = yield* SessionService
-        return yield* service.read({ reference: established.reference }).pipe(Effect.result)
+        const readResult = yield* service.read({ reference: forRead.reference }).pipe(Effect.result)
+        const refreshResult = yield* service.refreshForTenant({
+          activity: "continue-session",
+          policy: changedPolicy,
+          reference: forRefresh.reference,
+          tenantAlias: alias
+        }).pipe(Effect.result)
+        const invalidationResult = yield* service.invalidate({ reference: forInvalidation.reference }).pipe(
+          Effect.result
+        )
+        return [readResult, refreshResult, invalidationResult] as const
       }))
-      expect(Result.isFailure(result)).toBe(true)
-      if (Result.isFailure(result)) {
-        expect(result.failure).toBeInstanceOf(SessionServiceUnavailable)
-        expect(result.failure.cause).toBeUndefined()
-        expect(String(result.failure)).not.toContain("subject-redis")
+      for (const result of results) {
+        expect(Result.isFailure(result)).toBe(true)
+        if (Result.isFailure(result)) {
+          expect(result.failure).toBeInstanceOf(SessionServiceUnavailable)
+          expect(result.failure.cause).toBeUndefined()
+          expect(String(result.failure)).not.toContain("subject-redis")
+        }
       }
-      expect(await read(healthy, established.reference)).toStrictEqual(established.session)
+
+      expect(await read(healthy, forRead.reference)).toStrictEqual(forRead.session)
+      expect(await read(healthy, forRefresh.reference)).toStrictEqual(forRefresh.session)
+      expect(await read(healthy, forInvalidation.reference)).toStrictEqual(forInvalidation.session)
+      expect(await invalidate(healthy, forInvalidation.reference)).toStrictEqual(noUsableSession)
+      expect(await read(healthy, forInvalidation.reference)).toStrictEqual(noUsableSession)
     } finally {
       await healthy.dispose()
       await outage.dispose()
@@ -468,7 +511,7 @@ const expectRenewed = (value: NoUsableSession | UsableSession, receivedAt: numbe
   })
 }
 
-describe("SessionService renewal and expiration on real Redis", () => {
+describe("SessionService renewal, expiration, and invalidation on real Redis", () => {
   it("adopts one client's refresh on the other client and leaves a sibling unchanged", async () => {
     await withClients(async (runtimeA, runtimeB) => {
       const first = await establish(runtimeA, 30, 5)
@@ -569,6 +612,83 @@ describe("SessionService renewal and expiration on real Redis", () => {
       expect(expiration).toStrictEqual(noUsableSession)
       expect(laterA).toStrictEqual(noUsableSession)
       expect(laterB).toStrictEqual(noUsableSession)
+      expect((await ownedKeyMetadata(prefix)).count).toBe(0)
+    })
+  })
+
+  it("keeps invalidation final when renewal completes first", async () => {
+    await withClients(async (runtimeA, runtimeB, prefix) => {
+      const established = await establish(runtimeA, 30, 5)
+      const receivedAt = established.session.idleDeadlineEpochMilliseconds - 60_000
+
+      const renewed = await refreshAt(runtimeB, established.reference, receivedAt, changedPolicy)
+      expectRenewed(renewed, receivedAt)
+      expect(await invalidate(runtimeA, established.reference)).toStrictEqual(noUsableSession)
+
+      expect(await read(runtimeA, established.reference)).toStrictEqual(noUsableSession)
+      expect(await read(runtimeB, established.reference)).toStrictEqual(noUsableSession)
+      expect(await refreshAt(runtimeA, established.reference, receivedAt, changedPolicy)).toStrictEqual(noUsableSession)
+      expect(await refreshAt(runtimeB, established.reference, receivedAt, changedPolicy)).toStrictEqual(noUsableSession)
+      expect((await ownedKeyMetadata(prefix)).count).toBe(0)
+    })
+  })
+
+  it("prevents renewal when invalidation completes first", async () => {
+    await withClients(async (runtimeA, runtimeB, prefix) => {
+      const established = await establish(runtimeA, 30, 5)
+      const receivedAt = established.session.idleDeadlineEpochMilliseconds - 60_000
+      expect(await read(runtimeB, established.reference)).toStrictEqual(established.session)
+
+      expect(await invalidate(runtimeA, established.reference)).toStrictEqual(noUsableSession)
+      expect(await refreshAt(runtimeB, established.reference, receivedAt, changedPolicy)).toStrictEqual(noUsableSession)
+
+      expect(await read(runtimeA, established.reference)).toStrictEqual(noUsableSession)
+      expect(await read(runtimeB, established.reference)).toStrictEqual(noUsableSession)
+      expect(await refreshAt(runtimeA, established.reference, receivedAt, changedPolicy)).toStrictEqual(noUsableSession)
+      expect(await refreshAt(runtimeB, established.reference, receivedAt, changedPolicy)).toStrictEqual(noUsableSession)
+      expect((await ownedKeyMetadata(prefix)).count).toBe(0)
+    })
+  })
+
+  it("ends unusable after renewal and invalidation are released together", async () => {
+    await withClients(async (runtimeA, runtimeB, prefix) => {
+      const established = await establish(runtimeA, 30, 5)
+      const receivedAt = established.session.idleDeadlineEpochMilliseconds - 60_000
+      expect(await read(runtimeB, established.reference)).toStrictEqual(established.session)
+      const start = Deferred.makeUnsafe<undefined>()
+      const renewalReady = Deferred.makeUnsafe<undefined>()
+      const invalidationReady = Deferred.makeUnsafe<undefined>()
+      const renewalPromise = runtimeB.runPromise(
+        Effect.gen(function*() {
+          yield* Deferred.succeed(renewalReady, undefined)
+          yield* Deferred.await(start)
+          const service = yield* SessionService
+          return yield* service.refreshForTenant({
+            activity: "keyboard-interaction",
+            policy: changedPolicy,
+            reference: established.reference,
+            tenantAlias: alias
+          })
+        }).pipe(Effect.provideService(Clock.Clock, clockAt(receivedAt)))
+      )
+      const invalidationPromise = runtimeA.runPromise(Effect.gen(function*() {
+        yield* Deferred.succeed(invalidationReady, undefined)
+        yield* Deferred.await(start)
+        const service = yield* SessionService
+        return yield* service.invalidate({ reference: established.reference })
+      }))
+
+      await Effect.runPromise(Deferred.await(renewalReady))
+      await Effect.runPromise(Deferred.await(invalidationReady))
+      await Effect.runPromise(Deferred.succeed(start, undefined))
+      const [renewal, invalidation] = await Promise.all([renewalPromise, invalidationPromise])
+      expect(["UsableSession", "NoUsableSession"]).toContain(renewal._tag)
+      expect(invalidation).toStrictEqual(noUsableSession)
+
+      expect(await read(runtimeA, established.reference)).toStrictEqual(noUsableSession)
+      expect(await read(runtimeB, established.reference)).toStrictEqual(noUsableSession)
+      expect(await refreshAt(runtimeA, established.reference, receivedAt, changedPolicy)).toStrictEqual(noUsableSession)
+      expect(await refreshAt(runtimeB, established.reference, receivedAt, changedPolicy)).toStrictEqual(noUsableSession)
       expect((await ownedKeyMetadata(prefix)).count).toBe(0)
     })
   })
