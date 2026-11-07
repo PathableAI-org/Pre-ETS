@@ -1,4 +1,5 @@
 import type * as NodeSdk from "@effect/opentelemetry/NodeSdk"
+import type { Instrumentation } from "@opentelemetry/instrumentation"
 
 import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-proto"
 import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-proto"
@@ -15,7 +16,6 @@ import { Effect } from "effect"
 import type { OtelEnabled } from "../config/otel.js"
 
 import { OtelSdkError } from "./error.js"
-import type { Instrumentation, InstrumentationConfig } from "@opentelemetry/instrumentation"
 
 const wrapConstructor =
   <
@@ -83,9 +83,7 @@ const makeHttpInstrumentation = wrapConstructor(HttpInstrumentation)
 const makeRedisInstrumentation = wrapConstructor(RedisInstrumentation)
 const makeRuntimeNodeInstrumentation = wrapConstructor(RuntimeNodeInstrumentation)
 
-const makeInstrumentations: {
-  (): Effect.Effect<Instrumentation<InstrumentationConfig>[], OtelSdkError>
-} = Effect.fn(
+const makeInstrumentations: () => Effect.Effect<Instrumentation[], OtelSdkError> = Effect.fn(
   function*() {
     const redacted = [
       "sig",
