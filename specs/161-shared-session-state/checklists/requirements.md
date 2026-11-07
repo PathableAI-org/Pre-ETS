@@ -44,6 +44,7 @@
 ## Notes
 
 - Validation iteration 1 passed all checklist items.
-- Authority baseline: `origin/main` at `f16b5a059d90b0afb333380d86b2004d9cda3b79`; live issue #153 read on 2026-11-05; approved S2 plan revision `e206d165f0f30999220922f57a3f92549c15f4cc`.
+- Validation iteration 2 accepted Copilot's warning-policy traceability and independent-adoption sequencing findings; all checklist items remain satisfied after revision.
+- Authority baseline refreshed from `origin/main` at `05a979783c422674f321a133d6747916c7911cc7`; live issue #153 and approved S2 plan revision `e206d165f0f30999220922f57a3f92549c15f4cc` remain the delivery authorities.
 - No clarification marker was needed. B6 decisions affect downstream authentication composition, not the authorized shared-state and authoritative-idle contract specified here.
 - Child-issue closure and existing component test results remain contextual evidence until exact revisions, observations, and limitations are reviewed and retained in a separate execution record.

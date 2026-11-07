@@ -46,17 +46,20 @@ As a security stakeholder, I need the server-side session deadline to control re
 
 ### User Story 3 - Reject invalid policy without fallback (Priority: P2)
 
-As a tenant administrator, I need invalid explicit timeout settings to be rejected rather than silently replaced so that the effective session policy is predictable.
+As a tenant administrator, I need invalid explicit timeout and warning settings to be rejected rather than silently replaced so that the effective session policy is predictable.
 
 **Why this priority**: Session lifecycle behavior cannot be trusted when configuration errors silently change the policy.
 
-**Independent Test**: Read tenant policy with boundary, omitted, fractional, and out-of-range timeout values and observe the accepted effective value or explicit rejection.
+**Independent Test**: Read tenant policy with boundary, omitted, disabled, fractional, and out-of-range timeout and warning values and observe the accepted effective policy or explicit rejection.
 
 **Acceptance Scenarios**:
 
 1. **Given** an explicit whole-minute timeout from 5 through 30 inclusive, **When** the tenant policy is read, **Then** that timeout is accepted.
 2. **Given** no timeout setting, **When** the tenant policy is read, **Then** the effective timeout is 30 minutes.
 3. **Given** an explicit timeout outside 5 through 30 or not expressed as whole minutes, **When** the tenant policy is read, **Then** the configuration is rejected and the 30-minute default is not substituted.
+4. **Given** no warning setting and an effective timeout greater than five minutes, **When** the tenant policy is read, **Then** the effective warning lead is five minutes; with an effective five-minute timeout, **Then** the warning is disabled.
+5. **Given** an explicit warning value of `0`, **When** the tenant policy is read with any permitted timeout, **Then** the warning is disabled without disabling authoritative expiration.
+6. **Given** an explicit nonzero warning value, **When** it is a positive whole number of minutes strictly below the effective timeout, **Then** it is accepted; otherwise the tenant configuration is rejected without substituting an omitted-setting default.
 
 ---
 
@@ -79,6 +82,9 @@ As an application consumer, I need usable, unavailable, and absent session outco
 
 - The minimum timeout of 5 whole minutes and maximum timeout of 30 whole minutes are accepted; fractional, non-numeric, and out-of-range explicit values are rejected.
 - An omitted timeout yields 30 minutes, while an explicit invalid timeout never falls back to 30 minutes.
+- An omitted warning yields a five-minute lead when the effective timeout is greater than five minutes and disables the warning when the effective timeout is five minutes.
+- An explicit warning value of `0` disables the warning at any permitted timeout without disabling expiration.
+- A nonzero warning lead equal to or greater than the effective timeout, or one that is negative, fractional, or nonnumeric, is rejected without fallback.
 - Qualifying activity immediately before the deadline can renew; activity exactly at or after the deadline cannot.
 - A timeout increase after the authoritative deadline cannot revive the session.
 - Concurrent renewal and expiration converge on an unusable session once the deadline has been reached.
@@ -96,17 +102,18 @@ As an application consumer, I need usable, unavailable, and absent session outco
 - **FR-002**: The system MUST hold session state in shared transient storage so independent consumers can use the same session without affinity to the consumer that established it.
 - **FR-003**: Every consumer of a usable session MUST observe consistent user identity, tenant identity, authoritative idle deadline, and effective warning policy.
 - **FR-004**: The system MUST accept explicit idle timeouts expressed as whole minutes from 5 through 30 inclusive, use 30 minutes when the setting is omitted, and reject every invalid explicit value without substituting the default.
-- **FR-005**: A newly established session MUST receive an authoritative idle deadline derived from the effective tenant timeout at establishment.
-- **FR-006**: Qualifying authenticated activity received before the current authoritative deadline MUST renew the session using the tenant timeout and warning policy effective at that refresh.
-- **FR-007**: Until a qualifying refresh occurs, a usable session MUST retain its established deadline and warning policy; different sessions MAY adopt the same policy change at different refreshes.
-- **FR-008**: Traffic classified as automatic polling, status traffic, or otherwise non-qualifying MUST NOT extend the idle deadline.
-- **FR-009**: At or after the authoritative deadline, the session MUST be unusable and MUST NOT be revived by renewal, concurrent activity, or a later timeout increase.
-- **FR-010**: Expiration, renewal, and invalidation performed through one consumer MUST be honored by every other consumer of the same shared session.
-- **FR-011**: Explicit invalidation MUST be final for the referenced session, including when invalidation overlaps renewal.
-- **FR-012**: Consumers MUST be able to distinguish a usable session from no usable session and from a shared-session service failure.
-- **FR-013**: Unknown, expired, or invalidated state and service failures MUST NOT yield usable identity, grant protected success at the bounded reference consumer, or silently create a replacement authenticated session.
-- **FR-014**: The shared session contract MUST be limited to the identity and lifecycle state authorized by this slice and MUST NOT become arbitrary application-value storage or durable domain persistence.
-- **FR-015**: The feature MUST provide a bounded reference consumption path sufficient to observe the reusable contract and its fail-closed outcomes without claiming comprehensive application entry-point enforcement.
+- **FR-005**: The system MUST derive warning policy as follows: omission yields a five-minute lead for effective timeouts greater than five minutes and disables the warning for a five-minute timeout; explicit `0` disables the warning at any permitted timeout; a nonzero value MUST be a positive whole number of minutes strictly below the effective timeout; every other explicit value MUST be rejected without fallback. Disabling the warning MUST NOT disable authoritative expiration.
+- **FR-006**: A newly established session MUST receive an authoritative idle deadline derived from the effective tenant timeout at establishment.
+- **FR-007**: Qualifying authenticated activity received before the current authoritative deadline MUST renew the session using the tenant timeout and warning policy effective at that refresh.
+- **FR-008**: Until a qualifying refresh occurs, a usable session MUST retain its established deadline and warning policy; different sessions MAY adopt the same policy change at different refreshes.
+- **FR-009**: Traffic classified as automatic polling, status traffic, or otherwise non-qualifying MUST NOT extend the idle deadline.
+- **FR-010**: At or after the authoritative deadline, the session MUST be unusable and MUST NOT be revived by renewal, concurrent activity, or a later timeout increase.
+- **FR-011**: Expiration, renewal, and invalidation performed through one consumer MUST be honored by every other consumer of the same shared session.
+- **FR-012**: Explicit invalidation MUST be final for the referenced session, including when invalidation overlaps renewal.
+- **FR-013**: Consumers MUST be able to distinguish a usable session from no usable session and from a shared-session service failure.
+- **FR-014**: Unknown, expired, or invalidated state and service failures MUST NOT yield usable identity, grant protected success at the bounded reference consumer, or silently create a replacement authenticated session.
+- **FR-015**: The shared session contract MUST be limited to the identity and lifecycle state authorized by this slice and MUST NOT become arbitrary application-value storage or durable domain persistence.
+- **FR-016**: The feature MUST provide a bounded reference consumption path sufficient to observe the reusable contract and its fail-closed outcomes without claiming comprehensive application entry-point enforcement.
 
 ### Key Entities _(include if feature involves data)_
 
@@ -121,11 +128,12 @@ As an application consumer, I need usable, unavailable, and absent session outco
 
 - **SC-001**: Across every planned independent-consumer scenario, a session established by one consumer is read by another with identical user, tenant, deadline, and warning-policy values.
 - **SC-002**: All timeout boundary cases accept 5 through 30 whole minutes, omission produces 30 minutes, and every exercised invalid explicit value is rejected without fallback.
-- **SC-003**: Every planned before/equal/after-deadline scenario renews only qualifying activity received before the deadline; no scenario revives a session at or after its deadline.
-- **SC-004**: In every planned policy-change scenario, an unrefreshed session retains its established state and each qualifying pre-deadline refresh adopts the then-effective policy independently.
-- **SC-005**: In every planned renewal/expiration and renewal/invalidation race, the final observable state is unusable when expiration or invalidation wins authority; no later read returns usable identity.
-- **SC-006**: Controlled shared-state failures are distinguishable from absent or ended sessions in every exercised operation and never produce usable identity or protected success.
-- **SC-007**: Reviewers can identify, from the feature artifacts alone, which service/store and bounded-reference claims this slice supports and which application, browser, recovery, and provider claims remain assigned downstream.
+- **SC-003**: All warning-policy cases produce the specified omitted or explicit effective policy, and every exercised invalid explicit lead is rejected without fallback while authoritative expiration remains enabled.
+- **SC-004**: Every planned before/equal/after-deadline scenario renews only qualifying activity received before the deadline; no scenario revives a session at or after its deadline.
+- **SC-005**: In every planned policy-change scenario, an unrefreshed session retains its established state and each qualifying pre-deadline refresh adopts the then-effective policy independently.
+- **SC-006**: In every planned renewal/expiration and renewal/invalidation race, the final observable state is unusable when expiration or invalidation wins authority; no later read returns usable identity.
+- **SC-007**: Controlled shared-state failures are distinguishable from absent or ended sessions in every exercised operation and never produce usable identity or protected success.
+- **SC-008**: Reviewers can identify, from the feature artifacts alone, which service/store and bounded-reference claims this slice supports and which application, browser, recovery, and provider claims remain assigned downstream.
 
 ## Assumptions
 
@@ -147,6 +155,7 @@ As an application consumer, I need usable, unavailable, and absent session outco
 | --------------------------------------------------------------------------- | --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [PREETS-SESSION-006](../../docs/requirements/session/PREETS-SESSION-006.md) | AC1–3                             | Specifies the shared-store and independent-consumer increment. AC2–3 application-level recognition, protected access, and complete cross-instance enforcement remain incomplete until #154 composes these capabilities through independently running application instances. |
 | [PREETS-SESSION-008](../../docs/requirements/session/PREETS-SESSION-008.md) | AC1–5                             | Specifies configuration, deadline, renewal, expiration, policy-adoption, excluded-traffic, race, and fail-closed service/store behavior. Complete protected HTTP and browser enforcement remains assigned to #154–#157.                                                     |
+| [PREETS-SESSION-011](../../docs/requirements/session/PREETS-SESSION-011.md) | AC1 configuration-policy portion  | Specifies warning defaults, disabling, valid lead times, and invalid-configuration rejection needed by issue #153. Warning presentation, shared-tab behavior, continuation, and accessibility remain assigned to #155–#157.                                                 |
 
 ### Authorized outcome
 
@@ -156,7 +165,7 @@ Independent session consumers share the same user and tenant identity and honor 
 
 - Shared, tenant-bound transient identity and authoritative idle state usable across independent consumers without creator affinity.
 - Initialization, read, qualifying renewal, expiration, explicit invalidation, and their concurrency and failure outcomes.
-- Timeout configuration and the warning-policy state needed at initialization and qualifying refresh.
+- Timeout and warning-policy validation, including omitted defaults, explicit disabling, valid lead times, and rejection without fallback, plus the resulting policy state needed at initialization and qualifying refresh.
 - Gradual adoption of current tenant policy at qualifying refresh, with no revival at or after the existing deadline.
 - Distinct usable-session, no-usable-session, and service-failure outcomes.
 - A bounded reference consumer and retained service/store evidence for the reusable contract.
