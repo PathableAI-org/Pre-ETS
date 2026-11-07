@@ -185,10 +185,14 @@ node --test tests/bdd/session/shared-session-parent.manual.test.ts
    P1. Then qualify B and confirm both clients see B on P2 (V-006).
 5. Coordinate a renewal attempt for A from one client with invalidation from the other. After both settle, confirm
    neither client returns usable identity and another refresh cannot recreate A (V-009).
-6. With a separate established session, exercise the bounded page/action successfully, then use the `stopStore`
-   pattern to stop only the owned Redis project. Re-exercise the bounded operation and confirm a distinct failure with
-   no protected receipt, redirect-based replacement session, or usable identity (V-010–V-011).
-7. Use the `startStore` pattern to restore the owned store only for public re-evaluation and cleanup. Treat an
+6. With a separate established session, open `/` on `springfield.localhost:<port>`, add only its opaque
+   `pathable-session` cookie, activate **Record reference operation**, and confirm the success status plus exactly one
+   non-session receipt cookie. Keep the session value in memory, clear all context cookies, restore only that
+   `pathable-session` cookie, and confirm no non-session cookie remains.
+7. Use the `stopStore` pattern to stop only the owned Redis project. Activate the same button again and confirm the
+   unavailable result replaces the success result, no new non-session receipt appears, the restored session cookie is
+   not replaced, no redirect occurs, and neither client returns usable identity (V-010–V-011).
+8. Use the `startStore` pattern to restore the owned store only for public re-evaluation and cleanup. Treat an
    indeterminate mutation as failure; do not retry it and claim a known original result.
 
 ### Cleanup
