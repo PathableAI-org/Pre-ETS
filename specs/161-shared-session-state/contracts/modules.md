@@ -341,6 +341,8 @@ the package root and never imports Effect or private frontend-services files.
 ### Implementation choices left to tasks
 
 - Whether current source needs any change after contract conformance; no change is preferred when no gap exists.
-- The temporary probe's exact file location and orchestration, provided it is uncommitted, uses owned infrastructure,
-  follows [quickstart.md](../quickstart.md), and is deleted after the run.
-- The evidence-record filename on the implementation branch, using the repository pattern selected at task time.
+- Private details inside the temporary probe may vary only when they preserve the fixed path, invocation, helper
+  patterns, owned-infrastructure lifecycle, and teardown in [quickstart.md](../quickstart.md).
+
+The probe location and orchestration are fixed by the quickstart. Retained implementation evidence belongs in the
+quickstart's implementation-results section; tasks do not choose a separate evidence filename.

@@ -4,6 +4,9 @@
 
 **Input**: Feature specification from `specs/161-shared-session-state/spec.md`
 
+**Approval gate**: [spec.md](./spec.md) and [verification.md](./verification.md) are proposed review inputs in PR
+#323. Task generation and implementation remain gated on human approval of that specification PR and this plan.
+
 ## Summary
 
 Converge the session capabilities already delivered through issue #153's child increments against the parent
@@ -176,7 +179,7 @@ Implement in this order:
 3. Run tenant-policy, session-service, policy-refresh, and bounded-consumer unit evidence.
 4. Run real-Redis integration with scenario-owned prefixes, then the opt-in isolated outage suite separately.
 5. Execute the temporary composed parent probe described in [quickstart.md](./quickstart.md), delete it, and retain
-   only safe semantic results attributed to the exact revision.
+   only safe semantic results attributed to the exact revision in the implementation-results section of that file.
 6. Run package and repository quality gates. Do not change CI cadence, add BDD solely for component coverage, or add
    observability assertions.
 
@@ -185,10 +188,11 @@ one decoded Redis script reply, fieldless public errors, scoped NodeRedis acquis
 
 ### Phase 5 — Feature verification integration
 
-[verification.md](./verification.md) remains the accepted claim design. [quickstart.md](./quickstart.md) supplies the
-implementation-aware commands, prerequisites, manual composed procedure, cleanup, retained record, and claim-by-claim
-limitations. Automated module evidence and the manual feature observation remain separate: the manual run composes
-two independent clients, two sessions adopting changed policy independently, excluded and qualifying activity,
-invalidation/renewal overlap, and bounded outage denial. It does not claim real OIDC freshness, comprehensive
-application enforcement, warning presentation, recovery, provider compatibility, distributed-clock behavior, or all
-possible races.
+[verification.md](./verification.md) is the proposed claim design pending human approval in PR #323.
+[quickstart.md](./quickstart.md) supplies the implementation-aware commands, prerequisites, manual composed procedure,
+cleanup, retained record, and claim-by-claim limitations. Task generation and implementation do not begin until a
+human approves the specification PR and this plan. Automated module evidence and the manual feature observation remain
+separate: the manual run composes two independent clients, two sessions adopting changed policy independently,
+excluded and qualifying activity, invalidation/renewal overlap, and bounded outage denial. It does not claim real OIDC
+freshness, comprehensive application enforcement, warning presentation, recovery, provider compatibility,
+distributed-clock behavior, or all possible races.

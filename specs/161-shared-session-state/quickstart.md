@@ -2,10 +2,11 @@
 
 **Plan**: [plan.md](./plan.md)
 
-**Accepted claim design**: [verification.md](./verification.md)
+**Proposed claim design pending human approval in PR #323**: [verification.md](./verification.md)
 
-This guide maps the approved verification claims to the current implementation. It plans commands and observations;
-it does not record an executed result.
+This guide maps the proposed verification claims to the current implementation. It plans commands and observations;
+it does not record an executed result. Task generation and implementation remain gated on human approval of PR #323
+and this plan.
 
 ## Safety and evidence rules
 
@@ -126,18 +127,49 @@ If cleanup fails, report the residual project/path and do not call the run clean
 
 ## 5. Manual composed parent observation
 
-This procedure is mandatory and distinct from the automated suites. Create a temporary uncommitted probe on the
-implementation branch by adapting the existing real-Redis session helpers, outage-store ownership pattern, and bounded
-frontend harness. Do not add the probe to Git, and delete it after the run.
+This procedure is mandatory and distinct from the automated suites. On the implementation branch, create exactly one
+temporary uncommitted probe at `tests/bdd/session/shared-session-parent.manual.test.ts`. Do not add the probe to Git,
+and delete it after the run. The probe is an execution-only composition of existing patterns, not a new durable test or
+product interface.
+
+### Probe composition contract
+
+The temporary file must:
+
+- import `./fixture-hooks.mjs` and `./fixture-register.mjs` before loading the bounded Next.js consumer;
+- import `applicationBrowser`, `freePort`, `type SiteOptions`, `spawnFrontend`, `stopProcess`, and `waitUntilReady`
+  from `../../support/oidc/harness.ts`, matching `tests/bdd/session/reference-session-enforcement.test.ts`;
+- copy only the bounded, test-local composition patterns named `sessionLayer`, `establish`, `read`, `refreshAt`,
+  `invalidate`, `withClients`, and `deleteOwnedPrefix` from
+  `packages/frontend-services/tests/integration/session-redis.test.ts`; and
+- adapt the owned-store lifecycle patterns named `freeLoopbackPort`, `composeDefinition`, `createOutageStore`,
+  `stopStore`, `startStore`, and `destroyOutageStore` from
+  `packages/frontend-services/tests/integration/session-redis-outage.test.ts`.
+
+Those integration helpers are test-local rather than public contracts: reproduce the minimum orchestration in the
+temporary file instead of exporting or importing them. Do not copy a full test implementation into a retained
+artifact.
+
+Build the bounded production frontend and invoke the probe from the repository root exactly as follows:
+
+```sh
+pnpm --filter @pathableai/pre-ets-frontend build
+node --test tests/bdd/session/shared-session-parent.manual.test.ts
+```
 
 ### Setup
 
-1. Create an isolated Redis 8.10.3 Compose project on a free loopback port with a validated unique session prefix.
-2. Create two independently scoped public `SessionService` clients A and B using that store.
+1. Use `freeLoopbackPort`, `composeDefinition`, and `createOutageStore` patterns to create an isolated Redis 8.10.3
+   Compose project on a free loopback port with a validated unique session prefix.
+2. Use the `sessionLayer` and `withClients` patterns to create two independently scoped public `SessionService`
+   clients A and B using the same owned Redis URL and prefix.
 3. Use synthetic tenant `parent-evidence`, issuers under `.test`, and two synthetic subjects. Prepare policy P1
    (`30/5`) and policy P2 (`5/0`).
-4. Start the bounded production frontend consumer against the owned store only when observing V-011. Do not use real
-   provider credentials; fixture establishment is explicitly bounded evidence, not freshness proof.
+4. Adapt the `siteOptions` pattern in `tests/bdd/session/reference-session-enforcement.test.ts`: use
+   `path.resolve("fixtures/tenant-config")`, `runtime: "production"`, the owned `redisUrl` and `sessionPrefix`, and a
+   probe-owned `transactionPrefix`. Start the bounded consumer with `spawnFrontend` on a `freePort`, wait with
+   `waitUntilReady`, then observe the bounded page/action through `applicationBrowser`. Do not use real provider
+   credentials; fixture establishment is explicitly bounded evidence, not freshness proof.
 5. Record revision, runtime/dependency versions, safe client labels, policy values, commands, and start time. Keep all
    opaque values in memory only.
 
@@ -151,21 +183,34 @@ frontend harness. Do not add the probe to Git, and delete it after the run.
    P1. Then qualify B and confirm both clients see B on P2 (V-006).
 5. Coordinate a renewal attempt for A from one client with invalidation from the other. After both settle, confirm
    neither client returns usable identity and another refresh cannot recreate A (V-009).
-6. With a separate established session, exercise the bounded page/action successfully, then stop only the owned Redis
-   project. Re-exercise the bounded operation and confirm a distinct failure with no protected receipt, redirect-based
-   replacement session, or usable identity (V-010–V-011).
-7. Restore the owned store only for public re-evaluation and cleanup. Treat an indeterminate mutation as failure; do
-   not retry it and claim a known original result.
+6. With a separate established session, exercise the bounded page/action successfully, then use the `stopStore`
+   pattern to stop only the owned Redis project. Re-exercise the bounded operation and confirm a distinct failure with
+   no protected receipt, redirect-based replacement session, or usable identity (V-010–V-011).
+7. Use the `startStore` pattern to restore the owned store only for public re-evaluation and cleanup. Treat an
+   indeterminate mutation as failure; do not retry it and claim a known original result.
 
 ### Cleanup
 
-1. Invalidate every still-readable synthetic session after the store is restored.
-2. Verify the validated owned prefix has no remaining keys.
-3. Dispose both clients and the production frontend runtime/processes.
-4. Remove the owned Compose project, containers, volumes, temporary files, and the uncommitted probe.
-5. Run `git status --short` and record that no generated output or probe remains.
+The probe must put lifecycle cleanup in `try`/`finally`. In the `finally` block, perform this order even after an
+assertion or command failure:
 
-### Expected retained result
+1. If the owned store is stopped, restart it with the `startStore` pattern so public cleanup can run.
+2. Re-evaluate and invalidate every still-readable synthetic session, then use `deleteOwnedPrefix` and verify the
+   validated owned prefix has no remaining keys.
+3. Dispose both scoped clients/runtimes.
+4. Stop the bounded frontend process with `stopProcess`.
+5. Remove the owned Compose project, containers, volumes, and temporary Compose directory with the
+   `destroyOutageStore` pattern.
+
+After the process exits, remove only the known temporary probe and verify that it and generated output are absent:
+
+```sh
+rm -- tests/bdd/session/shared-session-parent.manual.test.ts
+test ! -e tests/bdd/session/shared-session-parent.manual.test.ts
+git status --short
+```
+
+### Expected semantic result
 
 Retain only a claim table containing revision, environment, safe action label, semantic observation, pass/fail, cleanup,
 and limitation. Explicitly retain these limits:
@@ -194,7 +239,20 @@ pnpm check:changes
 Investigate every introduced finding. Do not add suppressions, ignores, baselines, weaker thresholds, or unmatched
 allowances. Report any pre-existing failure separately from an introduced failure.
 
-## 7. Evidence record checklist
+## 7. Implementation results
+
+Populate this section only on the implementation branch after executing the evidence against the exact revision.
+Retain no raw output and do not commit the temporary probe. Add one row per executed boundary using safe semantic
+observations only:
+
+| Claim IDs | Executed boundary and command/action | Semantic observation | Result  | Cleanup and limitations |
+| --------- | ------------------------------------ | -------------------- | ------- | ----------------------- |
+| Pending   | Pending implementation execution     | Pending              | Pending | Pending                 |
+
+Record the exact revision, environment, and execution time immediately above the table when replacing the pending
+row. This section is the retained implementation evidence location; do not create a separate evidence-record file.
+
+## 8. Evidence record checklist
 
 - [ ] Exact commit, branch, date/time, host environment, and dependency/service versions recorded.
 - [ ] Static conformance result names every contract and any source change.
