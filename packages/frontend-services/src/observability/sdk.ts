@@ -14,7 +14,7 @@ import { Effect } from "effect"
 
 import type { OtelEnabled } from "../config/otel.js"
 
-import { OtelSdkError } from "./error.ts"
+import { OtelSdkError } from "./error.js"
 import type { Instrumentation, InstrumentationConfig } from "@opentelemetry/instrumentation"
 
 const wrapConstructor = <
