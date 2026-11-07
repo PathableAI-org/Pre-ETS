@@ -7,6 +7,7 @@ import { ServerConfig, StartupConfig } from "../../src/config/index.ts"
 const BaseConfigProvider = ConfigProvider.fromUnknown({
   BASE_HOSTNAME: "example.test",
   NODE_ENV: "development",
+  OTEL_SDK_DISABLED: true,
   TENANT_CONFIG_DIR: "/absolute/path/to/packages/frontend/fixtures/tenant-config",
   TENANT_RESOLUTION: "host",
   TENANT_STATIC_ALIAS: "springfield"
