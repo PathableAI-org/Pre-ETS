@@ -16,8 +16,9 @@
     "test": "vitest run --config vitest.config.ts",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:integration:outage": "vitest run --config vitest.outage.config.ts",
-    "lint": "eslint . --max-warnings=0",
+    "lint": "eslint . --max-warnings=0 && pnpm run lint:effect",
     "lint:fix": "eslint . --max-warnings=0 --fix",
+    "lint:effect": "effect-language-service diagnostics --project tsconfig.json --strict --format text",
     "format:check": "dprint check",
     "format:write": "dprint fmt",
     "fallow:health": "fallow health --complexity",
@@ -49,6 +50,7 @@
     "server-only": "0.0.1"
   },
   "devDependencies": {
+    "@effect/language-service": "0.87.5",
     "@effect/vitest": "catalog:effect",
     "@fast-check/vitest": "0.5.0",
     "@opentelemetry/instrumentation": "0.223.0",

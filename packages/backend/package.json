@@ -7,8 +7,9 @@
     "typecheck": "pnpm --filter @pathableai/pre-ets-domain build && tsc --noEmit -p tsconfig.json",
     "start": "node dist/main.js",
     "test": "pnpm run build && node --test tests/*.test.mjs",
-    "lint": "pnpm --filter @pathableai/pre-ets-domain build && eslint . --max-warnings=0",
+    "lint": "pnpm --filter @pathableai/pre-ets-domain build && eslint . --max-warnings=0 && pnpm run lint:effect",
     "lint:fix": "pnpm --filter @pathableai/pre-ets-domain build && eslint . --max-warnings=0 --fix",
+    "lint:effect": "effect-language-service diagnostics --project tsconfig.json --strict --format text",
     "format:check": "dprint check",
     "format:write": "dprint fmt",
     "fallow:health": "fallow health --complexity",
@@ -22,6 +23,7 @@
     "pg": "8.23.1"
   },
   "devDependencies": {
+    "@effect/language-service": "0.87.5",
     "@types/pg": "8.23.1"
   }
 }

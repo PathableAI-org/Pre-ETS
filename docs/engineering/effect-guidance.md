@@ -250,11 +250,32 @@ keeps the Next.js plugin and does not enable the Effect plugin. New Effect
 workspaces should extend the base, add the plugin, provide their own include globs
 and types, and route agents here.
 
-The plugin keeps default severities with `ignoreEffectWarningsInTscExitCode: true`.
-After a developer manually patches TypeScript, errors block checks while warnings
-and suggestions remain visible without blocking. There is no automatic compiler
-patching or tooling verification in installation, Docker, or CI. Developers verify
-their environment manually using the README commands.
+### Effect diagnostics are a lint gate
+
+Each Effect workspace's `lint` script runs `lint:effect`:
+
+```sh
+effect-language-service diagnostics --project tsconfig.json --strict --format text
+```
+
+The command loads the plugin configuration from the workspace `tsconfig.json`
+without patching TypeScript. `--strict` fails on warnings as well as errors, so a
+diagnostic the editor would show also fails `pnpm lint` and `CI / Quality`. Run
+`pnpm --filter <workspace> run lint:effect` while editing Effect code. Do not wait
+for the final gate.
+
+The plugin only reports in an editor or in a manually patched `tsc`. Plain `tsc`
+and `pnpm typecheck` never load it. Before this gate existed, agents never saw these
+diagnostics, so the patterns they flag built up unnoticed. Treat a `lint:effect`
+finding like an ESLint finding. Fix the code. Do not lower a rule in
+`diagnosticSeverity`, set it to `off`, or add an `@effect-diagnostics` comment. The
+root rule against agent suppressions covers those too. Raising a rule's severity,
+or enabling an opt-in rule after fixing what it reports, makes the gate stronger
+and is encouraged.
+
+The plugin options keep `ignoreEffectWarningsInTscExitCode: true`, so a developer
+who also patches TypeScript (see the README) sees warnings in `tsc` without them
+changing its exit code. `lint:effect` is the enforced check.
 
 ## References
 

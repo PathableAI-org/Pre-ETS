@@ -13,8 +13,9 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run --config vitest.config.ts",
-    "lint": "eslint . --max-warnings=0",
+    "lint": "eslint . --max-warnings=0 && pnpm run lint:effect",
     "lint:fix": "eslint . --max-warnings=0 --fix",
+    "lint:effect": "effect-language-service diagnostics --project tsconfig.json --strict --format text",
     "format:check": "dprint check",
     "format:write": "dprint fmt",
     "fallow:health": "fallow health --complexity",
@@ -25,6 +26,7 @@
     "effect": "catalog:effect"
   },
   "devDependencies": {
+    "@effect/language-service": "0.87.5",
     "vitest": "5.1.0"
   }
 }
