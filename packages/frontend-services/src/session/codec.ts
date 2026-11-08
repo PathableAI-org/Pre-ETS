@@ -1,21 +1,12 @@
 import { Effect, Option, Result, Schema } from "effect"
 
+import { OpaqueToken, randomOpaqueTokenText } from "../opaque-token.js"
 import { TenantAlias } from "../tenant.js"
 
-const SessionReferenceBrand = "@pathableai/pre-ets-frontend/SessionReference" as const
-
-/**
- * Opaque browser reference: 32 random bytes encoded as unpadded base64url, 43 characters.
- * It is a bearer reference to server-held state and never carries identity or policy.
- */
-const SessionReference = Schema.String.pipe(
-  Schema.check(Schema.isPattern(/^[A-Za-z0-9_-]{43}$/)),
-  Schema.brand(SessionReferenceBrand)
-)
+/** The session cookie's opaque reference to the server-held session record. */
+const SessionReference = OpaqueToken.pipe(Schema.brand("SessionReference"))
 
 export type SessionReference = typeof SessionReference.Type
-
-const TelemetryIdBrand = "@pathableai/pre-ets-frontend/SessionTelemetryId" as const
 
 /**
  * Non-bearer correlation identifier stored with the record and used only as the
@@ -23,7 +14,7 @@ const TelemetryIdBrand = "@pathableai/pre-ets-frontend/SessionTelemetryId" as co
  */
 const TelemetryId = Schema.String.pipe(
   Schema.check(Schema.isUUID()),
-  Schema.brand(TelemetryIdBrand)
+  Schema.brand("SessionTelemetryId")
 )
 
 type TelemetryId = typeof TelemetryId.Type
@@ -62,12 +53,6 @@ export const decodeSessionReference = (value: string | undefined): Option.Option
   return Result.isSuccess(decoded) ? Option.some(decoded.success) : Option.none()
 }
 
-export const makeSessionReference = Effect.fnUntraced(function*() {
-  const bytes = yield* Effect.sync(() => globalThis.crypto.getRandomValues(new Uint8Array(32)))
-  return Schema.decodeUnknownSync(SessionReference)(Buffer.from(bytes).toString("base64url"))
-})
+export const makeSessionReference = randomOpaqueTokenText.pipe(Effect.map((text) => SessionReference.make(text)))
 
-export const makeTelemetryId = Effect.fnUntraced(function*() {
-  const value = yield* Effect.sync(() => globalThis.crypto.randomUUID())
-  return Schema.decodeUnknownSync(TelemetryId)(value)
-})
+export const makeTelemetryId = Effect.sync(() => TelemetryId.make(globalThis.crypto.randomUUID()))

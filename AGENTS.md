@@ -45,7 +45,10 @@ command reference is [Fallow during development](docs/engineering/fallow.md).
   The first two are whole-scope checks. `check:changes` is the new-only audit
   and is also what the pre-commit hook runs.
 - Report unresolved findings, including whether they are pre-existing or
-  introduced. Fix an introduced violation. Ask for human review when a finding
+  introduced. Fix an introduced violation; fix a complexity finding by changing the
+  representation, not by extracting single-use helpers (see the
+  [Fallow guide](docs/engineering/fallow.md#complexity-dead-code-and-type-aware-analysis)).
+  Ask for human review when a finding
   looks like a false positive or a legitimate exception.
 
 ## Testing guidance

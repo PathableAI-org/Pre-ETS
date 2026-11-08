@@ -1,5 +1,5 @@
 import "server-only"
-import { Clock, Context, Duration, Effect, Layer, Result, Schema } from "effect"
+import { Clock, Context, Duration, Effect, Layer, Option, Result, Schema } from "effect"
 
 import { ClientCredentials } from "./authentication/credentials.js"
 import { completeProvider, prepareProvider } from "./authentication/provider.js"
@@ -89,58 +89,42 @@ const requestMatchesOrigin = (request: RequestHost, origin: URL): boolean => {
     request.hostname === origin.hostname.toLowerCase()
 }
 
-interface CallbackShape {
-  readonly kind: "error" | "success"
-  readonly state: string
-}
+const callbackSecurityNames = new Set(["code", "error", "error_description", "error_uri", "iss", "state"])
 
-const callbackValues = (query: readonly (readonly [string, string])[]): Map<string, string[]> => {
-  const securityNames = new Set(["code", "error", "error_description", "error_uri", "iss", "state"])
-  const values = new Map<string, string[]>()
+/** A security parameter appears exactly once with a non-blank value. */
+const SingleValue = Schema.Tuple([Schema.String.pipe(Schema.check(Schema.isPattern(/\S/)))])
+
+/**
+ * The two permitted callback shapes, keyed by security parameter. Unknown security parameters are rejected, so a
+ * success carries no error fields and an error carries no code. Non-security parameters are ignored.
+ */
+const CallbackQuery = Schema.Union([
+  Schema.Struct({ code: SingleValue, iss: Schema.optionalKey(SingleValue), state: SingleValue }),
+  Schema.Struct({
+    error: SingleValue,
+    error_description: Schema.optionalKey(SingleValue),
+    error_uri: Schema.optionalKey(SingleValue),
+    iss: Schema.optionalKey(SingleValue),
+    state: SingleValue
+  })
+])
+
+const decodeCallbackQuery = Schema.decodeUnknownOption(CallbackQuery, { onExcessProperty: "error" })
+
+const securityParameters = (query: readonly (readonly [string, string])[]): Record<string, string[]> => {
+  const values: Record<string, string[]> = {}
   for (const [name, value] of query) {
-    if (!securityNames.has(name)) continue
-    const previous = values.get(name)
-    if (previous === undefined) values.set(name, [value])
-    else previous.push(value)
+    if (callbackSecurityNames.has(name)) (values[name] ??= []).push(value)
   }
   return values
 }
 
-const hasInvalidCallbackValue = (values: Map<string, string[]>): boolean =>
-  [...values.values()].some((entries) => entries.length !== 1 || entries[0]?.trim() === "")
-
-const validatedCallbackValues = (
-  query: readonly (readonly [string, string])[]
-): Map<string, string[]> | undefined => {
-  const values = callbackValues(query)
-  return hasInvalidCallbackValue(values) ? undefined : values
-}
-
-const callbackValue = (values: Map<string, string[]>, name: string): string | undefined => values.get(name)?.[0]
-
-const callbackKind = (code: string | undefined, error: string | undefined): CallbackShape["kind"] | undefined => {
-  if (code !== undefined) return error === undefined ? "success" : undefined
-  return error === undefined ? undefined : "error"
-}
-
-const errorDetailsAllowed = (values: Map<string, string[]>, kind: CallbackShape["kind"]): boolean =>
-  kind === "error" || !["error_description", "error_uri"].some((name) => values.has(name))
-
-const shapeFromValues = (values: Map<string, string[]>): CallbackShape | undefined => {
-  const state = callbackValue(values, "state")
-  if (state === undefined) return undefined
-  const kind = callbackKind(callbackValue(values, "code"), callbackValue(values, "error"))
-  if (kind === undefined) return undefined
-  if (!errorDetailsAllowed(values, kind)) return undefined
-  return { kind, state }
-}
-
 const callbackShape = (
   query: readonly (readonly [string, string])[]
-): CallbackShape | undefined => {
-  const values = validatedCallbackValues(query)
-  return values === undefined ? undefined : shapeFromValues(values)
-}
+): Option.Option<{ readonly kind: "error" | "success"; readonly state: string }> =>
+  decodeCallbackQuery(securityParameters(query)).pipe(
+    Option.map((parameters) => ({ kind: "code" in parameters ? "success" : "error", state: parameters.state[0] }))
+  )
 
 interface AttemptBindings {
   readonly callbackAuthority: string
@@ -153,29 +137,29 @@ interface AttemptBindings {
 }
 
 const attemptMatches = (attempt: AttemptBindings, expected: AttemptBindings): boolean =>
-  [
-    [attempt.callbackAuthority, expected.callbackAuthority],
-    [attempt.clientId, expected.clientId],
-    [attempt.correlation, expected.correlation],
-    [attempt.issuer, expected.issuer],
-    [attempt.redirectUri, expected.redirectUri],
-    [attempt.state, expected.state],
-    [attempt.tenantAlias, expected.tenantAlias]
-  ].every(([actual, wanted]) => actual === wanted)
+  attempt.callbackAuthority === expected.callbackAuthority &&
+  attempt.clientId === expected.clientId &&
+  attempt.correlation === expected.correlation &&
+  attempt.issuer === expected.issuer &&
+  attempt.redirectUri === expected.redirectUri &&
+  attempt.state === expected.state &&
+  attempt.tenantAlias === expected.tenantAlias
 
 const exactCallback = (origin: URL): { readonly authority: string; readonly redirectUri: string } => ({
   authority: origin.origin,
   redirectUri: new URL("/auth/callback", origin).href
 })
 
-const authenticationServiceLayer = (settings: AuthenticationSettings) =>
-  Layer.effect(
+const authenticationServiceLayer = (settings: AuthenticationSettings) => {
+  // The provider adapter's fetch hook runs outside Effect and needs a throwing validator.
+  const validateUrl = Schema.decodeUnknownSync(permittedUrl(settings.allowInsecureLoopback))
+  const decodeUrl = Schema.decodeUnknownEffect(permittedUrl(settings.allowInsecureLoopback))
+  return Layer.effect(
     AuthenticationService,
     Effect.gen(function*() {
       const credentials = yield* ClientCredentials
       const tenant = yield* TenantConfigService
       const transactions = yield* AuthenticationTransactions
-      const validateUrl = Schema.decodeUnknownSync(permittedUrl(settings.allowInsecureLoopback))
 
       const prepare = Effect.fn("AuthenticationService.prepare")(function*({ host }: { readonly host: string }) {
         const requestHost = parseRequestHost(host)
@@ -233,7 +217,7 @@ const authenticationServiceLayer = (settings: AuthenticationSettings) =>
       const qualifyCallback = Effect.fnUntraced(function*(input: CompleteAuthenticationInput) {
         const shape = callbackShape(input.query)
         const requestHost = parseRequestHost(input.host)
-        if (shape === undefined || requestHost === undefined) {
+        if (Option.isNone(shape) || requestHost === undefined) {
           return yield* callbackFailure(denied(), "preserve")
         }
         const correlation = yield* decodeBrowserCorrelation(input.correlation).pipe(
@@ -249,7 +233,7 @@ const authenticationServiceLayer = (settings: AuthenticationSettings) =>
         if (origin === undefined || !requestMatchesOrigin(requestHost, origin)) {
           return yield* callbackFailure(denied(), "preserve")
         }
-        return { alias, callback: exactCallback(origin), config, correlation, shape }
+        return { alias, callback: exactCallback(origin), config, correlation, shape: shape.value }
       })
 
       const complete = Effect.fn("AuthenticationService.complete")(function*(input: CompleteAuthenticationInput) {
@@ -274,16 +258,15 @@ const authenticationServiceLayer = (settings: AuthenticationSettings) =>
           })
         )
 
-        const configuredIssuer = yield* Effect.try({
-          catch: () => callbackFailure(unavailable(), "clear"),
-          try: () => validateUrl(qualified.config.oidc.issuer).href
-        })
+        const configuredIssuer = yield* decodeUrl(qualified.config.oidc.issuer).pipe(
+          Effect.mapError(() => callbackFailure(unavailable(), "clear"))
+        )
         if (
           !attemptMatches(attempt, {
             callbackAuthority: qualified.callback.authority,
             clientId: qualified.config.oidc.clientId,
             correlation: qualified.correlation,
-            issuer: configuredIssuer,
+            issuer: configuredIssuer.href,
             redirectUri: qualified.callback.redirectUri,
             state: qualified.shape.state,
             tenantAlias: qualified.alias
@@ -326,3 +309,4 @@ const authenticationServiceLayer = (settings: AuthenticationSettings) =>
       AuthenticationTransactions.layer(settings.transactions)
     ))
   )
+}

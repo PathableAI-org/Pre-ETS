@@ -182,8 +182,8 @@ export class SessionService extends Context.Service<SessionService, {
           const attempt = (remaining: number): Effect.Effect<EstablishedSession, SessionServiceUnavailable> =>
             Effect.gen(function*() {
               const now = yield* Clock.currentTimeMillis
-              const reference = yield* makeSessionReference()
-              const telemetryId = yield* makeTelemetryId()
+              const reference = yield* makeSessionReference
+              const telemetryId = yield* makeTelemetryId
               const idleDeadlineEpochMilliseconds = now + input.policy.idleTimeoutMinutes * 60_000
               const payload = yield* serviceUnavailable(encodeStoredSession({
                 idleDeadlineEpochMilliseconds,
