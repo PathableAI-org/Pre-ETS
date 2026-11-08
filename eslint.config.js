@@ -4,7 +4,7 @@ import { defineConfig, globalIgnores } from "eslint/config"
 import globals from "globals"
 import tseslint from "typescript-eslint"
 
-import { effectConventions, effectRestrictedSyntax } from "./eslint.effect.js"
+import { effectConventions, effectFnRestriction, effectRestrictedSyntax } from "./eslint.effect.js"
 
 /** JavaScript globals that a local binding must not shadow. Effect exports modules with several of these names. */
 const shadowedGlobals =
@@ -96,6 +96,13 @@ export default defineConfig([
         "error",
         { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }
       ],
+      "no-restricted-syntax": ["error", ...restrictedSyntax, effectFnRestriction]
+    }
+  },
+  {
+    // Flat config replaces rule options per block, so tests restate the list without the production-only entry.
+    files: ["tests/**/*.{ts,tsx}", "**/tests/**/*.{ts,tsx}", "e2e/**/*.{ts,tsx}"],
+    rules: {
       "no-restricted-syntax": ["error", ...restrictedSyntax]
     }
   },
