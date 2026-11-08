@@ -25,16 +25,18 @@ export async function requestInstance(
   cookie?: string
 ): Promise<{ body: string; headers: Record<string, string>; status: number }> {
   return new Promise((resolve, reject) => {
+    const headers: Record<string, string> = {
+      Host: host,
+      "x-forwarded-proto": "https",
+      ...sessionCookieHeader(world),
+      ...world.extraHeaders,
+      ...(document ? { Accept: "text/html", "sec-fetch-dest": "document" } : { Accept: "application/json" })
+    }
+    // Node rejects an undefined header value, so an absent cookie must stay absent.
+    if (cookie !== undefined) headers.Cookie = cookie
     const request = http.get(
       {
-        headers: {
-          Host: host,
-          "x-forwarded-proto": "https",
-          ...sessionCookieHeader(world),
-          ...world.extraHeaders,
-          ...(cookie === undefined ? {} : { Cookie: cookie }),
-          ...(document ? { Accept: "text/html", "sec-fetch-dest": "document" } : { Accept: "application/json" })
-        },
+        headers,
         hostname: "127.0.0.1",
         path: requestPath,
         port
