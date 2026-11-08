@@ -7,7 +7,7 @@
 import "server-only"
 import { Context, Effect, FileSystem, Layer, Path, type PlatformError, Result, Schema } from "effect"
 
-import type { TenantConfig as TenantResolutionConfig, TenantStaticConfig } from "./config/index.js"
+import type { StaticTenantResolution, TenantResolutionSettings } from "./config.js"
 
 import { decodeTenantConfig, effectiveSessionPolicy, type SessionPolicy, type TenantConfig } from "./tenant/config.js"
 
@@ -82,8 +82,8 @@ const tenantAliasFromHost = (baseHostname: string) => {
   }
 }
 
-const tenantAliasFromStaticTenantConfig = (
-  config: TenantStaticConfig
+const tenantAliasFromStaticResolution = (
+  config: StaticTenantResolution
 ): Result.Result<TenantAlias, TenantFailure> =>
   Result.mapError(
     decodeTenantAlias(config.staticAlias),
@@ -105,13 +105,13 @@ const tenantAliasFromStaticTenantConfig = (
  * @category constructors
  */
 const tenantAliasFromServerConfig = (
-  config: TenantResolutionConfig
+  config: TenantResolutionSettings
 ): (host: string) => Result.Result<TenantAlias, TenantFailure> => {
   switch (config.resolution) {
     case "host":
       return tenantAliasFromHost(config.baseHostname)
     case "static":
-      return (_host: string) => tenantAliasFromStaticTenantConfig(config)
+      return (_host: string) => tenantAliasFromStaticResolution(config)
   }
 }
 
@@ -124,7 +124,7 @@ const failTenant = <E extends TenantFailure>(reason: TenantFailureReason, error:
   }).pipe(Effect.andThen(Effect.fail(error)))
 
 const tenantConfigFromAlias = (
-  config: TenantResolutionConfig,
+  config: TenantResolutionSettings,
   path: Path.Path,
   fs: FileSystem.FileSystem
 ): (alias: TenantAlias) => Effect.Effect<TenantConfig, TenantFailure> => {
@@ -197,7 +197,7 @@ export class TenantConfigService extends Context.Service<TenantConfigService, {
   readonly getConfigFromAlias: (alias: TenantAlias) => Effect.Effect<TenantConfig, TenantFailure>
   readonly getConfigFromHost: (host: string) => Effect.Effect<TenantConfig, TenantFailure>
 }>()("TenantConfigService") {
-  static readonly layer = (settings: TenantResolutionConfig) =>
+  static readonly layer = (settings: TenantResolutionSettings) =>
     Layer.effect(
       TenantConfigService,
       Effect.gen(function*() {

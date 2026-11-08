@@ -1,7 +1,7 @@
 import { Duration, Effect, Layer } from "effect"
 import * as Redis from "effect/persistence/Redis"
 
-import type { AuthenticationSettings } from "../../src/config/index.ts"
+import type { AuthenticationSettings } from "../../src/config.ts"
 
 import { makeRedis, parseSetNx } from "./redis.ts"
 

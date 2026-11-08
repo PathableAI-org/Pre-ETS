@@ -1,7 +1,7 @@
 import { Clock, Context, Duration, Effect, Layer, Schema } from "effect"
 import { Redis } from "effect/persistence/Redis"
 
-import type { TransactionStoreSettings } from "../config/index.js"
+import type { TransactionStoreSettings } from "../config.js"
 
 import { decodeStoredAttempt, encodeStoredAttempt, type RecoverableAuthenticationAttempt } from "./transaction/codec.js"
 import { type AttemptAddress, makeTransactionStore, type TransactionStoreUnavailable } from "./transaction/store.js"

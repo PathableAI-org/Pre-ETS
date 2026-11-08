@@ -3,7 +3,7 @@ import { fc, it } from "@fast-check/vitest"
 import { Effect, Layer, References, Result } from "effect"
 import { describe, expect } from "vitest"
 
-import { tenantFailureStatus } from "../../src/error.ts"
+import { tenantFailureStatus } from "../../src/next.ts"
 import { TenantConfigService, type TenantFailure } from "../../src/tenant.ts"
 
 const aliasArb = fc.mixedCase(fc.constantFrom("springfield", "shelbyville"))

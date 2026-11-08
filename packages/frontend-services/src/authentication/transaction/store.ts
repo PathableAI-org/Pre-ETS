@@ -4,7 +4,7 @@ import { Duration, Effect, Schema } from "effect"
 import { createHash } from "node:crypto"
 import { ClientClosedError, ClientOfflineError } from "redis"
 
-import type { TransactionStoreSettings } from "../../config/index.js"
+import type { TransactionStoreSettings } from "../../config.js"
 import type { BrowserCorrelation } from "./codec.js"
 
 export interface AttemptAddress {

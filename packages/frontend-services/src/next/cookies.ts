@@ -3,7 +3,7 @@ import type { NextRequest, NextResponse } from "next/server"
 import type { SessionReference } from "../session.js"
 
 import { isLoopbackHostname, parseRequestHost } from "../request-host.js"
-import { SESSION_COOKIE } from "../session-request.js"
+import { SESSION_COOKIE } from "./session.js"
 
 export const CORRELATION_COOKIE = "oidc-correlation"
 

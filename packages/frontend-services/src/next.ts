@@ -1,19 +1,17 @@
-import "server-only"
-import { Effect, Predicate } from "effect"
-import { type NextRequest, NextResponse } from "next/server"
-
-import type { ApplicationServices } from "./runtime.js"
-
-import { Runtime } from "./runtime.js"
-
-/** `Cache-Control` for every response that carries per-user state or a tenant diagnostic. */
-export const PRIVATE_NO_STORE = "private, no-store"
-
-/** Runs one request Effect on the process runtime and returns its Next.js response. */
-export const toNext =
-  (handler: (request: NextRequest) => Effect.Effect<NextResponse, never, ApplicationServices>) =>
-  (request: NextRequest): Promise<NextResponse> =>
-    Runtime.runPromise(Effect.suspend(() => handler(request))).catch((error: unknown) => {
-      if (Predicate.isTagged(error, "StartupNotReady")) return new NextResponse(null, { status: 503 })
-      throw error
-    })
+/**
+ * Next.js host adapters: route handlers, server-component reads, and the HTTP mapping of service failures.
+ * This module and its children under `next/` are the only code that imports `next/server` or `next/navigation`.
+ */
+export { type CallbackResponses, createCallbackHandler } from "./next/callback.js"
+export { requestCookieOptions } from "./next/cookies.js"
+export { CallbackFreshness } from "./next/freshness.js"
+export { PRIVATE_NO_STORE } from "./next/handler.js"
+export { createLoginHandler } from "./next/login.js"
+export {
+  readSessionRequest,
+  type ReadSessionRequestInput,
+  type ResolvedSessionRequest,
+  SESSION_COOKIE
+} from "./next/session.js"
+export { type TenantFailureResponse, tenantFailureStatus } from "./next/tenant-failure.js"
+export { loadTenantConfig, tenantConfigResponse } from "./next/tenant.js"

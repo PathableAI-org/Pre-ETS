@@ -1,7 +1,7 @@
 import { NodePath, NodeRedis, NodeServices } from "@effect/platform-node"
 import { Effect, Layer, Logger, ManagedRuntime, Path, References } from "effect"
 
-import type { AppEnv, StartupSettings } from "./config/index.js"
+import type { AppEnv, StartupSettings } from "./config.js"
 
 import { applicationLayer, type ApplicationServices, installManagedRuntime, loadProcessStartup } from "./runtime.js"
 

@@ -1,6 +1,6 @@
 import { Config, Option, Schema, SchemaIssue, type Types } from "effect"
 
-const _RawTenantConfig = Config.all({
+const RawTenantResolution = Config.all({
   baseHostname: Config.NonEmptyString("BASE_HOSTNAME").pipe(
     Config.option
   ),
@@ -11,23 +11,23 @@ const _RawTenantConfig = Config.all({
   )
 })
 
-export interface BaseTenantConfig {
+export interface BaseTenantResolution {
   readonly configDir: string
 }
 
-export interface HostTenantConfig extends BaseTenantConfig {
+export interface HostTenantResolution extends BaseTenantResolution {
   readonly baseHostname: string
   readonly resolution: "host"
 }
 
-export interface StaticTenantConfig extends BaseTenantConfig {
+export interface StaticTenantResolution extends BaseTenantResolution {
   readonly resolution: "static"
   readonly staticAlias: string
 }
 
-export type TenantConfig = HostTenantConfig | StaticTenantConfig
+export type TenantResolutionSettings = HostTenantResolution | StaticTenantResolution
 
-const missingKey = (key: string, messageMissingKey: string): Config.Config<TenantConfig> => {
+const missingKey = (key: string, messageMissingKey: string): Config.Config<TenantResolutionSettings> => {
   const issue = new SchemaIssue.MissingKey({
     key,
     messageMissingKey
@@ -35,18 +35,20 @@ const missingKey = (key: string, messageMissingKey: string): Config.Config<Tenan
   return Config.fail(new Schema.SchemaError(issue))
 }
 
-const validateTenantConfig = (config: Config.Success<typeof _RawTenantConfig>): Config.Config<TenantConfig> => {
+const validateTenantResolution = (
+  config: Config.Success<typeof RawTenantResolution>
+): Config.Config<TenantResolutionSettings> => {
   if (config.resolution === "host") {
     if (Option.isNone(config.baseHostname)) {
       return missingKey("baseHostname", "BASE_HOSTNAME is required when resolution is host")
     }
-    return Config.succeed<HostTenantConfig>({
+    return Config.succeed<HostTenantResolution>({
       baseHostname: config.baseHostname.value,
       configDir: config.configDir,
       resolution: "host"
     })
   } else if (Option.isSome(config.staticAlias)) {
-    return Config.succeed<StaticTenantConfig>({
+    return Config.succeed<StaticTenantResolution>({
       configDir: config.configDir,
       resolution: "static",
       staticAlias: config.staticAlias.value
@@ -56,7 +58,7 @@ const validateTenantConfig = (config: Config.Success<typeof _RawTenantConfig>): 
   }
 }
 
-export const TenantConfig: Config.Config<Types.Simplify<TenantConfig>> = Config.flatMap(
-  _RawTenantConfig,
-  validateTenantConfig
+export const TenantResolutionConfig: Config.Config<Types.Simplify<TenantResolutionSettings>> = Config.flatMap(
+  RawTenantResolution,
+  validateTenantResolution
 )

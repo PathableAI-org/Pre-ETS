@@ -2,7 +2,7 @@ import type { Redis } from "effect/persistence/Redis"
 
 import { Clock, Context, Effect, Layer, Option, Schema } from "effect"
 
-import type { SessionSettings } from "./config/index.js"
+import type { SessionSettings } from "./config.js"
 import type { SessionPolicy, TenantAlias } from "./tenant.js"
 
 import {

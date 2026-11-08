@@ -2,8 +2,8 @@ import { NodeServices } from "@effect/platform-node"
 import { Effect, Layer, References, Result, Schema } from "effect"
 import { describe, expect, it, vi } from "vitest"
 
-import { tenantFailureStatus } from "../../src/error.ts"
-import { readSessionRequest } from "../../src/session-request.ts"
+import { tenantFailureStatus } from "../../src/next.ts"
+import { readSessionRequest } from "../../src/next.ts"
 import {
   type NoUsableSession,
   SessionService,
