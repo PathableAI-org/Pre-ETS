@@ -2,7 +2,7 @@ import "server-only"
 import { Clock, Context, Duration, Effect, Layer, Option, Schema } from "effect"
 
 import { ClientCredentials } from "./authentication/credentials.js"
-import { completeProvider, prepareProvider } from "./authentication/provider.js"
+import { OidcProvider } from "./authentication/provider.js"
 import {
   AuthenticationTransactions,
   decodeBrowserCorrelation,
@@ -154,13 +154,12 @@ const exactCallback = (origin: URL): { readonly authority: string; readonly redi
 })
 
 const authenticationServiceLayer = (settings: AuthenticationSettings) => {
-  // The provider adapter's fetch hook runs outside Effect and needs a throwing validator.
-  const validateUrl = Schema.decodeUnknownSync(permittedUrl(settings.allowInsecureLoopback))
   const decodeUrl = Schema.decodeUnknownEffect(permittedUrl(settings.allowInsecureLoopback))
   return Layer.effect(
     AuthenticationService,
     Effect.gen(function*() {
       const credentials = yield* ClientCredentials
+      const provider = yield* OidcProvider
       const tenant = yield* TenantConfigService
       const transactions = yield* AuthenticationTransactions
 
@@ -185,13 +184,11 @@ const authenticationServiceLayer = (settings: AuthenticationSettings) => {
 
         /** A fresh provider state and correlation per attempt; only a correlation collision is retried. */
         const createCandidate = Effect.gen(function*() {
-          const provider = yield* prepareProvider({
-            allowInsecureLoopback: settings.allowInsecureLoopback,
+          const prepared = yield* provider.prepare({
             clientAuthentication,
             clientId: config.oidc.clientId,
             issuer: config.oidc.issuer,
-            redirectUri: callback.redirectUri,
-            validateUrl
+            redirectUri: callback.redirectUri
           }).pipe(Effect.mapError(() => unavailable()))
           const correlation = yield* makeBrowserCorrelation
           const createdAt = yield* Clock.currentTimeMillis
@@ -202,15 +199,15 @@ const authenticationServiceLayer = (settings: AuthenticationSettings) => {
             correlation,
             createdAt,
             expiresAt,
-            issuer: provider.issuer,
-            nonce: provider.nonce,
-            pkceVerifier: provider.pkceVerifier,
+            issuer: prepared.issuer,
+            nonce: prepared.nonce,
+            pkceVerifier: prepared.pkceVerifier,
             redirectUri: callback.redirectUri,
-            state: provider.state,
+            state: prepared.state,
             tenantAlias: alias,
             version: 1
           })
-          return { correlation, destination: provider.destination, expiresAt }
+          return { correlation, destination: prepared.destination, expiresAt }
         })
 
         return yield* createCandidate.pipe(
@@ -276,8 +273,7 @@ const authenticationServiceLayer = (settings: AuthenticationSettings) => {
         const clientAuthentication = yield* credentials.resolve(qualified.config.oidc).pipe(
           Effect.mapError(() => callbackFailure(unavailable(), "clear"))
         )
-        const identity = yield* completeProvider({
-          allowInsecureLoopback: settings.allowInsecureLoopback,
+        const identity = yield* provider.complete({
           callbackQuery: input.query,
           clientAuthentication,
           clientId: qualified.config.oidc.clientId,
@@ -285,8 +281,7 @@ const authenticationServiceLayer = (settings: AuthenticationSettings) => {
           expectedState: attempt.state,
           issuer: qualified.config.oidc.issuer,
           pkceVerifier: attempt.pkceVerifier,
-          redirectUri: qualified.callback.redirectUri,
-          validateUrl
+          redirectUri: qualified.callback.redirectUri
         }).pipe(
           Effect.mapError(() => callbackFailure(unavailable(), "clear"))
         )
@@ -303,6 +298,7 @@ const authenticationServiceLayer = (settings: AuthenticationSettings) => {
   ).pipe(
     Layer.provide(Layer.mergeAll(
       ClientCredentials.layer(settings.clientSecrets),
+      OidcProvider.layer(settings.allowInsecureLoopback),
       AuthenticationTransactions.layer(settings.transactions)
     ))
   )

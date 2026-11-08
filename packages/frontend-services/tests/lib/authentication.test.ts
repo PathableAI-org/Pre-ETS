@@ -827,3 +827,67 @@ describe("AuthenticationService callback recovery [PREETS-SESSION-002]", () => {
       })
     ))
 })
+
+describe("AuthenticationService provider discovery reuse", () => {
+  /** Answers discovery for whichever issuer is asked and records each discovery request. */
+  const countingDiscovery = (discovered: string[], failFirst = false): typeof fetch => (input) => {
+    const url = requestUrl(input)
+    if (url.pathname !== "/.well-known/openid-configuration") {
+      return Promise.reject(new Error(`Unexpected provider URL: ${url.href}`))
+    }
+    discovered.push(url.origin)
+    if (failFirst && discovered.length === 1) return Promise.resolve(new Response("upstream", { status: 503 }))
+    return Promise.resolve(metadata(url.origin))
+  }
+
+  it.effect("discovers once across repeated preparations and again after five minutes", () => {
+    const discovered: string[] = []
+    return withFetch(
+      countingDiscovery(discovered),
+      withWorld(Effect.gen(function*() {
+        yield* prepare()
+        yield* prepare()
+        yield* TestClock.adjust("4 minutes")
+        yield* prepare()
+        expect(discovered).toEqual(["https://provider.test"])
+
+        yield* TestClock.adjust("1 minute")
+        const prepared = yield* prepare()
+        yield* prepare()
+        expect(discovered).toEqual(["https://provider.test", "https://provider.test"])
+        expect(new URL(prepared.destination).origin).toBe("https://provider.test")
+      }))
+    )
+  })
+
+  it.effect("uses the changed issuer's metadata on the next preparation", () => {
+    const discovered: string[] = []
+    return withFetch(
+      countingDiscovery(discovered),
+      withWorld(
+        Effect.gen(function*() {
+          const before = yield* prepare()
+          const after = yield* prepare()
+          expect(new URL(before.destination).origin).toBe("https://provider.test")
+          expect(new URL(after.destination).origin).toBe("https://changed.test")
+          expect(discovered).toEqual(["https://provider.test", "https://changed.test"])
+        }),
+        { issuers: ["https://provider.test", "https://changed.test"] }
+      )
+    )
+  })
+
+  it.effect("does not reuse a failed discovery", () => {
+    const discovered: string[] = []
+    return withFetch(
+      countingDiscovery(discovered, true),
+      withWorld(Effect.gen(function*() {
+        const failed = yield* prepare().pipe(Effect.result)
+        expect(Result.isFailure(failed) && failed.failure).toBeInstanceOf(AuthenticationUnavailable)
+        const prepared = yield* prepare()
+        expect(new URL(prepared.destination).origin).toBe("https://provider.test")
+        expect(discovered).toEqual(["https://provider.test", "https://provider.test"])
+      }))
+    )
+  })
+})

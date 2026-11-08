@@ -43,6 +43,32 @@ it. Denial uses the existing safe "Authentication return" presentation and never
 callback parameters or provider/storage details. Public diagnostics remain independent of
 provider availability. The proxy remains pass-through.
 
+## Provider discovery reuse
+
+Login and callback both need the provider's discovered metadata. The authentication
+service's provider layer owns one process-local Effect `Cache` of that metadata, keyed by
+the validated issuer, client ID and client authentication mode (`public` or
+`confidential`). A successful discovery is reused for five minutes; the least recently
+used entry is evicted beyond 256 distinct keys. The lifetime is a fixed product choice,
+not a deployment setting: it removes the per-request discovery round trip while bounding
+how long a provider's own metadata change at an unchanged issuer can go unseen.
+
+Tenant files are still read on every request (see [multi-tenancy](./multi-tenancy.md)).
+A changed issuer, client ID or client authentication mode is a different key, so the next
+login or callback discovers the new provider immediately; the superseded entry simply
+ages out. A failed, redirected, mismatched-issuer, timed-out or interrupted discovery is
+never cached, so the next request tries again. Concurrent requests for the same key share
+one in-flight discovery, which is cancelled only when every waiting request has stopped
+waiting.
+
+Only server metadata is cached. Every request still validates the configured issuer and
+redirect URI with the loopback-aware URL rule, then builds its own client with the
+resolved credential, the manual-redirect fetch hook and its own cancellation signal.
+Discovery confirms that the provider reports the configured issuer before the result is
+stored. The five-second deadline covers the whole provider operation, whether discovery
+is a cache hit or not, and the authorization destination is validated on every login.
+Restart the process to discard cached metadata sooner.
+
 ## Callback and local-provider settings
 
 `OIDC_CALLBACK_ORIGINS_JSON` is a non-secret JSON map from resolved tenant alias to
