@@ -15,13 +15,13 @@ import { TenantConfigService } from "../../src/tenant.ts"
 import { authenticationSettings, makeMemoryRedis } from "../helpers/authentication.ts"
 
 interface WorldOptions {
-  readonly callback?: string
-  readonly clientAuth?: "confidential" | "public"
-  readonly clientSecrets?: Readonly<Record<string, string>>
-  readonly issuer?: string
-  readonly issuers?: readonly string[]
-  readonly redis?: ReturnType<typeof makeMemoryRedis>
-  readonly secretRef?: string
+  readonly callback?: string | undefined
+  readonly clientAuth?: "confidential" | "public" | undefined
+  readonly clientSecrets?: Readonly<Record<string, string>> | undefined
+  readonly issuer?: string | undefined
+  readonly issuers?: readonly string[] | undefined
+  readonly redis?: ReturnType<typeof makeMemoryRedis> | undefined
+  readonly secretRef?: string | undefined
 }
 
 const tenantFile = (options: WorldOptions, issuer: string) =>
@@ -76,7 +76,8 @@ const metadata = (issuer = "https://provider.test", methods?: readonly string[])
     issuer,
     jwks_uri: `${issuer}/jwks`,
     token_endpoint: `${issuer}/token`,
-    ...(methods === undefined ? {} : { token_endpoint_auth_methods_supported: methods })
+    // JSON omits an undefined value, so absent methods stay absent from the document.
+    token_endpoint_auth_methods_supported: methods
   })
 
 const withFetch = <A, E, R>(transport: typeof globalThis.fetch, program: Effect.Effect<A, E, R>) =>

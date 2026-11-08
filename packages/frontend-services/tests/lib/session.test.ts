@@ -133,7 +133,7 @@ describe("SessionService invalidation [PREETS-SESSION-013]", () => {
       scenario((redis) =>
         Effect.gen(function*() {
           const service = yield* SessionService
-          const result = yield* service.invalidate(reference === undefined ? {} : { reference })
+          const result = yield* service.invalidate({ reference })
           expect(result).toStrictEqual(noUsableSession)
           expect(redis.commands).toStrictEqual([])
           expect(Object.keys(result)).toStrictEqual(["_tag"])
@@ -552,7 +552,7 @@ const excludedActivities = [
 interface ExcludedCarryingPolicy {
   readonly activity: ExcludedSessionActivity
   readonly policy: SessionPolicy
-  readonly reference?: string
+  readonly reference?: string | undefined
   readonly tenantAlias: TenantAlias
 }
 type MissingExcluded = Exclude<ExcludedSessionActivity, (typeof excludedActivities)[number]>

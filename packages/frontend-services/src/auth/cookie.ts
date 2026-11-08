@@ -2,15 +2,37 @@ import type { NextRequest, NextResponse } from "next/server"
 
 import type { SessionReference } from "../session.js"
 
+import { isLoopbackHostname, parseRequestHost } from "../request-host.js"
 import { SESSION_COOKIE } from "../session-request.js"
 
 export const CORRELATION_COOKIE = "oidc-correlation"
 
-export const isLoopbackHost = (host: string): boolean => {
-  const hostname = host.replace(/^\[|\](?::\d+)?$|:\d+$/g, "")
-  return hostname === "localhost" || hostname.endsWith(".localhost") || hostname === "::1" ||
-    /^127(?:\.\d{1,3}){3}$/.test(hostname)
+/** Host-only, HttpOnly, SameSite=Lax: the attributes every application cookie shares. */
+export const cookieOptions = (input: { readonly maxAge: number; readonly path: string; readonly secure: boolean }) => ({
+  httpOnly: true,
+  maxAge: input.maxAge,
+  path: input.path,
+  sameSite: "lax" as const,
+  secure: input.secure
+})
+
+/**
+ * Cookie options for a response to this request. `Secure` is set unless the request is plain HTTP to a loopback
+ * host, so local development works without TLS. Without a known protocol, only the host decides.
+ */
+export const requestCookieOptions = (input: {
+  readonly host: string
+  readonly maxAge: number
+  readonly path: string
+  readonly protocol?: string | undefined
+}) => {
+  const hostname = parseRequestHost(input.host)?.hostname
+  const loopback = hostname !== undefined && isLoopbackHostname(hostname)
+  return cookieOptions({ maxAge: input.maxAge, path: input.path, secure: input.protocol === "https:" || !loopback })
 }
+
+const requestCookie = (request: NextRequest, path: string, maxAge: number) =>
+  requestCookieOptions({ host: request.headers.get("host") ?? "", maxAge, path, protocol: request.nextUrl.protocol })
 
 /** Writes the opaque session reference as the sole host-only session cookie. */
 export const setSessionCookie = (
@@ -19,12 +41,12 @@ export const setSessionCookie = (
   reference: SessionReference,
   maxAgeSeconds: number
 ): NextResponse => {
-  response.cookies.set(SESSION_COOKIE, reference, {
-    httpOnly: true,
-    maxAge: maxAgeSeconds,
-    path: "/",
-    sameSite: "lax",
-    secure: request.nextUrl.protocol === "https:" || !isLoopbackHost(request.headers.get("host") ?? "")
-  })
+  response.cookies.set(SESSION_COOKIE, reference, requestCookie(request, "/", maxAgeSeconds))
+  return response
+}
+
+/** Expires the correlation cookie. */
+export const clearCorrelation = (response: NextResponse, request: NextRequest): NextResponse => {
+  response.cookies.set(CORRELATION_COOKIE, "", requestCookie(request, "/auth/callback", 0))
   return response
 }

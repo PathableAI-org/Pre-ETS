@@ -166,7 +166,7 @@ const instrumentationSettled = (readyAt: number | undefined): boolean =>
 interface ProxyOptions {
   readonly applicationPort: number
   readonly authorities: readonly string[]
-  readonly callbackPort?: number
+  readonly callbackPort?: number | undefined
   readonly callbacks: { readonly cookie: string; readonly url: string }[]
   readonly interceptCallback: boolean
 }
@@ -268,9 +268,9 @@ export async function applicationBrowser(
   const options: ProxyOptions = {
     applicationPort: port,
     authorities,
+    callbackPort,
     callbacks,
-    interceptCallback,
-    ...(callbackPort === undefined ? {} : { callbackPort })
+    interceptCallback
   }
   const proxy = http.createServer((request, response) => {
     proxyRequest(request, response, options)

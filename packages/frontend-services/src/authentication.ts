@@ -29,7 +29,7 @@ interface AuthenticationServiceShape {
 }
 
 interface CompleteAuthenticationInput {
-  readonly correlation?: string
+  readonly correlation?: string | undefined
   readonly host: string
   readonly query: readonly (readonly [string, string])[]
 }
@@ -41,6 +41,9 @@ interface PreparedAuthentication {
   readonly destination: string
   readonly expiresAt: number
 }
+
+/** The request host is malformed, or is not its tenant's configured callback origin. */
+class UntrustedHost extends Schema.TaggedError<UntrustedHost>()("UntrustedHost", {}) {}
 
 /** Safe expected denial of an untrusted or no-longer-recoverable callback. */
 export class AuthenticationDenied extends Schema.TaggedError<AuthenticationDenied>()("AuthenticationDenied", {}) {}
@@ -161,16 +164,21 @@ const authenticationServiceLayer = (settings: AuthenticationSettings) => {
       const tenant = yield* TenantConfigService
       const transactions = yield* AuthenticationTransactions
 
-      const prepare = Effect.fn("AuthenticationService.prepare")(function*({ host }: { readonly host: string }) {
+      /** The tenant, its configuration, and its exact callback URI for a request host. */
+      const resolveCallbackTarget = Effect.fnUntraced(function*(host: string) {
         const requestHost = parseRequestHost(host)
-        if (requestHost === undefined) return yield* unavailable()
+        if (requestHost === undefined) return yield* new UntrustedHost({})
         const alias = yield* Effect.fromResult(tenant.getAlias(requestHost.hostname))
         const config = yield* tenant.getConfigFromAlias(alias)
         const origin = Object.hasOwn(settings.callbackOrigins, alias) ? settings.callbackOrigins[alias] : undefined
-        if (origin === undefined || !requestMatchesOrigin(requestHost, origin)) {
-          return yield* unavailable()
-        }
-        const callback = exactCallback(origin)
+        if (origin === undefined || !requestMatchesOrigin(requestHost, origin)) return yield* new UntrustedHost({})
+        return { alias, callback: exactCallback(origin), config }
+      })
+
+      const prepare = Effect.fn("AuthenticationService.prepare")(function*({ host }: { readonly host: string }) {
+        const { alias, callback, config } = yield* resolveCallbackTarget(host).pipe(
+          Effect.catchTag("UntrustedHost", () => Effect.fail(unavailable()))
+        )
         const clientAuthentication = yield* credentials.resolve(config.oidc).pipe(
           Effect.mapError(() => unavailable())
         )
@@ -202,7 +210,7 @@ const authenticationServiceLayer = (settings: AuthenticationSettings) => {
             tenantAlias: alias,
             version: 1
           })
-          return { correlation, destination: provider.destination, expiresAt } satisfies PreparedAuthentication
+          return { correlation, destination: provider.destination, expiresAt }
         })
 
         return yield* createCandidate.pipe(
@@ -213,24 +221,16 @@ const authenticationServiceLayer = (settings: AuthenticationSettings) => {
 
       const qualifyCallback = Effect.fnUntraced(function*(input: CompleteAuthenticationInput) {
         const shape = callbackShape(input.query)
-        const requestHost = parseRequestHost(input.host)
-        if (Option.isNone(shape) || requestHost === undefined) {
-          return yield* callbackFailure(denied(), "preserve")
-        }
+        if (Option.isNone(shape)) return yield* callbackFailure(denied(), "preserve")
         const correlation = yield* decodeBrowserCorrelation(input.correlation).pipe(
           Effect.mapError(() => callbackFailure(denied(), "preserve"))
         )
-        const alias = yield* Effect.fromResult(tenant.getAlias(requestHost.hostname)).pipe(
-          Effect.mapError((failure) => callbackFailure(failure, "preserve"))
+        const target = yield* resolveCallbackTarget(input.host).pipe(
+          Effect.mapError((failure) =>
+            callbackFailure(failure._tag === "UntrustedHost" ? denied() : failure, "preserve")
+          )
         )
-        const config = yield* tenant.getConfigFromAlias(alias).pipe(
-          Effect.mapError((failure) => callbackFailure(failure, "preserve"))
-        )
-        const origin = Object.hasOwn(settings.callbackOrigins, alias) ? settings.callbackOrigins[alias] : undefined
-        if (origin === undefined || !requestMatchesOrigin(requestHost, origin)) {
-          return yield* callbackFailure(denied(), "preserve")
-        }
-        return { alias, callback: exactCallback(origin), config, correlation, shape: shape.value }
+        return { ...target, correlation, shape: shape.value }
       })
 
       const complete = Effect.fn("AuthenticationService.complete")(function*(input: CompleteAuthenticationInput) {

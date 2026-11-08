@@ -9,6 +9,13 @@
   `agent-guidance/pathable-react/SKILL.md` from that package before making
   changes. Read only the linked reference relevant to the task.
 - Apply the shared strict TypeScript settings to all code, including non-Effect code.
+  `exactOptionalPropertyTypes` is on, so type an optional property you own as
+  `readonly x?: T | undefined` and pass a possibly-undefined value directly. Do not
+  spread `x === undefined ? {} : { x }` or branch to build two object shapes; lint
+  rejects the spread. Use those forms only where a third-party type rejects
+  `undefined`, and say why in a comment.
+- Let TypeScript infer local types. Annotate exported signatures and values whose
+  inferred type would be wrong, not every intermediate `const`.
 
 ## Module boundaries
 
@@ -18,6 +25,10 @@
   use the parent's public interface; they must not import a sibling's children.
 - Re-export child capabilities through the parent only when a current consumer needs
   them. Follow the same boundary rule when a child decomposes into further modules.
+- Before adding a helper, constant, or type, search the owning workspace and the
+  package that shares it (frontend-services and the Next app share cookies, cache
+  headers, and host handling) for an existing one. Reuse it through its owner's public
+  entry, or move it to the one module that should own it. Do not copy it.
 - Introduce modules and capabilities for actual behavior, not speculative future
   consumers. In particular, defer a secrets module/provider contract until there is
   a real secret to read.

@@ -10,7 +10,7 @@ import { TenantConfigService } from "../../src/tenant.ts"
 import { authenticationSettings, makeMemoryRedis } from "../helpers/authentication.ts"
 
 const withScenario = <A, E, R>(program: Effect.Effect<A, E, AuthenticationService | R>, options: {
-  readonly issuer?: string
+  readonly issuer?: string | undefined
 } = {}) => {
   const redis = makeMemoryRedis()
   return program.pipe(

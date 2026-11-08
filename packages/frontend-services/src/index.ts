@@ -1,5 +1,8 @@
 export { type CallbackResponses, createCallbackHandler } from "./auth/callback.js"
-export { createLoginHandler, type TenantFailureResponse } from "./auth/login.js"
+export { requestCookieOptions } from "./auth/cookie.js"
+export { createLoginHandler } from "./auth/login.js"
+export type { TenantFailureResponse } from "./error.js"
+export { PRIVATE_NO_STORE } from "./next.js"
 export { startProductionRuntime } from "./production-runtime.js"
 export {
   readSessionRequest,

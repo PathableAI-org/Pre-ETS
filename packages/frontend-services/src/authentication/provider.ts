@@ -50,7 +50,7 @@ const providerFetch = (request: ProviderRequest, signal: AbortSignal): oidc.Cust
   const { body, ...options } = init
   const response = await globalThis.fetch(input, {
     ...options,
-    ...(body === undefined ? {} : { body: body instanceof Uint8Array ? new Uint8Array(body) : body }),
+    body: body instanceof Uint8Array ? new Uint8Array(body) : body ?? null,
     redirect: "manual",
     signal: init.signal === undefined ? signal : AbortSignal.any([signal, init.signal])
   })
@@ -68,8 +68,8 @@ const discoverProvider = async (request: ProviderRequest, signal: AbortSignal) =
     undefined,
     request.clientAuthentication.method,
     {
-      [oidc.customFetch]: providerFetch(request, signal),
-      ...(request.allowInsecureLoopback ? { execute: [oidc.allowInsecureRequests] } : {})
+      execute: request.allowInsecureLoopback ? [oidc.allowInsecureRequests] : [],
+      [oidc.customFetch]: providerFetch(request, signal)
     }
   )
   if (new URL(config.serverMetadata().issuer).href !== issuer.href) throw new ProviderUnavailable({})

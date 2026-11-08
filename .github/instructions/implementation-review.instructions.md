@@ -21,6 +21,9 @@ Review the implementation against the approved specification and engineering pla
 - In Effect workspaces, flag a retry written as self-recursion with a counter instead of `Effect.retry`, and a
   production module object exported only so tests can patch it with `vi.spyOn`; see
   [Resources, time, and existing application code](../../docs/engineering/effect-guidance.md#resources-time-and-existing-application-code).
+- Flag a helper, constant, or type that repeats one already in the workspace or in the package it shares with,
+  such as loopback detection, cookie attributes, or cache headers. Flag local annotations that restate an inferred
+  type, and ternaries that build two object shapes only to omit an optional property.
 - Flag single-use helpers whose only purpose is to lower a complexity score. Ask for a representation that removes
   the branches; see [Fallow](../../docs/engineering/fallow.md#complexity-dead-code-and-type-aware-analysis).
 - Flag behavior or signatures that drift from the approved specification or `contracts/modules.md`.

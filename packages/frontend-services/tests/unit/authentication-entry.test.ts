@@ -154,7 +154,7 @@ describe("authentication Route Handlers [PREETS-SESSION-003, PREETS-SESSION-013]
 
   it("treats a trusted handoff without freshness confirmation as the safe return, clearing correlation without a session cookie", async () => {
     const complete = vi.fn((_input: {
-      readonly correlation?: string
+      readonly correlation?: string | undefined
       readonly host: string
       readonly query: readonly (readonly [string, string])[]
     }) => Effect.succeed(trustedIdentity))

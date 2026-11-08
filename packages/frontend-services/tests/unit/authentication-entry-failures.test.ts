@@ -52,14 +52,11 @@ const useService = (service: AuthenticationService["Service"]) => {
   )
 }
 
-const request = (path: string, cookie?: string) =>
-  new NextRequest(new URL(path, "https://alpha.example.test"), {
-    headers: {
-      ...(cookie === undefined ? {} : { cookie }),
-      host: "alpha.example.test",
-      "x-forwarded-host": "attacker.invalid"
-    }
-  })
+const request = (path: string, cookie?: string) => {
+  const headers = new Headers({ host: "alpha.example.test", "x-forwarded-host": "attacker.invalid" })
+  if (cookie !== undefined) headers.set("cookie", cookie)
+  return new NextRequest(new URL(path, "https://alpha.example.test"), { headers })
+}
 
 afterEach(() => vi.resetAllMocks())
 

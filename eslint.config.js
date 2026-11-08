@@ -41,6 +41,12 @@ const restrictedSyntax = [
       ].map((node) => `${node}[name=${shadowedGlobals}]`)
     ).join(", ")
   },
+  {
+    message:
+      "Type the optional property `?: T | undefined` and pass the value directly instead of spreading `x === undefined ? {} : { x }`.",
+    selector:
+      "SpreadElement > ConditionalExpression[test.type='BinaryExpression'][test.operator=/^[!=]==$/][test.right.type='Identifier'][test.right.name='undefined']"
+  },
   ...effectRestrictedSyntax
 ]
 

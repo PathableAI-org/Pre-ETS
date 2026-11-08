@@ -39,18 +39,22 @@ export interface NoUsableSession {
   readonly _tag: "NoUsableSession"
 }
 
-export type QualifyingSessionActivity =
-  | "continue-session"
-  | "deliberate-form-submission"
-  | "deliberate-page-request"
-  | "intentional-control-activation"
-  | "keyboard-interaction"
-  | "text-entry"
-  | "touch-interaction"
-  | "user-driven-meaningful-input-focus"
+/** Activities that renew the idle timeout. Every other activity is excluded and leaves the deadline unchanged. */
+const QualifyingSessionActivity = Schema.Literals([
+  "continue-session",
+  "deliberate-form-submission",
+  "deliberate-page-request",
+  "intentional-control-activation",
+  "keyboard-interaction",
+  "text-entry",
+  "touch-interaction",
+  "user-driven-meaningful-input-focus"
+])
+
+export type QualifyingSessionActivity = typeof QualifyingSessionActivity.Type
 
 export interface ReadSessionForTenantInput {
-  readonly reference?: string
+  readonly reference?: string | undefined
   readonly tenantAlias: TenantAlias
 }
 
@@ -58,13 +62,13 @@ export type RefreshSessionForTenantInput =
   | {
     readonly activity: ExcludedSessionActivity
     readonly policy?: never
-    readonly reference?: string
+    readonly reference?: string | undefined
     readonly tenantAlias: TenantAlias
   }
   | {
     readonly activity: QualifyingSessionActivity
     readonly policy: SessionPolicy
-    readonly reference?: string
+    readonly reference?: string | undefined
     readonly tenantAlias: TenantAlias
   }
 
@@ -117,20 +121,7 @@ const toUsableSession = (
   warningLeadMinutes: record.warningLeadMinutes
 })
 
-const qualifyingActivities: ReadonlySet<string> = new Set([
-  "continue-session",
-  "deliberate-form-submission",
-  "deliberate-page-request",
-  "intentional-control-activation",
-  "keyboard-interaction",
-  "text-entry",
-  "touch-interaction",
-  "user-driven-meaningful-input-focus"
-])
-
-const isQualifyingActivity = (
-  activity: ExcludedSessionActivity | QualifyingSessionActivity
-): activity is QualifyingSessionActivity => qualifyingActivities.has(activity)
+const isQualifyingActivity = Schema.is(QualifyingSessionActivity)
 
 const isQualifyingRefresh = (
   input: RefreshSessionForTenantInput
@@ -166,10 +157,10 @@ export class SessionService extends Context.Service<SessionService, {
     input: EstablishSessionInput
   ) => Effect.Effect<EstablishedSession, SessionServiceUnavailable>
   readonly invalidate: (
-    input: { readonly reference?: string }
+    input: { readonly reference?: string | undefined }
   ) => Effect.Effect<NoUsableSession, SessionServiceUnavailable>
   readonly read: (
-    input: { readonly reference?: string }
+    input: { readonly reference?: string | undefined }
   ) => Effect.Effect<NoUsableSession | UsableSession, SessionServiceUnavailable>
   readonly readForTenant: (
     input: ReadSessionForTenantInput
@@ -226,7 +217,7 @@ export class SessionService extends Context.Service<SessionService, {
         })
 
         const invalidate = Effect.fn("SessionService.invalidate")(function*(
-          input: { readonly reference?: string }
+          input: { readonly reference?: string | undefined }
         ) {
           const reference = decodeSessionReference(input.reference)
           if (Option.isNone(reference)) return noUsableSession
@@ -234,7 +225,7 @@ export class SessionService extends Context.Service<SessionService, {
           return noUsableSession
         })
 
-        const read = Effect.fn("SessionService.read")(function*(input: { readonly reference?: string }) {
+        const read = Effect.fn("SessionService.read")(function*(input: { readonly reference?: string | undefined }) {
           const reference = decodeSessionReference(input.reference)
           if (Option.isNone(reference)) return noUsableSession
           const receivedAt = yield* Clock.currentTimeMillis
@@ -244,7 +235,7 @@ export class SessionService extends Context.Service<SessionService, {
         })
 
         const readForTenant = Effect.fn("SessionService.readForTenant")(function*(input: ReadSessionForTenantInput) {
-          const session = yield* read(input.reference === undefined ? {} : { reference: input.reference })
+          const session = yield* read({ reference: input.reference })
           if (session._tag === "NoUsableSession") return session
           if (session.tenantAlias === input.tenantAlias) return session
           return yield* new SessionTenantMismatch({})

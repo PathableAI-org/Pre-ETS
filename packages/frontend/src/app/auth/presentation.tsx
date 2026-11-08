@@ -1,8 +1,7 @@
+import { PRIVATE_NO_STORE, type TenantFailureResponse } from "@pathableai/pre-ets-frontend-services"
 import { Alert, Container, Heading, Link, Page, Stack, Text } from "@pathableai/react"
 import { NextResponse } from "next/server"
 import { renderToReadableStream } from "react-dom/server.edge"
-
-import { PRIVATE_NO_STORE } from "./constants.ts"
 
 export const authenticationReturnBody = () =>
   renderToReadableStream(
@@ -41,7 +40,7 @@ const missingPageBody = () =>
     </html>
   )
 
-export const tenantFailureResponse = async (status: 404 | 500): Promise<NextResponse> =>
+export const tenantFailureResponse: TenantFailureResponse = async (status) =>
   new NextResponse(status === 404 ? await missingPageBody() : null, {
     headers: {
       "cache-control": PRIVATE_NO_STORE,
