@@ -1,24 +1,16 @@
 import "server-only"
-import { Clock, Config, Context, Effect, Layer, Result, Schema } from "effect"
+import { Clock, Context, Duration, Effect, Layer, Result, Schema } from "effect"
 
-import { AuthenticationConfig, permittedUrl } from "./authentication/config.js"
-import { ClientCredentialConfig, ClientCredentials } from "./authentication/credentials.js"
+import { ClientCredentials } from "./authentication/credentials.js"
 import { completeProvider, prepareProvider } from "./authentication/provider.js"
 import {
   AuthenticationTransactions,
   decodeBrowserCorrelation,
   makeBrowserCorrelation
 } from "./authentication/transaction.js"
-import { TransactionStoreConfig } from "./authentication/transaction/store.js"
+import { type AuthenticationSettings, permittedUrl } from "./config/index.js"
 import { parseRequestHost, type RequestHost } from "./request-host.js"
 import { type TenantAlias, TenantConfigService, type TenantFailure, TenantNotFound, TenantReadError } from "./tenant.js"
-
-/** Process-wide authentication settings. Service behavior stays on AuthenticationService. */
-export const AuthenticationProcessConfig = Config.all({
-  credentials: ClientCredentialConfig,
-  settings: AuthenticationConfig,
-  transactions: TransactionStoreConfig
-})
 
 export interface TrustedIdentity {
   readonly authenticatedAt: number
@@ -56,7 +48,7 @@ export class AuthenticationDenied extends Schema.TaggedError<AuthenticationDenie
 export class AuthenticationService extends Context.Service<AuthenticationService, AuthenticationServiceShape>()(
   "AuthenticationService"
 ) {
-  static readonly layer = Layer.suspend(() => AuthenticationServiceLayer)
+  static readonly layer = (settings: AuthenticationSettings) => authenticationServiceLayer(settings)
 }
 
 /** Safe provider, credential, or transaction unavailability. */
@@ -176,158 +168,161 @@ const exactCallback = (origin: URL): { readonly authority: string; readonly redi
   redirectUri: new URL("/auth/callback", origin).href
 })
 
-const AuthenticationServiceLayer = Layer.effect(
-  AuthenticationService,
-  Effect.gen(function*() {
-    const settings = yield* AuthenticationConfig
-    const credentials = yield* ClientCredentials
-    const tenant = yield* TenantConfigService
-    const transactions = yield* AuthenticationTransactions
-    const validateUrl = Schema.decodeUnknownSync(permittedUrl(settings.allowInsecureLoopback))
+const authenticationServiceLayer = (settings: AuthenticationSettings) =>
+  Layer.effect(
+    AuthenticationService,
+    Effect.gen(function*() {
+      const credentials = yield* ClientCredentials
+      const tenant = yield* TenantConfigService
+      const transactions = yield* AuthenticationTransactions
+      const validateUrl = Schema.decodeUnknownSync(permittedUrl(settings.allowInsecureLoopback))
 
-    const prepare = Effect.fn("AuthenticationService.prepare")(function*({ host }: { readonly host: string }) {
-      const requestHost = parseRequestHost(host)
-      if (requestHost === undefined) return yield* unavailable()
-      const alias = yield* Effect.fromResult(tenant.getAlias(requestHost.hostname))
-      const config = yield* tenant.getConfigFromAlias(alias)
-      const origin = Object.hasOwn(settings.callbackOrigins, alias) ? settings.callbackOrigins[alias] : undefined
-      if (origin === undefined || !requestMatchesOrigin(requestHost, origin)) {
-        return yield* unavailable()
-      }
-      const callback = exactCallback(origin)
-      const clientAuthentication = yield* credentials.resolve(config.oidc).pipe(
-        Effect.mapError(() => unavailable())
-      )
+      const prepare = Effect.fn("AuthenticationService.prepare")(function*({ host }: { readonly host: string }) {
+        const requestHost = parseRequestHost(host)
+        if (requestHost === undefined) return yield* unavailable()
+        const alias = yield* Effect.fromResult(tenant.getAlias(requestHost.hostname))
+        const config = yield* tenant.getConfigFromAlias(alias)
+        const origin = Object.hasOwn(settings.callbackOrigins, alias) ? settings.callbackOrigins[alias] : undefined
+        if (origin === undefined || !requestMatchesOrigin(requestHost, origin)) {
+          return yield* unavailable()
+        }
+        const callback = exactCallback(origin)
+        const clientAuthentication = yield* credentials.resolve(config.oidc).pipe(
+          Effect.mapError(() => unavailable())
+        )
 
-      const createCandidate = (remaining: number): Effect.Effect<PreparedAuthentication, AuthenticationUnavailable> =>
-        Effect.gen(function*() {
-          const provider = yield* prepareProvider({
-            allowInsecureLoopback: settings.allowInsecureLoopback,
-            clientAuthentication,
-            clientId: config.oidc.clientId,
-            issuer: config.oidc.issuer,
-            redirectUri: callback.redirectUri,
-            validateUrl
-          }).pipe(Effect.mapError(() => unavailable()))
-          const correlation = yield* makeBrowserCorrelation
-          const createdAt = yield* Clock.currentTimeMillis
-          const expiresAt = createdAt + transactions.ttlSeconds * 1_000
-          const stored = yield* transactions.create({
-            callbackAuthority: callback.authority,
-            clientId: config.oidc.clientId,
-            correlation,
-            createdAt,
-            expiresAt,
-            issuer: provider.issuer,
-            nonce: provider.nonce,
-            pkceVerifier: provider.pkceVerifier,
-            redirectUri: callback.redirectUri,
-            state: provider.state,
-            tenantAlias: alias,
-            version: 1
-          }).pipe(Effect.result)
-          if (Result.isFailure(stored)) {
-            if (stored.failure._tag === "AuthenticationAttemptCollision" && remaining > 1) {
-              return yield* createCandidate(remaining - 1)
+        const createCandidate = (remaining: number): Effect.Effect<PreparedAuthentication, AuthenticationUnavailable> =>
+          Effect.gen(function*() {
+            const provider = yield* prepareProvider({
+              allowInsecureLoopback: settings.allowInsecureLoopback,
+              clientAuthentication,
+              clientId: config.oidc.clientId,
+              issuer: config.oidc.issuer,
+              redirectUri: callback.redirectUri,
+              validateUrl
+            }).pipe(Effect.mapError(() => unavailable()))
+            const correlation = yield* makeBrowserCorrelation
+            const createdAt = yield* Clock.currentTimeMillis
+            const expiresAt = createdAt + Duration.toMillis(transactions.ttl)
+            const stored = yield* transactions.create({
+              callbackAuthority: callback.authority,
+              clientId: config.oidc.clientId,
+              correlation,
+              createdAt,
+              expiresAt,
+              issuer: provider.issuer,
+              nonce: provider.nonce,
+              pkceVerifier: provider.pkceVerifier,
+              redirectUri: callback.redirectUri,
+              state: provider.state,
+              tenantAlias: alias,
+              version: 1
+            }).pipe(Effect.result)
+            if (Result.isFailure(stored)) {
+              if (stored.failure._tag === "AuthenticationAttemptCollision" && remaining > 1) {
+                return yield* createCandidate(remaining - 1)
+              }
+              return yield* unavailable()
             }
-            return yield* unavailable()
-          }
-          return { correlation, destination: provider.destination, expiresAt }
-        })
+            return { correlation, destination: provider.destination, expiresAt }
+          })
 
-      return yield* createCandidate(3)
-    })
-
-    const qualifyCallback = Effect.fnUntraced(function*(input: CompleteAuthenticationInput) {
-      const shape = callbackShape(input.query)
-      const requestHost = parseRequestHost(input.host)
-      if (shape === undefined || requestHost === undefined) {
-        return yield* callbackFailure(denied(), "preserve")
-      }
-      const correlation = yield* decodeBrowserCorrelation(input.correlation).pipe(
-        Effect.mapError(() => callbackFailure(denied(), "preserve"))
-      )
-      const alias = yield* Effect.fromResult(tenant.getAlias(requestHost.hostname)).pipe(
-        Effect.mapError((failure) => callbackFailure(failure, "preserve"))
-      )
-      const config = yield* tenant.getConfigFromAlias(alias).pipe(
-        Effect.mapError((failure) => callbackFailure(failure, "preserve"))
-      )
-      const origin = Object.hasOwn(settings.callbackOrigins, alias) ? settings.callbackOrigins[alias] : undefined
-      if (origin === undefined || !requestMatchesOrigin(requestHost, origin)) {
-        return yield* callbackFailure(denied(), "preserve")
-      }
-      return { alias, callback: exactCallback(origin), config, correlation, shape }
-    })
-
-    const complete = Effect.fn("AuthenticationService.complete")(function*(input: CompleteAuthenticationInput) {
-      const qualified = yield* qualifyCallback(input)
-
-      const attempt = yield* transactions.consume({
-        correlation: qualified.correlation,
-        state: qualified.shape.state,
-        tenantAlias: qualified.alias
-      }).pipe(
-        Effect.mapError((failure) => {
-          if (failure._tag === "TransactionStoreUnavailable") {
-            return callbackFailure(
-              unavailable(),
-              failure.phase === "before-send" ? "preserve" : "clear"
-            )
-          }
-          return callbackFailure(
-            denied(),
-            failure.reason === "missing" ? "preserve" : "clear"
-          )
-        })
-      )
-
-      const configuredIssuer = yield* Effect.try({
-        catch: () => callbackFailure(unavailable(), "clear"),
-        try: () => validateUrl(qualified.config.oidc.issuer).href
+        return yield* createCandidate(3)
       })
-      if (
-        !attemptMatches(attempt, {
-          callbackAuthority: qualified.callback.authority,
-          clientId: qualified.config.oidc.clientId,
+
+      const qualifyCallback = Effect.fnUntraced(function*(input: CompleteAuthenticationInput) {
+        const shape = callbackShape(input.query)
+        const requestHost = parseRequestHost(input.host)
+        if (shape === undefined || requestHost === undefined) {
+          return yield* callbackFailure(denied(), "preserve")
+        }
+        const correlation = yield* decodeBrowserCorrelation(input.correlation).pipe(
+          Effect.mapError(() => callbackFailure(denied(), "preserve"))
+        )
+        const alias = yield* Effect.fromResult(tenant.getAlias(requestHost.hostname)).pipe(
+          Effect.mapError((failure) => callbackFailure(failure, "preserve"))
+        )
+        const config = yield* tenant.getConfigFromAlias(alias).pipe(
+          Effect.mapError((failure) => callbackFailure(failure, "preserve"))
+        )
+        const origin = Object.hasOwn(settings.callbackOrigins, alias) ? settings.callbackOrigins[alias] : undefined
+        if (origin === undefined || !requestMatchesOrigin(requestHost, origin)) {
+          return yield* callbackFailure(denied(), "preserve")
+        }
+        return { alias, callback: exactCallback(origin), config, correlation, shape }
+      })
+
+      const complete = Effect.fn("AuthenticationService.complete")(function*(input: CompleteAuthenticationInput) {
+        const qualified = yield* qualifyCallback(input)
+
+        const attempt = yield* transactions.consume({
           correlation: qualified.correlation,
-          issuer: configuredIssuer,
-          redirectUri: qualified.callback.redirectUri,
           state: qualified.shape.state,
           tenantAlias: qualified.alias
+        }).pipe(
+          Effect.mapError((failure) => {
+            if (failure._tag === "TransactionStoreUnavailable") {
+              return callbackFailure(
+                unavailable(),
+                failure.phase === "before-send" ? "preserve" : "clear"
+              )
+            }
+            return callbackFailure(
+              denied(),
+              failure.reason === "missing" ? "preserve" : "clear"
+            )
+          })
+        )
+
+        const configuredIssuer = yield* Effect.try({
+          catch: () => callbackFailure(unavailable(), "clear"),
+          try: () => validateUrl(qualified.config.oidc.issuer).href
         })
-      ) {
-        return yield* callbackFailure(denied(), "clear")
-      }
-      if (qualified.shape.kind === "error") return yield* callbackFailure(denied(), "clear")
+        if (
+          !attemptMatches(attempt, {
+            callbackAuthority: qualified.callback.authority,
+            clientId: qualified.config.oidc.clientId,
+            correlation: qualified.correlation,
+            issuer: configuredIssuer,
+            redirectUri: qualified.callback.redirectUri,
+            state: qualified.shape.state,
+            tenantAlias: qualified.alias
+          })
+        ) {
+          return yield* callbackFailure(denied(), "clear")
+        }
+        if (qualified.shape.kind === "error") return yield* callbackFailure(denied(), "clear")
 
-      const clientAuthentication = yield* credentials.resolve(qualified.config.oidc).pipe(
-        Effect.mapError(() => callbackFailure(unavailable(), "clear"))
-      )
-      const identity = yield* completeProvider({
-        allowInsecureLoopback: settings.allowInsecureLoopback,
-        callbackQuery: input.query,
-        clientAuthentication,
-        clientId: qualified.config.oidc.clientId,
-        expectedNonce: attempt.nonce,
-        expectedState: attempt.state,
-        issuer: qualified.config.oidc.issuer,
-        pkceVerifier: attempt.pkceVerifier,
-        redirectUri: qualified.callback.redirectUri,
-        validateUrl
-      }).pipe(
-        Effect.mapError(() => callbackFailure(unavailable(), "clear"))
-      )
-      return {
-        authenticatedAt: identity.authenticatedAt,
-        issuer: identity.issuer,
-        subject: identity.subject,
-        tenantAlias: qualified.alias
-      }
+        const clientAuthentication = yield* credentials.resolve(qualified.config.oidc).pipe(
+          Effect.mapError(() => callbackFailure(unavailable(), "clear"))
+        )
+        const identity = yield* completeProvider({
+          allowInsecureLoopback: settings.allowInsecureLoopback,
+          callbackQuery: input.query,
+          clientAuthentication,
+          clientId: qualified.config.oidc.clientId,
+          expectedNonce: attempt.nonce,
+          expectedState: attempt.state,
+          issuer: qualified.config.oidc.issuer,
+          pkceVerifier: attempt.pkceVerifier,
+          redirectUri: qualified.callback.redirectUri,
+          validateUrl
+        }).pipe(
+          Effect.mapError(() => callbackFailure(unavailable(), "clear"))
+        )
+        return {
+          authenticatedAt: identity.authenticatedAt,
+          issuer: identity.issuer,
+          subject: identity.subject,
+          tenantAlias: qualified.alias
+        }
+      })
+
+      return AuthenticationService.of({ complete, prepare })
     })
-
-    return AuthenticationService.of({ complete, prepare })
-  })
-).pipe(
-  Layer.provide(Layer.mergeAll(ClientCredentials.layer, AuthenticationTransactions.layer))
-)
+  ).pipe(
+    Layer.provide(Layer.mergeAll(
+      ClientCredentials.layer(settings.clientSecrets),
+      AuthenticationTransactions.layer(settings.transactions)
+    ))
+  )

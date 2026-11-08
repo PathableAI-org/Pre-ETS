@@ -20,8 +20,10 @@ global provider. The same processors and reader are passed to
 logger, and metrics bridges. These are separate global and Effect provider
 paths sharing the configured OTLP export pipeline, not separate exporters.
 Use `Effect.withSpan` only at logical boundaries when needed. The existing
-console logger remains beside OTLP logs: JSON when `NODE_ENV=production`,
-pretty otherwise.
+console logger remains beside OTLP logs: pretty when `NODE_ENV=development`,
+JSON otherwise. An absent `NODE_ENV` means development; any value other than
+`development`, `production`, or `test` fails startup. A startup settings failure
+is logged as JSON, because the format setting is not yet known.
 
 Automatic instrumentation covers:
 
@@ -45,7 +47,7 @@ and batch/periodic export had time to complete.
 
 ## Environment variables
 
-OTEL settings live in frontend `OtelConfig`, not `ServerConfig`.
+OTEL settings are the `otel` part of the frontend `StartupConfig`, decoded once at startup.
 `OTEL_SDK_DISABLED` defaults to `false`. When OTEL is enabled,
 `OTEL_EXPORTER_OTLP_ENDPOINT` must be a valid URL and `OTEL_SERVICE_NAME` must
 be non-empty; neither has an application default. When OTEL is disabled, those

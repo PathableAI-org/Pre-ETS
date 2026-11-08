@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@effect/vitest"
 import { fc, test } from "@fast-check/vitest"
-import { ConfigProvider, Deferred, Effect, Fiber, Layer, Result, Schema } from "effect"
+import { Deferred, Effect, Fiber, Layer, Result, Schema } from "effect"
 import { TestClock } from "effect/testing"
 import { vi } from "vitest"
 
@@ -52,9 +52,8 @@ const policyOf = (idleTimeoutMinutes: number, warningLeadMinutes: number): Sessi
 })
 
 const redisWorld = (redis: ReturnType<typeof makeSessionMemoryRedis>) =>
-  SessionService.layer.pipe(
-    Layer.provide(redis.layer),
-    Layer.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({ SESSION_KEY_PREFIX: "test:session" })))
+  SessionService.layer({ keyPrefix: "test:session" }).pipe(
+    Layer.provide(redis.layer)
   )
 
 const scenario = <A, E>(

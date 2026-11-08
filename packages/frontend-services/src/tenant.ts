@@ -5,9 +5,9 @@
  * alias for every host. The loaded file is `{alias}.json` under the configured tenant directory.
  */
 import "server-only"
-import { type Config, Context, Effect, FileSystem, Layer, Path, type PlatformError, Result, Schema } from "effect"
+import { Context, Effect, FileSystem, Layer, Path, type PlatformError, Result, Schema } from "effect"
 
-import type { ServerConfig, TenantConfig as TenantResolutionConfig, TenantStaticConfig } from "./config/index.js"
+import type { TenantConfig as TenantResolutionConfig, TenantStaticConfig } from "./config/index.js"
 
 import { decodeTenantConfig, effectiveSessionPolicy, type SessionPolicy, type TenantConfig } from "./tenant/config.js"
 
@@ -197,22 +197,22 @@ export class TenantConfigService extends Context.Service<TenantConfigService, {
   readonly getConfigFromAlias: (alias: TenantAlias) => Effect.Effect<TenantConfig, TenantFailure>
   readonly getConfigFromHost: (host: string) => Effect.Effect<TenantConfig, TenantFailure>
 }>()("TenantConfigService") {
-  static readonly layer = (config: Pick<Config.Success<typeof ServerConfig>, "env" | "tenant">) =>
+  static readonly layer = (settings: TenantResolutionConfig) =>
     Layer.effect(
       TenantConfigService,
       Effect.gen(function*() {
         yield* Effect.logInfo("Tenant resolution ready", {
-          resolution: config.tenant.resolution
+          resolution: settings.resolution
         })
 
         const path = yield* Path.Path
         const fs = yield* FileSystem.FileSystem
 
-        const getAlias = tenantAliasFromServerConfig(config.tenant)
-        const getConfigFromAlias = tenantConfigFromAlias(config.tenant, path, fs)
+        const getAlias = tenantAliasFromServerConfig(settings)
+        const getConfigFromAlias = tenantConfigFromAlias(settings, path, fs)
         const getConfigFromHost = Effect.fn("TenantConfigService.getConfigFromHost", {
           attributes: {
-            "tenant.resolution": config.tenant.resolution
+            "tenant.resolution": settings.resolution
           }
         })(function*(host: string) {
           const alias = yield* Effect.fromResult(getAlias(host)).pipe(

@@ -40,10 +40,9 @@ const hostFailure = (host: string) =>
     return result.failure
   }).pipe(
     Effect.provide(
-      TenantConfigService.layer({
-        env: "test",
-        tenant: { baseHostname: "example.test", configDir: "/tenant-config", resolution: "host" }
-      }).pipe(Layer.provide(NodeServices.layer))
+      TenantConfigService.layer({ baseHostname: "example.test", configDir: "/tenant-config", resolution: "host" }).pipe(
+        Layer.provide(NodeServices.layer)
+      )
     ),
     Effect.provideService(References.MinimumLogLevel, "Error"),
     Effect.runSync
@@ -56,10 +55,9 @@ const staticFailure = Effect.gen(function*() {
   return result.failure
 }).pipe(
   Effect.provide(
-    TenantConfigService.layer({
-      env: "test",
-      tenant: { configDir: "/tenant-config", resolution: "static", staticAlias: "NOT-VALID" }
-    }).pipe(Layer.provide(NodeServices.layer))
+    TenantConfigService.layer({ configDir: "/tenant-config", resolution: "static", staticAlias: "NOT-VALID" }).pipe(
+      Layer.provide(NodeServices.layer)
+    )
   ),
   Effect.provideService(References.MinimumLogLevel, "Error"),
   Effect.runSync

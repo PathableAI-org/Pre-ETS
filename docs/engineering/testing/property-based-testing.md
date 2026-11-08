@@ -76,10 +76,10 @@ and label domain the application owns; do not invent public-suffix parsing or ge
 Keep reserved labels in explicit rejection examples rather than silently omitting them from all evidence.
 
 The current service exposes `getAlias`, `getConfigFromAlias`, and `getConfigFromHost`; `getAlias` returns a `Result`,
-while the configuration operations return Effects. Its Layer currently accepts a plain configuration argument.
+while the configuration operations return Effects. Its Layer takes the decoded tenant-resolution settings as a plain
+argument; see [Configuration is decoded once at startup](../effect-guidance.md#configuration-is-decoded-once-at-startup).
 Adapt tests to the actual interface and [tenant contract](../../multi-tenancy.md); the conceptual examples do not
-claim these properties have been implemented or verified. Configuration as an environmental requirement is a
-[design direction](../effect-guidance.md#configuration-belongs-in-the-dependency-graph).
+claim these properties have been implemented or verified.
 
 When implementing an asynchronous service property, await the Effect's execution and the property runner. Supply
 the real service under test with deterministic dependency Layers. Create fresh mutable scenario state for every

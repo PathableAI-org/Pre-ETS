@@ -44,7 +44,7 @@ const withFiles = <A, E>(
 ) =>
   program.pipe(
     Effect.provide(
-      TenantConfigService.layer({ env: "test", tenant: resolutionConfig(resolution) }).pipe(
+      TenantConfigService.layer(resolutionConfig(resolution)).pipe(
         Layer.provide(Layer.mergeAll(
           FileSystem.layerNoop({
             readDirectory: () => Effect.succeed([]),
@@ -264,7 +264,7 @@ describe("TenantConfigService file configuration [PREETS-TENANT-003, PREETS-TENA
         return { deleted, first, other, second }
       }).pipe(
         Effect.provide(
-          TenantConfigService.layer({ env: "test", tenant: resolutionConfig("host", directory) }).pipe(
+          TenantConfigService.layer(resolutionConfig("host", directory)).pipe(
             Layer.provide(NodeServices.layer)
           )
         ),

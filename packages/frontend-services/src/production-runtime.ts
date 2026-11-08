@@ -1,50 +1,47 @@
 import { NodePath, NodeRedis, NodeServices } from "@effect/platform-node"
 import { Effect, Layer, Logger, ManagedRuntime, Path, References } from "effect"
 
-import { AppEnv, LogConfig } from "./config/index.js"
+import type { AppEnv, StartupSettings } from "./config/index.js"
+
 import { applicationLayer, type ApplicationServices, installManagedRuntime, loadProcessStartup } from "./runtime.js"
-
-const getLogConfig = Effect.fnUntraced(
-  function*() {
-    const env = yield* AppEnv
-    const logLevel = yield* LogConfig
-
-    return { env, logLevel } as const
-  },
-  // These Config values should never fail
-  Effect.orDie
-)
 
 const consoleLogger = (env: AppEnv): Logger.Logger<unknown, void> =>
   env === "development" ? Logger.consolePretty() : Logger.consoleJson
 
-const LoggerLayerLive = Layer.unwrap(Effect.gen(function*() {
-  const { env, logLevel } = yield* getLogConfig()
-  return Layer.mergeAll(
-    Logger.layer([consoleLogger(env)]),
-    Layer.succeed(References.MinimumLogLevel, logLevel)
+const loggingLayer = (startup: Pick<StartupSettings, "env" | "logLevel">) =>
+  Layer.mergeAll(
+    Logger.layer([consoleLogger(startup.env)]),
+    Layer.succeed(References.MinimumLogLevel, startup.logLevel)
   )
-}))
 
+/**
+ * Settings choose the console format, so a settings failure is logged as JSON, the production format, before any
+ * setting is known.
+ */
 const runtimeLayer = Layer.unwrap(Effect.gen(function*() {
   const path = yield* Path.Path
   const cwd = path.resolve()
   const startup = yield* loadProcessStartup.pipe(
-    Effect.annotateLogs({ cwd }),
-    Effect.tap(() => Effect.logDebug("Loaded server config")),
-    Effect.tapError((error) => Effect.logError("Failed to load server config", { error }))
+    Effect.tapError((error) =>
+      Effect.logError("Failed to load server config", { error }).pipe(
+        Effect.annotateLogs({ cwd }),
+        Effect.provide(Logger.layer([Logger.consoleJson]))
+      )
+    )
   )
+  const logging = loggingLayer(startup)
+  yield* Effect.logDebug("Loaded server config").pipe(Effect.annotateLogs({ cwd }), Effect.provide(logging))
   const infrastructure = Layer.mergeAll(
     NodeServices.layer,
     NodeRedis.layer({
       disableOfflineQueue: true,
       pingInterval: 1_000,
       socket: { socketTimeout: 5_000 },
-      url: startup.server.redis.url
+      url: startup.redisUrl
     })
   )
-  return applicationLayer(startup, infrastructure)
-})).pipe(Layer.provideMerge(Layer.mergeAll(LoggerLayerLive, NodePath.layer)))
+  return applicationLayer(startup, infrastructure).pipe(Layer.provideMerge(logging))
+})).pipe(Layer.provide(NodePath.layer))
 
 const makeRuntime = Effect.fnUntraced(function*(
   publish: (runtime: ManagedRuntime.ManagedRuntime<ApplicationServices, unknown>) => void

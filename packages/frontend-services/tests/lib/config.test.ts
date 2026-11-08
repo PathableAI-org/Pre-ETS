@@ -1,8 +1,8 @@
 import { assert, it } from "@effect/vitest"
-import { Cause, Config, ConfigProvider, Effect, Exit, Option } from "effect"
+import { Cause, Config, ConfigProvider, Duration, Effect, Exit, Option } from "effect"
 import { describe } from "vitest"
 
-import { ServerConfig, StartupConfig } from "../../src/config/index.ts"
+import { StartupConfig } from "../../src/config/index.ts"
 
 const BaseConfigProvider = ConfigProvider.fromUnknown({
   BASE_HOSTNAME: "example.test",
@@ -34,11 +34,17 @@ const _withoutKeys = (...keys: string[]) => (provider: ConfigProvider.ConfigProv
 
 const withoutKeys = (...keys: string[]) => _withoutKeys(...keys)(BaseConfigProvider)
 
-describe("ServerConfig", () => {
+const configError = (exit: Exit.Exit<unknown, unknown>): boolean => {
+  if (!Exit.isFailure(exit)) return false
+  const error = Cause.findErrorOption(exit.cause)
+  return Option.isSome(error) && error.value instanceof Config.ConfigError
+}
+
+describe("StartupConfig settings", () => {
   describe(".env", () => {
     it.effect("defaults to development", () => {
       return Effect.gen(function*() {
-        const config = yield* ServerConfig
+        const config = yield* StartupConfig
         assert.deepEqual(config.env, "development")
       }).pipe(
         Effect.provideService(ConfigProvider.ConfigProvider, withoutKeys("NODE_ENV"))
@@ -51,7 +57,7 @@ describe("ServerConfig", () => {
       ["test"]
     ])("sets the .env from NODE_ENV=%s", ([env]) => {
       return Effect.gen(function*() {
-        const config = yield* ServerConfig
+        const config = yield* StartupConfig
         assert.deepEqual(config.env, env)
       }).pipe(
         Effect.provideService(
@@ -60,6 +66,15 @@ describe("ServerConfig", () => {
             NODE_ENV: env
           })
         )
+      )
+    })
+
+    it.effect("fails on an unsupported NODE_ENV instead of defaulting", () => {
+      return Effect.gen(function*() {
+        const exit = yield* Effect.exit(StartupConfig)
+        assert.isTrue(configError(exit))
+      }).pipe(
+        Effect.provideService(ConfigProvider.ConfigProvider, withConfigOverrides({ NODE_ENV: "staging" }))
       )
     })
   })
@@ -71,7 +86,7 @@ describe("ServerConfig", () => {
         ["host"]
       ])("fails if not set when resolution is %s", ([resolution]) => {
         return Effect.gen(function*() {
-          const exit = yield* Effect.exit(ServerConfig)
+          const exit = yield* Effect.exit(StartupConfig)
           assert.isTrue(Exit.isFailure(exit))
         }).pipe(
           Effect.provideService(
@@ -85,7 +100,7 @@ describe("ServerConfig", () => {
       it.effect("succeeds if set", () => {
         const configDir = "/absolute/path/to/packages/frontend/fixtures/tenant-config"
         return Effect.gen(function*() {
-          const config = yield* ServerConfig
+          const config = yield* StartupConfig
           assert.deepEqual(config.tenant.configDir, configDir)
         }).pipe(
           Effect.provideService(
@@ -101,7 +116,7 @@ describe("ServerConfig", () => {
       describe("when .env is production", () => {
         it.effect("keeps static resolution and its alias", () => {
           return Effect.gen(function*() {
-            const config = yield* ServerConfig
+            const config = yield* StartupConfig
             assert.deepEqual(config.tenant, {
               configDir: "/absolute/path/to/packages/frontend/fixtures/tenant-config",
               resolution: "static",
@@ -120,7 +135,7 @@ describe("ServerConfig", () => {
         })
         it.effect("succeeds if resolution is host", () => {
           return Effect.gen(function*() {
-            const config = yield* ServerConfig
+            const config = yield* StartupConfig
             assert.deepEqual(config.tenant.resolution, "host")
           }).pipe(
             Effect.provideService(
@@ -142,7 +157,7 @@ describe("ServerConfig", () => {
           ["test", "static"]
         ])("succeeds if resolution is %s", ([env, resolution]) => {
           return Effect.gen(function*() {
-            const config = yield* ServerConfig
+            const config = yield* StartupConfig
             assert.deepEqual(config.tenant.resolution, resolution)
           }).pipe(
             Effect.provideService(
@@ -160,7 +175,7 @@ describe("ServerConfig", () => {
       describe("when .resolution is host", () => {
         it.effect("fails if baseHostname is not set", () => {
           return Effect.gen(function*() {
-            const exit = yield* Effect.exit(ServerConfig)
+            const exit = yield* Effect.exit(StartupConfig)
             assert.isTrue(Exit.isFailure(exit))
           }).pipe(
             Effect.provideService(
@@ -173,7 +188,7 @@ describe("ServerConfig", () => {
         })
         it.effect("succeeds if baseHostname is set", () => {
           return Effect.gen(function*() {
-            const config = yield* ServerConfig
+            const config = yield* StartupConfig
             assert.deepPropertyVal(config.tenant, "baseHostname", "example.test")
           }).pipe(
             Effect.provideService(
@@ -189,7 +204,7 @@ describe("ServerConfig", () => {
       describe("when .resolution is static", () => {
         it.effect("succeeds if baseHostname is not set", () => {
           return Effect.gen(function*() {
-            const config = yield* ServerConfig
+            const config = yield* StartupConfig
             assert.doesNotHaveAnyKeys(config.tenant, ["baseHostname"])
           }).pipe(
             Effect.provideService(
@@ -205,7 +220,7 @@ describe("ServerConfig", () => {
       describe("when .env is production and .resolution is static", () => {
         it.effect("succeeds if baseHostname is not set", () => {
           return Effect.gen(function*() {
-            const config = yield* ServerConfig
+            const config = yield* StartupConfig
             assert.doesNotHaveAnyKeys(config.tenant, ["baseHostname"])
           }).pipe(
             Effect.provideService(
@@ -224,7 +239,7 @@ describe("ServerConfig", () => {
       describe("when .resolution is static", () => {
         it.effect("fails if staticAlias is not set", () => {
           return Effect.gen(function*() {
-            const exit = yield* Effect.exit(ServerConfig)
+            const exit = yield* Effect.exit(StartupConfig)
             assert.isTrue(Exit.isFailure(exit))
           }).pipe(
             Effect.provideService(
@@ -237,7 +252,7 @@ describe("ServerConfig", () => {
         })
         it.effect("succeeds if staticAlias is set", () => {
           return Effect.gen(function*() {
-            const config = yield* ServerConfig
+            const config = yield* StartupConfig
             assert.deepPropertyVal(config.tenant, "staticAlias", "springfield")
           }).pipe(
             Effect.provideService(
@@ -253,7 +268,7 @@ describe("ServerConfig", () => {
       describe("when .resolution is host", () => {
         it.effect("succeeds if staticAlias is not set", () => {
           return Effect.gen(function*() {
-            const config = yield* ServerConfig
+            const config = yield* StartupConfig
             assert.doesNotHaveAnyKeys(config.tenant, ["staticAlias"])
           }).pipe(
             Effect.provideService(
@@ -266,7 +281,7 @@ describe("ServerConfig", () => {
         })
         it.effect("ignores staticAlias if set", () => {
           return Effect.gen(function*() {
-            const config = yield* ServerConfig
+            const config = yield* StartupConfig
             assert.doesNotHaveAnyKeys(config.tenant, ["staticAlias"])
           }).pipe(
             Effect.provideService(
@@ -285,8 +300,8 @@ describe("ServerConfig", () => {
   describe(".redis", () => {
     it.effect("defaults the local compose URL when REDIS_URL is absent", () => {
       return Effect.gen(function*() {
-        const config = yield* ServerConfig
-        assert.deepEqual(config.redis.url, "redis://127.0.0.1:6379")
+        const config = yield* StartupConfig
+        assert.deepEqual(config.redisUrl, "redis://127.0.0.1:6379")
       }).pipe(
         Effect.provideService(ConfigProvider.ConfigProvider, BaseConfigProvider)
       )
@@ -294,8 +309,8 @@ describe("ServerConfig", () => {
 
     it.effect("reads REDIS_URL", () => {
       return Effect.gen(function*() {
-        const config = yield* ServerConfig
-        assert.deepEqual(config.redis.url, "redis://cache.test:6379")
+        const config = yield* StartupConfig
+        assert.deepEqual(config.redisUrl, "redis://cache.test:6379")
       }).pipe(
         Effect.provideService(
           ConfigProvider.ConfigProvider,
@@ -308,7 +323,7 @@ describe("ServerConfig", () => {
   describe(".session", () => {
     it.effect("defaults the versioned session prefix when SESSION_KEY_PREFIX is absent", () => {
       return Effect.gen(function*() {
-        const config = yield* ServerConfig
+        const config = yield* StartupConfig
         assert.deepEqual(config.session.keyPrefix, "preets:session:v1")
       }).pipe(
         Effect.provideService(ConfigProvider.ConfigProvider, BaseConfigProvider)
@@ -317,7 +332,7 @@ describe("ServerConfig", () => {
 
     it.effect("reads SESSION_KEY_PREFIX", () => {
       return Effect.gen(function*() {
-        const config = yield* ServerConfig
+        const config = yield* StartupConfig
         assert.deepEqual(config.session.keyPrefix, "test:session:owned")
       }).pipe(
         Effect.provideService(
@@ -328,12 +343,6 @@ describe("ServerConfig", () => {
     })
   })
 })
-
-const configError = (exit: Exit.Exit<unknown, unknown>): boolean => {
-  if (!Exit.isFailure(exit)) return false
-  const error = Cause.findErrorOption(exit.cause)
-  return Option.isSome(error) && error.value instanceof Config.ConfigError
-}
 
 // StartupConfig contract: one Config failure before infrastructure, without URL or protocol selection (V-006).
 describe("StartupConfig [PREETS-TENANT-004]", () => {
@@ -353,7 +362,7 @@ describe("StartupConfig [PREETS-TENANT-004]", () => {
     return Effect.gen(function*() {
       const config = yield* StartupConfig
       assert.strictEqual(config.logLevel, "Info")
-      assert.strictEqual(config.server.tenant.resolution, "host")
+      assert.strictEqual(config.tenant.resolution, "host")
     }).pipe(
       Effect.provideService(ConfigProvider.ConfigProvider, BaseConfigProvider)
     )
@@ -370,4 +379,66 @@ describe("StartupConfig [PREETS-TENANT-004]", () => {
       )
     )
   })
+})
+
+const startupWith = (overrides: Record<string, unknown>) =>
+  Effect.exit(StartupConfig).pipe(
+    Effect.provideService(ConfigProvider.ConfigProvider, withConfigOverrides(overrides))
+  )
+
+const failureText = (exit: Exit.Exit<unknown, unknown>): string =>
+  Exit.isFailure(exit) ? String(Cause.squash(exit.cause)) : ""
+
+describe("StartupConfig authentication [PREETS-SESSION-002]", () => {
+  it.effect("defaults absent authentication settings", () =>
+    Effect.gen(function*() {
+      const exit = yield* startupWith({})
+      assert.isTrue(Exit.isSuccess(exit))
+      if (Exit.isSuccess(exit)) {
+        const { authentication } = exit.value
+        assert.isFalse(authentication.allowInsecureLoopback)
+        assert.deepEqual(authentication.callbackOrigins, {})
+        assert.deepEqual(authentication.clientSecrets, {})
+        assert.strictEqual(authentication.transactions.prefix, "preets:oidc-tx:v1")
+        assert.strictEqual(Duration.toSeconds(authentication.transactions.ttl), 600)
+      }
+    }))
+
+  it.effect.each(["0", "-1", "1.5", "word", "601", "060", " 60", "1e2", "0x10", "999999999999999999999999"])(
+    "rejects transaction TTL %s without echoing it",
+    (ttl) =>
+      Effect.gen(function*() {
+        const exit = yield* startupWith({ OIDC_TX_TTL_SECONDS: ttl })
+        assert.isTrue(configError(exit))
+        assert.notInclude(failureText(exit), ttl)
+      })
+  )
+
+  it.effect.each(["1", "600"])("accepts transaction TTL boundary %s", (ttl) =>
+    Effect.gen(function*() {
+      const exit = yield* startupWith({ OIDC_TX_TTL_SECONDS: ttl })
+      assert.isTrue(Exit.isSuccess(exit))
+      if (Exit.isSuccess(exit)) {
+        assert.strictEqual(Duration.toSeconds(exit.value.authentication.transactions.ttl), Number(ttl))
+      }
+    }))
+
+  it.effect("rejects malformed credential JSON without echoing it", () =>
+    Effect.gen(function*() {
+      const raw = "{controlled-invalid-secret-map"
+      const exit = yield* startupWith({ OIDC_CLIENT_SECRETS_JSON: raw })
+      assert.isTrue(configError(exit))
+      assert.notInclude(failureText(exit), raw)
+    }))
+
+  it.effect("rejects malformed callback configuration", () =>
+    Effect.gen(function*() {
+      assert.isTrue(configError(yield* startupWith({ OIDC_CALLBACK_ORIGINS_JSON: "not-json" })))
+    }))
+
+  it.effect("rejects a callback authority that is not an origin", () =>
+    Effect.gen(function*() {
+      const exit = yield* startupWith({ OIDC_CALLBACK_ORIGINS_JSON: JSON.stringify({ alpha: "https://a.test/path" }) })
+      assert.isTrue(configError(exit))
+    }))
 })

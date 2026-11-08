@@ -14,3 +14,11 @@ export const makeRedis = (
     send,
     subscribe: () => Effect.succeed(Effect.never)
   }).pipe(Effect.provideService(Clock.Clock, poolClock))
+
+/** Parses the `SET key payload NX PX ttl` shape the stores send; any other shape is a test failure. */
+export const parseSetNx = (args: readonly string[]): { key: string; payload: string; ttlMilliseconds: number } => {
+  const [key, payload, nx, px, ttl] = args
+  const expectedShape = key !== undefined && payload !== undefined && nx === "NX" && px === "PX" && ttl !== undefined
+  if (!expectedShape) throw new Error("Unexpected SET shape")
+  return { key, payload, ttlMilliseconds: Number(ttl) }
+}

@@ -1,7 +1,25 @@
-import { Effect, Layer } from "effect"
+import { Duration, Effect, Layer } from "effect"
 import * as Redis from "effect/persistence/Redis"
 
-import { makeRedis } from "./redis.ts"
+import type { AuthenticationSettings } from "../../src/config/index.ts"
+
+import { makeRedis, parseSetNx } from "./redis.ts"
+
+/** Plain process settings for the `alpha` tenant; startup decoding is covered by the config tests. */
+export const authenticationSettings = (overrides: {
+  readonly callback?: string | undefined
+  readonly clientSecrets?: Readonly<Record<string, string>> | undefined
+  readonly prefix?: string | undefined
+  readonly ttlSeconds?: number | undefined
+} = {}): AuthenticationSettings => ({
+  allowInsecureLoopback: false,
+  callbackOrigins: { alpha: new URL(overrides.callback ?? "https://alpha.example.test") },
+  clientSecrets: overrides.clientSecrets ?? {},
+  transactions: {
+    prefix: overrides.prefix ?? "test:authentication",
+    ttl: Duration.seconds(overrides.ttlSeconds ?? 600)
+  }
+})
 
 export interface Entry {
   readonly expiresAt: number
@@ -29,11 +47,9 @@ const consumeEntry = (entries: Map<string, Entry>, args: readonly string[]): nul
 }
 
 const createEntry = (entries: Map<string, Entry>, args: readonly string[]): null | string => {
-  const [key, payload, nx, px, ttl] = args
-  const expectedShape = key !== undefined && payload !== undefined && nx === "NX" && px === "PX" && ttl !== undefined
-  if (!expectedShape) throw new Error("Unexpected SET shape")
+  const { key, payload, ttlMilliseconds } = parseSetNx(args)
   if (livePayload(entries.get(key)) !== null) return null
-  entries.set(key, { expiresAt: Date.now() + Number(ttl), payload })
+  entries.set(key, { expiresAt: Date.now() + ttlMilliseconds, payload })
   return "OK"
 }
 

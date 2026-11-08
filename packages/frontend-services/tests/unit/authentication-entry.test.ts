@@ -1,6 +1,6 @@
 import { NodeServices } from "@effect/platform-node"
 import { fc, it } from "@fast-check/vitest"
-import { ConfigProvider, Effect, Layer, Schema } from "effect"
+import { Effect, Layer, Schema } from "effect"
 import { NextRequest, NextResponse } from "next/server"
 import { mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
@@ -51,9 +51,8 @@ afterEach(() => {
 
 const redis = makeSessionMemoryRedis()
 
-const routeSessionLayer = SessionService.layer.pipe(
-  Layer.provide(redis.layer),
-  Layer.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({ SESSION_KEY_PREFIX: "test:session" })))
+const routeSessionLayer = SessionService.layer({ keyPrefix: "test:session" }).pipe(
+  Layer.provide(redis.layer)
 )
 
 const routeTenantLayer = Layer.succeed(TenantConfigService, {
@@ -194,13 +193,10 @@ describe("authentication Route Handlers [PREETS-SESSION-003, PREETS-SESSION-013]
           warningLeadMinutes: 5
         })
       )
-      const tenant = TenantConfigService.layer({
-        env: "test",
-        tenant: { configDir: directory, resolution: "static", staticAlias: "alpha" }
-      }).pipe(Layer.provide(NodeServices.layer))
-      const session = SessionService.layer.pipe(
-        Layer.provide(redis.layer),
-        Layer.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({ SESSION_KEY_PREFIX: "test:session" })))
+      const tenant = TenantConfigService.layer({ configDir: directory, resolution: "static", staticAlias: "alpha" })
+        .pipe(Layer.provide(NodeServices.layer))
+      const session = SessionService.layer({ keyPrefix: "test:session" }).pipe(
+        Layer.provide(redis.layer)
       )
       routeRuntime(
         { complete: () => Effect.succeed(trustedIdentity), prepare: () => Effect.die("prepare must remain unused") },
