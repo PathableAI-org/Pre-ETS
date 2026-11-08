@@ -201,8 +201,8 @@ importers:
         specifier: 0.29.0
         version: 0.29.0
       '@dprint/typescript':
-        specifier: 0.98.1
-        version: 0.98.1
+        specifier: 0.99.1
+        version: 0.99.1
       '@effect/language-service':
         specifier: 0.87.5
         version: 0.87.5
@@ -671,8 +671,8 @@ packages:
   '@dprint/markdown@0.29.0':
     resolution: {integrity: sha512-4V6MhdqZrTXFeQAfZWHRf6dKPPlx5JA3iCaT8uu6IbZ9gZpZ1R+NzXysczV2aMT/Uub44tWgljbXgnODs5dqXQ==}
 
-  '@dprint/typescript@0.98.1':
-    resolution: {integrity: sha512-hgOjMtS/ri/kR1Je/C33K1S9LJnTtsxzkFPl18vLD4bc0xFMkYMpwSgtd1lby9aMoLFM9Vc3VaGIbPLGuum+kQ==}
+  '@dprint/typescript@0.99.1':
+    resolution: {integrity: sha512-UAAu2pr8FtY3huCHG3Id8on03mZ25+E2WihlraWBb9kloVbbjIsYApx7Z4PM8umQA8ILue4Eclz+teLpq6Xymw==}
 
   '@dprint/win32-arm64@0.64.3':
     resolution: {integrity: sha512-noAymd7nZiKB4pGEW4YbS01647n4pbBYv5GzXlFWYu408xuVWc5+b76Gua4IVO1gkiPtkBRIcmRBStXblfrRyw==}
@@ -3285,7 +3285,7 @@ snapshots:
 
   '@dprint/markdown@0.29.0': {}
 
-  '@dprint/typescript@0.98.1': {}
+  '@dprint/typescript@0.99.1': {}
 
   '@dprint/win32-arm64@0.64.3':
     optional: true
