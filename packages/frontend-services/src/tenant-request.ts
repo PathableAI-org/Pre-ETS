@@ -8,10 +8,7 @@ import { type TenantConfig, TenantConfigService } from "./tenant.js"
 const noStore = { "Cache-Control": "private, no-store" }
 
 const readTenantConfig = (host: string) =>
-  Effect.gen(function*() {
-    const service = yield* TenantConfigService
-    return yield* service.getConfigFromHost(host)
-  }).pipe(Effect.result, Runtime.runPromise)
+  Runtime.runPromise(TenantConfigService.use((service) => service.getConfigFromHost(host)).pipe(Effect.result))
 
 export const loadTenantConfig = async (host: string): Promise<TenantConfig> => {
   const result = await readTenantConfig(host)

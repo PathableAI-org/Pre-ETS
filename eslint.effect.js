@@ -42,6 +42,10 @@ const identifierMatchesClass = {
 
 const schemaInstanceOfError = "CallExpression[callee.object.name='Schema'][callee.property.name='instanceOf']"
 
+const effectGen = "CallExpression[callee.object.name='Effect'][callee.property.name='gen']"
+const effectGenPipe =
+  `CallExpression[callee.property.name='pipe'][callee.object.callee.object.name='Effect'][callee.object.callee.property.name='gen']`
+
 const schemaSyncCodec = "CallExpression[callee.object.name='Schema'][callee.property.name=/^(decode|encode)\\w*Sync$/]"
 
 /** `no-restricted-syntax` entries for Effect error shapes; the root config merges them into its single entry. */
@@ -68,6 +72,21 @@ export const effectRestrictedSyntax = [
       `${schemaInstanceOfError}[arguments.0.name='Error'], ${schemaInstanceOfError}[arguments.0.property.name='Error']`
   }
 ]
+
+/**
+ * Production-code entry: a function that only returns `Effect.gen` should be `Effect.fn`. Tests keep the
+ * `it.effect(name, () => Effect.gen(...))` thunk, which `@effect/vitest` requires.
+ */
+export const effectFnRestriction = {
+  message:
+    "A function that returns `Effect.gen` is an `Effect.fn` (named, for a span) or `Effect.fnUntraced`. Keep `Effect.gen` for inline programs.",
+  selector: [
+    `ArrowFunctionExpression > ${effectGen}.body`,
+    `ArrowFunctionExpression > ${effectGenPipe}.body`,
+    `:function:not([generator=true]) > BlockStatement > ReturnStatement > ${effectGen}.argument`,
+    `:function:not([generator=true]) > BlockStatement > ReturnStatement > ${effectGenPipe}.argument`
+  ].join(", ")
+}
 
 export const effectConventions = [
   {

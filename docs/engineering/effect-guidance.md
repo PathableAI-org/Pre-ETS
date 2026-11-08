@@ -171,6 +171,17 @@ them on success, failure, or interruption. Use Layers for long-lived services an
 background work. Tests owning temporary resources should use scoped cleanup too.
 Do not add a long-lived service, cache, or background process without a current need.
 
+Retry with `Effect.retry` and a `Schedule` or `{ times, while }`, not with a function
+that calls itself with a decremented counter. The retry policy is then one visible
+value, and only the failures named in `while` are retried. When a retry depends on an
+outcome that is not an error, such as a store reporting an existing key, model that
+outcome as a private tagged error, then map it after the retry.
+
+A policy that tests must replace is a `Context.Reference` with a production default,
+not a module-level object that tests patch with `vi.spyOn`. A reference is provided per
+program, so one test's override cannot leak into another, and the default stays
+visible in the type.
+
 Within Effect workflows, use `DateTime` and the Effect clock for current time, parsing,
 formatting, time zones, and calendar operations. Keep time replaceable in tests.
 Outside Effect, native/framework date APIs remain appropriate; do not introduce a
@@ -348,6 +359,28 @@ finding like an ESLint finding. Fix the code. Do not lower a rule in
 root rule against agent suppressions covers those too. Raising a rule's severity,
 or enabling an opt-in rule after fixing what it reports, makes the gate stronger
 and is encouraged.
+
+Every Effect workspace raises these opt-in rules to `error`. Each one was confirmed to
+report a deliberate violation before it was enabled:
+
+| Rule                                                                 | What it catches                                                                                          |
+| -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `instanceOfSchema`                                                   | `instanceof` against a schema class; use `Schema.is` or `_tag`                                           |
+| `globalDateInEffect`, `globalRandomInEffect`, `globalTimersInEffect` | `Date`, `Math.random`, `setTimeout` inside Effect code; use `Clock`, `Random`, `Effect.sleep`/`Schedule` |
+| `runEffectInsideEffect`                                              | `Effect.run*` inside an Effect; compose instead                                                          |
+| `unnecessaryEffectGen`, `returnEffectInGen`, `effectFnIife`          | generators that wrap one yield, return an unrun Effect, or call `Effect.fn` immediately                  |
+| `catchAllToMapError`                                                 | `catch((e) => Effect.fail(…))`; use `mapError`                                                           |
+| `tryCatchInEffectGen`                                                | `try`/`catch` in a generator; use `Effect.try`                                                           |
+| `effectMapVoid`, `effectSucceedWithVoid`, `unnecessaryPipe`          | `map(() => undefined)`, `succeed(undefined)`, empty `pipe()`                                             |
+
+Some rules are deliberately left off:
+
+- `effectFnOpportunity`, `unsafeEffectTypeAssertion` and `schemaSyncInEffect` report nothing in this Effect
+  version, even on a direct violation. ESLint selectors in `eslint.effect.js` cover the first and last.
+- `cryptoRandomUUIDInEffect` recommends Effect's `Random`, a seeded PRNG. Bearer references and telemetry IDs
+  must come from `crypto`, inside `Effect.sync`.
+
+When the language service is upgraded, re-probe the inert rules and enable any that start reporting.
 
 The plugin options keep `ignoreEffectWarningsInTscExitCode: true`, so a developer
 who also patches TypeScript (see the README) sees warnings in `tsc` without them

@@ -18,6 +18,9 @@ Review the implementation against the approved specification and engineering pla
   untrusted input where a Schema of the accepted shapes belongs. Flag a sync decoder bound outside a generator and
   called inside one. See
   [Validation, errors, and runtime checks](../../docs/engineering/effect-guidance.md#validation-errors-and-runtime-checks).
+- In Effect workspaces, flag a retry written as self-recursion with a counter instead of `Effect.retry`, and a
+  production module object exported only so tests can patch it with `vi.spyOn`; see
+  [Resources, time, and existing application code](../../docs/engineering/effect-guidance.md#resources-time-and-existing-application-code).
 - Flag single-use helpers whose only purpose is to lower a complexity score. Ask for a representation that removes
   the branches; see [Fallow](../../docs/engineering/fallow.md#complexity-dead-code-and-type-aware-analysis).
 - Flag behavior or signatures that drift from the approved specification or `contracts/modules.md`.

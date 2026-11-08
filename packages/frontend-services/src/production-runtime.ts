@@ -48,8 +48,8 @@ const makeRuntime = Effect.fnUntraced(function*(
 ) {
   const runtime = ManagedRuntime.make(runtimeLayer)
   publish(runtime)
-  yield* Effect.promise(() => runtime.runPromise(Effect.void)).pipe(
-    Effect.onError(() => Effect.promise(() => runtime.dispose().then(() => undefined, () => undefined)))
+  yield* runtime.contextEffect.pipe(
+    Effect.onError(() => runtime.disposeEffect)
   )
   return runtime
 })

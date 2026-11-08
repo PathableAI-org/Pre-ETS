@@ -7,7 +7,19 @@
         "name": "@effect/language-service",
         "ignoreEffectWarningsInTscExitCode": true,
         "diagnosticSeverity": {
-          "instanceOfSchema": "error"
+          "catchAllToMapError": "error",
+          "effectFnIife": "error",
+          "effectMapVoid": "error",
+          "effectSucceedWithVoid": "error",
+          "globalDateInEffect": "error",
+          "globalRandomInEffect": "error",
+          "globalTimersInEffect": "error",
+          "instanceOfSchema": "error",
+          "returnEffectInGen": "error",
+          "runEffectInsideEffect": "error",
+          "tryCatchInEffectGen": "error",
+          "unnecessaryEffectGen": "error",
+          "unnecessaryPipe": "error"
         }
       }
     ]

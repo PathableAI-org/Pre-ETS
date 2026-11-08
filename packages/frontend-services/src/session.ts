@@ -92,7 +92,13 @@ export class SessionTenantMismatch extends Schema.TaggedError<SessionTenantMisma
 const serviceUnavailable = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
   effect.pipe(Effect.mapError(() => new SessionServiceUnavailable({})))
 
+/** Total establishment attempts; only a generated-reference collision is retried. */
 const COLLISION_RETRIES = 3
+
+class SessionReferenceCollision extends Schema.TaggedError<SessionReferenceCollision>()(
+  "SessionReferenceCollision",
+  {}
+) {}
 const noUsableSession: NoUsableSession = { _tag: "NoUsableSession" }
 
 const toUsableSession = (
@@ -179,7 +185,7 @@ export class SessionService extends Context.Service<SessionService, {
         const store = yield* SessionStore
 
         const establish = Effect.fn("SessionService.establish")(function*(input: EstablishSessionInput) {
-          const attempt = (remaining: number): Effect.Effect<EstablishedSession, SessionServiceUnavailable> =>
+          const attempt: Effect.Effect<EstablishedSession, SessionReferenceCollision | SessionServiceUnavailable> =
             Effect.gen(function*() {
               const now = yield* Clock.currentTimeMillis
               const reference = yield* makeSessionReference
@@ -196,12 +202,7 @@ export class SessionService extends Context.Service<SessionService, {
               }))
               const ttlMilliseconds = idleDeadlineEpochMilliseconds - now
               const outcome = yield* serviceUnavailable(store.create({ reference }, payload, ttlMilliseconds))
-              if (outcome === "exists" && remaining > 1) {
-                return yield* attempt(remaining - 1)
-              }
-              if (outcome === "exists") {
-                return yield* new SessionServiceUnavailable({})
-              }
+              if (outcome === "exists") return yield* new SessionReferenceCollision({})
               yield* Effect.annotateCurrentSpan("session.id", telemetryId)
               return {
                 reference,
@@ -215,7 +216,13 @@ export class SessionService extends Context.Service<SessionService, {
               }
             })
 
-          return yield* attempt(COLLISION_RETRIES)
+          return yield* attempt.pipe(
+            Effect.retry({
+              times: COLLISION_RETRIES - 1,
+              while: (failure) => failure._tag === "SessionReferenceCollision"
+            }),
+            Effect.catchTag("SessionReferenceCollision", () => Effect.fail(new SessionServiceUnavailable({})))
+          )
         })
 
         const invalidate = Effect.fn("SessionService.invalidate")(function*(

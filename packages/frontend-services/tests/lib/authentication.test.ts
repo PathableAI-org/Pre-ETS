@@ -254,6 +254,41 @@ describe("AuthenticationService preparation [PREETS-SESSION-002, PREETS-SESSION-
       }))
     ))
 
+  it.effect("retries a correlation collision with a fresh attempt", () => {
+    const redis = makeMemoryRedis()
+    redis.collideNextCreates(1)
+    return withFetch(
+      () => Promise.resolve(metadata()),
+      withWorld(
+        Effect.gen(function*() {
+          const prepared = yield* prepare()
+          expect(redis.commands.filter((command) => command === "SET")).toHaveLength(2)
+          expect(redis.entries.size).toBe(1)
+          expect(prepared.correlation).toMatch(/^[A-Za-z0-9_-]{43}$/)
+        }),
+        { redis }
+      )
+    )
+  })
+
+  it.effect("returns unavailability after three correlation collisions", () => {
+    const redis = makeMemoryRedis()
+    redis.collideNextCreates(3)
+    return withFetch(
+      () => Promise.resolve(metadata()),
+      withWorld(
+        Effect.gen(function*() {
+          const result = yield* prepare().pipe(Effect.result)
+          expect(Result.isFailure(result)).toBe(true)
+          if (Result.isFailure(result)) expect(result.failure).toBeInstanceOf(AuthenticationUnavailable)
+          expect(redis.commands.filter((command) => command === "SET")).toHaveLength(3)
+          expect(redis.entries.size).toBe(0)
+        }),
+        { redis }
+      )
+    )
+  })
+
   it.effect("rejects an initiation authority mismatch before provider delegation", () => {
     let fetches = 0
     return withFetch(

@@ -16,7 +16,7 @@ import {
 import { effectiveSessionPolicy, type SessionPolicy, TenantConfigService } from "../tenant.js"
 import { PRIVATE_NO_STORE } from "./constants.js"
 import { CORRELATION_COOKIE, isLoopbackHost, setSessionCookie } from "./cookie.js"
-import { callbackFreshnessPolicy } from "./freshness.js"
+import { CallbackFreshness } from "./freshness.js"
 
 export interface CallbackResponses {
   readonly authenticationReturn: () => Promise<NextResponse>
@@ -82,8 +82,20 @@ const establishSession = Effect.fn("establishSession")(function*(
   return setSessionCookie(clearCorrelation(response, request), request, established.reference, maxAgeSeconds)
 })
 
-const completeAuthentication = (responses: CallbackResponses, request: NextRequest) =>
-  Effect.gen(function*() {
+const respondToTrustedIdentity = Effect.fnUntraced(function*(
+  responses: CallbackResponses,
+  request: NextRequest,
+  identity: TrustedIdentity
+) {
+  const freshness = yield* CallbackFreshness
+  if (!freshness.confirmed(identity)) return yield* failClosedAfterTrustedResult(responses, request)
+  return yield* establishSession(request, identity).pipe(
+    Effect.catchTag("SessionServiceUnavailable", () => failClosedAfterTrustedResult(responses, request))
+  )
+})
+
+const completeAuthentication = Effect.fn("completeAuthentication")(
+  function*(_responses: CallbackResponses, request: NextRequest) {
     const authentication = yield* AuthenticationService
     const correlation = request.cookies.get(CORRELATION_COOKIE)?.value
     return yield* authentication.complete({
@@ -91,22 +103,20 @@ const completeAuthentication = (responses: CallbackResponses, request: NextReque
       host: request.headers.get("host") ?? "",
       query: [...request.nextUrl.searchParams.entries()]
     })
-  }).pipe(
-    Effect.matchEffect({
-      onFailure: (failure) =>
-        Effect.promise(() => responseForReason(responses, failure.reason)).pipe(
-          Effect.map((response) =>
-            failure.correlationDisposition === "clear" ? clearCorrelation(response, request) : response
-          )
-        ),
-      onSuccess: (identity) =>
-        callbackFreshnessPolicy.confirmed(identity) ?
-          establishSession(request, identity).pipe(
-            Effect.catchTag("SessionServiceUnavailable", () => failClosedAfterTrustedResult(responses, request))
-          ) :
-          failClosedAfterTrustedResult(responses, request)
-    })
-  )
+  },
+  (effect, responses, request) =>
+    effect.pipe(
+      Effect.matchEffect({
+        onFailure: (failure) =>
+          Effect.promise(() => responseForReason(responses, failure.reason)).pipe(
+            Effect.map((response) =>
+              failure.correlationDisposition === "clear" ? clearCorrelation(response, request) : response
+            )
+          ),
+        onSuccess: (identity) => respondToTrustedIdentity(responses, request, identity)
+      })
+    )
+)
 
 export const createCallbackHandler = (responses: CallbackResponses) =>
   toNext((request) => completeAuthentication(responses, request))
