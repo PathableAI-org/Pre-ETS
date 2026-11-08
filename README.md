@@ -202,7 +202,9 @@ than overwriting it. Prefer the installed package declarations when docs disagre
 
 For VS Code/Cursor, select **TypeScript: Select TypeScript Version → Use Workspace
 Version**. The repository's editor settings already point at the local SDK.
-To also get Effect diagnostics from the compiler, manually patch the local
+Effect diagnostics are already enforced without patching: each Effect workspace's
+`pnpm lint` runs `lint:effect`, which fails on any language-service warning or
+error. To also get them from the compiler, manually patch the local
 TypeScript installation and inspect the result:
 
 ```sh
@@ -217,9 +219,9 @@ patch each Effect workspace's resolved installation with `patch --dir <path>`.
 Repeat after TypeScript or language-service updates; restart the editor's TypeScript
 server and clear affected `.tsbuildinfo` caches if diagnostics remain stale.
 The upstream `check` command can exit successfully when unpatched, so confirm its
-output reports both compiler modules patched. Errors block patched checks;
-warnings and suggestions remain visible without blocking. Environment
-verification is manual; installation continues to prepare Husky only.
+output reports both compiler modules patched. In patched `tsc`, errors block
+and warnings stay visible without blocking; `lint:effect` blocks on both.
+Installation continues to prepare Husky only.
 
 For Effect workspace tooling, agent instructions, offline reference commands,
 and editor setup, see [Effect development](docs/engineering/effect-guidance.md).

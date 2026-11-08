@@ -38,11 +38,12 @@ const hostFailure = (host: string) =>
     if (Result.isSuccess(result)) throw new Error(`expected host failure for ${host}`)
     return result.failure
   }).pipe(
-    Effect.provide(TenantConfigService.layer({
-      env: "test",
-      tenant: { baseHostname: "example.test", configDir: "/tenant-config", resolution: "host" }
-    })),
-    Effect.provide(NodeServices.layer),
+    Effect.provide(
+      TenantConfigService.layer({
+        env: "test",
+        tenant: { baseHostname: "example.test", configDir: "/tenant-config", resolution: "host" }
+      }).pipe(Layer.provide(NodeServices.layer))
+    ),
     Effect.provideService(References.MinimumLogLevel, "Error"),
     Effect.runSync
   )
@@ -53,11 +54,12 @@ const staticFailure = Effect.gen(function*() {
   if (Result.isSuccess(result)) throw new Error("expected static alias failure")
   return result.failure
 }).pipe(
-  Effect.provide(TenantConfigService.layer({
-    env: "test",
-    tenant: { configDir: "/tenant-config", resolution: "static", staticAlias: "NOT-VALID" }
-  })),
-  Effect.provide(NodeServices.layer),
+  Effect.provide(
+    TenantConfigService.layer({
+      env: "test",
+      tenant: { configDir: "/tenant-config", resolution: "static", staticAlias: "NOT-VALID" }
+    }).pipe(Layer.provide(NodeServices.layer))
+  ),
   Effect.provideService(References.MinimumLogLevel, "Error"),
   Effect.runSync
 )
@@ -97,8 +99,10 @@ const install = (
     program: Effect.Effect<unknown, unknown, SessionService | TenantConfigService>
   ) =>
     Effect.runPromise(program.pipe(
-      Effect.provide(Layer.succeed(SessionService, session)),
-      Effect.provide(Layer.succeed(TenantConfigService, tenant))
+      Effect.provide(Layer.mergeAll(
+        Layer.succeed(SessionService, session),
+        Layer.succeed(TenantConfigService, tenant)
+      ))
     ))
   )
 }

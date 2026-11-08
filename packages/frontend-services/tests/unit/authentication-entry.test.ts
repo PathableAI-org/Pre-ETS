@@ -89,8 +89,7 @@ const routeRuntime = (
     Effect.runPromise(
       program.pipe(
         Effect.provideService(AuthenticationService, service),
-        Effect.provide(provided.session),
-        Effect.provide(provided.tenant)
+        Effect.provide(Layer.mergeAll(provided.session, provided.tenant))
       )
     )
   )

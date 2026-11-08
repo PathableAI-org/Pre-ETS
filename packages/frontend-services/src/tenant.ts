@@ -206,7 +206,7 @@ const tenantConfigFromAlias = (
               new ConfigProvider.SourceError({ cause, message: "Tenant configuration source is unavailable" })
             )
           ) :
-          Effect.succeed(undefined)
+          Effect.undefined
       )
 
       return yield* TenantConfig.parse(provider).pipe(

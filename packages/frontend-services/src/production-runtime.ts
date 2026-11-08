@@ -51,12 +51,8 @@ const makeRuntime = Effect.fnUntraced(function*(
 ) {
   const runtime = ManagedRuntime.make(runtimeLayer)
   publish(runtime)
-  yield* Effect.tryPromise({
-    catch: (error: unknown) => error,
-    try: () => runtime.runPromise(Effect.void)
-  }).pipe(
-    Effect.tapError(() => Effect.promise(() => runtime.dispose().then(() => undefined, () => undefined))),
-    Effect.orDie
+  yield* Effect.promise(() => runtime.runPromise(Effect.void)).pipe(
+    Effect.onError(() => Effect.promise(() => runtime.dispose().then(() => undefined, () => undefined)))
   )
   return runtime
 })

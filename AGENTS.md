@@ -121,7 +121,9 @@ temporary session state; backend owns the Effect REST domain layer. Do not impor
 - Each workspace owns an `eslint.config.js` importing the root config. Keep shared
   rules at the root and workspace-specific rules in that workspace. Root linting
   checks top-level files, then delegates to workspace lint scripts.
-- Validate with `pnpm typecheck`, `pnpm build`, and `pnpm lint`.
+- Validate with `pnpm typecheck`, `pnpm build`, and `pnpm lint`. In Effect
+  workspaces `lint` includes `lint:effect`, the Effect language-service
+  diagnostics that `tsc` does not report; run it while editing Effect code.
 - Before committing, run `pnpm check:unused`, `pnpm check:health`, and
   `pnpm check:changes`, as described in [Fallow](docs/engineering/fallow.md).
   Investigate findings rather than adding suppressions. Type-aware analysis is
@@ -131,7 +133,9 @@ temporary session state; backend owns the Effect REST domain layer. Do not impor
   an exported signature must name an exported type.
 - Coding agents MUST NOT disable ESLint, Fallow, TypeScript, or any other check
   via comments or suppressions (`eslint-disable`, `@ts-ignore`,
-  `@ts-expect-error`, `fallow-ignore`, ignore directives, and similar). Do not
+  `@ts-expect-error`, `fallow-ignore`, `@effect-diagnostics`, ignore
+  directives, and similar). Lowering an Effect language-service rule in
+  `diagnosticSeverity` is a suppression too. Do not
   add Fallow ignore patterns, baselines, `allowUnmatched` entries, or weaker
   complexity thresholds to accommodate new code. Always fix the underlying
   error or warning. Only human developers may disable a check; if an agent
