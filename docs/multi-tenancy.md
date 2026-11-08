@@ -13,8 +13,11 @@ records belong to the backend; see [domain-persistence.md](./domain-persistence.
 
 - Host mode requires `BASE_HOSTNAME`. A host matching `${alias}.${BASE_HOSTNAME}`
   selects that alias. Tenant labels contain letters and hyphens and are normalized
-  to lowercase. Bare base hosts, extra labels, and hosts with a retained port fail
-  alias resolution. The diagnostic adapter passes the incoming Host header to the service.
+  to lowercase; the hostname compares case-insensitively. A port never changes the
+  selected tenant: `springfield.example.test:3000` selects Springfield on every route.
+  Bare base hosts, extra labels, and malformed authorities (a path, credentials, or an
+  out-of-range port) fail alias resolution. Every adapter passes the incoming Host
+  header to `getAlias`, which owns this rule; no route strips or retries ports itself.
 - Static mode requires `TENANT_STATIC_ALIAS`, ignores the request host, and always
   selects that alias from the same configuration directory. It does not require
   `BASE_HOSTNAME`.
@@ -25,6 +28,11 @@ combines selection and reading. Consumers use these operations rather than stori
 mutable current tenant or parsing hosts independently. Host reads do not consult
 `X-Forwarded-Host` or query parameters. Deployment ingress must supply the trusted
 original Host header and protect the diagnostic endpoint separately.
+
+Login and callback additionally require the request authority to equal the selected
+tenant's configured callback origin, port included (an absent port means the origin
+scheme's default). Tenant selection ignores the port; the origin check does not. See
+[authentication.md](./authentication.md#callback-and-local-provider-settings).
 
 ## Loading tenant configuration
 

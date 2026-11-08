@@ -62,9 +62,33 @@ describe("TenantConfigService.getAlias [PREETS-TENANT-003, PREETS-TENANT-005]", 
     aliasArb,
     baseHostnameArb,
     fc.integer({ max: 65_535, min: 1 })
-  ])("rejects a host that keeps a port", (alias, baseHostname, port) => {
-    expectAliasFailure(aliasFromHost(baseHostname, `${alias}.${baseHostname}:${String(port)}`))
+  ])("selects the same alias whatever port the host keeps", (alias, baseHostname, port) => {
+    const result = aliasFromHost(baseHostname, `${alias}.${baseHostname}:${String(port)}`)
+    expect(result).toStrictEqual(Result.succeed(alias.toLowerCase()))
   })
+
+  it.prop([aliasArb, baseHostnameArb, fc.integer({ max: 65_535, min: 1 })])(
+    "still rejects a ported host outside the alias pattern",
+    (alias, baseHostname, port) => {
+      expectAliasFailure(aliasFromHost(baseHostname, `${alias}.extra.${baseHostname}:${String(port)}`))
+      expectAliasFailure(aliasFromHost(baseHostname, `${baseHostname}:${String(port)}`))
+    }
+  )
+
+  it.prop([aliasArb, baseHostnameArb.chain((base) => fc.mixedCase(fc.constant(base)))])(
+    "compares the base hostname case-insensitively",
+    (alias, baseHostname) => {
+      const result = aliasFromHost(baseHostname.toLowerCase(), `${alias}.${baseHostname}`)
+      expect(result).toStrictEqual(Result.succeed(alias.toLowerCase()))
+    }
+  )
+
+  it.each(["springfield.localhost:65536", "springfield.localhost:3000/", "springfield.localhost:3000:3000"])(
+    "rejects the malformed authority %s",
+    (host) => {
+      expectAliasFailure(aliasFromHost("localhost", host))
+    }
+  )
 
   it.prop([aliasArb, baseHostnameArb])("rejects an extra label before the base hostname", (alias, baseHostname) => {
     expectAliasFailure(aliasFromHost(baseHostname, `${alias}.extra.${baseHostname}`))

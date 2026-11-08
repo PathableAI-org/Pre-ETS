@@ -1,7 +1,6 @@
 import { Effect, Result } from "effect"
 import { forbidden } from "next/navigation"
 
-import { parseRequestHost } from "../request-host.js"
 import { Runtime } from "../runtime.js"
 import {
   type NoUsableSession,
@@ -27,19 +26,6 @@ export interface ResolvedSessionRequest {
 
 type ReadSessionFailure = SessionServiceUnavailable | SessionTenantMismatch | TenantFailure
 
-const selectedAlias = (
-  tenant: TenantConfigService["Service"],
-  host: string
-): Effect.Effect<TenantAlias, TenantFailure> => {
-  const direct = tenant.getAlias(host)
-  if (Result.isSuccess(direct)) return Effect.succeed(direct.success)
-  const hostname = parseRequestHost(host)?.hostname
-  if (hostname === undefined) return Effect.fail(direct.failure)
-  const retry = tenant.getAlias(hostname)
-  if (Result.isFailure(retry)) return Effect.fail(direct.failure)
-  return Effect.succeed(retry.success)
-}
-
 const readSession = Effect.fn("readSessionRequest")(function*(
   input: ReadSessionRequestInput
 ): Effect.fn.Return<
@@ -48,7 +34,7 @@ const readSession = Effect.fn("readSessionRequest")(function*(
   SessionService | TenantConfigService
 > {
   const tenant = yield* TenantConfigService
-  const tenantAlias = yield* selectedAlias(tenant, input.host)
+  const tenantAlias = yield* Effect.fromResult(tenant.getAlias(input.host))
   yield* tenant.getConfigFromAlias(tenantAlias)
   const sessions = yield* SessionService
   const session = yield* sessions.readForTenant({ reference: input.reference, tenantAlias })
