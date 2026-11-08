@@ -12,6 +12,13 @@ const DevCreateOnSiteVisit = CreateOnSiteVisit.mapFields((fields) => ({
 }))
 const localHost = /^(?:127\.0\.0\.1|localhost)(?::[1-9]\d{0,4})?$/iu
 
+class VisitStoreConfigError extends Schema.TaggedError<VisitStoreConfigError>()("VisitStoreConfigError", {
+  message: Schema.String
+}) {}
+
+const nonLocalDatabase = () =>
+  new VisitStoreConfigError({ message: "BACKEND_DATABASE_URL must name a local PostgreSQL server" })
+
 export class VisitSaveError extends Schema.TaggedError<VisitSaveError>()("VisitSaveError", {}) {}
 
 export class VisitStore extends Context.Service<VisitStore, {
@@ -23,7 +30,7 @@ export const VisitStoreLive = Layer.effect(
   Effect.gen(function*() {
     const databaseUrl = yield* Config.Redacted("BACKEND_DATABASE_URL")
     const localUrl = yield* Effect.try({
-      catch: () => new Error("BACKEND_DATABASE_URL must name a local PostgreSQL server"),
+      catch: nonLocalDatabase,
       try: () => new URL(Redacted.value(databaseUrl))
     })
     if (
@@ -31,7 +38,7 @@ export const VisitStoreLive = Layer.effect(
       || !["127.0.0.1", "localhost"].includes(localUrl.hostname)
       || localUrl.searchParams.has("host")
     ) {
-      return yield* Effect.fail(new Error("BACKEND_DATABASE_URL must name a local PostgreSQL server"))
+      return yield* nonLocalDatabase()
     }
 
     return VisitStore.of({

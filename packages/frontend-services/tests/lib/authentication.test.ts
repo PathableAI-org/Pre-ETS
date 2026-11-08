@@ -47,20 +47,22 @@ const withWorld = <A, E, R>(program: Effect.Effect<A, E, AuthenticationService |
   const redis = options.redis ?? makeMemoryRedis()
   let tenantReads = 0
   return program.pipe(
-    Effect.provide(AuthenticationService.layer.pipe(Layer.provide(redis.layer))),
-    Effect.provide(TenantConfigService.layer({
-      env: "test",
-      tenant: { baseHostname: "example.test", configDir: "/tenants", resolution: "host" }
-    })),
-    Effect.provide(FileSystem.layerNoop({
-      readDirectory: () => Effect.succeed([]),
-      readFileString: () => {
-        const issuer = options.issuers?.[tenantReads] ?? options.issuer ?? "https://provider.test"
-        tenantReads += 1
-        return Effect.succeed(tenantFile(options, issuer))
-      }
-    })),
-    Effect.provide(Path.layer),
+    Effect.provide(AuthenticationService.layer.pipe(
+      Layer.provide(redis.layer),
+      Layer.provide(TenantConfigService.layer({
+        env: "test",
+        tenant: { baseHostname: "example.test", configDir: "/tenants", resolution: "host" }
+      })),
+      Layer.provide(FileSystem.layerNoop({
+        readDirectory: () => Effect.succeed([]),
+        readFileString: () => {
+          const issuer = options.issuers?.[tenantReads] ?? options.issuer ?? "https://provider.test"
+          tenantReads += 1
+          return Effect.succeed(tenantFile(options, issuer))
+        }
+      })),
+      Layer.provide(Path.layer)
+    )),
     Effect.provideService(
       ConfigProvider.ConfigProvider,
       ConfigProvider.fromUnknown({

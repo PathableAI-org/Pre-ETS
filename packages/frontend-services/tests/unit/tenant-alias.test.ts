@@ -1,6 +1,6 @@
 import { NodeServices } from "@effect/platform-node"
 import { fc, it } from "@fast-check/vitest"
-import { Effect, References, Result } from "effect"
+import { Effect, Layer, References, Result } from "effect"
 import { describe, expect } from "vitest"
 
 import { TenantConfigService } from "../../src/tenant.ts"
@@ -13,15 +13,16 @@ const aliasFromHost = (baseHostname: string, host: string) =>
     const service = yield* TenantConfigService
     return service.getAlias(host)
   }).pipe(
-    Effect.provide(TenantConfigService.layer({
-      env: "test",
-      tenant: {
-        baseHostname,
-        configDir: "/tenant-config",
-        resolution: "host"
-      }
-    })),
-    Effect.provide(NodeServices.layer),
+    Effect.provide(
+      TenantConfigService.layer({
+        env: "test",
+        tenant: {
+          baseHostname,
+          configDir: "/tenant-config",
+          resolution: "host"
+        }
+      }).pipe(Layer.provide(NodeServices.layer))
+    ),
     Effect.provideService(References.MinimumLogLevel, "Error"),
     Effect.runSync
   )

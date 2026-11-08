@@ -1,5 +1,5 @@
 import { describe, expect, it } from "@effect/vitest"
-import { Effect, FileSystem, Logger, Path, Result } from "effect"
+import { Effect, FileSystem, Layer, Logger, Path, Result } from "effect"
 
 import { TenantConfigService } from "../../src/tenant.ts"
 
@@ -21,16 +21,19 @@ const readPolicy = Effect.fnUntraced(
   Effect.result,
   (effect, policy) =>
     effect.pipe(
-      Effect.provide(TenantConfigService.layer({
-        env: "test",
-        tenant: { baseHostname: "example.test", configDir: "/tenant-config", resolution: "host" }
-      })),
-      Effect.provide(FileSystem.layerNoop({
-        readDirectory: () => Effect.succeed(["policy.json"]),
-        readFileString: () => Effect.succeed(JSON.stringify({ ...tenantFile, ...policy }))
-      })),
-      Effect.provide(Path.layer),
-      Effect.provide(Logger.layer([]))
+      Effect.provide(Layer.mergeAll(
+        TenantConfigService.layer({
+          env: "test",
+          tenant: { baseHostname: "example.test", configDir: "/tenant-config", resolution: "host" }
+        }).pipe(Layer.provide(Layer.mergeAll(
+          FileSystem.layerNoop({
+            readDirectory: () => Effect.succeed(["policy.json"]),
+            readFileString: () => Effect.succeed(JSON.stringify({ ...tenantFile, ...policy }))
+          }),
+          Path.layer
+        ))),
+        Logger.layer([])
+      ))
     )
 )
 

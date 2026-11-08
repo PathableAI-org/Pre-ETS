@@ -174,8 +174,7 @@ describe("callback session-establishment failure mapping [PREETS-SESSION-003]", 
           complete: () => Effect.succeed(identity),
           prepare: () => Effect.die("prepare must remain unused")
         }),
-        Effect.provide(layers.session),
-        Effect.provide(layers.tenant)
+        Effect.provide(Layer.mergeAll(layers.session, layers.tenant))
       ))
     )
   }

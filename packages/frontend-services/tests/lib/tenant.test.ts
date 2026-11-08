@@ -1,6 +1,6 @@
 import { NodeServices } from "@effect/platform-node"
 import { describe, expect, it } from "@effect/vitest"
-import { Config, ConfigProvider, Effect, FileSystem, Path, PlatformError, References, Result } from "effect"
+import { Config, ConfigProvider, Effect, FileSystem, Layer, Path, PlatformError, References, Result } from "effect"
 import { mkdtemp, rm, unlink, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -42,17 +42,22 @@ const withFiles = <A, E>(
   overrides: Partial<FileSystem.FileSystem> = {}
 ) =>
   program.pipe(
-    Effect.provide(TenantConfigService.layer({ env: "test", tenant: resolutionConfig(resolution) })),
-    Effect.provide(FileSystem.layerNoop({
-      readDirectory: () => Effect.succeed([]),
-      readFileString: (path) =>
-        Effect.yieldNow.pipe(Effect.andThen(Effect.suspend(() => {
-          const content = files.get(path)
-          return content === undefined ? Effect.fail(platformFailure("NotFound")) : Effect.succeed(content)
-        }))),
-      ...overrides
-    })),
-    Effect.provide(Path.layer),
+    Effect.provide(
+      TenantConfigService.layer({ env: "test", tenant: resolutionConfig(resolution) }).pipe(
+        Layer.provide(Layer.mergeAll(
+          FileSystem.layerNoop({
+            readDirectory: () => Effect.succeed([]),
+            readFileString: (path) =>
+              Effect.yieldNow.pipe(Effect.andThen(Effect.suspend(() => {
+                const content = files.get(path)
+                return content === undefined ? Effect.fail(platformFailure("NotFound")) : Effect.succeed(content)
+              }))),
+            ...overrides
+          }),
+          Path.layer
+        ))
+      )
+    ),
     Effect.provideService(References.MinimumLogLevel, "Error")
   )
 
@@ -257,8 +262,11 @@ describe("TenantConfigService file configuration [PREETS-TENANT-003, PREETS-TENA
         const other = yield* service.getConfigFromHost("beta.example.test")
         return { deleted, first, other, second }
       }).pipe(
-        Effect.provide(TenantConfigService.layer({ env: "test", tenant: resolutionConfig("host", directory) })),
-        Effect.provide(NodeServices.layer),
+        Effect.provide(
+          TenantConfigService.layer({ env: "test", tenant: resolutionConfig("host", directory) }).pipe(
+            Layer.provide(NodeServices.layer)
+          )
+        ),
         Effect.provideService(References.MinimumLogLevel, "Error")
       )
       expect(result.first).toStrictEqual(alpha)

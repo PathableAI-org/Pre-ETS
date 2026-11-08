@@ -17,24 +17,26 @@ const withScenario = <A, E, R>(program: Effect.Effect<A, E, AuthenticationServic
 } = {}) => {
   const redis = makeMemoryRedis()
   return program.pipe(
-    Effect.provide(AuthenticationService.layer.pipe(Layer.provide(redis.layer))),
-    Effect.provide(TenantConfigService.layer({
-      env: "test",
-      tenant: { baseHostname: "example.test", configDir: "/tenants", resolution: "host" }
-    })),
-    Effect.provide(FileSystem.layerNoop({
-      readDirectory: () => Effect.succeed([]),
-      readFileString: () =>
-        Effect.succeed(JSON.stringify({
-          displayName: "Alpha",
-          oidc: {
-            clientAuth: "public",
-            clientId: "alpha-client",
-            issuer: options.issuer ?? "https://provider.test"
-          }
-        }))
-    })),
-    Effect.provide(Path.layer),
+    Effect.provide(AuthenticationService.layer.pipe(
+      Layer.provide(redis.layer),
+      Layer.provide(TenantConfigService.layer({
+        env: "test",
+        tenant: { baseHostname: "example.test", configDir: "/tenants", resolution: "host" }
+      })),
+      Layer.provide(FileSystem.layerNoop({
+        readDirectory: () => Effect.succeed([]),
+        readFileString: () =>
+          Effect.succeed(JSON.stringify({
+            displayName: "Alpha",
+            oidc: {
+              clientAuth: "public",
+              clientId: "alpha-client",
+              issuer: options.issuer ?? "https://provider.test"
+            }
+          }))
+      })),
+      Layer.provide(Path.layer)
+    )),
     Effect.provideService(
       ConfigProvider.ConfigProvider,
       ConfigProvider.fromUnknown({

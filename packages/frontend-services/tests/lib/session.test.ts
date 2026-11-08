@@ -778,8 +778,7 @@ describe("SessionService.refreshForTenant policy properties [PREETS-SESSION-008]
             tenantAlias: alias
           })
         }).pipe(
-          Effect.provide(redisWorld(redis)),
-          Effect.provide(TestClock.layer())
+          Effect.provide(Layer.mergeAll(redisWorld(redis), TestClock.layer()))
         )
       )
       expect(renewed).toMatchObject({

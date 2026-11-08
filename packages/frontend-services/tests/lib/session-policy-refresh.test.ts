@@ -146,8 +146,7 @@ describe("selected tenant policy and session refresh [PREETS-SESSION-008, PREETS
       })
       expect(yield* session.read({ reference: first.reference })).toStrictEqual(renewed)
     }).pipe(
-      Effect.provide(world(redis, documents)),
-      Effect.provide(TestClock.layer())
+      Effect.provide(Layer.mergeAll(world(redis, documents), TestClock.layer()))
     )
   })
 })
