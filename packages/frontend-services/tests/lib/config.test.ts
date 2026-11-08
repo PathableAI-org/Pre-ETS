@@ -65,7 +65,7 @@ describe("ServerConfig", () => {
   })
 
   describe(".tenant", () => {
-    describe(".configDir", () => {
+    describe(".configDir [PREETS-TENANT-004]", () => {
       it.effect.each([
         ["static"],
         ["host"]
@@ -156,7 +156,7 @@ describe("ServerConfig", () => {
         })
       })
     })
-    describe(".baseHostname", () => {
+    describe(".baseHostname [PREETS-TENANT-003]", () => {
       describe("when .resolution is host", () => {
         it.effect("fails if baseHostname is not set", () => {
           return Effect.gen(function*() {
@@ -336,7 +336,7 @@ const configError = (exit: Exit.Exit<unknown, unknown>): boolean => {
 }
 
 // StartupConfig contract: one Config failure before infrastructure, without URL or protocol selection (V-006).
-describe("StartupConfig", () => {
+describe("StartupConfig [PREETS-TENANT-004]", () => {
   it.effect("fails with ConfigError when TENANT_CONFIG_DIR is omitted", () => {
     return Effect.gen(function*() {
       const exit = yield* Effect.exit(StartupConfig)

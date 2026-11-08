@@ -64,7 +64,7 @@ const request = (path: string, cookie?: string) =>
 
 afterEach(() => vi.resetAllMocks())
 
-describe("login expected-failure mapping", () => {
+describe("login expected-failure mapping [PREETS-SESSION-002, PREETS-TENANT-004]", () => {
   it.each([404, 500] as const)("preserves tenant HTTP %s without a correlation cookie", async (status) => {
     useService({
       complete: () => Effect.die("complete must remain unused"),
@@ -97,7 +97,7 @@ describe("login expected-failure mapping", () => {
   })
 })
 
-describe("callback expected-failure mapping", () => {
+describe("callback expected-failure mapping [PREETS-SESSION-002]", () => {
   it("clears correlation after a consumed provider denial without re-emitting input", async () => {
     useService({
       complete: () =>
@@ -147,7 +147,7 @@ describe("callback expected-failure mapping", () => {
   })
 })
 
-describe("callback session-establishment failure mapping", () => {
+describe("callback session-establishment failure mapping [PREETS-SESSION-003]", () => {
   const alias = Schema.decodeSync(TenantAlias)("alpha")
   const identity = {
     authenticatedAt: 1_700_000_000,

@@ -43,7 +43,7 @@ const usableSession = {
   warningLeadMinutes: 5
 }
 
-describe("reference session enforcement", () => {
+describe("reference session enforcement [PREETS-SESSION-001, PREETS-SESSION-004, PREETS-SESSION-005]", () => {
   beforeEach(() => {
     operationProps.length = 0
     vi.mocked(readSessionRequest).mockReset()

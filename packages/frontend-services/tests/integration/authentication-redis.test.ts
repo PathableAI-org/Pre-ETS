@@ -117,7 +117,7 @@ const complete = (
     }).pipe(Effect.result)
   )
 
-describe("AuthenticationService with independently scoped NodeRedis clients", () => {
+describe("AuthenticationService with independently scoped NodeRedis clients [PREETS-SESSION-002]", () => {
   const instanceA = ManagedRuntime.make(authenticationLayer())
   const instanceB = ManagedRuntime.make(authenticationLayer())
 

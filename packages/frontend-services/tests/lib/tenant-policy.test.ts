@@ -36,7 +36,7 @@ const readPolicy = Effect.fnUntraced(
 
 const validTimeouts = Array.from({ length: 26 }, (_, offset) => offset + 5)
 
-describe("effective tenant session policy", () => {
+describe("effective tenant session policy [PREETS-SESSION-008, PREETS-SESSION-011]", () => {
   it.effect("defaults omitted policy to 30/5 without adding fields to the parsed tenant file", () =>
     Effect.gen(function*() {
       const result = yield* readPolicy({})

@@ -113,6 +113,16 @@ presentation). Requirements BDD scenarios under [`tests/bdd/requirements/`](../.
 end-to-end boundary: they exercise the real Next application through HTTP and Chromium, including real-Keycloak
 provider journeys via nightly CI. Keep Vitest unit tests and BDD scenarios separate.
 
+## Requirement references in module tests
+
+Module and integration tests written as evidence for a requirement name its ID in the enclosing `describe`
+title, after the readable name: `describe("SessionService tenant admission [PREETS-SESSION-005]", ...)`.
+List every ID the block's tests collectively support. The reference records which requirement the evidence
+serves; it does not claim the block establishes that whole requirement, and the evidence remains bounded by
+its boundary and doubles. Tests that protect internal or tooling expectations need no reference. New references
+are proposals until a human approves them in review, as described in
+[evidence ownership](../../requirements/README.md#evidence-ownership-and-traceability).
+
 ## Existing suites and execution references
 
 Run commands from the repository root. Use the linked guides for infrastructure, isolation, and cleanup requirements.

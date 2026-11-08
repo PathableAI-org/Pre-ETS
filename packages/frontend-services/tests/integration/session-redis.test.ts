@@ -182,7 +182,7 @@ const destroyClient = Effect.gen(function*() {
   node.client.destroy()
 })
 
-describe("SessionService with independently scoped NodeRedis clients", () => {
+describe("SessionService with independently scoped NodeRedis clients [PREETS-SESSION-005, PREETS-SESSION-006]", () => {
   afterAll(async () => {
     await deleteOwnedPrefix(sessionPrefix)
   })
@@ -511,7 +511,7 @@ const expectRenewed = (value: NoUsableSession | UsableSession, receivedAt: numbe
   })
 }
 
-describe("SessionService renewal, expiration, and invalidation on real Redis", () => {
+describe("SessionService renewal, expiration, and invalidation on real Redis [PREETS-SESSION-006, PREETS-SESSION-008, PREETS-SESSION-013]", () => {
   it("adopts one client's refresh on the other client and leaves a sibling unchanged", async () => {
     await withClients(async (runtimeA, runtimeB) => {
       const first = await establish(runtimeA, 30, 5)

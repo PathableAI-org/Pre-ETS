@@ -79,7 +79,7 @@ const establish = (
   return service.establish(input)
 }
 
-describe("SessionService establishment", () => {
+describe("SessionService establishment [PREETS-SESSION-003, PREETS-SESSION-008]", () => {
   it.effect("establishes a tenant-bound session with the effective deadline and warning policy", () =>
     scenario(() =>
       Effect.gen(function*() {
@@ -128,7 +128,7 @@ describe("SessionService establishment", () => {
     ))
 })
 
-describe("SessionService invalidation", () => {
+describe("SessionService invalidation [PREETS-SESSION-013]", () => {
   it.effect.each([undefined, "not-a-valid-reference"])(
     "returns NoUsableSession for %s input without a Redis command",
     (reference) =>
@@ -263,7 +263,7 @@ describe("SessionService invalidation", () => {
     ))
 })
 
-describe("SessionService read outcomes", () => {
+describe("SessionService read outcomes [PREETS-SESSION-008]", () => {
   it.effect("returns NoUsableSession for an absent reference without a Redis lookup", () =>
     scenario((redis) =>
       Effect.gen(function*() {
@@ -419,7 +419,7 @@ describe("SessionService read outcomes", () => {
     ))
 })
 
-describe("SessionService tenant admission", () => {
+describe("SessionService tenant admission [PREETS-SESSION-005]", () => {
   it.effect("returns the usable session read for the same branded alias", () =>
     scenario(() =>
       Effect.gen(function*() {
@@ -576,7 +576,7 @@ const validPolicyArb = fc.integer({ max: 30, min: 5 }).chain((idleTimeoutMinutes
   }))
 )
 
-describe("SessionService.refreshForTenant renewal", () => {
+describe("SessionService.refreshForTenant renewal [PREETS-SESSION-008, PREETS-SESSION-009, PREETS-SESSION-011]", () => {
   it("rejects excluded activity that carries policy and keeps the activity lists closed", () => {
     expect(qualifyingListIsClosed).toBe(true)
     expect(excludedListIsClosed).toBe(true)
@@ -755,7 +755,7 @@ describe("SessionService.refreshForTenant renewal", () => {
     ))
 })
 
-describe("SessionService.refreshForTenant policy properties", () => {
+describe("SessionService.refreshForTenant policy properties [PREETS-SESSION-008]", () => {
   test.prop([validPolicyArb, validPolicyArb, fc.integer({ max: 299_999, min: 0 })], { numRuns: 40 })(
     "renewed deadline and warning come from the same refresh policy",
     async (establishedPolicy, refreshPolicy, offset) => {
@@ -791,7 +791,7 @@ describe("SessionService.refreshForTenant policy properties", () => {
   )
 })
 
-describe("SessionService.refreshForTenant expiration", () => {
+describe("SessionService.refreshForTenant expiration [PREETS-SESSION-008, PREETS-SESSION-009]", () => {
   it.effect.each(excludedActivities)(
     "returns the current session for %s without writing",
     (activity) =>

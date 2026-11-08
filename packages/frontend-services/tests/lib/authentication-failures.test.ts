@@ -110,7 +110,7 @@ const pendingPreparation = (
     )
   })
 
-describe("AuthenticationService safe failures", () => {
+describe("AuthenticationService safe failures [PREETS-SESSION-002]", () => {
   it.effect.each([
     { label: "mismatched discovered issuer", transport: () => Promise.resolve(metadata("https://other.test")) },
     { label: "unavailable discovery", transport: () => Promise.reject(new Error("controlled outage")) },
