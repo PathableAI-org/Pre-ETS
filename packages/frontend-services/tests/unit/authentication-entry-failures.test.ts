@@ -6,15 +6,15 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
-import { createCallbackHandler } from "../../src/auth/callback.ts"
-import { CallbackFreshness } from "../../src/auth/freshness.ts"
-import { createLoginHandler } from "../../src/auth/login.ts"
 import {
   AuthenticationDenied,
   AuthenticationService,
   AuthenticationUnavailable,
   CallbackExpectedFailure
 } from "../../src/authentication.ts"
+import { createCallbackHandler } from "../../src/next.ts"
+import { CallbackFreshness } from "../../src/next.ts"
+import { createLoginHandler } from "../../src/next.ts"
 import { SessionService, SessionServiceUnavailable } from "../../src/session.ts"
 import { TenantAlias, TenantConfigService, TenantNotFound, TenantReadError } from "../../src/tenant.ts"
 

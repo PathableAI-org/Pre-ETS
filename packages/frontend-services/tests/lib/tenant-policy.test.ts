@@ -1,7 +1,7 @@
 import { describe, expect, it } from "@effect/vitest"
 import { Effect, FileSystem, Layer, Logger, Path, Result } from "effect"
 
-import { tenantFailureStatus } from "../../src/error.ts"
+import { tenantFailureStatus } from "../../src/next.ts"
 import { effectiveSessionPolicy, TenantConfigService } from "../../src/tenant.ts"
 
 const tenantFile = {

@@ -4,13 +4,13 @@
  */
 import { Config } from "effect"
 
-import { AuthenticationConfig } from "./authentication.js"
-import { OtelConfig } from "./otel.js"
-import { TenantConfig } from "./tenant-config.js"
+import { AuthenticationConfig } from "./config/authentication.js"
+import { OtelConfig } from "./config/otel.js"
+import { TenantResolutionConfig } from "./config/tenant-resolution.js"
 
-export { type AuthenticationSettings, permittedUrl, type TransactionStoreSettings } from "./authentication.js"
-export type { OtelSettings } from "./otel.js"
-export type { TenantConfig, StaticTenantConfig as TenantStaticConfig } from "./tenant-config.js"
+export { type AuthenticationSettings, permittedUrl, type TransactionStoreSettings } from "./config/authentication.js"
+export type { OtelEnabled, OtelSettings } from "./config/otel.js"
+export type { StaticTenantResolution, TenantResolutionSettings } from "./config/tenant-resolution.js"
 
 /** NODE_ENV. Absent means development; any other unsupported value fails startup. */
 const AppEnv = Config.Literals(["development", "production", "test"], "NODE_ENV").pipe(
@@ -34,7 +34,7 @@ export const StartupConfig = Config.all({
   session: Config.all({
     keyPrefix: Config.String("SESSION_KEY_PREFIX").pipe(Config.withDefault("preets:session:v1"))
   }),
-  tenant: TenantConfig
+  tenant: TenantResolutionConfig
 })
 
 export type StartupSettings = Config.Success<typeof StartupConfig>

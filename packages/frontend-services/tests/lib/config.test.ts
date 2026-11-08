@@ -2,7 +2,7 @@ import { assert, it } from "@effect/vitest"
 import { Cause, Config, ConfigProvider, Duration, Effect, Exit, Option } from "effect"
 import { describe } from "vitest"
 
-import { StartupConfig } from "../../src/config/index.ts"
+import { StartupConfig } from "../../src/config.ts"
 
 const BaseConfigProvider = ConfigProvider.fromUnknown({
   BASE_HOSTNAME: "example.test",

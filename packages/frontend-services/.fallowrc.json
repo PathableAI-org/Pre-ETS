@@ -1,9 +1,142 @@
 {
   "$schema": "../../node_modules/fallow/schema.json",
   "extends": "../../.fallowrc.shared.json",
-  "ignoreDependencies": ["@effect/language-service"],
-  "entry": ["src/index.ts"],
+  "ignoreDependencies": [
+    "@effect/language-service"
+  ],
+  "entry": [
+    "src/index.ts"
+  ],
   "rules": {
     "unused-dependencies": "error"
+  },
+  "boundaries": {
+    "zones": [
+      {
+        "name": "entry",
+        "patterns": [
+          "src/index.ts"
+        ]
+      },
+      {
+        "name": "next",
+        "patterns": [
+          "src/next.ts",
+          "src/next/**"
+        ]
+      },
+      {
+        "name": "runtime",
+        "patterns": [
+          "src/runtime.ts",
+          "src/production-runtime.ts"
+        ]
+      },
+      {
+        "name": "services",
+        "patterns": [
+          "src/authentication.ts",
+          "src/authentication/**",
+          "src/observability.ts",
+          "src/observability/**",
+          "src/session.ts",
+          "src/session/**",
+          "src/tenant.ts",
+          "src/tenant/**"
+        ]
+      },
+      {
+        "name": "config",
+        "patterns": [
+          "src/config.ts",
+          "src/config/**"
+        ]
+      },
+      {
+        "name": "shared",
+        "patterns": [
+          "src/opaque-token.ts",
+          "src/request-host.ts"
+        ]
+      },
+      {
+        "name": "tests",
+        "patterns": [
+          "tests/**"
+        ]
+      },
+      {
+        "name": "tooling",
+        "patterns": [
+          "*.config.js",
+          "*.config.ts"
+        ]
+      }
+    ],
+    "rules": [
+      {
+        "from": "entry",
+        "allow": [
+          "next",
+          "runtime"
+        ],
+        "allowTypeOnly": [
+          "services"
+        ]
+      },
+      {
+        "from": "next",
+        "allow": [
+          "runtime",
+          "services",
+          "shared"
+        ]
+      },
+      {
+        "from": "runtime",
+        "allow": [
+          "services",
+          "config"
+        ]
+      },
+      {
+        "from": "services",
+        "allow": [
+          "config",
+          "shared"
+        ]
+      },
+      {
+        "from": "config",
+        "allow": [
+          "shared"
+        ]
+      },
+      {
+        "from": "shared",
+        "allow": []
+      },
+      {
+        "from": "tests",
+        "allow": [
+          "entry",
+          "next",
+          "runtime",
+          "services",
+          "config",
+          "shared",
+          "tests"
+        ]
+      },
+      {
+        "from": "tooling",
+        "allow": [
+          "tests"
+        ]
+      }
+    ],
+    "coverage": {
+      "requireAllFiles": true
+    }
   }
 }

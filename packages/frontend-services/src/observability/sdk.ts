@@ -12,7 +12,7 @@ import * as otelSdk from "@opentelemetry/sdk-node"
 import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-base"
 import { Effect } from "effect"
 
-import type { OtelEnabled } from "../config/otel.js"
+import type { OtelEnabled } from "../config.js"
 
 import { OtelSdkError } from "./error.js"
 

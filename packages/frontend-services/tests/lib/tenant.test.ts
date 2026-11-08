@@ -5,7 +5,7 @@ import { mkdtemp, rm, unlink, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
-import { tenantFailureStatus } from "../../src/error.ts"
+import { tenantFailureStatus } from "../../src/next.ts"
 import { TenantConfigService, type TenantFailure } from "../../src/tenant.ts"
 
 const alpha = {

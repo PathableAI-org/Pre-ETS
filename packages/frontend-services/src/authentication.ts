@@ -8,7 +8,7 @@ import {
   decodeBrowserCorrelation,
   makeBrowserCorrelation
 } from "./authentication/transaction.js"
-import { type AuthenticationSettings, permittedUrl } from "./config/index.js"
+import { type AuthenticationSettings, permittedUrl } from "./config.js"
 import { parseRequestHost, type RequestHost } from "./request-host.js"
 import { type TenantAlias, TenantConfigService, type TenantFailure, TenantNotFound, TenantReadError } from "./tenant.js"
 

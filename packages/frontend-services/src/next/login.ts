@@ -2,9 +2,9 @@ import { Clock, Effect } from "effect"
 import { type NextRequest, NextResponse } from "next/server"
 
 import { AuthenticationService } from "../authentication.js"
-import { type TenantFailureResponse, tenantFailureStatus } from "../error.js"
-import { PRIVATE_NO_STORE, toNext } from "../next.js"
-import { cookieOptions, CORRELATION_COOKIE } from "./cookie.js"
+import { cookieOptions, CORRELATION_COOKIE } from "./cookies.js"
+import { PRIVATE_NO_STORE, toNext } from "./handler.js"
+import { type TenantFailureResponse, tenantFailureStatus } from "./tenant-failure.js"
 
 const redirect = (location: string) =>
   new NextResponse(null, { headers: { "cache-control": PRIVATE_NO_STORE, location }, status: 307 })

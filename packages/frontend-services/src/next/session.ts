@@ -1,17 +1,17 @@
 import { Effect, Result } from "effect"
 import { forbidden } from "next/navigation"
 
-import { tenantFailurePage } from "./error.js"
-import { parseRequestHost } from "./request-host.js"
-import { Runtime } from "./runtime.js"
+import { parseRequestHost } from "../request-host.js"
+import { Runtime } from "../runtime.js"
 import {
   type NoUsableSession,
   SessionService,
   type SessionServiceUnavailable,
   type SessionTenantMismatch,
   type UsableSession
-} from "./session.js"
-import { type TenantAlias, TenantConfigService, type TenantFailure } from "./tenant.js"
+} from "../session.js"
+import { type TenantAlias, TenantConfigService, type TenantFailure } from "../tenant.js"
+import { tenantFailurePage } from "./tenant-failure.js"
 
 export const SESSION_COOKIE = "pathable-session"
 

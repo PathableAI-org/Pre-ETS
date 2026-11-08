@@ -4,7 +4,7 @@ import type * as Redis from "effect/persistence/Redis"
 import { type Config, ConfigProvider, type Effect, Layer, type ManagedRuntime, Schema } from "effect"
 
 import { AuthenticationService } from "./authentication.js"
-import { StartupConfig, type StartupSettings } from "./config/index.js"
+import { StartupConfig, type StartupSettings } from "./config.js"
 import { type ObservabilityInitializationError, observabilityLayer } from "./observability.js"
 import { SessionService } from "./session.js"
 import { TenantConfigService } from "./tenant.js"

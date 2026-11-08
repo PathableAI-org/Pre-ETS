@@ -2,12 +2,12 @@ import { Clock, Effect } from "effect"
 import { type NextRequest, NextResponse } from "next/server"
 
 import { AuthenticationService, type CallbackExpectedFailure, type TrustedIdentity } from "../authentication.js"
-import { type TenantFailureResponse, tenantFailureStatus } from "../error.js"
-import { PRIVATE_NO_STORE, toNext } from "../next.js"
 import { SessionService, SessionServiceUnavailable } from "../session.js"
 import { effectiveSessionPolicy, TenantConfigService } from "../tenant.js"
-import { clearCorrelation, CORRELATION_COOKIE, setSessionCookie } from "./cookie.js"
+import { clearCorrelation, CORRELATION_COOKIE, setSessionCookie } from "./cookies.js"
 import { CallbackFreshness } from "./freshness.js"
+import { PRIVATE_NO_STORE, toNext } from "./handler.js"
+import { type TenantFailureResponse, tenantFailureStatus } from "./tenant-failure.js"
 
 export interface CallbackResponses {
   readonly authenticationReturn: () => Promise<NextResponse>

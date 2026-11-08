@@ -153,7 +153,7 @@ describe("reference session enforcement [PREETS-SESSION-001, PREETS-SESSION-004,
       join(frontendRoot, "src/app/auth/login/route.ts"),
       join(frontendRoot, "src/app/login-unavailable/page.tsx"),
       ...sourceFiles(join(frontendRoot, "src/app/%5Ftest")),
-      join(frontendRoot, "../frontend-services/src/tenant-request.ts")
+      join(frontendRoot, "../frontend-services/src/next/tenant.ts")
     ]
     for (const file of files) {
       expect(readFileSync(file, "utf8")).not.toContain("readSessionRequest")

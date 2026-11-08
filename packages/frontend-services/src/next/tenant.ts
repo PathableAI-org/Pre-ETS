@@ -1,10 +1,10 @@
 import { Effect, Result } from "effect"
 import { NextResponse } from "next/server"
 
-import { tenantFailureJson, tenantFailurePage } from "./error.js"
-import { PRIVATE_NO_STORE } from "./next.js"
-import { Runtime } from "./runtime.js"
-import { type TenantConfig, TenantConfigService } from "./tenant.js"
+import { Runtime } from "../runtime.js"
+import { type TenantConfig, TenantConfigService } from "../tenant.js"
+import { PRIVATE_NO_STORE } from "./handler.js"
+import { tenantFailureJson, tenantFailurePage } from "./tenant-failure.js"
 
 const noStore = { "Cache-Control": PRIVATE_NO_STORE }
 

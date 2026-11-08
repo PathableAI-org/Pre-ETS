@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation"
 import { NextResponse } from "next/server"
 
-import type { TenantFailure } from "./tenant.js"
+import type { TenantFailure } from "../tenant.js"
 
 /** Host-supplied response for a tenant failure, such as the Next app's 404 page. */
 export type TenantFailureResponse = (status: TenantFailureStatus) => Promise<NextResponse>

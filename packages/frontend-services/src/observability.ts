@@ -3,7 +3,7 @@ import type { Resource } from "@effect/opentelemetry/Resource"
 import * as NodeSdk from "@effect/opentelemetry/NodeSdk"
 import { Effect, type Layer, Schema } from "effect"
 
-import type { OtelSettings } from "./config/index.js"
+import type { OtelSettings } from "./config.js"
 
 import { makeNodeSdkConfiguration } from "./observability/sdk.js"
 
