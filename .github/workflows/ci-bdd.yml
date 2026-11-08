@@ -49,10 +49,8 @@ jobs:
             echo "SESSION_KEY_PREFIX=ci:bdd:${{ github.run_id }}:"
             echo "OIDC_TX_KEY_PREFIX=ci:bdd:oidc-tx:${{ github.run_id }}:"
           } >> "$GITHUB_ENV"
-      - name: Install Chromium for browser and harness checks
+      - name: Install Chromium for browser scenarios
         run: pnpm exec playwright install --with-deps chromium
-      - name: Run harness checks
-        run: pnpm test:bdd:checks
       - name: Build frontend
         id: build
         run: pnpm --filter @pathableai/pre-ets-frontend build

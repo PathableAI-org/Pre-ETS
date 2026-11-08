@@ -9,6 +9,9 @@ Before authoring or reviewing scenarios and their steps, read
 `origin/main` using requirement-ID tags. Feature-level `@partial` describes intermediate evidence; those
 scenarios still run and must pass. Review both scenario prose and step assertions within the approved promise.
 
+All BDD evidence runs as Cucumber scenarios from `.feature` files. Do not add direct Playwright or
+`node:test` journeys beside them; browser automation belongs in step definitions and `tests/bdd/support/`.
+
 The historical Spec Kit capability suite has been removed. Surviving dispositions for retired
 scenarios remain in the [migration ledger](TRACEABILITY.md) (not an active runner).
 
@@ -23,7 +26,7 @@ docker compose up -d keycloak
 curl --fail http://127.0.0.1:8080/realms/pre-ets/.well-known/openid-configuration
 ```
 
-Install Chromium before runtime scenarios and the browser-routing harness checks:
+Install Chromium before runtime scenarios:
 
 ```sh
 pnpm test:bdd:dry
@@ -39,11 +42,10 @@ scenario's resources. The registered `http://springfield.localhost:3000` and
 provider arrival; callback validation, recoverable correlation, stored sessions and verified freshness remain
 incomplete. Diagnostics, raw root routing and tenant rejection need no reachable provider.
 
-| Command                | Evidence                                                                              |
-| ---------------------- | ------------------------------------------------------------------------------------- |
-| `pnpm test:bdd:dry`    | Parse features and discover step bindings; no runtime evidence                        |
-| `pnpm test:bdd`        | Build the frontend, then run HTTP and browser scenarios against an owned Next process |
-| `pnpm test:bdd:checks` | Browser-routing harness regression checks                                             |
+| Command             | Evidence                                                                              |
+| ------------------- | ------------------------------------------------------------------------------------- |
+| `pnpm test:bdd:dry` | Parse features and discover step bindings; no runtime evidence                        |
+| `pnpm test:bdd`     | Build the frontend, then run HTTP and browser scenarios against an owned Next process |
 
 After a frontend build, `pnpm test:bdd:smoke` runs the separate application-level
 [on-site production safeguard](../tests/bdd/smoke/onsite-production.feature).

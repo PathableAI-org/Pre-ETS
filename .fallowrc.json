@@ -6,9 +6,7 @@
     "cucumber.smoke.mjs",
     "tests/bdd/steps/*.ts",
     "tests/bdd/support/hooks.ts",
-    "tests/bdd/support/world.ts",
-    "tests/bdd/checks/*.test.*",
-    "tests/bdd/session/*.test.*"
+    "tests/bdd/support/world.ts"
   ],
   "ignorePatterns": [
     "packages/**",

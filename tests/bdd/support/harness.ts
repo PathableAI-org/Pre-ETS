@@ -39,20 +39,6 @@ export async function freePort(): Promise<number> {
   return port
 }
 
-/** Binds a server to an ephemeral 127.0.0.1 port and resolves that port. */
-export async function listenOnLoopback(server: Server): Promise<number> {
-  await new Promise<void>((resolve, reject) => {
-    server.once("error", reject)
-    server.listen(0, "127.0.0.1", () => {
-      server.removeListener("error", reject)
-      resolve()
-    })
-  })
-  const address = server.address()
-  assert.ok(address && typeof address !== "string")
-  return address.port
-}
-
 /** Spawns the frontend `next` server on the given loopback port and returns its log sink. */
 export async function spawnFrontend(
   options: SiteOptions,
@@ -86,6 +72,20 @@ async function ensureProductionBuild(runtime: SiteOptions["runtime"]): Promise<v
       "Production frontend tests require a build. Run pnpm --filter @pathableai/pre-ets-frontend build first."
     )
   })
+}
+
+/** Binds a server to an ephemeral 127.0.0.1 port and resolves that port. */
+async function listenOnLoopback(server: Server): Promise<number> {
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject)
+    server.listen(0, "127.0.0.1", () => {
+      server.removeListener("error", reject)
+      resolve()
+    })
+  })
+  const address = server.address()
+  assert.ok(address && typeof address !== "string")
+  return address.port
 }
 
 /** Builds the frontend process environment without mutating process.env or the caller's world. */
@@ -132,17 +132,19 @@ const waitForExit = async (child: ChildProcess): Promise<void> => {
   }
 }
 
+const terminateProcessGroup = async (child: ChildProcess, pid: number): Promise<void> => {
+  for (const signal of ["SIGTERM", "SIGKILL"] as const) {
+    if (!running(child)) return
+    signalProcessGroup(pid, signal)
+    await waitForExit(child)
+  }
+  if (running(child)) throw new Error("Owned process did not exit after SIGKILL")
+}
+
 /** Signals the child's process group and drains until it exits, escalating to SIGKILL. */
 export async function stopProcess(child: ChildProcess | undefined): Promise<void> {
-  if (child === undefined || !running(child)) return
-  const pid = child.pid
-  if (pid === undefined) return
-  signalProcessGroup(pid, "SIGTERM")
-  await waitForExit(child)
-  if (!running(child)) return
-  signalProcessGroup(pid, "SIGKILL")
-  await waitForExit(child)
-  if (running(child)) throw new Error("Owned process did not exit after SIGKILL")
+  if (child?.pid === undefined) return
+  await terminateProcessGroup(child, child.pid)
 }
 
 const readinessFailure = (
@@ -190,6 +192,8 @@ export async function waitUntilReady(child: ChildProcess, logs: () => string, ti
   throw new Error(`Frontend server startup timed out: ${logs()}`)
 }
 
+const isOwnedCallback = (url: URL, owned: boolean): boolean => owned && url.pathname === "/auth/callback"
+
 const captureCallback = (
   request: IncomingMessage,
   response: ServerResponse,
@@ -197,7 +201,7 @@ const captureCallback = (
   owned: boolean,
   options: ProxyOptions
 ): boolean => {
-  if (!owned || url.pathname !== "/auth/callback") return false
+  if (!isOwnedCallback(url, owned)) return false
   options.callbacks.push({ cookie: request.headers.cookie ?? "", url: url.href })
   if (!options.interceptCallback) return false
   response.writeHead(204, { "cache-control": "no-store" })

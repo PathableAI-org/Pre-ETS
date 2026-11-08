@@ -1,1 +1,1 @@
-export { applicationBrowser } from "../../support/oidc/harness.ts"
+export { applicationBrowser } from "./harness.ts"

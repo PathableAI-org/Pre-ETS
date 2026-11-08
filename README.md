@@ -468,7 +468,7 @@ and skip expensive install/work when those paths are irrelevant. The named check
 and report success when skipped so required status checks are not blocked. Pushes to `main`
 and `workflow_dispatch` always run the full work for those three workflows.
 
-**CI / BDD** runs harness checks, installs Chromium, builds the frontend, and executes
+**CI / BDD** installs Chromium, builds the frontend, and executes
 `pnpm exec cucumber-js --config cucumber.mjs` followed by `pnpm test:bdd:smoke`. After a
 successful build, the smoke check still runs if requirements scenarios fail, unless the job
 is cancelled. A failure in either suite fails the job. It runs only on `main`, without path
