@@ -3,7 +3,7 @@ import * as Redis from "effect/persistence/Redis"
 
 import type { AuthenticationSettings } from "../../src/config/index.ts"
 
-import { makeRedis } from "./redis.ts"
+import { makeRedis, parseSetNx } from "./redis.ts"
 
 /** Plain process settings for the `alpha` tenant; startup decoding is covered by the config tests. */
 export const authenticationSettings = (overrides: {
@@ -47,11 +47,9 @@ const consumeEntry = (entries: Map<string, Entry>, args: readonly string[]): nul
 }
 
 const createEntry = (entries: Map<string, Entry>, args: readonly string[]): null | string => {
-  const [key, payload, nx, px, ttl] = args
-  const expectedShape = key !== undefined && payload !== undefined && nx === "NX" && px === "PX" && ttl !== undefined
-  if (!expectedShape) throw new Error("Unexpected SET shape")
+  const { key, payload, ttlMilliseconds } = parseSetNx(args)
   if (livePayload(entries.get(key)) !== null) return null
-  entries.set(key, { expiresAt: Date.now() + Number(ttl), payload })
+  entries.set(key, { expiresAt: Date.now() + ttlMilliseconds, payload })
   return "OK"
 }
 

@@ -1,5 +1,6 @@
-import { Context, Duration, Effect, Layer, Schema } from "effect"
-import { Redis } from "effect/persistence/Redis"
+import type { Redis } from "effect/persistence/Redis"
+
+import { Duration, Effect, Schema } from "effect"
 import { createHash } from "node:crypto"
 import { ClientClosedError, ClientOfflineError } from "redis"
 
@@ -31,43 +32,28 @@ const keyFor = (prefix: string, address: AttemptAddress): string => {
   return `${prefix}:${digest}`
 }
 
-export class AuthenticationTransactionStore extends Context.Service<AuthenticationTransactionStore, {
-  readonly consume: (
-    address: AttemptAddress
-  ) => Effect.Effect<string | undefined, TransactionStoreUnavailable>
-  readonly create: (
-    address: AttemptAddress,
-    payload: string
-  ) => Effect.Effect<"created" | "exists", TransactionStoreUnavailable>
-}>()("AuthenticationTransactionStore") {
-  static readonly layer = (settings: TransactionStoreSettings) =>
-    Layer.effect(
-      AuthenticationTransactionStore,
-      Effect.gen(function*() {
-        const redis = yield* Redis
-
-        const create = Effect.fnUntraced(function*(address: AttemptAddress, payload: string) {
-          const result = yield* redis.send<null | string>(
-            "SET",
-            keyFor(settings.prefix, address),
-            payload,
-            "NX",
-            "PX",
-            String(Duration.toMillis(settings.ttl))
-          ).pipe(
-            Effect.mapError(() => new TransactionStoreUnavailable({ phase: "ambiguous" }))
-          )
-          return result === "OK" ? "created" : "exists"
-        })
-
-        const consume = Effect.fnUntraced(function*(address: AttemptAddress) {
-          return yield* redis.send<null | string>("GETDEL", keyFor(settings.prefix, address)).pipe(
-            Effect.map((value) => value ?? undefined),
-            Effect.mapError((error) => new TransactionStoreUnavailable({ phase: phaseFromCause(error.cause) }))
-          )
-        })
-
-        return AuthenticationTransactionStore.of({ consume, create })
-      })
+/** Redis-backed attempt storage. A private child of `AuthenticationTransactions`, which owns the Redis capability. */
+export const makeTransactionStore = (redis: Redis["Service"], settings: TransactionStoreSettings) => {
+  const create = Effect.fnUntraced(function*(address: AttemptAddress, payload: string) {
+    const result = yield* redis.send<null | string>(
+      "SET",
+      keyFor(settings.prefix, address),
+      payload,
+      "NX",
+      "PX",
+      String(Duration.toMillis(settings.ttl))
+    ).pipe(
+      Effect.mapError(() => new TransactionStoreUnavailable({ phase: "ambiguous" }))
     )
+    return result === "OK" ? "created" as const : "exists" as const
+  })
+
+  const consume = Effect.fnUntraced(function*(address: AttemptAddress) {
+    return yield* redis.send<null | string>("GETDEL", keyFor(settings.prefix, address)).pipe(
+      Effect.map((value) => value ?? undefined),
+      Effect.mapError((error) => new TransactionStoreUnavailable({ phase: phaseFromCause(error.cause) }))
+    )
+  })
+
+  return { consume, create }
 }

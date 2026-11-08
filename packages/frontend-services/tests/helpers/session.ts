@@ -2,7 +2,7 @@ import { Deferred, Effect, Layer } from "effect"
 import * as Redis from "effect/persistence/Redis"
 import { createHash } from "node:crypto"
 
-import { makeRedis } from "./redis.ts"
+import { makeRedis, parseSetNx } from "./redis.ts"
 
 export interface EvaluationHold {
   readonly release: Deferred.Deferred<undefined>
@@ -192,12 +192,10 @@ const applyTransition = (state: MemoryState, key: string, args: readonly string[
 }
 
 const createEntry = (state: MemoryState, args: readonly string[]): null | string => {
-  const [key, payload, nx, px, ttl] = args
-  const expectedShape = key !== undefined && payload !== undefined && nx === "NX" && px === "PX" && ttl !== undefined
-  if (!expectedShape) throw new Error("Unexpected SET shape")
+  const { key, payload, ttlMilliseconds } = parseSetNx(args)
   if (state.entries.has(key)) return null
   state.entries.set(key, payload)
-  state.ttls.set(key, Number(ttl))
+  state.ttls.set(key, ttlMilliseconds)
   return "OK"
 }
 

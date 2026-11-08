@@ -1,13 +1,10 @@
 import { Clock, Context, Duration, Effect, Layer, Schema } from "effect"
+import { Redis } from "effect/persistence/Redis"
 
 import type { TransactionStoreSettings } from "../config/index.js"
 
 import { decodeStoredAttempt, encodeStoredAttempt, type RecoverableAuthenticationAttempt } from "./transaction/codec.js"
-import {
-  type AttemptAddress,
-  AuthenticationTransactionStore,
-  type TransactionStoreUnavailable
-} from "./transaction/store.js"
+import { type AttemptAddress, makeTransactionStore, type TransactionStoreUnavailable } from "./transaction/store.js"
 
 export { decodeBrowserCorrelation, makeBrowserCorrelation } from "./transaction/codec.js"
 
@@ -34,7 +31,7 @@ export class AuthenticationTransactions extends Context.Service<AuthenticationTr
     Layer.effect(
       AuthenticationTransactions,
       Effect.gen(function*() {
-        const store = yield* AuthenticationTransactionStore
+        const store = makeTransactionStore(yield* Redis, settings)
 
         const create = Effect.fnUntraced(function*(attempt: RecoverableAuthenticationAttempt) {
           const payload = yield* encodeStoredAttempt(attempt).pipe(
@@ -68,7 +65,5 @@ export class AuthenticationTransactions extends Context.Service<AuthenticationTr
 
         return AuthenticationTransactions.of({ consume, create, ttl: settings.ttl })
       })
-    ).pipe(
-      Layer.provide(AuthenticationTransactionStore.layer(settings))
     )
 }
