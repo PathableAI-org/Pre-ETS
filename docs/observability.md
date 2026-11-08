@@ -9,16 +9,26 @@ all-or-nothing: `OTEL_SDK_DISABLED=true` installs no SDK, exporters, automatic
 instrumentation, or Effect OpenTelemetry bridges. Otherwise, the endpoint and
 service name are required and traces, metrics, and logs are enabled together.
 The application constructs OTLP/HTTP **protobuf** exporters, batch span and log
-processors, and a periodic metric reader. It does not select signals
+processors, and two periodic metric readers. It does not select signals
 independently or construct JSON HTTP or gRPC exporters.
 
 **Node SDK + Effect bridge**: The enabled path starts
 `@opentelemetry/sdk-node` to register the global OpenTelemetry providers and
 enable automatic instrumentation. Next.js and instrumented libraries use that
-global provider. The same processors and reader are passed to
+global provider. The same span and log processors are passed to
 `@effect/opentelemetry/NodeSdk`, which supplies the scoped Effect tracer,
-logger, and metrics bridges. These are separate global and Effect provider
-paths sharing the configured OTLP export pipeline, not separate exporters.
+logger, and metrics bridges. Traces and logs are separate global and Effect
+provider paths sharing one export pipeline per signal.
+
+Metrics use one reader per provider, because an OpenTelemetry metric reader
+can be bound to only one producer. The global `MeterProvider` owns one periodic
+reader and OTLP metric exporter for Node runtime metrics and other
+OpenTelemetry API metrics. The Effect metrics bridge owns a second reader and
+exporter for Effect `Metric` values. Both export to the same
+`v1/metrics` URL on the same interval, so each interval sends two metric
+requests. The Effect reader is flushed and shut down when the runtime scope
+closes.
+
 Use `Effect.withSpan` only at logical boundaries when needed. The existing
 console logger remains beside OTLP logs: pretty when `NODE_ENV=development`,
 JSON otherwise. An absent `NODE_ENV` means development; any value other than
@@ -100,7 +110,7 @@ There is no application-defined fixed `telemetry delivery failed` stderr
 message, and the previous custom diagnostic suppression is not installed.
 The application does not set custom batch intervals or exporter timeouts;
 applicable SDK defaults and environment settings apply. The periodic metric
-reader uses the SDK default 60-second export interval.
+readers use the SDK default 60-second export interval.
 
 ## Required span attributes and redaction
 
