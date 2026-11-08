@@ -1,3 +1,5 @@
+import type * as FrontendServices from "@pathableai/pre-ets-frontend-services"
+
 import { readSessionRequest, SESSION_COOKIE, type TenantAlias } from "@pathableai/pre-ets-frontend-services"
 import { readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
@@ -28,9 +30,9 @@ vi.mock("../../src/features/session-reference.ts", () => ({
   }
 }))
 
-vi.mock("@pathableai/pre-ets-frontend-services", () => ({
-  readSessionRequest: vi.fn(),
-  SESSION_COOKIE: "pathable-session"
+vi.mock("@pathableai/pre-ets-frontend-services", async (importOriginal) => ({
+  ...await importOriginal<typeof FrontendServices>(),
+  readSessionRequest: vi.fn()
 }))
 
 const springfield = "springfield" as TenantAlias

@@ -6,6 +6,9 @@ import type { ApplicationServices } from "./runtime.js"
 
 import { Runtime } from "./runtime.js"
 
+/** `Cache-Control` for every response that carries per-user state or a tenant diagnostic. */
+export const PRIVATE_NO_STORE = "private, no-store"
+
 /** Runs one request Effect on the process runtime and returns its Next.js response. */
 export const toNext =
   (handler: (request: NextRequest) => Effect.Effect<NextResponse, never, ApplicationServices>) =>

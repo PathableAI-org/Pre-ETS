@@ -17,7 +17,7 @@ export const SESSION_COOKIE = "pathable-session"
 
 export interface ReadSessionRequestInput {
   readonly host: string
-  readonly reference?: string
+  readonly reference?: string | undefined
 }
 
 export interface ResolvedSessionRequest {
@@ -51,9 +51,7 @@ const readSession = Effect.fn("readSessionRequest")(function*(
   const tenantAlias = yield* selectedAlias(tenant, input.host)
   yield* tenant.getConfigFromAlias(tenantAlias)
   const sessions = yield* SessionService
-  const session = yield* sessions.readForTenant(
-    input.reference === undefined ? { tenantAlias } : { reference: input.reference, tenantAlias }
-  )
+  const session = yield* sessions.readForTenant({ reference: input.reference, tenantAlias })
   return { session, tenantAlias }
 })
 

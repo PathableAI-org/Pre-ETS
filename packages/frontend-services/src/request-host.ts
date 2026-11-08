@@ -14,3 +14,11 @@ export const parseRequestHost = (raw: string): RequestHost | undefined => {
     return undefined
   }
 }
+
+/**
+ * Hostnames treated as local development: `localhost`, `*.localhost`, 127.0.0.0/8, and `[::1]`. Takes a
+ * URL-style hostname (lowercase, IPv6 in brackets), as `URL.hostname` and {@link parseRequestHost} return it.
+ */
+export const isLoopbackHostname = (hostname: string): boolean =>
+  hostname === "localhost" || hostname.endsWith(".localhost") || hostname === "[::1]" ||
+  /^127(?:\.\d{1,3}){3}$/.test(hostname)

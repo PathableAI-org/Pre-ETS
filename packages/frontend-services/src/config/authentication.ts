@@ -1,8 +1,6 @@
 import { Config, Duration, Effect, Schema, SchemaIssue, SchemaTransformation } from "effect"
 
-const isLoopback = (hostname: string): boolean =>
-  hostname === "localhost" || hostname.endsWith(".localhost") || hostname === "[::1]" ||
-  /^127(?:\.\d{1,3}){3}$/.test(hostname)
+import { isLoopbackHostname } from "../request-host.js"
 
 /** The application exception is narrower than the protocol client's general HTTP escape. */
 export const permittedUrl = (allowInsecureLoopback: boolean) =>
@@ -10,7 +8,7 @@ export const permittedUrl = (allowInsecureLoopback: boolean) =>
     Schema.check(Schema.makeFilter((url) =>
       url.username === "" && url.password === "" && !url.href.includes("#") &&
         (url.protocol === "https:" ||
-          (allowInsecureLoopback && url.protocol === "http:" && isLoopback(url.hostname))) ||
+          (allowInsecureLoopback && url.protocol === "http:" && isLoopbackHostname(url.hostname))) ||
       "Authentication URL must use permitted transport and contain no credentials or fragment"
     ))
   )

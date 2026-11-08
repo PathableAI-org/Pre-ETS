@@ -2,40 +2,16 @@ import { Clock, Effect } from "effect"
 import { type NextRequest, NextResponse } from "next/server"
 
 import { AuthenticationService, type CallbackExpectedFailure, type TrustedIdentity } from "../authentication.js"
-import { tenantFailureStatus } from "../error.js"
-import { toNext } from "../next.js"
-import {
-  type EstablishedSession,
-  type EstablishSessionInput,
-  type NoUsableSession,
-  type SessionIdentity,
-  SessionService,
-  SessionServiceUnavailable,
-  type UsableSession
-} from "../session.js"
-import { effectiveSessionPolicy, type SessionPolicy, TenantConfigService } from "../tenant.js"
-import { PRIVATE_NO_STORE } from "./constants.js"
-import { CORRELATION_COOKIE, isLoopbackHost, setSessionCookie } from "./cookie.js"
+import { type TenantFailureResponse, tenantFailureStatus } from "../error.js"
+import { PRIVATE_NO_STORE, toNext } from "../next.js"
+import { SessionService, SessionServiceUnavailable } from "../session.js"
+import { effectiveSessionPolicy, TenantConfigService } from "../tenant.js"
+import { clearCorrelation, CORRELATION_COOKIE, setSessionCookie } from "./cookie.js"
 import { CallbackFreshness } from "./freshness.js"
 
 export interface CallbackResponses {
   readonly authenticationReturn: () => Promise<NextResponse>
-  readonly tenantFailure: (status: 404 | 500) => Promise<NextResponse>
-}
-
-/** Establish only issues the usable member of the public read result. */
-type IssuedSession = Extract<NoUsableSession | UsableSession, { readonly _tag: "UsableSession" }>
-
-const clearCorrelation = (response: NextResponse, request: NextRequest): NextResponse => {
-  const host = request.headers.get("host") ?? ""
-  response.cookies.set(CORRELATION_COOKIE, "", {
-    httpOnly: true,
-    maxAge: 0,
-    path: "/auth/callback",
-    sameSite: "lax",
-    secure: request.nextUrl.protocol === "https:" || !isLoopbackHost(host)
-  })
-  return response
+  readonly tenantFailure: TenantFailureResponse
 }
 
 const responseForReason = (
@@ -65,16 +41,13 @@ const establishSession = Effect.fn("establishSession")(function*(
   const config = yield* tenant.getConfigFromAlias(identity.tenantAlias).pipe(
     Effect.mapError(() => new SessionServiceUnavailable({}))
   )
-  const policy: SessionPolicy = effectiveSessionPolicy(config)
-  const input: EstablishSessionInput = {
-    identity: { issuer: identity.issuer, subject: identity.subject } satisfies SessionIdentity,
-    policy,
+  const established = yield* session.establish({
+    identity: { issuer: identity.issuer, subject: identity.subject },
+    policy: effectiveSessionPolicy(config),
     tenantAlias: identity.tenantAlias
-  }
-  const established: EstablishedSession = yield* session.establish(input)
-  const usable: IssuedSession = established.session
+  })
   const now = yield* Clock.currentTimeMillis
-  const maxAgeSeconds = Math.max(0, Math.floor((usable.idleDeadlineEpochMilliseconds - now) / 1_000))
+  const maxAgeSeconds = Math.max(0, Math.floor((established.session.idleDeadlineEpochMilliseconds - now) / 1_000))
   const response = new NextResponse(null, {
     headers: { "cache-control": PRIVATE_NO_STORE },
     status: 204
@@ -97,9 +70,8 @@ const respondToTrustedIdentity = Effect.fnUntraced(function*(
 const completeAuthentication = Effect.fn("completeAuthentication")(
   function*(_responses: CallbackResponses, request: NextRequest) {
     const authentication = yield* AuthenticationService
-    const correlation = request.cookies.get(CORRELATION_COOKIE)?.value
     return yield* authentication.complete({
-      ...(correlation === undefined ? {} : { correlation }),
+      correlation: request.cookies.get(CORRELATION_COOKIE)?.value,
       host: request.headers.get("host") ?? "",
       query: [...request.nextUrl.searchParams.entries()]
     })

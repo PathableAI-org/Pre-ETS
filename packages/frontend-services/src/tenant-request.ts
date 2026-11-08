@@ -2,10 +2,11 @@ import { Effect, Result } from "effect"
 import { NextResponse } from "next/server"
 
 import { tenantFailureJson, tenantFailurePage } from "./error.js"
+import { PRIVATE_NO_STORE } from "./next.js"
 import { Runtime } from "./runtime.js"
 import { type TenantConfig, TenantConfigService } from "./tenant.js"
 
-const noStore = { "Cache-Control": "private, no-store" }
+const noStore = { "Cache-Control": PRIVATE_NO_STORE }
 
 const readTenantConfig = (host: string) =>
   Runtime.runPromise(TenantConfigService.use((service) => service.getConfigFromHost(host)).pipe(Effect.result))
