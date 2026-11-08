@@ -1,6 +1,7 @@
 /**
- * Effect conventions. The root eslint.config.js spreads `effectConventions`, so every workspace inherits them;
- * the selectors only match Effect class factories and error shapes, so non-Effect code is unaffected.
+ * Effect conventions. The root eslint.config.js spreads `effectConventions` and merges `effectRestrictedSyntax` into
+ * its single `no-restricted-syntax` entry, so every workspace inherits them. The selectors only match Effect class
+ * factories and error shapes, so non-Effect code is unaffected.
  * See docs/engineering/effect-guidance.md#errors-and-identifiers for the rationale.
  */
 
@@ -41,6 +42,23 @@ const identifierMatchesClass = {
 
 const schemaInstanceOfError = "CallExpression[callee.object.name='Schema'][callee.property.name='instanceOf']"
 
+/** `no-restricted-syntax` entries for Effect error shapes; the root config merges them into its single entry. */
+export const effectRestrictedSyntax = [
+  {
+    message: "Discriminate on the `_tag` literal; do not mirror it in a static field.",
+    selector: "PropertyDefinition[static=true][key.name='tag']"
+  },
+  {
+    message: "Construct errors with `new X({ ... })`; do not add a static `new` factory.",
+    selector: "MethodDefinition[static=true][key.name='new']"
+  },
+  {
+    message: "Use `Schema.Defect()` for an error cause.",
+    selector:
+      `${schemaInstanceOfError}[arguments.0.name='Error'], ${schemaInstanceOfError}[arguments.0.property.name='Error']`
+  }
+]
+
 export const effectConventions = [
   {
     files: ["**/*.ts"],
@@ -48,22 +66,6 @@ export const effectConventions = [
       "pathable-effect": { rules: { "identifier-matches-class": identifierMatchesClass } }
     },
     rules: {
-      "no-restricted-syntax": [
-        "error",
-        {
-          message: "Discriminate on the `_tag` literal; do not mirror it in a static field.",
-          selector: "PropertyDefinition[static=true][key.name='tag']"
-        },
-        {
-          message: "Construct errors with `new X({ ... })`; do not add a static `new` factory.",
-          selector: "MethodDefinition[static=true][key.name='new']"
-        },
-        {
-          message: "Use `Schema.Defect()` for an error cause.",
-          selector:
-            `${schemaInstanceOfError}[arguments.0.name='Error'], ${schemaInstanceOfError}[arguments.0.property.name='Error']`
-        }
-      ],
       "pathable-effect/identifier-matches-class": "error"
     }
   }

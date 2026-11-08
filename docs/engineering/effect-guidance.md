@@ -86,6 +86,12 @@ under test. For small runtime type guards in Effect code, use existing `Predicat
 helpers instead of inventing `isRecord`/`isString` utilities. Outside Effect code,
 use the owning framework's and TypeScript's normal narrowing tools.
 
+A file, request body, or stored record is input, not configuration. Read it with the
+owning capability, such as `FileSystem.readFileString`, and decode it with Schema, for
+example `Schema.fromJsonString`. Do not wrap it in a `ConfigProvider` to reuse `Config`
+parsing. That route hides the read and decode failures behind `ConfigError`, and its
+failure type no longer says which step failed.
+
 Use `Schema.TaggedError` for expected application failures and typed recovery such as
 `Effect.catchTag` where the error vocabulary supports it. Inspect structured reasons
 when a library contract requires them. Do not turn defects, interruption, or unrelated
@@ -125,6 +131,19 @@ These conventions apply in every Effect workspace. The rules in `eslint.effect.j
   distinguishable causes, model the cause as `reason: Schema.Union([...])` of tagged
   errors, following the local Effect example `01_effect/04_errors/20_reason-errors.ts`.
   Do not use an untagged `Data.Error` wrapper.
+- **Classify failures by structure, never by message text.** Match a `_tag`, a
+  `reason._tag` such as a `PlatformError`'s `NotFound`, or a `SchemaError` issue's
+  `_tag`. Message text is for people. It changes without notice, and a library may
+  wrap or reword it. If the structure you need is missing, change the error or its
+  boundary so it carries that structure. (The root `no-restricted-syntax` bans
+  `.message.includes`/`startsWith`/`match`, regex tests, equality comparisons, and
+  `switch` on `.message`.)
+
+Effect exports modules named `Array`, `BigInt`, `Boolean`, `Function`, `Number`,
+`RegExp`, `Request`, `String`, and `Symbol`. Import them under an alias, such as
+`import { String as Str } from "effect"`, or use the global's own methods. A binding
+named `String` makes every `String(...)` in the file mean something else. The root
+`no-restricted-syntax` rejects any binding that shadows a JavaScript global.
 
 Comments and JSDoc should explain a contract, limitation, or non-obvious decision.
 Do not copy the tutorial's illustrative comments or narrate obvious code. Prefer

@@ -81,9 +81,6 @@ const tenantDouble = (
     return Effect.succeed(tenantConfig)
   }
 ): TenantConfigService["Service"] => ({
-  effectiveSessionPolicy: () => {
-    throw new Error("effectiveSessionPolicy must remain unused")
-  },
   getAlias,
   getConfigFromAlias,
   getConfigFromHost: () => Effect.die("getConfigFromHost must remain unused")

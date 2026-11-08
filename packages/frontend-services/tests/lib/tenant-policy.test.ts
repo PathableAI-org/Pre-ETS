@@ -2,7 +2,7 @@ import { describe, expect, it } from "@effect/vitest"
 import { Effect, FileSystem, Layer, Logger, Path, Result } from "effect"
 
 import { tenantFailureStatus } from "../../src/error.ts"
-import { TenantConfigService } from "../../src/tenant.ts"
+import { effectiveSessionPolicy, TenantConfigService } from "../../src/tenant.ts"
 
 const tenantFile = {
   displayName: "Policy example",
@@ -17,7 +17,7 @@ const readPolicy = Effect.fnUntraced(
   function*(_policy: Record<string, unknown>) {
     const service = yield* TenantConfigService
     const config = yield* service.getConfigFromHost("policy.example.test")
-    return { config, policy: service.effectiveSessionPolicy(config) }
+    return { config, policy: effectiveSessionPolicy(config) }
   },
   Effect.result,
   (effect, policy) =>

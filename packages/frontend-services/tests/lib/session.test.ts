@@ -5,7 +5,6 @@ import { TestClock } from "effect/testing"
 import { vi } from "vitest"
 
 import {
-  type EffectiveSessionPolicy,
   type EstablishSessionInput,
   type ExcludedSessionActivity,
   type NoUsableSession,
@@ -17,7 +16,7 @@ import {
   SessionServiceUnavailable,
   SessionTenantMismatch
 } from "../../src/session.ts"
-import { TenantAlias } from "../../src/tenant.ts"
+import { type SessionPolicy, TenantAlias } from "../../src/tenant.ts"
 import { makeSessionMemoryRedis } from "../helpers/session.ts"
 
 const alias = Schema.decodeSync(TenantAlias)("alpha")
@@ -47,7 +46,7 @@ const publicDiagnostic = (value: unknown): string => {
 
 const BASE_TIME = 1_800_000_000_000
 
-const policyOf = (idleTimeoutMinutes: number, warningLeadMinutes: number): EffectiveSessionPolicy => ({
+const policyOf = (idleTimeoutMinutes: number, warningLeadMinutes: number): SessionPolicy => ({
   idleTimeoutMinutes,
   warningLeadMinutes
 })
@@ -553,7 +552,7 @@ const excludedActivities = [
 
 interface ExcludedCarryingPolicy {
   readonly activity: ExcludedSessionActivity
-  readonly policy: EffectiveSessionPolicy
+  readonly policy: SessionPolicy
   readonly reference?: string
   readonly tenantAlias: TenantAlias
 }
