@@ -31,9 +31,18 @@ Keep the recursive module rule. A public entry such as `src/tenant.ts` owns
 `src/tenant/`. Only that parent imports its children. Sibling modules and tests use
 the public entry. Re-export a child only when a current consumer needs it.
 
-This workspace does not configure Fallow architecture zones. Fallow will not report a
-boundary violation for an import that breaks the ownership rules above. Follow the root
-[Fallow workflow](../../docs/engineering/fallow.md) for unused code, complexity, and
+Next host adapters live in `src/next.ts`, which owns `src/next/` (login, callback,
+cookies, session and tenant reads, and the tenant-failure HTTP mapping). Only that
+module imports `next/server` or `next/navigation`; services stay framework-free, and
+lint enforces it. Process settings live in `src/config.ts`, which owns `src/config/`.
+
+This workspace configures custom Fallow boundary zones (`entry`, `next`, `runtime`,
+`services`, `config`, `shared`, `tests`, `tooling`) with `requireAllFiles`; see
+[frontend-services zones](../../docs/engineering/fallow.md#frontend-services-zones).
+Run `pnpm --filter @pathableai/pre-ets-frontend-services exec fallow architecture --boundaries`
+when adding a module. A new file must join a zone. The zones do not report a sibling
+importing another module's child, so the ownership rules above still apply. Follow the
+root [Fallow workflow](../../docs/engineering/fallow.md) for unused code, complexity, and
 changed-code audits. Do not add a Bulletproof preset here. The Next app owns
 Bulletproof feature folders. This package still must not contain React UI or
 import the Next app.

@@ -35,10 +35,35 @@ map itself is unfamiliar, list it:
 pnpm --filter @pathableai/pre-ets-frontend exec fallow list --boundaries
 ```
 
-Backend, domain, frontend-services, and the repository root have no boundary zones.
-`fallow guard` there reports that none are configured. Leave them unconfigured, including
-frontend-services: its Effect modules are not Bulletproof zones. Ownership rules in each
-workspace `AGENTS.md` remain the constraint Fallow does not encode.
+Backend, domain, and the repository root have no boundary zones. `fallow guard` there
+reports that none are configured. Ownership rules in each workspace `AGENTS.md` remain the
+constraint Fallow does not encode.
+
+## frontend-services zones
+
+frontend-services uses custom layered zones, not a preset, with `requireAllFiles`:
+
+| Zone       | Files                                                                     | May import                               |
+| ---------- | ------------------------------------------------------------------------- | ---------------------------------------- |
+| `entry`    | `src/index.ts`                                                            | `next`, `runtime`; `services` types only |
+| `next`     | `src/next.ts`, `src/next/**`                                              | `runtime`, `services`, `shared`          |
+| `runtime`  | `src/runtime.ts`, `src/production-runtime.ts`                             | `services`, `config`                     |
+| `services` | `authentication`, `observability`, `session`, `tenant` and their children | `config`, `shared`                       |
+| `config`   | `src/config.ts`, `src/config/**`                                          | `shared`                                 |
+| `shared`   | `src/opaque-token.ts`, `src/request-host.ts`                              | nothing                                  |
+| `tests`    | `tests/**`                                                                | every zone                               |
+| `tooling`  | `*.config.js`, `*.config.ts`                                              | `tests` (Vitest stub aliases)            |
+
+The direction is host adapter → runtime → service → settings. A service that imports a Next
+adapter or the runtime is a boundary violation. A new source file must join a zone, so add a
+new service to the `services` patterns in `.fallowrc.json` with its owner. Do not add
+`allowUnmatched`. ESLint adds the import rules Fallow cannot express:
+
+- Only `src/next.ts` and `src/next/**` import `next/server` or `next/navigation`.
+- Only `src/config.ts`, `src/config/**`, and `src/runtime.ts` read `Config`/`ConfigProvider`.
+
+The zones do not encode the recursive module rule. A sibling importing another module's child
+passes Fallow. Follow the rule in the workspace `AGENTS.md`.
 
 ## During implementation
 

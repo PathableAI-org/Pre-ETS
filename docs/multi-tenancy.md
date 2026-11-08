@@ -39,8 +39,8 @@ Sibling modules and tests use the public tenant module, which re-exports `Tenant
 `SessionPolicy`, and `effectiveSessionPolicy`. The service reads the selected file with
 `FileSystem.readFileString` and decodes it with `Schema.fromJsonString`. File content is
 request-time input; it does not pass through the process `ConfigProvider`. The
-process-resolution configuration also has a `TenantConfig` name in
-`packages/frontend-services/src/config/tenant-config.ts`; it is a separate contract.
+process-level tenant selection settings are `TenantResolutionSettings` in
+`packages/frontend-services/src/config/tenant-resolution.ts`; they are a separate contract.
 
 Each read takes one complete file snapshot. When that read fails, the service then checks
 whether the configuration directory is readable. That check separates a missing directory
@@ -52,7 +52,7 @@ working directory. Superseded `TENANT_CONFIG_RECORDS_JSON` and
 
 The service never substitutes another file or a default tenant. It fails with one of
 two tagged errors, `TenantNotFound` or `TenantReadError`. These carry no HTTP status.
-The Next host adapters map them to an HTTP status in `error.ts` (`tenantFailureStatus`).
+The Next host adapters map them to an HTTP status in `src/next/tenant-failure.ts` (`tenantFailureStatus`).
 The JSON diagnostic body is `{ _tag, message, status }`, where `_tag` is the bare error
 name.
 

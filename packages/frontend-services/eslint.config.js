@@ -2,6 +2,29 @@ import { defineConfig } from "eslint/config"
 
 import rootConfig from "../../eslint.config.js"
 
+const configMessage =
+  "Only src/config and src/runtime.ts read configuration. Take the decoded settings as a layer factory argument."
+
+/**
+ * Decode once, pass values: startup parses StartupConfig and hands plain settings to layer factories.
+ * See docs/engineering/effect-guidance.md#configuration-is-decoded-once-at-startup.
+ */
+const configReads = {
+  paths: [{ importNames: ["Config", "ConfigProvider"], message: configMessage, name: "effect" }],
+  patterns: [{ message: configMessage, regex: "^effect/(Config|ConfigProvider)$" }]
+}
+
+/** Only the Next host adapters (src/next.ts and src/next/) import the Next.js runtime modules. */
+const nextHost = {
+  paths: ["next/server", "next/navigation"].map((name) => ({
+    message: "Next.js imports belong in src/next.ts or src/next/. Keep services framework-free.",
+    name
+  }))
+}
+
+const configAndRuntime = ["src/config.ts", "src/config/**", "src/runtime.ts"]
+const nextAdapters = ["src/next.ts", "src/next/**"]
+
 export default defineConfig([
   ...rootConfig,
   {
@@ -11,26 +34,17 @@ export default defineConfig([
     }
   },
   {
-    // Decode once, pass values: startup parses StartupConfig and hands plain settings to layer factories.
-    // See docs/engineering/effect-guidance.md#configuration-is-decoded-once-at-startup.
     files: ["src/**/*.ts"],
-    ignores: ["src/config/**", "src/runtime.ts"],
+    ignores: [...configAndRuntime, ...nextAdapters],
     rules: {
       "no-restricted-imports": ["error", {
-        paths: [{
-          importNames: ["Config", "ConfigProvider"],
-          message:
-            "Only src/config and src/runtime.ts read configuration. Take the decoded settings as a layer factory argument.",
-          name: "effect"
-        }],
-        patterns: [{
-          message:
-            "Only src/config and src/runtime.ts read configuration. Take the decoded settings as a layer factory argument.",
-          regex: "^effect/(Config|ConfigProvider)$"
-        }]
+        paths: [...configReads.paths, ...nextHost.paths],
+        patterns: configReads.patterns
       }]
     }
   },
+  { files: configAndRuntime, rules: { "no-restricted-imports": ["error", nextHost] } },
+  { files: nextAdapters, rules: { "no-restricted-imports": ["error", configReads] } },
   {
     files: ["src/authentication/provider.ts"],
     rules: {
