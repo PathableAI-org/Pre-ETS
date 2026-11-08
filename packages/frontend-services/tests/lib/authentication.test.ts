@@ -228,7 +228,7 @@ const prepare = (host = "alpha.example.test") =>
     return yield* authentication.prepare({ host })
   })
 
-describe("AuthenticationService preparation", () => {
+describe("AuthenticationService preparation [PREETS-SESSION-002, PREETS-SESSION-013, PREETS-SECURITY-001]", () => {
   it.effect("persists before returning only the public preparation fields", () =>
     withFetch(
       () => Promise.resolve(metadata()),
@@ -355,7 +355,7 @@ describe("AuthenticationService preparation", () => {
     ))
 })
 
-describe("AuthenticationService completion", () => {
+describe("AuthenticationService completion [PREETS-SESSION-002]", () => {
   it.effect("returns the provider-neutral trusted identity once", () => {
     let nonce = ""
     return withFetch(
@@ -667,7 +667,7 @@ const hangingCompletion = (
   )
 }
 
-describe("AuthenticationService callback recovery", () => {
+describe("AuthenticationService callback recovery [PREETS-SESSION-002]", () => {
   it.effect("accepts an explicit HTTPS default port on completion and rejects port 80", () => {
     let nonce = ""
     return withFetch(

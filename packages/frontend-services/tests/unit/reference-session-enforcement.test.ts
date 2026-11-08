@@ -135,7 +135,7 @@ const publicDiagnostic = (value: unknown): string => {
   return parts.join("\n")
 }
 
-describe("readSessionRequest", () => {
+describe("readSessionRequest [PREETS-SESSION-005, PREETS-TENANT-003]", () => {
   it("selects a directly resolved alias before session admission and returns that usable session", async () => {
     const calls: string[] = []
     install(

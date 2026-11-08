@@ -75,7 +75,7 @@ const expectFailure = (
   }
 }
 
-describe("TenantConfigService file configuration", () => {
+describe("TenantConfigService file configuration [PREETS-TENANT-003, PREETS-TENANT-004, PREETS-SECURITY-001]", () => {
   it.effect.each([alpha, beta])(
     "preserves the complete permitted document for $displayName",
     (document) =>

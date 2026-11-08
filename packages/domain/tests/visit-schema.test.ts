@@ -14,7 +14,7 @@ const openVisit = {
   tenantId: "synthetic-tenant"
 }
 
-describe("OnSiteVisit", () => {
+describe("OnSiteVisit [PREETS-ONSITE-001, PREETS-ONSITE-003]", () => {
   it("accepts a participant-associated visit before end or narratives", async () => {
     await decoding.succeed(openVisit)
   })
@@ -39,7 +39,7 @@ describe("OnSiteVisit", () => {
   })
 })
 
-describe("CreateOnSiteVisit", () => {
+describe("CreateOnSiteVisit [PREETS-ONSITE-001, PREETS-ONSITE-003]", () => {
   it("decodes UTC create input without a generated id or optional fields", () => {
     const visit = Schema.decodeUnknownSync(CreateOnSiteVisit)({
       coachId: "synthetic-coach",

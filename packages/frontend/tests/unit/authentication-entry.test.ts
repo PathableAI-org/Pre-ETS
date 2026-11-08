@@ -10,7 +10,7 @@ vi.mock("@pathableai/pre-ets-frontend-services", () => ({
   SESSION_COOKIE: "pathable-session"
 }))
 
-describe("application entry", () => {
+describe("application entry [PREETS-SESSION-001, PREETS-SESSION-004]", () => {
   it("renders layout children without tenant work and redirects home before protected content", async () => {
     vi.mocked(readSessionRequest).mockResolvedValue({
       session: { _tag: "NoUsableSession" },

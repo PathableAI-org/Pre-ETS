@@ -33,7 +33,7 @@ const expectAliasFailure = (result: Result.Result<unknown, { readonly status: nu
   }
 }
 
-describe("TenantConfigService.getAlias", () => {
+describe("TenantConfigService.getAlias [PREETS-TENANT-003, PREETS-TENANT-005]", () => {
   it.prop([aliasArb, baseHostnameArb])(
     "reads the lowercased alias before the configured base hostname",
     (alias, baseHostname) => {

@@ -85,7 +85,7 @@ const world = (
     Layer.provide(Logger.layer([]))
   )
 
-describe("selected tenant policy and session refresh", () => {
+describe("selected tenant policy and session refresh [PREETS-SESSION-008, PREETS-SESSION-011, PREETS-TENANT-004]", () => {
   it.effect.each(invalidPolicies)(
     "rejects a %s tenant policy before establish or refresh",
     ([name, policy]) => {

@@ -110,7 +110,7 @@ const expectHostOnlyCookie = (cookie: string, path: string, secure: boolean) => 
 
 const maxAge = (cookie: string) => Number(/Max-Age=(\d+)/.exec(cookie)?.[1])
 
-describe("authentication Route Handlers", () => {
+describe("authentication Route Handlers [PREETS-SESSION-003, PREETS-SESSION-013]", () => {
   it.prop([fc.domain(), fc.domain(), fc.string().map(encodeURIComponent)])(
     "sets the persisted correlation cookie only with the prepared 307",
     async (host, provider, state) => {
