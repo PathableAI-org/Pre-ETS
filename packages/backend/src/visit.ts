@@ -23,7 +23,7 @@ export class VisitSaveError extends Schema.TaggedError<VisitSaveError>()("VisitS
 
 export class VisitStore extends Context.Service<VisitStore, {
   insert(input: typeof CreateOnSiteVisit.Type): Effect.Effect<string, VisitSaveError>
-}>()("@pathableai/pre-ets-backend/VisitStore") {}
+}>()("VisitStore") {}
 
 export const VisitStoreLive = Layer.effect(
   VisitStore,
