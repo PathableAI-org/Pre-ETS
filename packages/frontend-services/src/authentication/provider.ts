@@ -58,7 +58,10 @@ const providerFetch = (request: ProviderRequest, signal: AbortSignal): oidc.Cust
   return response
 }
 
-const discoverProvider = async (request: ProviderRequest, issuer: URL, signal: AbortSignal) => {
+/** Validates the request's URLs, then discovers the provider and checks it reports the configured issuer. */
+const discoverProvider = async (request: ProviderRequest, signal: AbortSignal) => {
+  const issuer = validateIssuer(request)
+  request.validateUrl(request.redirectUri)
   const config = await oidc.discovery(
     issuer,
     request.clientId,
@@ -70,7 +73,7 @@ const discoverProvider = async (request: ProviderRequest, issuer: URL, signal: A
     }
   )
   if (new URL(config.serverMetadata().issuer).href !== issuer.href) throw new ProviderUnavailable({})
-  return config
+  return { config, issuer }
 }
 
 const providerOperation = <A>(operation: (signal: AbortSignal) => Promise<A>) =>
@@ -88,9 +91,7 @@ export const prepareProvider = (
   request: ProviderRequest
 ): Effect.Effect<PreparedProviderAuthentication, ProviderUnavailable> =>
   providerOperation(async (signal) => {
-    const issuer = validateIssuer(request)
-    request.validateUrl(request.redirectUri)
-    const config = await discoverProvider(request, issuer, signal)
+    const { config, issuer } = await discoverProvider(request, signal)
     const nonce = oidc.randomNonce()
     const pkceVerifier = oidc.randomPKCECodeVerifier()
     const state = oidc.randomState()
@@ -120,9 +121,7 @@ export const completeProvider = (
   request: CompleteProviderAuthentication
 ): Effect.Effect<ProviderIdentity, ProviderUnavailable> =>
   providerOperation(async (signal) => {
-    const issuer = validateIssuer(request)
-    request.validateUrl(request.redirectUri)
-    const config = await discoverProvider(request, issuer, signal)
+    const { config, issuer } = await discoverProvider(request, signal)
     oidc.enableNonRepudiationChecks(config)
 
     const currentUrl = new URL(request.redirectUri)
