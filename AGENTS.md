@@ -119,7 +119,9 @@ temporary session state; backend owns the Effect REST domain layer. Do not impor
 - Do not add application frameworks, publication, client workflows, or extra tools
   beyond the requested task. Keep machine-local configuration and credentials out.
 - Each workspace owns an `eslint.config.js` importing the root config. Keep shared
-  rules at the root and workspace-specific rules in that workspace. Root linting
+  rules at the root and workspace-specific rules in that workspace. The root config
+  includes the Effect conventions in `eslint.effect.js`, so every workspace
+  inherits them. Root linting
   checks top-level files, then delegates to workspace lint scripts.
 - Validate with `pnpm typecheck`, `pnpm build`, and `pnpm lint`. In Effect
   workspaces `lint` includes `lint:effect`, the Effect language-service

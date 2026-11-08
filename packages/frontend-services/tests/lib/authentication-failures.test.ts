@@ -3,7 +3,7 @@ import { Cause, ConfigProvider, Effect, Exit, Fiber, FileSystem, Layer, Path, Re
 import { TestClock } from "effect/testing"
 import { vi } from "vitest"
 
-import type { HttpError } from "../../src/error.ts"
+import type { TenantFailure } from "../../src/tenant.ts"
 
 import { AuthenticationService, AuthenticationUnavailable } from "../../src/authentication.ts"
 import { TenantConfigService } from "../../src/tenant.ts"
@@ -85,7 +85,7 @@ const expectUnavailable = (result: Result.Result<unknown, unknown>) => {
 
 const pendingPreparation = (
   check: (
-    fiber: Fiber.Fiber<unknown, AuthenticationUnavailable | HttpError>,
+    fiber: Fiber.Fiber<unknown, AuthenticationUnavailable | TenantFailure>,
     aborted: () => boolean
   ) => Effect.Effect<void>
 ) =>

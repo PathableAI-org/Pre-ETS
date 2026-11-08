@@ -5,7 +5,8 @@ import { mkdtemp, rm, unlink, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
-import { TenantConfigService } from "../../src/tenant.ts"
+import { tenantFailureStatus } from "../../src/error.ts"
+import { TenantConfigService, type TenantFailure } from "../../src/tenant.ts"
 
 const alpha = {
   displayName: "Alpha Organization",
@@ -70,12 +71,12 @@ const readDocument = (document: unknown, resolution: "host" | "static" = "host")
   withFiles(readHost(), new Map([["/tenant-config/alpha.json", JSON.stringify(document)]]), resolution)
 
 const expectFailure = (
-  result: Result.Result<unknown, { readonly cause: Error; readonly status: number }>,
-  status: number
+  result: Result.Result<unknown, TenantFailure>,
+  status: 404 | 500
 ) => {
   expect(Result.isFailure(result)).toBe(true)
   if (Result.isFailure(result)) {
-    expect(result.failure.status).toBe(status)
+    expect(tenantFailureStatus(result.failure)).toBe(status)
     expect(result.failure.cause).toBeInstanceOf(Error)
   }
 }

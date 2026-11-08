@@ -53,7 +53,7 @@ export class ClientCredentials extends Context.Service<ClientCredentials, {
   readonly resolve: (
     request: ClientAuthenticationRequest
   ) => Effect.Effect<ResolvedClientAuthentication, ClientCredentialUnavailable>
-}>()("@pathableai/pre-ets-frontend/ClientCredentials") {
+}>()("ClientCredentials") {
   static readonly layer = Layer.effect(
     ClientCredentials,
     Effect.gen(function*() {

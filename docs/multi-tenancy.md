@@ -47,16 +47,20 @@ parsed-file cache. Prefer an absolute directory path: relative paths are interpr
 by filesystem operations against the process working directory. Superseded
 `TENANT_CONFIG_RECORDS_JSON` and `TENANT_LOCAL_CONFIG_JSON` are ignored.
 
-The service never substitutes another file or a default tenant. Its HTTP outcomes are:
+The service never substitutes another file or a default tenant. It fails with one of
+two tagged errors, `TenantNotFound` or `TenantReadError`. These carry no HTTP status.
+The Next host adapters map them to an HTTP status in `error.ts` (`tenantFailureStatus`).
+The JSON diagnostic body is `{ _tag, message, status }`, where `_tag` is the bare error
+name.
 
-| Failure                                  | Status |
-| ---------------------------------------- | ------ |
-| Host cannot select a tenant alias        | 404    |
-| Selected file missing in host mode       | 404    |
-| Selected file missing in static mode     | 500    |
-| Selected file has invalid JSON or schema | 404    |
-| Other selected-file read failure         | 404    |
-| Configuration directory unavailable      | 500    |
+| Failure                                  | Error             | Status |
+| ---------------------------------------- | ----------------- | ------ |
+| Host cannot select a tenant alias        | `TenantNotFound`  | 404    |
+| Selected file missing in host mode       | `TenantNotFound`  | 404    |
+| Selected file missing in static mode     | `TenantReadError` | 500    |
+| Selected file has invalid JSON or schema | `TenantNotFound`  | 404    |
+| Other selected-file read failure         | `TenantNotFound`  | 404    |
+| Configuration directory unavailable      | `TenantReadError` | 500    |
 
 Invalid process settings fail runtime startup separately from request-time directory
 or selected-file failures. Committed examples are synthetic and use the local

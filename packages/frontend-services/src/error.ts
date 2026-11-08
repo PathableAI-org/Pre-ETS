@@ -1,25 +1,25 @@
-import { Schema } from "effect"
 import { notFound } from "next/navigation"
 import { NextResponse } from "next/server"
 
-export class HttpError extends Schema.TaggedError<HttpError>()(
-  "@pathableai/pre-ets-frontend/HttpError",
-  {
-    cause: Schema.instanceOf(globalThis.Error),
-    message: Schema.String,
-    status: Schema.Literals([404, 500])
-  }
-) {}
+import type { TenantFailure } from "./tenant.js"
 
-export function httpErrorJson(error: HttpError, headers?: HeadersInit): NextResponse {
-  const body = { _tag: error._tag, message: error.message, status: error.status }
-  return NextResponse.json(
-    body,
-    headers === undefined ? { status: error.status } : { headers, status: error.status }
-  )
+/** HTTP outcome of a tenant failure. Domain errors carry no status; host adapters choose it here. */
+export const tenantFailureStatus = (failure: TenantFailure): 404 | 500 => {
+  switch (failure._tag) {
+    case "TenantNotFound":
+      return 404
+    case "TenantReadError":
+      return 500
+  }
 }
 
-export function httpErrorPage(error: HttpError): never {
-  if (error.status === 404) notFound()
-  throw error
+export function tenantFailureJson(failure: TenantFailure, headers?: HeadersInit): NextResponse {
+  const status = tenantFailureStatus(failure)
+  const body = { _tag: failure._tag, message: failure.message, status }
+  return NextResponse.json(body, headers === undefined ? { status } : { headers, status })
+}
+
+export function tenantFailurePage(failure: TenantFailure): never {
+  if (tenantFailureStatus(failure) === 404) notFound()
+  throw failure
 }

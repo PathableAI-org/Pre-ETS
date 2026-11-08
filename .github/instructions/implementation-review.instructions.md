@@ -9,6 +9,9 @@ Review the implementation against the approved specification and engineering pla
 [Testing as evidence](../../docs/engineering/testing/README.md).
 
 - Check correctness, public-contract compatibility, meaningful tests, security constraints, and stated limitations.
+- In Effect workspaces, apply [Errors and identifiers](../../docs/engineering/effect-guidance.md#errors-and-identifiers).
+  Lint cannot see two of its rules: a service error that carries an HTTP status or another transport detail, and an
+  untagged wrapper error where a tagged `reason` union belongs. Check for both.
 - Flag behavior or signatures that drift from the approved specification or `contracts/modules.md`.
 - A planned `quickstart.md` procedure is not defective because it has not yet been executed. On an implementation
   review, identify evidence the pull request claims but does not show.

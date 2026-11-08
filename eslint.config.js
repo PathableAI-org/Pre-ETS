@@ -4,6 +4,8 @@ import { defineConfig, globalIgnores } from "eslint/config"
 import globals from "globals"
 import tseslint from "typescript-eslint"
 
+import { effectConventions } from "./eslint.effect.js"
+
 export default defineConfig([
   globalIgnores([
     "**/node_modules/**",
@@ -57,5 +59,6 @@ export default defineConfig([
         { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }
       ]
     }
-  }
+  },
+  ...effectConventions
 ])

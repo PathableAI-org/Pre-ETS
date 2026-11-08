@@ -1,13 +1,8 @@
 import { Clock, Effect } from "effect"
 import { type NextRequest, NextResponse } from "next/server"
 
-import {
-  AuthenticationDenied,
-  AuthenticationService,
-  AuthenticationUnavailable,
-  type CallbackExpectedFailure,
-  type TrustedIdentity
-} from "../authentication.js"
+import { AuthenticationService, type CallbackExpectedFailure, type TrustedIdentity } from "../authentication.js"
+import { tenantFailureStatus } from "../error.js"
 import { toNext } from "../next.js"
 import {
   type EffectiveSessionPolicy,
@@ -44,12 +39,19 @@ const clearCorrelation = (response: NextResponse, request: NextRequest): NextRes
   return response
 }
 
-const responseForReason = (responses: CallbackResponses, reason: CallbackExpectedFailure["reason"]) =>
-  Effect.fail(reason).pipe(
-    Effect.catchTag(AuthenticationDenied.tag, () => Effect.promise(responses.authenticationReturn)),
-    Effect.catchTag(AuthenticationUnavailable.tag, () => Effect.promise(responses.authenticationReturn)),
-    Effect.catch((failure) => Effect.promise(() => responses.tenantFailure(failure.status)))
-  )
+const responseForReason = (
+  responses: CallbackResponses,
+  reason: CallbackExpectedFailure["reason"]
+): Promise<NextResponse> => {
+  switch (reason._tag) {
+    case "AuthenticationDenied":
+    case "AuthenticationUnavailable":
+      return responses.authenticationReturn()
+    case "TenantNotFound":
+    case "TenantReadError":
+      return responses.tenantFailure(tenantFailureStatus(reason))
+  }
+}
 
 /** Failed or ambiguous establishment, and unconfirmed trusted completion, both fail closed with no session cookie. */
 const failClosedAfterTrustedResult = (responses: CallbackResponses, request: NextRequest) =>
@@ -93,7 +95,7 @@ const completeAuthentication = (responses: CallbackResponses, request: NextReque
   }).pipe(
     Effect.matchEffect({
       onFailure: (failure) =>
-        responseForReason(responses, failure.reason).pipe(
+        Effect.promise(() => responseForReason(responses, failure.reason)).pipe(
           Effect.map((response) =>
             failure.correlationDisposition === "clear" ? clearCorrelation(response, request) : response
           )
@@ -101,7 +103,7 @@ const completeAuthentication = (responses: CallbackResponses, request: NextReque
       onSuccess: (identity) =>
         callbackFreshnessPolicy.confirmed(identity) ?
           establishSession(request, identity).pipe(
-            Effect.catchTag(SessionServiceUnavailable.tag, () => failClosedAfterTrustedResult(responses, request))
+            Effect.catchTag("SessionServiceUnavailable", () => failClosedAfterTrustedResult(responses, request))
           ) :
           failClosedAfterTrustedResult(responses, request)
     })

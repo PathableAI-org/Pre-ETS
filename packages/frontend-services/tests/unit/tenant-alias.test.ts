@@ -3,7 +3,8 @@ import { fc, it } from "@fast-check/vitest"
 import { Effect, Layer, References, Result } from "effect"
 import { describe, expect } from "vitest"
 
-import { TenantConfigService } from "../../src/tenant.ts"
+import { tenantFailureStatus } from "../../src/error.ts"
+import { TenantConfigService, type TenantFailure } from "../../src/tenant.ts"
 
 const aliasArb = fc.mixedCase(fc.constantFrom("springfield", "shelbyville"))
 const baseHostnameArb = fc.domain()
@@ -27,10 +28,10 @@ const aliasFromHost = (baseHostname: string, host: string) =>
     Effect.runSync
   )
 
-const expectAliasFailure = (result: Result.Result<unknown, { readonly status: number }>): void => {
+const expectAliasFailure = (result: Result.Result<unknown, TenantFailure>): void => {
   expect(Result.isFailure(result)).toBe(true)
   if (Result.isFailure(result)) {
-    expect(result.failure.status).toBe(404)
+    expect(tenantFailureStatus(result.failure)).toBe(404)
   }
 }
 

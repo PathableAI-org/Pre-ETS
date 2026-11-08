@@ -85,23 +85,12 @@ export interface UsableSession {
   readonly warningLeadMinutes: number
 }
 
-const sessionServiceUnavailableTag = "@pathableai/pre-ets-frontend/SessionServiceUnavailable"
-
 export class SessionServiceUnavailable extends Schema.TaggedError<SessionServiceUnavailable>()(
-  sessionServiceUnavailableTag,
+  "SessionServiceUnavailable",
   {}
-) {
-  static readonly tag = sessionServiceUnavailableTag
-}
+) {}
 
-const sessionTenantMismatchTag = "@pathableai/pre-ets-frontend/SessionTenantMismatch"
-
-export class SessionTenantMismatch extends Schema.TaggedError<SessionTenantMismatch>()(
-  sessionTenantMismatchTag,
-  {}
-) {
-  static readonly tag = sessionTenantMismatchTag
-}
+export class SessionTenantMismatch extends Schema.TaggedError<SessionTenantMismatch>()("SessionTenantMismatch", {}) {}
 
 /** Drops codec and store diagnostics so records, keys, and identity stay off the public error and its span. */
 const serviceUnavailable = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
@@ -186,7 +175,7 @@ export class SessionService extends Context.Service<SessionService, {
   readonly refreshForTenant: (
     input: RefreshSessionForTenantInput
   ) => Effect.Effect<NoUsableSession | UsableSession, SessionServiceUnavailable | SessionTenantMismatch>
-}>()("@pathableai/pre-ets-frontend/SessionService") {
+}>()("SessionService") {
   static readonly layer: Layer.Layer<
     SessionService,
     Config.ConfigError,

@@ -449,7 +449,7 @@ describe("SessionService tenant admission [PREETS-SESSION-005]", () => {
         expect(Result.isFailure(result)).toBe(true)
         if (Result.isFailure(result)) {
           expect(result.failure).toBeInstanceOf(SessionTenantMismatch)
-          expect(result.failure._tag).toBe(SessionTenantMismatch.tag)
+          expect(result.failure._tag).toBe("SessionTenantMismatch")
           expect(result.failure).not.toHaveProperty("identity")
           expect(result.failure).not.toHaveProperty("issuer")
           expect(result.failure).not.toHaveProperty("subject")

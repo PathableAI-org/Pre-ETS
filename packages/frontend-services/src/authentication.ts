@@ -1,21 +1,17 @@
 import "server-only"
-import { Clock, Config, Context, Data, Effect, Layer, Result, Schema } from "effect"
-
-import type { HttpError } from "./error.js"
+import { Clock, Config, Context, Effect, Layer, Result, Schema } from "effect"
 
 import { AuthenticationConfig, permittedUrl } from "./authentication/config.js"
 import { ClientCredentialConfig, ClientCredentials } from "./authentication/credentials.js"
 import { completeProvider, prepareProvider } from "./authentication/provider.js"
 import {
-  AuthenticationAttemptCollision,
   AuthenticationTransactions,
   decodeBrowserCorrelation,
-  makeBrowserCorrelation,
-  TransactionStoreUnavailable
+  makeBrowserCorrelation
 } from "./authentication/transaction.js"
 import { TransactionStoreConfig } from "./authentication/transaction/store.js"
 import { parseRequestHost, type RequestHost } from "./request-host.js"
-import { type TenantAlias, TenantConfigService } from "./tenant.js"
+import { type TenantAlias, TenantConfigService, type TenantFailure, TenantNotFound, TenantReadError } from "./tenant.js"
 
 /** Process-wide authentication settings. Service behavior stays on AuthenticationService. */
 export const AuthenticationProcessConfig = Config.all({
@@ -23,8 +19,6 @@ export const AuthenticationProcessConfig = Config.all({
   settings: AuthenticationConfig,
   transactions: TransactionStoreConfig
 })
-
-export type CorrelationDisposition = "clear" | "preserve"
 
 export interface TrustedIdentity {
   readonly authenticatedAt: number
@@ -39,7 +33,7 @@ interface AuthenticationServiceShape {
   ) => Effect.Effect<TrustedIdentity, CallbackExpectedFailure>
   readonly prepare: (
     input: { readonly host: string }
-  ) => Effect.Effect<PreparedAuthentication, AuthenticationUnavailable | HttpError>
+  ) => Effect.Effect<PreparedAuthentication, AuthenticationUnavailable | TenantFailure>
 }
 
 interface CompleteAuthenticationInput {
@@ -48,46 +42,45 @@ interface CompleteAuthenticationInput {
   readonly query: readonly (readonly [string, string])[]
 }
 
+type CorrelationDisposition = CallbackExpectedFailure["correlationDisposition"]
+
 interface PreparedAuthentication {
   readonly correlation: string
   readonly destination: string
   readonly expiresAt: number
 }
 
-const authenticationDeniedTag = "@pathableai/pre-ets-frontend/AuthenticationDenied"
-const authenticationUnavailableTag = "@pathableai/pre-ets-frontend/AuthenticationUnavailable"
-
 /** Safe expected denial of an untrusted or no-longer-recoverable callback. */
-export class AuthenticationDenied extends Schema.TaggedError<AuthenticationDenied>()(
-  authenticationDeniedTag,
-  {}
-) {
-  static readonly tag = authenticationDeniedTag
-}
+export class AuthenticationDenied extends Schema.TaggedError<AuthenticationDenied>()("AuthenticationDenied", {}) {}
 
 export class AuthenticationService extends Context.Service<AuthenticationService, AuthenticationServiceShape>()(
-  "@pathableai/pre-ets-frontend/AuthenticationService"
+  "AuthenticationService"
 ) {
   static readonly layer = Layer.suspend(() => AuthenticationServiceLayer)
 }
 
 /** Safe provider, credential, or transaction unavailability. */
 export class AuthenticationUnavailable extends Schema.TaggedError<AuthenticationUnavailable>()(
-  authenticationUnavailableTag,
+  "AuthenticationUnavailable",
   {}
-) {
-  static readonly tag = authenticationUnavailableTag
-}
+) {}
 
-export class CallbackExpectedFailure extends Data.Error<{
-  readonly correlationDisposition: CorrelationDisposition
-  readonly reason: AuthenticationDenied | AuthenticationUnavailable | HttpError
-}> {}
+/**
+ * Expected callback failure. `reason` says what the browser sees; `correlationDisposition` says whether the
+ * correlation cookie survives for a retry.
+ */
+export class CallbackExpectedFailure extends Schema.TaggedError<CallbackExpectedFailure>()(
+  "CallbackExpectedFailure",
+  {
+    correlationDisposition: Schema.Literals(["clear", "preserve"]),
+    reason: Schema.Union([AuthenticationDenied, AuthenticationUnavailable, TenantNotFound, TenantReadError])
+  }
+) {}
 
 const unavailable = () => new AuthenticationUnavailable({})
 const denied = () => new AuthenticationDenied({})
 const callbackFailure = (
-  reason: AuthenticationDenied | AuthenticationUnavailable | HttpError,
+  reason: CallbackExpectedFailure["reason"],
   correlationDisposition: CorrelationDisposition
 ) => new CallbackExpectedFailure({ correlationDisposition, reason })
 
@@ -234,7 +227,7 @@ const AuthenticationServiceLayer = Layer.effect(
             version: 1
           }).pipe(Effect.result)
           if (Result.isFailure(stored)) {
-            if (stored.failure instanceof AuthenticationAttemptCollision && remaining > 1) {
+            if (stored.failure._tag === "AuthenticationAttemptCollision" && remaining > 1) {
               return yield* createCandidate(remaining - 1)
             }
             return yield* unavailable()
@@ -276,7 +269,7 @@ const AuthenticationServiceLayer = Layer.effect(
         tenantAlias: qualified.alias
       }).pipe(
         Effect.mapError((failure) => {
-          if (failure instanceof TransactionStoreUnavailable) {
+          if (failure._tag === "TransactionStoreUnavailable") {
             return callbackFailure(
               unavailable(),
               failure.phase === "before-send" ? "preserve" : "clear"

@@ -91,6 +91,40 @@ Use `Schema.TaggedError` for expected application failures and typed recovery su
 when a library contract requires them. Do not turn defects, interruption, or unrelated
 failures into successful defaults. Keep public failure mappings stable and keep raw
 untrusted inputs, credentials, and unsafe cause payloads out of responses/telemetry.
+[Errors and identifiers](#errors-and-identifiers) states the concrete conventions.
+
+### Errors and identifiers
+
+These conventions apply in every Effect workspace. The rules in `eslint.effect.js`
+(part of the root ESLint config) and the `lint:effect` gate enforce the mechanical parts.
+
+- **Identifiers are the bare class name.** The first argument of `Schema.TaggedError`,
+  `Schema.TaggedClass`, and `Context.Service` is a string literal equal to the class
+  name, for example `class TenantNotFound extends Schema.TaggedError<TenantNotFound>()("TenantNotFound", …)`.
+  Do not add a package prefix or path. Do not pass a constant, and do not mirror the
+  tag in a `static tag` field. A package rename then cannot leave stale prefixes behind,
+  and `catchTag("TenantNotFound")` reads the same as the class. The literal is
+  type-checked against the error union, so no constant is needed. Names must be unique
+  within one process.
+  (`pathable-effect/identifier-matches-class` and `no-restricted-syntax`.)
+- **Causes use `Schema.Defect()`.** It accepts any thrown value, so no hand-written
+  conversion of unknown values to `Error` is needed. Pass a sanitized summary when
+  the raw cause could carry file contents, credentials, or untrusted input.
+  (`no-restricted-syntax` bans `Schema.instanceOf(Error)`.)
+- **Construct with `new X({ … })`.** Do not add a static `new` factory.
+- **Discriminate on `_tag`, never `instanceof`.** Use `Effect.catchTag`/`catchTags` in
+  Effect code. In a Promise adapter, `switch` on the typed failure's `_tag`. For an
+  `unknown` value, use `Predicate.isTagged`. Next.js/Turbopack can evaluate a module
+  once per chunk, so two copies of an error class can exist in one process and
+  `instanceof` gives the wrong answer. (`lint:effect` makes `instanceOfSchema` an
+  error.)
+- **Domain errors carry domain facts, not transport.** Do not put an HTTP status, a
+  redirect, or a response shape on a service error. The host adapter maps the tag
+  to its outcome in one place, as frontend-services does with `tenantFailureStatus`.
+- **Sub-causes use a `reason` field.** When callers need one outer error with several
+  distinguishable causes, model the cause as `reason: Schema.Union([...])` of tagged
+  errors, following the local Effect example `01_effect/04_errors/20_reason-errors.ts`.
+  Do not use an untagged `Data.Error` wrapper.
 
 Comments and JSDoc should explain a contract, limitation, or non-obvious decision.
 Do not copy the tutorial's illustrative comments or narrate obvious code. Prefer

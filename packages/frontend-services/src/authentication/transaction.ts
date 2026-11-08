@@ -4,22 +4,20 @@ import { decodeStoredAttempt, encodeStoredAttempt, type RecoverableAuthenticatio
 import {
   type AttemptAddress,
   AuthenticationTransactionStore,
-  TransactionStoreUnavailable
+  type TransactionStoreUnavailable
 } from "./transaction/store.js"
 
 export { decodeBrowserCorrelation, makeBrowserCorrelation } from "./transaction/codec.js"
+
+class AuthenticationAttemptCollision extends Schema.TaggedError<AuthenticationAttemptCollision>()(
+  "AuthenticationAttemptCollision",
+  {}
+) {}
 
 class AuthenticationAttemptUnavailable extends Schema.TaggedError<AuthenticationAttemptUnavailable>()(
   "AuthenticationAttemptUnavailable",
   { reason: Schema.Literals(["corrupt", "expired", "missing"]) }
 ) {}
-
-export class AuthenticationAttemptCollision extends Schema.TaggedError<AuthenticationAttemptCollision>()(
-  "AuthenticationAttemptCollision",
-  {}
-) {}
-
-export { TransactionStoreUnavailable }
 
 export class AuthenticationTransactions extends Context.Service<AuthenticationTransactions, {
   readonly consume: (
@@ -29,7 +27,7 @@ export class AuthenticationTransactions extends Context.Service<AuthenticationTr
     attempt: RecoverableAuthenticationAttempt
   ) => Effect.Effect<void, AuthenticationAttemptCollision | TransactionStoreUnavailable>
   readonly ttlSeconds: number
-}>()("@pathableai/pre-ets-frontend/AuthenticationTransactions") {
+}>()("AuthenticationTransactions") {
   static readonly layer = Layer.effect(
     AuthenticationTransactions,
     Effect.gen(function*() {

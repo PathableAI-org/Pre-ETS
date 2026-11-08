@@ -24,7 +24,7 @@ const wrapConstructor =
   >(cls: new(...args: Args) => Instance) =>
   (...args: Args): Effect.Effect<Instance, OtelSdkError> =>
     Effect.try({
-      catch: (cause) => OtelSdkError.new(cause),
+      catch: (cause) => new OtelSdkError({ cause }),
       try: () => new cls(...args)
     })
 
@@ -129,7 +129,7 @@ export const makeNodeSdkConfiguration: (settings: OtelEnabled) => Effect.Effect<
       })
 
       yield* Effect.try({
-        catch: (cause) => OtelSdkError.new(cause),
+        catch: (cause) => new OtelSdkError({ cause }),
         try: () => {
           sdk.start()
         }

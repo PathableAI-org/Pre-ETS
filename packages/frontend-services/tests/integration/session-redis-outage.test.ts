@@ -191,8 +191,8 @@ const expectUnavailable = (result: Result.Result<unknown, unknown>): void => {
   if (!Result.isFailure(result)) return
   const failure = result.failure
   expect(failure).toBeInstanceOf(SessionServiceUnavailable)
-  if (!(failure instanceof SessionServiceUnavailable)) return
-  expect(failure).toMatchObject({ _tag: SessionServiceUnavailable.tag })
+  if (!Schema.is(SessionServiceUnavailable)(failure)) return
+  expect(failure).toMatchObject({ _tag: "SessionServiceUnavailable" })
   expect(Object.keys(failure)).toStrictEqual(["_tag"])
 }
 
