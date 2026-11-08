@@ -1,5 +1,5 @@
 import { describe, expect, it } from "@effect/vitest"
-import { ConfigProvider, Effect, FileSystem, Layer, Logger, Path, Result } from "effect"
+import { Effect, FileSystem, Layer, Logger, Path, Result } from "effect"
 import { TestClock } from "effect/testing"
 
 import { SessionService } from "../../src/session.ts"
@@ -62,14 +62,10 @@ const world = (
   documents: ReadonlyMap<string, ReturnType<typeof tenantDocument>>
 ) =>
   Layer.mergeAll(
-    SessionService.layer.pipe(
-      Layer.provide(redis.layer),
-      Layer.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({ SESSION_KEY_PREFIX: "test:session" })))
+    SessionService.layer({ keyPrefix: "test:session" }).pipe(
+      Layer.provide(redis.layer)
     ),
-    TenantConfigService.layer({
-      env: "test",
-      tenant: { baseHostname: "example.test", configDir: "/tenant-config", resolution: "host" }
-    })
+    TenantConfigService.layer({ baseHostname: "example.test", configDir: "/tenant-config", resolution: "host" })
   ).pipe(
     Layer.provide(FileSystem.layerNoop({
       readDirectory: () => Effect.succeed([...documents.keys()]),

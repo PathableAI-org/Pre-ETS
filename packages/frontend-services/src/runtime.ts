@@ -3,68 +3,40 @@ import type * as Redis from "effect/persistence/Redis"
 
 import { type Config, ConfigProvider, Effect, Layer, type ManagedRuntime, Schema } from "effect"
 
-import { AuthenticationProcessConfig, AuthenticationService } from "./authentication.js"
-import { type OtelConfig, type ServerConfig, StartupConfig } from "./config/index.js"
+import { AuthenticationService } from "./authentication.js"
+import { StartupConfig, type StartupSettings } from "./config/index.js"
 import { type ObservabilityInitializationError, observabilityLayer } from "./observability.js"
 import { SessionService } from "./session.js"
 import { TenantConfigService } from "./tenant.js"
 
 export type ApplicationServices = AuthenticationService | SessionService | TenantConfigService
 
-export interface ProcessStartup {
-  readonly authentication: Config.Success<typeof AuthenticationProcessConfig>
-  readonly configProvider: ConfigProvider.ConfigProvider
-  readonly logLevel: Config.Success<typeof StartupConfig>["logLevel"]
-  readonly otel: Config.Success<typeof OtelConfig>
-  readonly server: Config.Success<typeof ServerConfig>
-}
-
 class StartupNotReady extends Schema.TaggedError<StartupNotReady>()("StartupNotReady", {}) {}
 
-export const loadProcessStartup: Effect.Effect<ProcessStartup, Config.ConfigError> = Effect.gen(function*() {
-  const configProvider = ConfigProvider.fromEnv()
-  const startup = yield* Effect.provideService(StartupConfig, ConfigProvider.ConfigProvider, configProvider)
-  const authentication = yield* Effect.provideService(
-    AuthenticationProcessConfig,
-    ConfigProvider.ConfigProvider,
-    configProvider
-  )
-  return {
-    authentication,
-    configProvider,
-    logLevel: startup.logLevel,
-    otel: startup.otel,
-    server: startup.server
-  }
-})
-
-const applicationCore = (startup: ProcessStartup) =>
-  Layer.mergeAll(
-    AuthenticationService.layer.pipe(Layer.provideMerge(TenantConfigService.layer(startup.server))),
-    SessionService.layer
-  )
+/** The one environment decode. Every setting the process uses is in the result. */
+export const loadProcessStartup: Effect.Effect<StartupSettings, Config.ConfigError> = StartupConfig.parse(
+  ConfigProvider.fromEnv()
+)
 
 /**
  * Observability is merged into the runtime context so the selected signals stay
  * available after acquisition. Redis stays behind `Layer.provide`, so it is not
  * a sibling and is not part of `ApplicationServices`. The console logger is a
- * separate layer supplied by the caller. The public error channel omits
- * `ConfigError` because this Effect version has no layer error map that preserves
- * services.
+ * separate layer supplied by the caller.
  */
 export const applicationLayer = (
-  startup: ProcessStartup,
+  startup: StartupSettings,
   infrastructure: Layer.Layer<NodeServices.NodeServices | Redis.Redis, Redis.RedisError>
-): Layer.Layer<ApplicationServices, ObservabilityInitializationError | Redis.RedisError> => {
-  const layer = applicationCore(startup).pipe(
+): Layer.Layer<ApplicationServices, ObservabilityInitializationError | Redis.RedisError> =>
+  Layer.mergeAll(
+    AuthenticationService.layer(startup.authentication).pipe(
+      Layer.provideMerge(TenantConfigService.layer(startup.tenant))
+    ),
+    SessionService.layer(startup.session)
+  ).pipe(
     Layer.provide(infrastructure),
-    Layer.provideMerge(observabilityLayer({
-      otel: startup.otel
-    })),
-    Layer.provide(ConfigProvider.layer(startup.configProvider))
+    Layer.provideMerge(observabilityLayer({ otel: startup.otel }))
   )
-  return layer as Layer.Layer<ApplicationServices, ObservabilityInitializationError | Redis.RedisError>
-}
 
 /**
  * Turbopack evaluates this module separately in the instrumentation chunk and in

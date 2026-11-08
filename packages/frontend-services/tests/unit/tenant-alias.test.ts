@@ -16,12 +16,9 @@ const aliasFromHost = (baseHostname: string, host: string) =>
   }).pipe(
     Effect.provide(
       TenantConfigService.layer({
-        env: "test",
-        tenant: {
-          baseHostname,
-          configDir: "/tenant-config",
-          resolution: "host"
-        }
+        baseHostname,
+        configDir: "/tenant-config",
+        resolution: "host"
       }).pipe(Layer.provide(NodeServices.layer))
     ),
     Effect.provideService(References.MinimumLogLevel, "Error"),

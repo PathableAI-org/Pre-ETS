@@ -1,5 +1,5 @@
 import { describe, expect, it } from "@effect/vitest"
-import { Cause, ConfigProvider, Effect, Exit, Fiber, FileSystem, Layer, Path, References, Result, Schema } from "effect"
+import { Cause, Effect, Exit, Fiber, FileSystem, Layer, Path, References, Result, Schema } from "effect"
 import { TestClock } from "effect/testing"
 import { generateKeyPairSync, type KeyObject, sign } from "node:crypto"
 import { ClientClosedError, ClientOfflineError } from "redis"
@@ -12,17 +12,16 @@ import {
   CallbackExpectedFailure
 } from "../../src/authentication.ts"
 import { TenantConfigService } from "../../src/tenant.ts"
-import { makeMemoryRedis } from "../helpers/authentication.ts"
+import { authenticationSettings, makeMemoryRedis } from "../helpers/authentication.ts"
 
 interface WorldOptions {
   readonly callback?: string
   readonly clientAuth?: "confidential" | "public"
-  readonly credentialMap?: string
+  readonly clientSecrets?: Readonly<Record<string, string>>
   readonly issuer?: string
   readonly issuers?: readonly string[]
   readonly redis?: ReturnType<typeof makeMemoryRedis>
   readonly secretRef?: string
-  readonly ttl?: string
 }
 
 const tenantFile = (options: WorldOptions, issuer: string) =>
@@ -46,33 +45,25 @@ const withWorld = <A, E, R>(program: Effect.Effect<A, E, AuthenticationService |
   const redis = options.redis ?? makeMemoryRedis()
   let tenantReads = 0
   return program.pipe(
-    Effect.provide(AuthenticationService.layer.pipe(
-      Layer.provide(redis.layer),
-      Layer.provide(TenantConfigService.layer({
-        env: "test",
-        tenant: { baseHostname: "example.test", configDir: "/tenants", resolution: "host" }
-      })),
-      Layer.provide(FileSystem.layerNoop({
-        readDirectory: () => Effect.succeed([]),
-        readFileString: () => {
-          const issuer = options.issuers?.[tenantReads] ?? options.issuer ?? "https://provider.test"
-          tenantReads += 1
-          return Effect.succeed(tenantFile(options, issuer))
-        }
-      })),
-      Layer.provide(Path.layer)
-    )),
-    Effect.provideService(
-      ConfigProvider.ConfigProvider,
-      ConfigProvider.fromUnknown({
-        OIDC_ALLOW_INSECURE_LOOPBACK: "false",
-        OIDC_CALLBACK_ORIGINS_JSON: JSON.stringify({
-          alpha: options.callback ?? "https://alpha.example.test"
-        }),
-        OIDC_CLIENT_SECRETS_JSON: options.credentialMap ?? "{}",
-        OIDC_TX_KEY_PREFIX: "test:authentication",
-        ...(options.ttl === undefined ? {} : { OIDC_TX_TTL_SECONDS: options.ttl })
-      })
+    Effect.provide(
+      AuthenticationService.layer(authenticationSettings({
+        callback: options.callback,
+        clientSecrets: options.clientSecrets
+      })).pipe(
+        Layer.provide(redis.layer),
+        Layer.provide(
+          TenantConfigService.layer({ baseHostname: "example.test", configDir: "/tenants", resolution: "host" })
+        ),
+        Layer.provide(FileSystem.layerNoop({
+          readDirectory: () => Effect.succeed([]),
+          readFileString: () => {
+            const issuer = options.issuers?.[tenantReads] ?? options.issuer ?? "https://provider.test"
+            tenantReads += 1
+            return Effect.succeed(tenantFile(options, issuer))
+          }
+        })),
+        Layer.provide(Path.layer)
+      )
     ),
     Effect.provideService(References.MinimumLogLevel, "Error")
   )
@@ -171,7 +162,7 @@ const confidentialSecret = "controlled-secret"
 
 const confidentialOptions = {
   clientAuth: "confidential" as const,
-  credentialMap: JSON.stringify({ "alpha-secret": confidentialSecret })
+  clientSecrets: { "alpha-secret": confidentialSecret }
 }
 
 const confidentialProvider =
@@ -349,7 +340,7 @@ describe("AuthenticationService preparation [PREETS-SESSION-002, PREETS-SESSION-
         }),
         {
           clientAuth: "confidential",
-          credentialMap: JSON.stringify({ "alpha-secret": "controlled-secret" })
+          clientSecrets: { "alpha-secret": "controlled-secret" }
         }
       )
     ))

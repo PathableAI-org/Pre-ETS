@@ -1,5 +1,5 @@
 import { NodeRedis } from "@effect/platform-node"
-import { Clock, ConfigProvider, Deferred, Effect, Layer, ManagedRuntime, Result, Schema } from "effect"
+import { Clock, Deferred, Effect, Layer, ManagedRuntime, Result, Schema } from "effect"
 import * as Redis from "effect/persistence/Redis"
 import { randomUUID } from "node:crypto"
 import { setTimeout as delay } from "node:timers/promises"
@@ -30,9 +30,8 @@ const redisLayer = () =>
   })
 
 const sessionLayer = (prefix: string) =>
-  SessionService.layer.pipe(
-    Layer.provide(redisLayer()),
-    Layer.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({ SESSION_KEY_PREFIX: prefix })))
+  SessionService.layer({ keyPrefix: prefix }).pipe(
+    Layer.provide(redisLayer())
   )
 
 const disconnectedLayer = (prefix: string) => {
@@ -45,9 +44,8 @@ const disconnectedLayer = (prefix: string) => {
     },
     url: redisUrl
   })
-  return SessionService.layer.pipe(
-    Layer.provideMerge(redis),
-    Layer.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({ SESSION_KEY_PREFIX: prefix })))
+  return SessionService.layer({ keyPrefix: prefix }).pipe(
+    Layer.provideMerge(redis)
   )
 }
 

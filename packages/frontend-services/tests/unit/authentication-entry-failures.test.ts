@@ -153,10 +153,9 @@ describe("callback session-establishment failure mapping [PREETS-SESSION-003]", 
   }
 
   const tenantLayer = (configDir: string) =>
-    TenantConfigService.layer({
-      env: "test",
-      tenant: { configDir, resolution: "static", staticAlias: "alpha" }
-    }).pipe(Layer.provide(NodeServices.layer))
+    TenantConfigService.layer({ configDir, resolution: "static", staticAlias: "alpha" }).pipe(
+      Layer.provide(NodeServices.layer)
+    )
 
   const runConfirmed = (
     layers: {

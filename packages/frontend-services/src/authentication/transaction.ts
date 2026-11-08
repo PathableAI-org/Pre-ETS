@@ -1,4 +1,6 @@
-import { Clock, Context, Effect, Layer, Schema } from "effect"
+import { Clock, Context, Duration, Effect, Layer, Schema } from "effect"
+
+import type { TransactionStoreSettings } from "../config/index.js"
 
 import { decodeStoredAttempt, encodeStoredAttempt, type RecoverableAuthenticationAttempt } from "./transaction/codec.js"
 import {
@@ -26,46 +28,47 @@ export class AuthenticationTransactions extends Context.Service<AuthenticationTr
   readonly create: (
     attempt: RecoverableAuthenticationAttempt
   ) => Effect.Effect<void, AuthenticationAttemptCollision | TransactionStoreUnavailable>
-  readonly ttlSeconds: number
+  readonly ttl: Duration.Duration
 }>()("AuthenticationTransactions") {
-  static readonly layer = Layer.effect(
-    AuthenticationTransactions,
-    Effect.gen(function*() {
-      const store = yield* AuthenticationTransactionStore
+  static readonly layer = (settings: TransactionStoreSettings) =>
+    Layer.effect(
+      AuthenticationTransactions,
+      Effect.gen(function*() {
+        const store = yield* AuthenticationTransactionStore
 
-      const create = Effect.fnUntraced(function*(attempt: RecoverableAuthenticationAttempt) {
-        const payload = yield* encodeStoredAttempt(attempt).pipe(
-          Effect.orDie
-        )
-        const outcome = yield* store.create({
-          correlation: attempt.correlation,
-          state: attempt.state,
-          tenantAlias: attempt.tenantAlias
-        }, payload)
-        if (outcome === "exists") return yield* new AuthenticationAttemptCollision({})
+        const create = Effect.fnUntraced(function*(attempt: RecoverableAuthenticationAttempt) {
+          const payload = yield* encodeStoredAttempt(attempt).pipe(
+            Effect.orDie
+          )
+          const outcome = yield* store.create({
+            correlation: attempt.correlation,
+            state: attempt.state,
+            tenantAlias: attempt.tenantAlias
+          }, payload)
+          if (outcome === "exists") return yield* new AuthenticationAttemptCollision({})
+        })
+
+        const consume = Effect.fnUntraced(function*(address: AttemptAddress) {
+          const payload = yield* store.consume(address)
+          if (payload === undefined) {
+            return yield* new AuthenticationAttemptUnavailable({ reason: "missing" })
+          }
+          const decoded = yield* decodeStoredAttempt(payload).pipe(
+            Effect.mapError(() => new AuthenticationAttemptUnavailable({ reason: "corrupt" }))
+          )
+          if (decoded.expiresAt > decoded.createdAt + Duration.toMillis(settings.ttl)) {
+            return yield* new AuthenticationAttemptUnavailable({ reason: "corrupt" })
+          }
+          const now = yield* Clock.currentTimeMillis
+          if (decoded.expiresAt <= now) {
+            return yield* new AuthenticationAttemptUnavailable({ reason: "expired" })
+          }
+          return decoded
+        })
+
+        return AuthenticationTransactions.of({ consume, create, ttl: settings.ttl })
       })
-
-      const consume = Effect.fnUntraced(function*(address: AttemptAddress) {
-        const payload = yield* store.consume(address)
-        if (payload === undefined) {
-          return yield* new AuthenticationAttemptUnavailable({ reason: "missing" })
-        }
-        const decoded = yield* decodeStoredAttempt(payload).pipe(
-          Effect.mapError(() => new AuthenticationAttemptUnavailable({ reason: "corrupt" }))
-        )
-        if (decoded.expiresAt > decoded.createdAt + store.settings.ttlMilliseconds) {
-          return yield* new AuthenticationAttemptUnavailable({ reason: "corrupt" })
-        }
-        const now = yield* Clock.currentTimeMillis
-        if (decoded.expiresAt <= now) {
-          return yield* new AuthenticationAttemptUnavailable({ reason: "expired" })
-        }
-        return decoded
-      })
-
-      return AuthenticationTransactions.of({ consume, create, ttlSeconds: store.settings.ttlSeconds })
-    })
-  ).pipe(
-    Layer.provide(AuthenticationTransactionStore.layer)
-  )
+    ).pipe(
+      Layer.provide(AuthenticationTransactionStore.layer(settings))
+    )
 }

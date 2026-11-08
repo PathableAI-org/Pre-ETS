@@ -1,11 +1,12 @@
 import { NodeRedis } from "@effect/platform-node"
-import { ConfigProvider, Effect, FileSystem, Layer, ManagedRuntime, Path, Result } from "effect"
+import { Effect, FileSystem, Layer, ManagedRuntime, Path, Result } from "effect"
 import { generateKeyPairSync, randomUUID, sign } from "node:crypto"
 import { setTimeout as delay } from "node:timers/promises"
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest"
 
 import { AuthenticationDenied, AuthenticationService, CallbackExpectedFailure } from "../../src/authentication.ts"
 import { TenantConfigService } from "../../src/tenant.ts"
+import { authenticationSettings } from "../helpers/authentication.ts"
 
 const redisUrl = process.env.REDIS_URL ?? "redis://127.0.0.1:6379"
 const transactionPrefix = `test:authentication:${randomUUID()}:`
@@ -66,13 +67,15 @@ const redisLayer = () =>
     url: redisUrl
   })
 
-const authenticationLayer = (options: { readonly prefix?: string; readonly ttl?: string } = {}) =>
-  AuthenticationService.layer.pipe(
+const authenticationLayer = (options: { readonly prefix?: string; readonly ttlSeconds?: number } = {}) =>
+  AuthenticationService.layer(authenticationSettings({
+    prefix: options.prefix ?? transactionPrefix,
+    ttlSeconds: options.ttlSeconds ?? 30
+  })).pipe(
     Layer.provide(redisLayer()),
-    Layer.provide(TenantConfigService.layer({
-      env: "test",
-      tenant: { baseHostname: "example.test", configDir: "/tenants", resolution: "host" }
-    })),
+    Layer.provide(
+      TenantConfigService.layer({ baseHostname: "example.test", configDir: "/tenants", resolution: "host" })
+    ),
     Layer.provide(FileSystem.layerNoop({
       readDirectory: () => Effect.succeed([]),
       readFileString: () =>
@@ -81,17 +84,7 @@ const authenticationLayer = (options: { readonly prefix?: string; readonly ttl?:
           oidc: { clientAuth: "public", clientId: "alpha-client", issuer: "https://provider.test" }
         }))
     })),
-    Layer.provide(Path.layer),
-    Layer.provide(Layer.succeed(
-      ConfigProvider.ConfigProvider,
-      ConfigProvider.fromUnknown({
-        OIDC_ALLOW_INSECURE_LOOPBACK: "false",
-        OIDC_CALLBACK_ORIGINS_JSON: JSON.stringify({ alpha: "https://alpha.example.test" }),
-        OIDC_CLIENT_SECRETS_JSON: "{}",
-        OIDC_TX_KEY_PREFIX: options.prefix ?? transactionPrefix,
-        OIDC_TX_TTL_SECONDS: options.ttl ?? "30"
-      })
-    ))
+    Layer.provide(Path.layer)
   )
 
 const prepare = (runtime: ManagedRuntime.ManagedRuntime<AuthenticationService, unknown>) =>
@@ -187,11 +180,11 @@ describe("AuthenticationService with independently scoped NodeRedis clients [PRE
     const prefix = `test:authentication:${randomUUID()}:`
     const expiringA = ManagedRuntime.make(authenticationLayer({
       prefix,
-      ttl: "1"
+      ttlSeconds: 1
     }))
     const expiringB = ManagedRuntime.make(authenticationLayer({
       prefix,
-      ttl: "1"
+      ttlSeconds: 1
     }))
     try {
       const prepared = await prepare(expiringA)

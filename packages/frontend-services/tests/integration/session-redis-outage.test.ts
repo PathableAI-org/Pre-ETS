@@ -1,5 +1,5 @@
 import { NodeRedis } from "@effect/platform-node"
-import { ConfigProvider, Effect, Layer, ManagedRuntime, Result, Schema } from "effect"
+import { Effect, Layer, ManagedRuntime, Result, Schema } from "effect"
 import { execFile } from "node:child_process"
 import { randomUUID } from "node:crypto"
 import { mkdtemp, rm, writeFile } from "node:fs/promises"
@@ -133,9 +133,8 @@ const redisLayer = (url: string) =>
   })
 
 const sessionLayer = (url: string, prefix: string) =>
-  SessionService.layer.pipe(
-    Layer.provide(redisLayer(url)),
-    Layer.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({ SESSION_KEY_PREFIX: prefix })))
+  SessionService.layer({ keyPrefix: prefix }).pipe(
+    Layer.provide(redisLayer(url))
   )
 
 const makeRuntime = (store: OutageStore, prefix: string): SessionRuntime =>

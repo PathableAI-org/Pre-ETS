@@ -1,4 +1,4 @@
-import { Config, Context, Effect, Layer, Schema, SchemaIssue } from "effect"
+import { Context, Effect, Layer, Schema } from "effect"
 import * as oidc from "openid-client"
 
 export interface ResolvedClientAuthentication {
@@ -14,15 +14,6 @@ class ClientCredentialUnavailable extends Schema.TaggedError<ClientCredentialUna
   "ClientCredentialUnavailable",
   {}
 ) {}
-
-const SecretMap = Schema.fromJsonString(Schema.Record(Schema.NonEmptyString, Schema.NonEmptyString))
-
-const invalidCredentialConfig = () =>
-  new Config.ConfigError(
-    new Schema.SchemaError(
-      new SchemaIssue.InvalidValue({ message: "Authentication credential settings are invalid" })
-    )
-  )
 
 const supportedSecretMethod = (
   methods: readonly string[] | undefined
@@ -40,33 +31,21 @@ const confidentialAuthentication = (secret: string): oidc.ClientAuth => (metadat
   authenticate(metadata, client, body, headers)
 }
 
-export const ClientCredentialConfig = Config.String("OIDC_CLIENT_SECRETS_JSON").pipe(
-  Config.withDefault("{}"),
-  Config.mapEffect((raw) =>
-    Schema.decodeUnknownEffect(SecretMap)(raw).pipe(
-      Effect.mapError(invalidCredentialConfig)
-    )
-  )
-)
-
 export class ClientCredentials extends Context.Service<ClientCredentials, {
   readonly resolve: (
     request: ClientAuthenticationRequest
   ) => Effect.Effect<ResolvedClientAuthentication, ClientCredentialUnavailable>
 }>()("ClientCredentials") {
-  static readonly layer = Layer.effect(
-    ClientCredentials,
-    Effect.gen(function*() {
-      const values = yield* ClientCredentialConfig
-      const resolve = Effect.fnUntraced(function*(request: ClientAuthenticationRequest) {
+  /** `secrets` maps a tenant's non-secret `clientSecretRef` to its client secret. */
+  static readonly layer = (secrets: Readonly<Record<string, string>>) =>
+    Layer.succeed(ClientCredentials, {
+      resolve: Effect.fnUntraced(function*(request: ClientAuthenticationRequest) {
         if (request.clientAuth === "public") {
           return { method: oidc.None(), mode: "public" } as const
         }
-        const secret = Object.hasOwn(values, request.clientSecretRef) ? values[request.clientSecretRef] : undefined
+        const secret = Object.hasOwn(secrets, request.clientSecretRef) ? secrets[request.clientSecretRef] : undefined
         if (secret === undefined) return yield* new ClientCredentialUnavailable({})
         return { method: confidentialAuthentication(secret), mode: "confidential" } as const
       })
-      return ClientCredentials.of({ resolve })
     })
-  )
 }

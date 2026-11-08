@@ -1,7 +1,8 @@
 import type { Redis } from "effect/persistence/Redis"
 
-import { Clock, type Config, Context, Effect, Layer, Option, Schema } from "effect"
+import { Clock, Context, Effect, Layer, Option, Schema } from "effect"
 
+import type { SessionSettings } from "./config/index.js"
 import type { SessionPolicy, TenantAlias } from "./tenant.js"
 
 import {
@@ -171,101 +172,98 @@ export class SessionService extends Context.Service<SessionService, {
     input: RefreshSessionForTenantInput
   ) => Effect.Effect<NoUsableSession | UsableSession, SessionServiceUnavailable | SessionTenantMismatch>
 }>()("SessionService") {
-  static readonly layer: Layer.Layer<
-    SessionService,
-    Config.ConfigError,
-    Redis
-  > = Layer.effect(
-    SessionService,
-    Effect.gen(function*() {
-      const store = yield* SessionStore
+  static readonly layer = (settings: SessionSettings): Layer.Layer<SessionService, never, Redis> =>
+    Layer.effect(
+      SessionService,
+      Effect.gen(function*() {
+        const store = yield* SessionStore
 
-      const establish = Effect.fn("SessionService.establish")(function*(input: EstablishSessionInput) {
-        const attempt = (remaining: number): Effect.Effect<EstablishedSession, SessionServiceUnavailable> =>
-          Effect.gen(function*() {
-            const now = yield* Clock.currentTimeMillis
-            const reference = yield* makeSessionReference()
-            const telemetryId = yield* makeTelemetryId()
-            const idleDeadlineEpochMilliseconds = now + input.policy.idleTimeoutMinutes * 60_000
-            const payload = yield* serviceUnavailable(encodeStoredSession({
-              idleDeadlineEpochMilliseconds,
-              issuer: input.identity.issuer,
-              subject: input.identity.subject,
-              telemetryId,
-              tenantAlias: input.tenantAlias,
-              version: 1,
-              warningLeadMinutes: input.policy.warningLeadMinutes
-            }))
-            const ttlMilliseconds = idleDeadlineEpochMilliseconds - now
-            const outcome = yield* serviceUnavailable(store.create({ reference }, payload, ttlMilliseconds))
-            if (outcome === "exists" && remaining > 1) {
-              return yield* attempt(remaining - 1)
-            }
-            if (outcome === "exists") {
-              return yield* new SessionServiceUnavailable({})
-            }
-            yield* Effect.annotateCurrentSpan("session.id", telemetryId)
-            return {
-              reference,
-              session: toUsableSession({
+        const establish = Effect.fn("SessionService.establish")(function*(input: EstablishSessionInput) {
+          const attempt = (remaining: number): Effect.Effect<EstablishedSession, SessionServiceUnavailable> =>
+            Effect.gen(function*() {
+              const now = yield* Clock.currentTimeMillis
+              const reference = yield* makeSessionReference()
+              const telemetryId = yield* makeTelemetryId()
+              const idleDeadlineEpochMilliseconds = now + input.policy.idleTimeoutMinutes * 60_000
+              const payload = yield* serviceUnavailable(encodeStoredSession({
                 idleDeadlineEpochMilliseconds,
                 issuer: input.identity.issuer,
                 subject: input.identity.subject,
+                telemetryId,
                 tenantAlias: input.tenantAlias,
+                version: 1,
                 warningLeadMinutes: input.policy.warningLeadMinutes
-              })
-            }
-          })
+              }))
+              const ttlMilliseconds = idleDeadlineEpochMilliseconds - now
+              const outcome = yield* serviceUnavailable(store.create({ reference }, payload, ttlMilliseconds))
+              if (outcome === "exists" && remaining > 1) {
+                return yield* attempt(remaining - 1)
+              }
+              if (outcome === "exists") {
+                return yield* new SessionServiceUnavailable({})
+              }
+              yield* Effect.annotateCurrentSpan("session.id", telemetryId)
+              return {
+                reference,
+                session: toUsableSession({
+                  idleDeadlineEpochMilliseconds,
+                  issuer: input.identity.issuer,
+                  subject: input.identity.subject,
+                  tenantAlias: input.tenantAlias,
+                  warningLeadMinutes: input.policy.warningLeadMinutes
+                })
+              }
+            })
 
-        return yield* attempt(COLLISION_RETRIES)
-      })
+          return yield* attempt(COLLISION_RETRIES)
+        })
 
-      const invalidate = Effect.fn("SessionService.invalidate")(function*(
-        input: { readonly reference?: string }
-      ) {
-        const reference = decodeSessionReference(input.reference)
-        if (Option.isNone(reference)) return noUsableSession
-        yield* serviceUnavailable(store.invalidate({ reference: reference.value }))
-        return noUsableSession
-      })
+        const invalidate = Effect.fn("SessionService.invalidate")(function*(
+          input: { readonly reference?: string }
+        ) {
+          const reference = decodeSessionReference(input.reference)
+          if (Option.isNone(reference)) return noUsableSession
+          yield* serviceUnavailable(store.invalidate({ reference: reference.value }))
+          return noUsableSession
+        })
 
-      const read = Effect.fn("SessionService.read")(function*(input: { readonly reference?: string }) {
-        const reference = decodeSessionReference(input.reference)
-        if (Option.isNone(reference)) return noUsableSession
-        const receivedAt = yield* Clock.currentTimeMillis
-        const outcome = yield* serviceUnavailable(store.read({ receivedAt, reference: reference.value }))
-        if (outcome._tag === "Missing" || outcome._tag === "Expired") return noUsableSession
-        return yield* exposeIfStillUsable(outcome.payload)
-      })
+        const read = Effect.fn("SessionService.read")(function*(input: { readonly reference?: string }) {
+          const reference = decodeSessionReference(input.reference)
+          if (Option.isNone(reference)) return noUsableSession
+          const receivedAt = yield* Clock.currentTimeMillis
+          const outcome = yield* serviceUnavailable(store.read({ receivedAt, reference: reference.value }))
+          if (outcome._tag === "Missing" || outcome._tag === "Expired") return noUsableSession
+          return yield* exposeIfStillUsable(outcome.payload)
+        })
 
-      const readForTenant = Effect.fn("SessionService.readForTenant")(function*(input: ReadSessionForTenantInput) {
-        const session = yield* read(input.reference === undefined ? {} : { reference: input.reference })
-        if (session._tag === "NoUsableSession") return session
-        if (session.tenantAlias === input.tenantAlias) return session
-        return yield* new SessionTenantMismatch({})
-      })
+        const readForTenant = Effect.fn("SessionService.readForTenant")(function*(input: ReadSessionForTenantInput) {
+          const session = yield* read(input.reference === undefined ? {} : { reference: input.reference })
+          if (session._tag === "NoUsableSession") return session
+          if (session.tenantAlias === input.tenantAlias) return session
+          return yield* new SessionTenantMismatch({})
+        })
 
-      const refreshForTenant = Effect.fn("SessionService.refreshForTenant")(function*(
-        input: RefreshSessionForTenantInput
-      ) {
-        const reference = decodeSessionReference(input.reference)
-        if (Option.isNone(reference)) return noUsableSession
-        const receivedAt = yield* Clock.currentTimeMillis
-        const outcome = yield* serviceUnavailable(store.refresh(refreshRequest(input, receivedAt, reference.value)))
-        if (outcome._tag === "Missing" || outcome._tag === "Expired") return noUsableSession
-        if (outcome._tag === "Mismatch") return yield* new SessionTenantMismatch({})
-        return yield* exposeIfStillUsable(outcome.payload)
-      })
+        const refreshForTenant = Effect.fn("SessionService.refreshForTenant")(function*(
+          input: RefreshSessionForTenantInput
+        ) {
+          const reference = decodeSessionReference(input.reference)
+          if (Option.isNone(reference)) return noUsableSession
+          const receivedAt = yield* Clock.currentTimeMillis
+          const outcome = yield* serviceUnavailable(store.refresh(refreshRequest(input, receivedAt, reference.value)))
+          if (outcome._tag === "Missing" || outcome._tag === "Expired") return noUsableSession
+          if (outcome._tag === "Mismatch") return yield* new SessionTenantMismatch({})
+          return yield* exposeIfStillUsable(outcome.payload)
+        })
 
-      return SessionService.of({
-        establish,
-        invalidate,
-        read,
-        readForTenant,
-        refreshForTenant
+        return SessionService.of({
+          establish,
+          invalidate,
+          read,
+          readForTenant,
+          refreshForTenant
+        })
       })
-    })
-  ).pipe(
-    Layer.provide(SessionStore.layer)
-  )
+    ).pipe(
+      Layer.provide(SessionStore.layer(settings.keyPrefix))
+    )
 }

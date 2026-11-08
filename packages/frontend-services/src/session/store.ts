@@ -2,8 +2,6 @@ import { Context, Effect, Layer, Schema } from "effect"
 import * as Redis from "effect/persistence/Redis"
 import { createHash } from "node:crypto"
 
-import { SessionKeyPrefix } from "../config/index.js"
-
 /**
  * Store-level existence outcomes kept deliberately coarse: the parent owns the
  * public session vocabulary and never exposes a key or encoded payload here.
@@ -305,18 +303,18 @@ export class SessionStore extends Context.Service<SessionStore, {
     input: RefreshStoreInput
   ) => Effect.Effect<StoreTransition, SessionStoreUnavailable>
 }>()("SessionStore") {
-  static readonly layer = Layer.effect(
-    SessionStore,
-    Effect.gen(function*() {
-      const redis = yield* Redis.Redis
-      const prefix = yield* SessionKeyPrefix
-      const transition = makeTransition(redis, prefix)
-      return SessionStore.of({
-        create: makeCreate(redis, prefix),
-        invalidate: makeInvalidate(redis, prefix),
-        read: makeRead(transition),
-        refresh: makeRefresh(transition)
+  static readonly layer = (prefix: string) =>
+    Layer.effect(
+      SessionStore,
+      Effect.gen(function*() {
+        const redis = yield* Redis.Redis
+        const transition = makeTransition(redis, prefix)
+        return SessionStore.of({
+          create: makeCreate(redis, prefix),
+          invalidate: makeInvalidate(redis, prefix),
+          read: makeRead(transition),
+          refresh: makeRefresh(transition)
+        })
       })
-    })
-  )
+    )
 }

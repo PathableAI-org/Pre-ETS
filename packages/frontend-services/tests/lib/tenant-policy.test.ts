@@ -23,16 +23,14 @@ const readPolicy = Effect.fnUntraced(
   (effect, policy) =>
     effect.pipe(
       Effect.provide(Layer.mergeAll(
-        TenantConfigService.layer({
-          env: "test",
-          tenant: { baseHostname: "example.test", configDir: "/tenant-config", resolution: "host" }
-        }).pipe(Layer.provide(Layer.mergeAll(
-          FileSystem.layerNoop({
-            readDirectory: () => Effect.succeed(["policy.json"]),
-            readFileString: () => Effect.succeed(JSON.stringify({ ...tenantFile, ...policy }))
-          }),
-          Path.layer
-        ))),
+        TenantConfigService.layer({ baseHostname: "example.test", configDir: "/tenant-config", resolution: "host" })
+          .pipe(Layer.provide(Layer.mergeAll(
+            FileSystem.layerNoop({
+              readDirectory: () => Effect.succeed(["policy.json"]),
+              readFileString: () => Effect.succeed(JSON.stringify({ ...tenantFile, ...policy }))
+            }),
+            Path.layer
+          ))),
         Logger.layer([])
       ))
     )

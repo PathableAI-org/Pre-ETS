@@ -1,7 +1,25 @@
-import { Effect, Layer } from "effect"
+import { Duration, Effect, Layer } from "effect"
 import * as Redis from "effect/persistence/Redis"
 
+import type { AuthenticationSettings } from "../../src/config/index.ts"
+
 import { makeRedis } from "./redis.ts"
+
+/** Plain process settings for the `alpha` tenant; startup decoding is covered by the config tests. */
+export const authenticationSettings = (overrides: {
+  readonly callback?: string | undefined
+  readonly clientSecrets?: Readonly<Record<string, string>> | undefined
+  readonly prefix?: string | undefined
+  readonly ttlSeconds?: number | undefined
+} = {}): AuthenticationSettings => ({
+  allowInsecureLoopback: false,
+  callbackOrigins: { alpha: new URL(overrides.callback ?? "https://alpha.example.test") },
+  clientSecrets: overrides.clientSecrets ?? {},
+  transactions: {
+    prefix: overrides.prefix ?? "test:authentication",
+    ttl: Duration.seconds(overrides.ttlSeconds ?? 600)
+  }
+})
 
 export interface Entry {
   readonly expiresAt: number

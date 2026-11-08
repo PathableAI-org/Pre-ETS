@@ -1,31 +1,40 @@
+/**
+ * Process settings. Startup decodes `StartupConfig` once from the environment and passes the plain values to layer
+ * factories; no other module reads `Config` or `ConfigProvider`.
+ */
 import { Config } from "effect"
 
-import { AppEnv } from "./env.js"
+import { AuthenticationConfig } from "./authentication.js"
 import { OtelConfig } from "./otel.js"
-import { RedisUrl } from "./redis.js"
-import { SessionKeyPrefix } from "./session.js"
 import { TenantConfig } from "./tenant-config.js"
 
-export { AppEnv } from "./env.js"
-export { OtelConfig }
+export { type AuthenticationSettings, permittedUrl, type TransactionStoreSettings } from "./authentication.js"
 export type { OtelSettings } from "./otel.js"
-export { SessionKeyPrefix } from "./session.js"
 export type { TenantConfig, StaticTenantConfig as TenantStaticConfig } from "./tenant-config.js"
 
-export const ServerConfig = Config.all({
+/** NODE_ENV. Absent means development; any other unsupported value fails startup. */
+const AppEnv = Config.Literals(["development", "production", "test"], "NODE_ENV").pipe(
+  Config.withDefault("development")
+)
+
+export type AppEnv = Config.Success<typeof AppEnv>
+
+export interface SessionSettings {
+  /** Versioned prefix for frontend-owned session keys. Tests supply an owned prefix. */
+  readonly keyPrefix: string
+}
+
+export const StartupConfig = Config.all({
+  authentication: AuthenticationConfig,
   env: AppEnv,
-  redis: Config.all({ url: RedisUrl }),
-  session: Config.all({ keyPrefix: SessionKeyPrefix }),
+  logLevel: Config.LogLevel("LOG_LEVEL").pipe(Config.withDefault("Info")),
+  otel: OtelConfig,
+  /** An absent value uses the local compose instance. */
+  redisUrl: Config.String("REDIS_URL").pipe(Config.withDefault("redis://127.0.0.1:6379")),
+  session: Config.all({
+    keyPrefix: Config.String("SESSION_KEY_PREFIX").pipe(Config.withDefault("preets:session:v1"))
+  }),
   tenant: TenantConfig
 })
 
-export const LogConfig = Config.LogLevel("LOG_LEVEL").pipe(Config.withDefault("Info"))
-
-/** Process startup settings. URL and protocol selection happen after this decode. */
-export const StartupConfig = Config.all({
-  logLevel: LogConfig,
-  otel: OtelConfig,
-  server: ServerConfig
-})
-
-export type StartupConfig = Config.Success<typeof StartupConfig>
+export type StartupSettings = Config.Success<typeof StartupConfig>
