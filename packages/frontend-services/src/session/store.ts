@@ -46,41 +46,39 @@ const keyFor = (prefix: string, reference: string): string => {
   return `${prefix}:${digest}`
 }
 
-const terminalTag = (status: string): "Expired" | "Mismatch" | "Missing" | undefined => {
-  if (status === "expired") return "Expired"
-  if (status === "mismatch") return "Mismatch"
-  if (status === "missing") return "Missing"
-  return undefined
-}
+/**
+ * The session script's replies. "malformed" and "rejected" are deliberately absent: they decode as unavailable,
+ * like any reply the script should never produce.
+ */
+const TransitionReply = Schema.Union([
+  Schema.Tuple([Schema.Literals(["expired", "mismatch", "missing"])]),
+  Schema.Tuple([Schema.Literals(["current", "renewed"]), Schema.String])
+])
 
-const payloadTag = (status: string): "Current" | "Renewed" | undefined => {
-  if (status === "current") return "Current"
-  if (status === "renewed") return "Renewed"
-  return undefined
-}
+const decodeTransitionReply = Schema.decodeUnknownEffect(TransitionReply)
 
-const decodeTerminal = (status: string): StoreTransition | undefined => {
-  if (status === "malformed" || status === "rejected") return undefined
-  const tag = terminalTag(status)
-  return tag === undefined ? undefined : { _tag: tag }
-}
+const transitionTags = {
+  current: "Current",
+  expired: "Expired",
+  mismatch: "Mismatch",
+  missing: "Missing",
+  renewed: "Renewed"
+} as const
 
-const decodePayload = (status: string, payload: unknown): StoreTransition | undefined => {
-  const tag = payloadTag(status)
-  if (tag === undefined || typeof payload !== "string") return undefined
-  return { _tag: tag, payload }
-}
-
-const decodeReply = (value: unknown): StoreTransition | undefined => {
-  if (!Array.isArray(value) || typeof value[0] !== "string") return undefined
-  if (value.length === 1) return decodeTerminal(value[0])
-  if (value.length !== 2) return undefined
-  return decodePayload(value[0], value[1])
-}
+const toTransition = (reply: typeof TransitionReply.Type): StoreTransition =>
+  reply.length === 1 ?
+    { _tag: transitionTags[reply[0]] } :
+    { _tag: transitionTags[reply[0]], payload: reply[1] }
 
 /**
  * One key. Validate the stored record, admit the tenant, and build the reply
  * before the single final DEL or SET. Redis script rollback is not a safety net.
+ *
+ * `valid` repeats the record checks of `decodeStoredSession` on purpose. The script
+ * must refuse a malformed record before it extends or deletes it, and it cannot call
+ * the TypeScript schema. The parent still decodes the returned payload with that
+ * schema before exposing a session, so the two stay belt and braces, not a
+ * replacement for each other. Change both together.
  */
 const sessionTransitionLua = `
 local key = KEYS[1]
@@ -250,9 +248,7 @@ const makeTransition = (redis: Redis.Redis["Service"], prefix: string) =>
       String(input.idleTimeoutMilliseconds),
       String(input.warningLeadMinutes)
     ).pipe(Effect.mapError(unavailable))
-    const decoded = decodeReply(reply)
-    if (decoded === undefined) return yield* unavailable()
-    return decoded
+    return yield* decodeTransitionReply(reply).pipe(Effect.map(toTransition), Effect.mapError(unavailable))
   })
 
 const makeRead = (

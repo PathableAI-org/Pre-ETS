@@ -108,6 +108,14 @@ export const prepareProvider = (
     return { destination: destination.href, issuer: issuer.href, nonce, pkceVerifier, state }
   })
 
+/** The ID token claims this application relies on. Other claims are ignored. */
+const IdentityClaims = Schema.Struct({
+  auth_time: Schema.Int,
+  sub: Schema.String.pipe(Schema.check(Schema.isPattern(/\S/)))
+})
+
+const decodeIdentityClaims = Schema.decodeUnknownEffect(IdentityClaims)
+
 export const completeProvider = (
   request: CompleteProviderAuthentication
 ): Effect.Effect<ProviderIdentity, ProviderUnavailable> =>
@@ -126,14 +134,12 @@ export const completeProvider = (
       idTokenExpected: true,
       pkceCodeVerifier: request.pkceVerifier
     })
-    const claims = response.claims()
-    const subject = claims?.sub
-    const authenticatedAt = claims?.auth_time
-    if (
-      typeof subject !== "string" || subject.trim() === "" ||
-      typeof authenticatedAt !== "number" || !Number.isInteger(authenticatedAt)
-    ) {
-      throw new ProviderUnavailable({})
-    }
-    return { authenticatedAt, issuer: issuer.href, subject }
-  })
+    return { claims: response.claims(), issuer: issuer.href }
+  }).pipe(
+    Effect.flatMap(({ claims, issuer }) =>
+      decodeIdentityClaims(claims).pipe(
+        Effect.map((identity) => ({ authenticatedAt: identity.auth_time, issuer, subject: identity.sub })),
+        Effect.mapError(() => new ProviderUnavailable({}))
+      )
+    )
+  )

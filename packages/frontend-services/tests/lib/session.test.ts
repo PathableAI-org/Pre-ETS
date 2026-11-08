@@ -966,6 +966,28 @@ describe("SessionService storage failures", () => {
       })
     ))
 
+  it.effect.each([
+    ["current"],
+    ["current", 1],
+    ["expired", "extra"],
+    ["renewed", "payload", "extra"],
+    ["malformed"],
+    ["rejected"],
+    "current",
+    null
+  ])("fails closed for the unexpected script reply %j", (reply) =>
+    scenario((redis) =>
+      Effect.gen(function*() {
+        yield* TestClock.setTime(BASE_TIME)
+        const service = yield* SessionService
+        const established = yield* establish(service, 30, 5)
+        redis.returnNextEvaluation(reply)
+        const result = yield* service.read({ reference: established.reference }).pipe(Effect.result)
+        expect(Result.isFailure(result)).toBe(true)
+        if (Result.isFailure(result)) expect(result.failure).toBeInstanceOf(SessionServiceUnavailable)
+      })
+    ))
+
   it.effect.each(
     [
       ["not-json", () => "not-json"],

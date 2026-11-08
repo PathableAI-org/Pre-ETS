@@ -433,7 +433,18 @@ describe("AuthenticationService completion [PREETS-SESSION-002]", () => {
             correlation: prepared.correlation,
             host: "alpha.example.test",
             query: [["code", "premature"]]
-          }
+          },
+          ...([
+            [["code", "premature"], ["error", "access_denied"], ["state", state]],
+            [["code", "premature"], ["error_description", "denied"], ["state", state]],
+            [["error_uri", "https://provider.test/e"], ["state", state]],
+            [["code", " "], ["state", state]],
+            [["code", "premature"], ["iss", "a"], ["iss", "a"], ["state", state]]
+          ] as const).map((query) => ({
+            correlation: prepared.correlation,
+            host: "alpha.example.test",
+            query
+          }))
         ] as const
         for (const input of prematureCallbacks) {
           expectCallbackFailure(
@@ -446,7 +457,7 @@ describe("AuthenticationService completion [PREETS-SESSION-002]", () => {
         const identity = yield* authentication.complete({
           correlation: prepared.correlation,
           host: "alpha.example.test",
-          query: [["code", "controlled-code"], ["state", state]]
+          query: [["code", "controlled-code"], ["session_state", "ignored"], ["session_state", ""], ["state", state]]
         })
         expect(identity.subject).toBe("subject-1")
       }))
@@ -681,7 +692,7 @@ describe("AuthenticationService callback recovery [PREETS-SESSION-002]", () => {
         const identity = yield* authentication.complete({
           correlation: prepared.correlation,
           host: "alpha.example.test:443",
-          query: [["code", "controlled-code"], ["state", state]]
+          query: [["code", "controlled-code"], ["session_state", "ignored"], ["session_state", ""], ["state", state]]
         })
         expect(identity.subject).toBe("subject-1")
       }))

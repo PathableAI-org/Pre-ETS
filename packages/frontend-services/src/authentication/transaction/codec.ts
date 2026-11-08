@@ -1,10 +1,8 @@
 import { Effect, Schema } from "effect"
 
-const BrowserCorrelationBrand = "@pathableai/pre-ets-frontend/BrowserCorrelation" as const
-
 const BrowserCorrelation = Schema.String.pipe(
   Schema.check(Schema.isPattern(/^[A-Za-z0-9_-]{43}$/)),
-  Schema.brand(BrowserCorrelationBrand)
+  Schema.brand("BrowserCorrelation")
 )
 
 export type BrowserCorrelation = typeof BrowserCorrelation.Type
@@ -43,7 +41,6 @@ export const decodeBrowserCorrelation = Schema.decodeUnknownEffect(BrowserCorrel
 export const decodeStoredAttempt = Schema.decodeUnknownEffect(StoredAttempt, { onExcessProperty: "error" })
 export const encodeStoredAttempt = Schema.encodeEffect(StoredAttempt)
 
-export const makeBrowserCorrelation = Effect.sync(() => {
-  const bytes = globalThis.crypto.getRandomValues(new Uint8Array(32))
-  return Schema.decodeUnknownSync(BrowserCorrelation)(Buffer.from(bytes).toString("base64url"))
-})
+export const makeBrowserCorrelation = Effect.sync(() =>
+  BrowserCorrelation.make(Buffer.from(globalThis.crypto.getRandomValues(new Uint8Array(32))).toString("base64url"))
+)
