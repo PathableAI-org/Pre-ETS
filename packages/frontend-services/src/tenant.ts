@@ -1,7 +1,8 @@
 /**
  * Resolves a request host to a tenant alias and loads that tenant's configuration file.
  *
- * Host mode reads the alias from the label before the configured base hostname. Static mode uses the configured
+ * Host mode reads the alias from the label before the configured base hostname. A port in the Host never changes
+ * the selected alias; hostnames compare case-insensitively. Static mode uses the configured
  * alias for every host. The loaded file is `{alias}.json` under the configured tenant directory.
  */
 import "server-only"
@@ -9,6 +10,7 @@ import { Context, Effect, FileSystem, Layer, Path, type PlatformError, Result, S
 
 import type { StaticTenantResolution, TenantResolutionSettings } from "./config.js"
 
+import { parseRequestHost } from "./request-host.js"
 import { decodeTenantConfig, effectiveSessionPolicy, type SessionPolicy, type TenantConfig } from "./tenant/config.js"
 
 export { effectiveSessionPolicy }
@@ -71,14 +73,16 @@ const hostAliasError = (host: string, cause: Error): TenantNotFound =>
     message: `Failed to read tenant alias from HOST: "${host}"`
   })
 
+/** Matches the parsed, lowercased hostname, so a port or letter case in the Host never changes the alias. */
 const tenantAliasFromHost = (baseHostname: string) => {
-  const pattern = new RegExp(`^([A-Za-z-]+)\\.${escapeRegExp(baseHostname)}$`)
+  const pattern = new RegExp(`^([a-z-]+)\\.${escapeRegExp(baseHostname.toLowerCase())}$`)
   return (host: string): Result.Result<TenantAlias, TenantFailure> => {
-    const label = pattern.exec(host)?.[1]
+    const hostname = parseRequestHost(host)?.hostname
+    const label = hostname === undefined ? undefined : pattern.exec(hostname)?.[1]
     if (label === undefined) {
       return Result.fail(hostAliasError(host, new Error(`Host "${host}" does not match the tenant alias pattern`)))
     }
-    return Result.mapError(decodeTenantAlias(label.toLowerCase()), (error) => hostAliasError(host, error))
+    return Result.mapError(decodeTenantAlias(label), (error) => hostAliasError(host, error))
   }
 }
 
