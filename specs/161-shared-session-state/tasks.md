@@ -61,19 +61,19 @@ all four stories and runs after them.
 **Purpose**: Fix the exact revision and environment, and confirm the planned APIs against installed declarations
 before any conformance judgement.
 
-- [ ] T001 Record the baseline for [quickstart.md §Prerequisites](./quickstart.md#prerequisites): run
+- [x] T001 Record the baseline for [quickstart.md §Prerequisites](./quickstart.md#prerequisites): run
       `git rev-parse HEAD`, `node --version` (must be Node 26+; select `.nvmrc` 26.13.0 if the shell default is
       older), `pnpm --version` (12.16.1), `docker --version`, and `docker compose version`; confirm installed product
       pins from the root lockfile (Effect, `@effect/platform-node`, `@effect/vitest` 4.1.2; `redis` client 6.3.1;
       TypeScript 6.0.3) and the `redis:8.10.3` image in `compose.yaml`. Keep the values in a scratch note outside
       the repository for T048; do not commit raw output.
-- [ ] T002 [P] Verify against installed declarations under `packages/frontend-services/node_modules/effect` and
+- [x] T002 [P] Verify against installed declarations under `packages/frontend-services/node_modules/effect` and
       `packages/frontend-services/node_modules/@effect/platform-node` (not the 4.0.5 local Effect checkout, per
       research Decision 6) that `Context.Service`, `Schema.TaggedError`, `Clock`, `Layer.provide`/`Layer.provideMerge`,
       `ManagedRuntime`, `effect/persistence/Redis` scripts, and `NodeRedis` used by
       `packages/frontend-services/src/session.ts`, `src/session/store.ts`, `src/runtime.ts`, and
       `src/production-runtime.ts` still match their current usage. Record any drift as a conformance finding for T004.
-- [ ] T003 [P] Run `pnpm install --frozen-lockfile` from the repository root and confirm `git status --short` is clean
+- [x] T003 [P] Run `pnpm install --frozen-lockfile` from the repository root and confirm `git status --short` is clean
       apart from intended work; do not change the lockfile.
 
 ---
@@ -86,12 +86,12 @@ result.
 
 **⚠️ CRITICAL**: No gap-closure task in Phases 3–6 may start until T008 records the conformance result.
 
-- [ ] T004 Compare `packages/frontend-services/src/tenant.ts` and `src/tenant/config.ts` to the
+- [x] T004 Compare `packages/frontend-services/src/tenant.ts` and `src/tenant/config.ts` to the
       `TenantConfigService` contract in [contracts/modules.md](./contracts/modules.md#tenantconfigservice): exact
       service shape and tag, `TenantFailure = TenantNotFound (status 404) | TenantReadError (status 500)`, Schema
       decoding of untrusted tenant JSON in the private child, omission not adding fields to the decoded document, and
       no fallback tenant or policy. Note supported invariants and concrete gaps.
-- [ ] T005 Compare `packages/frontend-services/src/session.ts`, `src/session/codec.ts`, and `src/session/store.ts`
+- [x] T005 Compare `packages/frontend-services/src/session.ts`, `src/session/codec.ts`, and `src/session/store.ts`
       to the `SessionService` contract in [contracts/modules.md](./contracts/modules.md#sessionservice) and
       [data-model.md](./data-model.md): every exported interface and the `RefreshSessionForTenantInput` union
       (excluded activity with `policy?: never`, qualifying activity with required `policy`), closed
@@ -100,20 +100,20 @@ result.
       admission/excluded/qualifying refresh, decoding every `unknown` Redis reply, translation of codec/transport/
       malformed-reply/exhausted-collision failures to fieldless `SessionServiceUnavailable`, and no retry of an
       ambiguous mutation reply. Note supported invariants and concrete gaps.
-- [ ] T006 Compare `packages/frontend-services/src/session-request.ts`, `src/index.ts`, `src/runtime.ts`,
+- [x] T006 Compare `packages/frontend-services/src/session-request.ts`, `src/index.ts`, `src/runtime.ts`,
       `src/production-runtime.ts`, `packages/frontend/src/app/(app)/page.tsx`, and
       `packages/frontend/src/app/(app)/actions.ts` to the `readSessionRequest` contract and dependency direction in
       [contracts/modules.md](./contracts/modules.md#root-package-readsessionrequest): tenant configuration loaded
       before tenant-bound admission, mismatch mapped to Next `forbidden()`, `SessionServiceUnavailable` propagated
       (never protected success, redirect, or login substitution), no replacement session, one host-owned
       `ManagedRuntime` (none per request), Redis hidden, and no `effect` import in `packages/frontend`.
-- [ ] T007 Inspect module ownership per [docs/engineering/fallow.md](../../docs/engineering/fallow.md):
+- [x] T007 Inspect module ownership per [docs/engineering/fallow.md](../../docs/engineering/fallow.md):
       frontend-services has no Fallow boundary zones, so run
       `pnpm --filter @pathableai/pre-ets-frontend-services exec fallow architecture --cycles --file <path>` for
       `src/tenant.ts`, `src/session.ts`, `src/session-request.ts`, `src/index.ts`, and `src/runtime.ts`, and confirm by
       search that no file other than each parent imports `src/tenant/config.ts`, `src/session/codec.ts`, or
       `src/session/store.ts` (tests included), since Fallow does not encode that ownership rule.
-- [ ] T008 Record the static conformance result in
+- [x] T008 Record the static conformance result in
       [quickstart.md §7](./quickstart.md#7-implementation-results) (above the results table): each contract
       (tenant policy, session, bounded request, runtime composition, StoredSession v1, root surface) marked
       conformant or with its concrete gap, every planned source change or the explicit statement "no source change is
@@ -136,20 +136,20 @@ a recreated client; refresh and invalidation through one client are honored by t
 
 ### Evidence for User Story 1
 
-- [ ] T009 [US1] Audit `packages/frontend-services/tests/integration/session-redis.test.ts` against V-001–V-003 and
+- [x] T009 [US1] Audit `packages/frontend-services/tests/integration/session-redis.test.ts` against V-001–V-003 and
       the `SessionService` "Establish/read preserve exact safe state" and "Shared state needs no creator affinity"
       contract-evidence rows: confirm scenarios cover establish-on-A/strict-equal read on B and a recreated B,
       tenant match and mismatch without identity leakage, cross-client refresh adoption with an unchanged sibling,
       cross-client invalidation without recreation, missing/deleted/evicted records as `NoUsableSession`, and
       validated owned-prefix cleanup (`test:session:<uuid>:`). List any uncovered claim for T010.
-- [ ] T010 [US1] Only for a US1 evidence gap named in T008/T009: add the smallest scenario to
+- [x] T010 [US1] Only for a US1 evidence gap named in T008/T009: add the smallest scenario to
       `packages/frontend-services/tests/integration/session-redis.test.ts` that consumes `SessionService` through
       `../../src/session.ts` (never `src/session/*`), uses independently scoped `ManagedRuntime`/NodeRedis clients
       and a validated owned prefix, and asserts semantic public outcomes. Otherwise mark not required in T014.
 
 ### Implementation for User Story 1
 
-- [ ] T011 [US1] Only for a US1 production gap named in T008: change only the owning parent
+- [x] T011 [US1] Only for a US1 production gap named in T008: change only the owning parent
       `packages/frontend-services/src/session.ts` or its private child `src/session/store.ts`/`src/session/codec.ts`,
       preserving every signature in [contracts/modules.md](./contracts/modules.md#sessionservice), StoredSession v1,
       and the single-key atomic transition (research Decisions 3–4). Run
@@ -159,13 +159,13 @@ a recreated client; refresh and invalidation through one client are honored by t
 
 ### Execution for User Story 1
 
-- [ ] T012 [US1] Start or select an isolated local Redis without disturbing another run:
+- [x] T012 [US1] Start or select an isolated local Redis without disturbing another run:
       `docker compose up -d --wait redis` and `docker compose exec redis redis-cli ping` (requires the repository's
       local Compose environment). Never flush, scan, or stop a shared Redis.
-- [ ] T013 [US1] Run `REDIS_URL=redis://127.0.0.1:6379 pnpm --filter @pathableai/pre-ets-frontend-services test:integration`
+- [x] T013 [US1] Run `REDIS_URL=redis://127.0.0.1:6379 pnpm --filter @pathableai/pre-ets-frontend-services test:integration`
       and inspect the named session scenarios (ignore authentication-Redis scenarios for attribution). Confirm owned
       prefixes are cleaned.
-- [ ] T014 [US1] Record US1 rows (V-001, V-002, V-003) in [quickstart.md §7](./quickstart.md#7-implementation-results)
+- [x] T014 [US1] Record US1 rows (V-001, V-002, V-003) in [quickstart.md §7](./quickstart.md#7-implementation-results)
       with the executed boundary, safe semantic observation, result, cleanup, and the limitation "independent clients
       are scopes in one process, not independently running authenticated applications"; state whether T010/T011 were
       required.
@@ -185,7 +185,7 @@ renewal/expiration orderings and released races.
 
 ### Evidence for User Story 2
 
-- [ ] T015 [P] [US2] Audit `packages/frontend-services/tests/lib/session.test.ts` against V-005–V-008 and the
+- [x] T015 [P] [US2] Audit `packages/frontend-services/tests/lib/session.test.ts` against V-005–V-008 and the
       "Deadline and policy adoption are authoritative" contract-evidence row: establishment deadline from the active
       Effect clock and effective timeout, disabled warning preserved, every closed excluded-activity value leaving
       record and deadline unchanged, excluded activity carrying policy rejected, qualifying adoption of changed timeout
@@ -193,11 +193,11 @@ renewal/expiration orderings and released races.
       deadline returning `NoUsableSession`, no revival after a timeout increase, and the policy properties
       (Fast-Check) per [property-based-testing.md](../../docs/engineering/testing/property-based-testing.md). List
       uncovered claims for T017.
-- [ ] T016 [P] [US2] Audit `packages/frontend-services/tests/lib/session-policy-refresh.test.ts` and the renewal/
+- [x] T016 [P] [US2] Audit `packages/frontend-services/tests/lib/session-policy-refresh.test.ts` and the renewal/
       expiration scenarios in `packages/frontend-services/tests/integration/session-redis.test.ts` (renewal before a
       later expiration attempt, no recreation after expiration wins, overlapping renewal/expiration accepting either
       winner with no later usable read) against V-003, V-006, V-007. List uncovered claims for T017.
-- [ ] T017 [US2] Only for a US2 evidence gap named in T008/T015/T016: add the smallest public-boundary example or
+- [x] T017 [US2] Only for a US2 evidence gap named in T008/T015/T016: add the smallest public-boundary example or
       property to `packages/frontend-services/tests/lib/session.test.ts` (`it.effect` with the real service, a fresh
       scenario Layer, and `TestClock`), or a real-Redis ordering to
       `packages/frontend-services/tests/integration/session-redis.test.ts`. Do not weaken or exclude generated inputs.
@@ -205,7 +205,7 @@ renewal/expiration orderings and released races.
 
 ### Implementation for User Story 2
 
-- [ ] T018 [US2] Only for a US2 production gap named in T008: change only `packages/frontend-services/src/session.ts`
+- [x] T018 [US2] Only for a US2 production gap named in T008: change only `packages/frontend-services/src/session.ts`
       or its private `src/session/store.ts` transition, keeping "Equality or later is expired", excluded activity
       never changing record or TTL, and qualifying refresh replacing deadline, warning, and TTL atomically
       ([data-model.md §State transitions](./data-model.md#state-transitions)). Run the package typecheck and scoped
@@ -213,11 +213,11 @@ renewal/expiration orderings and released races.
 
 ### Execution for User Story 2
 
-- [ ] T019 [US2] Run `pnpm --filter @pathableai/pre-ets-frontend-services test tests/lib/session.test.ts tests/lib/session-policy-refresh.test.ts`
+- [x] T019 [US2] Run `pnpm --filter @pathableai/pre-ets-frontend-services test tests/lib/session.test.ts tests/lib/session-policy-refresh.test.ts`
       and inspect the named scenarios listed in [quickstart.md §2](./quickstart.md#2-deterministic-public-contract-evidence);
       reuse the T013 integration run for the real-Redis orderings unless T017/T018 changed them, in which case rerun
       T013's command.
-- [ ] T020 [US2] Record US2 rows (V-005, V-006, V-007, V-008, and V-003 expiry) in
+- [x] T020 [US2] Record US2 rows (V-005, V-006, V-007, V-008, and V-003 expiry) in
       [quickstart.md §7](./quickstart.md#7-implementation-results) with the limitations "one Effect clock does not
       prove distributed-clock behavior" and "finite orderings do not prove every interleaving"; state whether
       T017/T018 were required.
@@ -237,7 +237,7 @@ store command.
 
 ### Evidence for User Story 3
 
-- [ ] T021 [P] [US3] Audit `packages/frontend-services/tests/lib/tenant-policy.test.ts` against V-004 and V-012
+- [x] T021 [P] [US3] Audit `packages/frontend-services/tests/lib/tenant-policy.test.ts` against V-004 and V-012
       through `TenantConfigService` (not only a helper): timeouts 5 and 30 accepted; omission → 30 without adding
       fields to the decoded file; explicit out-of-range, fractional, nonnumeric/null/boolean timeouts rejected
       without 30 fallback; omitted warning → 5 for timeout > 5 and → 0 for timeout 5; explicit `0` disables warning at
@@ -246,13 +246,13 @@ store command.
       surface as `TenantNotFound` (status 404) in host mode, not as a usable policy. Also confirm
       `packages/frontend-services/tests/lib/session-policy-refresh.test.ts` rejects invalid policy before any store
       command. List uncovered claims for T022.
-- [ ] T022 [US3] Only for a US3 evidence gap named in T008/T021: add the smallest example or Fast-Check property to
+- [x] T022 [US3] Only for a US3 evidence gap named in T008/T021: add the smallest example or Fast-Check property to
       `packages/frontend-services/tests/lib/tenant-policy.test.ts` through `TenantConfigService` with deterministic
       filesystem/path Layers. Otherwise mark not required in T025.
 
 ### Implementation for User Story 3
 
-- [ ] T023 [US3] Only for a US3 production gap named in T008: change only `packages/frontend-services/src/tenant.ts`
+- [x] T023 [US3] Only for a US3 production gap named in T008: change only `packages/frontend-services/src/tenant.ts`
       or its private `src/tenant/config.ts` schema, keeping `effectiveSessionPolicy` pure over decoded configuration,
       the 404/500 semantics, and no new policy module or export. Run `pnpm --filter <package> typecheck` and
       `pnpm --filter <package> exec fallow architecture --file <path>` / `fallow dead-code --file <path>` on each
@@ -261,9 +261,9 @@ store command.
 
 ### Execution for User Story 3
 
-- [ ] T024 [US3] Run `pnpm --filter @pathableai/pre-ets-frontend-services test tests/lib/tenant-policy.test.ts tests/lib/session-policy-refresh.test.ts`
+- [x] T024 [US3] Run `pnpm --filter @pathableai/pre-ets-frontend-services test tests/lib/tenant-policy.test.ts tests/lib/session-policy-refresh.test.ts`
       and inspect the boundary, omission, disabled, valid-lead, and rejection cases.
-- [ ] T025 [US3] Record US3 rows (V-004, V-012) in [quickstart.md §7](./quickstart.md#7-implementation-results) with
+- [x] T025 [US3] Record US3 rows (V-004, V-012) in [quickstart.md §7](./quickstart.md#7-implementation-results) with
       the limitations "does not establish warning presentation" and "does not prove configuration distribution across
       a production fleet"; state whether T022/T023 were required.
 
@@ -282,29 +282,29 @@ runs, and bounded request/page/action tests.
 
 ### Evidence for User Story 4
 
-- [ ] T026 [P] [US4] Audit the invalidation and failure scenarios in
+- [x] T026 [P] [US4] Audit the invalidation and failure scenarios in
       `packages/frontend-services/tests/integration/session-redis.test.ts` (renewal-before-invalidation,
       invalidation-before-renewal, released together; disconnected establishment, tenant admission, read, refresh,
       invalidation) and `packages/frontend-services/tests/lib/session.test.ts` (missing vs invalidated terminal
       outcome, DEL dispatch failure, DEL-applied-then-reply-failure without retry, refresh final-write failure without
       retry, corrupted/unknown-version records, exhausted collisions) against V-009 and V-010.
-- [ ] T027 [P] [US4] Audit `packages/frontend-services/tests/integration/session-redis-outage.test.ts` against V-010:
+- [x] T027 [P] [US4] Audit `packages/frontend-services/tests/integration/session-redis-outage.test.ts` against V-010:
       pre-dispatch read/refresh/invalidation and paused in-flight operations fail within the owned-store loss bound as
       fieldless `SessionServiceUnavailable`; it owns a unique temporary Compose file, project, `redis:8.10.3`
       container, and loopback port, and its teardown restarts, re-evaluates, cleans sessions, and removes container,
       volume, and temporary directory.
-- [ ] T028 [P] [US4] Audit `packages/frontend-services/tests/unit/reference-session-enforcement.test.ts` and
+- [x] T028 [P] [US4] Audit `packages/frontend-services/tests/unit/reference-session-enforcement.test.ts` and
       `packages/frontend/tests/unit/reference-session-enforcement.test.ts` against V-010, V-011 and the
       `readSessionRequest` contract-evidence rows: tenant selection before admission, mismatch → `forbidden()` with
       no receipt, `NoUsableSession` → page redirect / action denial with no login start or receipt, service and tenant
       failures propagated with no protected result or receipt, and public-route/raw-diagnostic exclusions.
-- [ ] T029 [US4] Only for a US4 evidence gap named in T008/T026–T028: add the smallest scenario to the owning file
+- [x] T029 [US4] Only for a US4 evidence gap named in T008/T026–T028: add the smallest scenario to the owning file
       among those audited (public parents only; service doubles only at the adapter boundary; real store for store
       claims; the outage suite only for owned-store loss). Otherwise mark not required in T034.
 
 ### Implementation for User Story 4
 
-- [ ] T030 [US4] Only for a US4 production gap named in T008: change only the owner —
+- [x] T030 [US4] Only for a US4 production gap named in T008: change only the owner —
       `packages/frontend-services/src/session.ts` (and private `src/session/store.ts`) for invalidation/failure
       translation, or `packages/frontend-services/src/session-request.ts` / `packages/frontend/src/app/(app)/page.tsx`
       / `packages/frontend/src/app/(app)/actions.ts` for bounded-consumer mapping — preserving the root export surface
@@ -315,19 +315,19 @@ runs, and bounded request/page/action tests.
 
 ### Execution for User Story 4
 
-- [ ] T031 [US4] Run `pnpm --filter @pathableai/pre-ets-frontend-services test tests/unit/reference-session-enforcement.test.ts tests/lib/session.test.ts`
+- [x] T031 [US4] Run `pnpm --filter @pathableai/pre-ets-frontend-services test tests/unit/reference-session-enforcement.test.ts tests/lib/session.test.ts`
       and reuse T013's integration run for invalidation/disconnected scenarios unless T029/T030 changed them (then
       rerun T013's command).
-- [ ] T032 [US4] Run `pnpm --filter @pathableai/pre-ets-frontend-services build` then
+- [x] T032 [US4] Run `pnpm --filter @pathableai/pre-ets-frontend-services build` then
       `pnpm --filter @pathableai/pre-ets-frontend test:unit`; confirm usable success, no-usable redirect/denial,
       mismatch denial, service/tenant failure propagation, no protected receipt on failure, and public-route
       exclusions.
-- [ ] T033 [US4] Run the opt-in outage suite separately:
+- [x] T033 [US4] Run the opt-in outage suite separately:
       `pnpm --filter @pathableai/pre-ets-frontend-services test:integration:outage`. Confirm both outage scenarios,
       then confirm with `docker compose ls --all` and `docker volume ls` that no owned outage project, container, or
       volume remains and that the temporary Compose directory is gone; report any residue and do not call the run
       clean if cleanup failed.
-- [ ] T034 [US4] Record US4 rows (V-009, V-010, V-011) in [quickstart.md §7](./quickstart.md#7-implementation-results)
+- [x] T034 [US4] Record US4 rows (V-009, V-010, V-011) in [quickstart.md §7](./quickstart.md#7-implementation-results)
       with the limitations "adapter tests use service doubles", "local injection does not establish every
       managed-service failure", and "one bounded page/action is not comprehensive application protection"; state
       whether T029/T030 were required.
@@ -343,7 +343,7 @@ executed exactly per [quickstart.md §5](./quickstart.md#5-manual-composed-paren
 temporary, uncommitted execution artifact at the fixed path `tests/bdd/session/shared-session-parent.manual.test.ts`;
 it is not a durable test, product interface, or BDD scenario.
 
-- [ ] T035 Create the temporary probe `tests/bdd/session/shared-session-parent.manual.test.ts` (do not `git add` it)
+- [x] T035 Create the temporary probe `tests/bdd/session/shared-session-parent.manual.test.ts` (do not `git add` it)
       following the [probe composition contract](./quickstart.md#probe-composition-contract): import
       `./fixture-hooks.mjs` and `./fixture-register.mjs` first; import `applicationBrowser`, `freePort`,
       `type SiteOptions`, `spawnFrontend`, `stopProcess`, `waitUntilReady` from `../../support/oidc/harness.ts`;
@@ -355,7 +355,7 @@ it is not a durable test, product interface, or BDD scenario.
       them. Obtain `SessionService` only through the session parent's built output
       `packages/frontend-services/dist/session.js` (as the existing reference fixture uses `./dist/session.js`),
       never a `dist/session/*` child; the source tree uses `.js` specifiers that `node --test` cannot run directly.
-- [ ] T036 In the probe, implement setup per [quickstart.md §5 Setup](./quickstart.md#setup): an isolated
+- [x] T036 In the probe, implement setup per [quickstart.md §5 Setup](./quickstart.md#setup): an isolated
       `redis:8.10.3` Compose project on a free loopback port with a validated unique prefix; two independently scoped
       `SessionService` clients A and B on the same owned URL and prefix; the synthetic `springfield` fixture tenant
       (`fixtures/tenant-config/springfield.json`, test data only), `.test` issuers, two synthetic subjects, policy P1
@@ -364,7 +364,7 @@ it is not a durable test, product interface, or BDD scenario.
       probe-owned `transactionPrefix`) on a `freePort`, `waitUntilReady`, then `applicationBrowser` for
       `springfield.localhost:<port>`, capturing the returned handle and every Playwright context. No real provider
       credentials; opaque values stay in memory only.
-- [ ] T037 In the probe, implement lifecycle observation steps 1–8 of
+- [x] T037 In the probe, implement lifecycle observation steps 1–8 of
       [quickstart.md §5 Lifecycle observation](./quickstart.md#lifecycle-observation): P1 establish/cross-read A and B
       (V-001–V-003); P2 selected without refresh leaves both on P1 (V-006); excluded activity for A changes nothing
       (V-008); qualifying A then B adopt P2 independently (V-006); coordinated A renewal vs invalidation from the other
@@ -373,21 +373,21 @@ it is not a durable test, product interface, or BDD scenario.
       unavailable result, no new receipt, unchanged session cookie, no redirect, and no usable identity on either
       client (V-010, V-011); `startStore` only for re-evaluation and cleanup, treating any indeterminate mutation as
       failure without retry.
-- [ ] T038 In the probe, implement the `try`/`finally` cleanup order of
+- [x] T038 In the probe, implement the `try`/`finally` cleanup order of
       [quickstart.md §5 Cleanup](./quickstart.md#cleanup), each step guarded for partial setup: restart a stopped
       owned store; re-evaluate and invalidate every readable synthetic session, `deleteOwnedPrefix`, and verify zero
       remaining owned keys; dispose both client runtimes; close every Playwright page/context then await the
       `applicationBrowser` handle's `close`; `stopProcess` the frontend; `destroyOutageStore` (project, containers,
       volumes, temporary Compose directory).
-- [ ] T039 Run from the repository root exactly: `pnpm --filter @pathableai/pre-ets-frontend build` then
+- [x] T039 Run from the repository root exactly: `pnpm --filter @pathableai/pre-ets-frontend build` then
       `node --test tests/bdd/session/shared-session-parent.manual.test.ts`. Record start time, safe action labels,
       semantic observations, and per-claim pass/fail in the scratch note; keep no transcript containing opaque values.
-- [ ] T040 Remove the probe and verify absence of it and generated output:
+- [x] T040 Remove the probe and verify absence of it and generated output:
       `rm -- tests/bdd/session/shared-session-parent.manual.test.ts`,
       `test ! -e tests/bdd/session/shared-session-parent.manual.test.ts`, `git status --short`, plus
       `docker compose ls --all` to confirm no owned probe project remains. Report any residue rather than calling the
       run clean.
-- [ ] T041 Record the manual composed observation rows in [quickstart.md §7](./quickstart.md#7-implementation-results)
+- [x] T041 Record the manual composed observation rows in [quickstart.md §7](./quickstart.md#7-implementation-results)
       using only revision, environment, safe action label, semantic observation, pass/fail, cleanup, and limitation,
       and explicitly retain the limits from
       [quickstart.md §Expected semantic result](./quickstart.md#expected-semantic-result): fixture identity is not real
@@ -404,32 +404,32 @@ it is not a durable test, product interface, or BDD scenario.
 
 **Purpose**: Repository quality gates, conditional current-behavior documentation, and evidence-record closure.
 
-- [ ] T042 Only if T011, T018, T023, or T030 changed production behavior: record the current behavior in
+- [x] T042 Only if T011, T018, T023, or T030 changed production behavior: record the current behavior in
       `docs/session-state.md` (and `docs/multi-tenancy.md` for tenant-policy changes) per
       [git-workflow.md §Artifacts](../../docs/engineering/git-workflow.md#artifacts). Otherwise make no documentation
       change; do not edit any other `specs/` directory.
-- [ ] T043 Run the full deterministic suite once on the final revision:
+- [x] T043 Run the full deterministic suite once on the final revision:
       `pnpm --filter @pathableai/pre-ets-frontend-services test`, and, if any source or test changed after T013/T033/T039,
       rerun the affected integration, outage, or manual procedure so every recorded row is attributable to the final
       revision.
-- [ ] T044 Run `pnpm lint`, then `pnpm format:write` only after lint fixes, then `pnpm format:check` and `pnpm lint`
+- [x] T044 Run `pnpm lint`, then `pnpm format:write` only after lint fixes, then `pnpm format:check` and `pnpm lint`
       again until both pass.
-- [ ] T045 Run `pnpm typecheck` and `pnpm build`.
-- [ ] T046 Run `pnpm check:unused` and `pnpm check:health` for every scope, then `pnpm check:changes`. Fix introduced
+- [x] T045 Run `pnpm typecheck` and `pnpm build`.
+- [x] T046 Run `pnpm check:unused` and `pnpm check:health` for every scope, then `pnpm check:changes`. Fix introduced
       findings without suppressions, ignore patterns, baselines, `allowUnmatched`, or weaker thresholds; report
       pre-existing findings separately and ask for human review of any apparent false positive.
-- [ ] T047 Stop any Redis the run started for T012 if it was not already running before the run
+- [x] T047 Stop any Redis the run started for T012 if it was not already running before the run
       (`docker compose stop redis`); leave a pre-existing shared service untouched.
-- [ ] T048 Complete [quickstart.md §7](./quickstart.md#7-implementation-results): replace the `Pending` row with one
+- [x] T048 Complete [quickstart.md §7](./quickstart.md#7-implementation-results): replace the `Pending` row with one
       row per executed boundary (US1 T013, US2 T019, US3 T024, US4 T031–T033, manual T039), and record the exact final
       revision, branch, date/time, host environment, and dependency/service versions from T001 immediately above the
       table. Confirm every V-001–V-012 maps to at least one executed boundary and semantic result, and that automated,
       real-infrastructure, and manual results remain distinct.
-- [ ] T049 Tick the [quickstart.md §8](./quickstart.md#8-evidence-record-checklist) checklist items only where T048
+- [x] T049 Tick the [quickstart.md §8](./quickstart.md#8-evidence-record-checklist) checklist items only where T048
       supports them, keeping the statement that passing checks are not human approval or full requirement
       verification and that PREETS-SESSION-006 AC2–3, PREETS-SESSION-008 protected HTTP/browser enforcement, and
       PREETS-SESSION-011 presentation remain with #154–#158.
-- [ ] T050 Review the staged diff before commit: only intended source/test changes (if any), `quickstart.md` §7–§8,
+- [x] T050 Review the staged diff before commit: only intended source/test changes (if any), `quickstart.md` §7–§8,
       this `tasks.md`, and conditional `docs/` updates; no probe, scratch note, raw output, `.specify/feature.json`,
       credentials, references, keys, cookies, or records.
 
