@@ -32,5 +32,5 @@ assertions always inspect the actual most recent response. `support/browser.ts` 
 each application redirect reaches the owned process with its logical Host, while external requests keep their
 real destination. The proxy can capture a real provider return before delivery for wrong-state, cross-tenant, race,
 expiry, and replay requests; steps retain callback URLs and cookies only for the scenario and never inspect Redis.
-Missing-page comparison, provider arrival, and callback delivery share this transport. The harness regression
-requires Chromium, local loopback sockets, Redis, and Keycloak. None of this proves production ingress behavior.
+Missing-page comparison, provider arrival, and callback delivery share this transport. Scenarios that use it
+require Chromium, local loopback sockets, Redis, and Keycloak. None of this proves production ingress behavior.

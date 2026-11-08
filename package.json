@@ -20,7 +20,6 @@
     "test:bdd": "pnpm --filter @pathableai/pre-ets-frontend build && cucumber-js --config cucumber.mjs",
     "test:bdd:smoke": "cucumber-js --config cucumber.smoke.mjs",
     "test:bdd:dry": "cucumber-js --config cucumber.mjs --dry-run",
-    "test:bdd:checks": "node --test tests/bdd/checks/*.test.*",
     "lint:gherkin": "gherkin-lint --config .gherkin-lintrc \"tests/bdd/requirements/**/*.feature\"",
     "format:gherkin:check": "prettier --no-config --no-editorconfig --plugin prettier-plugin-gherkin --tab-width 2 --end-of-line lf --print-width 120 --check \"tests/bdd/requirements/**/*.feature\"",
     "format:gherkin:write": "prettier --no-config --no-editorconfig --plugin prettier-plugin-gherkin --tab-width 2 --end-of-line lf --print-width 120 --write \"tests/bdd/requirements/**/*.feature\"",

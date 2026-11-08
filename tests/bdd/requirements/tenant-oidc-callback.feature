@@ -4,7 +4,9 @@ Feature: Validate the selected tenant OIDC callback
   This slice recovers one tenant-bound provider attempt across frontend instances.
   Observed callbacks are the safe no-session response. Freshness confirmation and
   session establishment remain incomplete, so no scenario observes a bound session
-  or treats that response as proof of trusted provider validation.
+  or treats that response as proof of trusted provider validation. Tenant-mismatch
+  denial and expired-session action denial also need a real bound session and
+  remain without end-to-end evidence until establishment is enabled.
 
   @preets-session-002
   Scenario: A real provider return across instances receives the safe no-session response

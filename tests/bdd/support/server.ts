@@ -4,8 +4,8 @@ import http, { type IncomingHttpHeaders } from "node:http"
 
 import type { AppWorld } from "./world.ts"
 
-import { freePort, spawnFrontend, stopProcess, waitUntilReady } from "../../support/oidc/harness.ts"
 import { sessionCookieHeader } from "./fixtures.ts"
+import { freePort, spawnFrontend, stopProcess, waitUntilReady } from "./harness.ts"
 
 const responseHeaders = (source: IncomingHttpHeaders): Record<string, string> => {
   const headers: Record<string, string> = {}
