@@ -11,8 +11,10 @@ operations:
   reference plus the same consumer-visible state: issuer/subject identity, the exact
   tenant alias, the authoritative initial idle deadline, and the effective warning policy.
 - `read({ reference })` recovers that state for a usable, strictly-unexpired record and
-  returns fieldless `NoUsableSession` otherwise. A storage/transport/encode/decode failure
-  and exhausted random-reference collisions return the typed `SessionServiceUnavailable`.
+  returns fieldless `NoUsableSession` otherwise. A storage/transport/encode/decode failure,
+  a malformed store reply, and exhausted random-reference collisions return the typed
+  `SessionServiceUnavailable`. Only a definite `SET NX` "already exists" reply retries
+  establishment with a new reference; any other unexpected creation reply fails without retry.
 - `readForTenant({ reference, tenantAlias })` delegates classification to `read`. It
   returns that same usable session only when the stored tenant equals the supplied
   branded alias. A different alias fails with fieldless `SessionTenantMismatch`.
