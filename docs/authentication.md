@@ -129,9 +129,9 @@ protected access and must not be treated as authenticated state by a prior revis
 ## Session policy handoff
 
 [TenantConfigService](../packages/frontend-services/src/tenant.ts) provides validated
-integration data and shared effective timeout/warning values through
-`service.effectiveSessionPolicy(config)`. The Config recipe and policy implementation
-are private children of the tenant module. File parsing preserves omitted fields;
+integration data. The tenant module's pure `effectiveSessionPolicy(config)` export
+derives the shared effective timeout/warning values. The file schema and policy
+implementation are a private child of the tenant module. File parsing preserves omitted fields;
 the policy derivation supplies omitted defaults
 without changing the diagnostic document. See the
 [policy contract](./multi-tenancy.md#idle-timeout-and-warning-policy) for the accepted

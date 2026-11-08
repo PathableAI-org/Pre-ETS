@@ -33,19 +33,22 @@ request Host → selected alias → TENANT_CONFIG_DIR/{alias}.json → validated
 ```
 
 The [tenant module](../packages/frontend-services/src/tenant.ts) owns a private child at
-`packages/frontend-services/src/tenant/config.ts`. Its `TenantConfig` value is an Effect `Config` recipe with
-decoded type `Config.Success<typeof TenantConfig>`. Only `tenant.ts` imports this
-child; sibling modules and tests use the public tenant service. A file-backed
-`ConfigProvider` supplies the complete selected JSON document. This
-provider is local to that read and does not replace the environment provider used
-for process settings. The process-resolution configuration also has a `TenantConfig`
-name in `packages/frontend-services/src/config/tenant-config.ts`; it is a separate contract.
+`packages/frontend-services/src/tenant/config.ts`. That child holds the file schema, the
+`TenantConfig` type, and `effectiveSessionPolicy`. Only `tenant.ts` imports this child.
+Sibling modules and tests use the public tenant module, which re-exports `TenantConfig`,
+`SessionPolicy`, and `effectiveSessionPolicy`. The service reads the selected file with
+`FileSystem.readFileString` and decodes it with `Schema.fromJsonString`. File content is
+request-time input; it does not pass through the process `ConfigProvider`. The
+process-resolution configuration also has a `TenantConfig` name in
+`packages/frontend-services/src/config/tenant-config.ts`; it is a separate contract.
 
-Each read checks directory availability and reads one complete file snapshot. Later
-calls observe file changes without restarting the process; there is no process-lifetime
-parsed-file cache. Prefer an absolute directory path: relative paths are interpreted
-by filesystem operations against the process working directory. Superseded
-`TENANT_CONFIG_RECORDS_JSON` and `TENANT_LOCAL_CONFIG_JSON` are ignored.
+Each read takes one complete file snapshot. When that read fails, the service then checks
+whether the configuration directory is readable. That check separates a missing directory
+(500) from a missing selected file. Later calls observe file changes without restarting the
+process; there is no process-lifetime parsed-file cache. Prefer an absolute directory
+path: relative paths are interpreted by filesystem operations against the process
+working directory. Superseded `TENANT_CONFIG_RECORDS_JSON` and
+`TENANT_LOCAL_CONFIG_JSON` are ignored.
 
 The service never substitutes another file or a default tenant. It fails with one of
 two tagged errors, `TenantNotFound` or `TenantReadError`. These carry no HTTP status.
@@ -100,10 +103,9 @@ cannot establish that external content is safe.
 
 ## Idle timeout and warning policy
 
-`service.effectiveSessionPolicy(config)` is the public derivation for session consumers.
-The private Config child uses that same logic to validate the warning/timeout
-relationship. It
-returns `idleTimeoutMinutes` and `warningLeadMinutes` from validated file content:
+`effectiveSessionPolicy(config)`, a pure export of the tenant module, is the public
+derivation for session consumers. The file schema uses the same function to validate
+the warning/timeout relationship. It returns `idleTimeoutMinutes` and `warningLeadMinutes` from validated file content:
 
 | Supplied timeout              | Supplied warning                         | Effective timeout / warning                     |
 | ----------------------------- | ---------------------------------------- | ----------------------------------------------- |
