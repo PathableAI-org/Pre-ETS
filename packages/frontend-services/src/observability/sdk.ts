@@ -43,9 +43,12 @@ export const makeNodeSdkConfiguration = (
       const url = (signal: "logs" | "metrics" | "traces") => `${settings.endpoint.toString()}v1/${signal}`
       const spanProcessor = new BatchSpanProcessor(new OTLPTraceExporter({ url: url("traces") }))
       const logRecordProcessor = new BatchLogRecordProcessor({ exporter: new OTLPLogExporter({ url: url("logs") }) })
-      const metricReader = new PeriodicExportingMetricReader({
-        exporter: new OTLPMetricExporter({ url: url("metrics") })
-      })
+      // A metric reader binds to exactly one producer, so the global NodeSDK MeterProvider and the Effect metrics
+      // bridge each get their own reader and exporter.
+      const makeMetricReader = () =>
+        new PeriodicExportingMetricReader({ exporter: new OTLPMetricExporter({ url: url("metrics") }) })
+      const globalMetricReader = makeMetricReader()
+      const metricReader = makeMetricReader()
       new otelSdk.NodeSDK({
         instrumentations: [
           new HttpInstrumentation({ redactedQueryParams, redactedQueryParamsServer: redactedQueryParams }),
@@ -53,7 +56,7 @@ export const makeNodeSdkConfiguration = (
           new RuntimeNodeInstrumentation()
         ],
         logRecordProcessors: [logRecordProcessor],
-        metricReaders: [metricReader],
+        metricReaders: [globalMetricReader],
         spanProcessors: [spanProcessor]
       }).start()
       return {
