@@ -22,6 +22,11 @@ durable domain persistence or business authorization. Do not let the backend imp
 this package. Importing a module must not start the runtime; only
 `startProductionRuntime` does, and only when the Next host calls it.
 
+Process settings are decoded once: `src/runtime.ts` parses `StartupConfig` from
+`src/config/` and passes plain values to layer factories. Do not read `Config` or
+`ConfigProvider` anywhere else; lint rejects it. See
+[Configuration is decoded once at startup](../../docs/engineering/effect-guidance.md#configuration-is-decoded-once-at-startup).
+
 Keep the recursive module rule. A public entry such as `src/tenant.ts` owns
 `src/tenant/`. Only that parent imports its children. Sibling modules and tests use
 the public entry. Re-export a child only when a current consumer needs it.

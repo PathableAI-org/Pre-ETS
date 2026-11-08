@@ -230,28 +230,37 @@ Translate implementation failures into that public vocabulary where appropriate,
 preserving the distinction between expected failures and defects. Do not expose every
 internal failure mechanism as a new public error case.
 
-### Configuration belongs in the dependency graph
+### Configuration is decoded once at startup
 
 Function arguments represent data flowing through an operation. Effect requirements
-represent capabilities or environmental dependencies needed to perform it. A hostname
-is operation input; tenant-resolution policy is environmental configuration.
+represent capabilities, such as Redis or the filesystem. Process settings are neither:
+they are fixed values known before any layer is built.
 
-Prefer declaring configuration as a Layer requirement over passing it ad hoc to Layer
-factories. Conceptually, a tenant capability could have the shape
-`Layer.Layer<TenantConfigService, TenantConfigError, ServerConfig>`, with production and
-tests supplying different configuration Layers. This is a design illustration, not a
-copyable declaration of the current service: other requirements, such as filesystem and
-path, must also be represented when needed.
+Decode once, pass values:
 
-A shared server configuration service is a reasonable starting point. Introduce narrower
-configuration services only for concrete benefits such as independent validation, reuse,
-lifecycle, or reduced coupling. Do not multiply Context tags and mapping Layers solely
-for conceptual purity.
+- One `Config` recipe describes every process setting. In frontend-services it is
+  `StartupConfig` in `src/config/`. Startup (`src/runtime.ts`) parses it once from
+  `ConfigProvider.fromEnv()`. A failure stops the process before any infrastructure starts.
+- Layer factories take the decoded values they need as plain arguments, for example
+  `SessionService.layer(startup.session)` and `AuthenticationService.layer(startup.authentication)`.
+  A parent passes its children the slice they need.
+- No other module reads `Config` or `ConfigProvider`. A layer that yields a `Config` decodes
+  the environment again, puts `ConfigError` in its error channel, and needs a
+  `ConfigProvider` layer at the runtime. Tests then need one too. An agent may cast that
+  error away or silently default instead.
+- Settings types are plain readonly interfaces exported by the config module. Prefer an
+  Effect value such as `Duration` over a unit-suffixed number.
+- Keep the schema issue when a setting fails, so the startup log says what is wrong.
+  The exception is a setting whose value must never appear in logs: a secret, or a value
+  whose contract forbids echoing it. Decode those with the config module's one redacting
+  helper.
+- An absent setting may have a default. An unsupported value fails startup: never use
+  `Config.orElse` to turn a bad value into a default.
+- Tests build services from plain settings objects. Only the config tests exercise
+  environment decoding.
 
-Currently, `ServerConfig` in `packages/frontend-services` is a plain interface and
-`TenantConfigService.layer(config)` receives it as an argument. Environment-provided
-configuration is guidance for future design work, not a completed migration or a change
-to the existing public interface.
+`no-restricted-imports` in the frontend-services ESLint config rejects `Config` and
+`ConfigProvider` imports outside `src/config/**` and `src/runtime.ts`.
 
 ### Keep framework execution at the host boundary
 
