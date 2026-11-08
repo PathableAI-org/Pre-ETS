@@ -304,7 +304,7 @@ export class SessionStore extends Context.Service<SessionStore, {
   readonly refresh: (
     input: RefreshStoreInput
   ) => Effect.Effect<StoreTransition, SessionStoreUnavailable>
-}>()("@pathableai/pre-ets-frontend/SessionStore") {
+}>()("SessionStore") {
   static readonly layer = Layer.effect(
     SessionStore,
     Effect.gen(function*() {

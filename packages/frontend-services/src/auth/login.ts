@@ -1,7 +1,8 @@
 import { Effect } from "effect"
 import { type NextRequest, NextResponse } from "next/server"
 
-import { AuthenticationService, AuthenticationUnavailable } from "../authentication.js"
+import { AuthenticationService } from "../authentication.js"
+import { tenantFailureStatus } from "../error.js"
 import { toNext } from "../next.js"
 import { PRIVATE_NO_STORE } from "./constants.js"
 import { CORRELATION_COOKIE } from "./cookie.js"
@@ -37,8 +38,8 @@ const prepareAuthentication = (
       })
       return response
     }),
-    Effect.catchTag(AuthenticationUnavailable.tag, () => Effect.succeed(redirect(307, "/login-unavailable"))),
-    Effect.catch((failure) => Effect.promise(() => respondToTenantFailure(failure.status)))
+    Effect.catchTag("AuthenticationUnavailable", () => Effect.succeed(redirect(307, "/login-unavailable"))),
+    Effect.catch((failure) => Effect.promise(() => respondToTenantFailure(tenantFailureStatus(failure))))
   )
 
 export const createLoginHandler = (respondToTenantFailure: TenantFailureResponse) =>

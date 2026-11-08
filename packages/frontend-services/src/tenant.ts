@@ -23,32 +23,28 @@ import {
 
 import type { ServerConfig, TenantConfig as TenantResolutionConfig, TenantStaticConfig } from "./config/index.js"
 
-import { HttpError } from "./error.js"
 import { effectiveSessionPolicy, TenantConfig } from "./tenant/config.js"
 
 export type { TenantConfig }
 
-const fixedStatus = <const Code extends 404 | 500>(code: Code) =>
-  Schema.Literal(code).pipe(Schema.withConstructorDefault(Effect.succeed(code)))
-
 /**
- * Expected failure from tenant alias resolution or configuration loading.
+ * Expected failure from tenant alias resolution or configuration loading. Host adapters choose the HTTP outcome.
  *
  * @category errors
  */
-type TenantFailure = TenantNotFound | TenantReadError
+export type TenantFailure = TenantNotFound | TenantReadError
 
 /**
  * The selected tenant file is missing, is not valid JSON, or does not match the tenant configuration schema.
  *
- * Static mode reports a missing selected file as {@link TenantReadError} instead.
+ * Static mode reports a missing selected file as {@link TenantReadError} instead. `cause` is a sanitized summary;
+ * it never carries file contents or the raw platform error.
  *
  * @category errors
  */
-class TenantNotFound extends HttpError.extend<TenantNotFound>(
-  "@pathableai/pre-ets-frontend/TenantNotFound"
-)({
-  status: fixedStatus(404)
+export class TenantNotFound extends Schema.TaggedError<TenantNotFound>()("TenantNotFound", {
+  cause: Schema.Defect(),
+  message: Schema.String
 }) {}
 
 /**
@@ -56,10 +52,9 @@ class TenantNotFound extends HttpError.extend<TenantNotFound>(
  *
  * @category errors
  */
-class TenantReadError extends HttpError.extend<TenantReadError>(
-  "@pathableai/pre-ets-frontend/TenantReadError"
-)({
-  status: fixedStatus(500)
+export class TenantReadError extends Schema.TaggedError<TenantReadError>()("TenantReadError", {
+  cause: Schema.Defect(),
+  message: Schema.String
 }) {}
 
 const TenantAliasBrand = "@pathableai/pre-ets-frontend/TenantAlias" as const
@@ -153,7 +148,7 @@ type TenantFailureReason = "alias" | "directory" | "json" | "not-found" | "read"
 
 const failTenant = <E extends TenantFailure>(reason: TenantFailureReason, error: E) =>
   Effect.logWarning("Tenant configuration request failed", {
-    _tag: error.constructor.name,
+    _tag: error._tag,
     reason
   }).pipe(Effect.andThen(Effect.fail(error)))
 
@@ -251,7 +246,7 @@ export class TenantConfigService extends Context.Service<TenantConfigService, {
   readonly getAlias: (host: string) => Result.Result<TenantAlias, TenantFailure>
   readonly getConfigFromAlias: (alias: TenantAlias) => Effect.Effect<TenantConfig, TenantFailure>
   readonly getConfigFromHost: (host: string) => Effect.Effect<TenantConfig, TenantFailure>
-}>()("@pathableai/pre-ets-frontend/TenantConfigService") {
+}>()("TenantConfigService") {
   static readonly layer = (config: Pick<Config.Success<typeof ServerConfig>, "env" | "tenant">) =>
     Layer.effect(
       TenantConfigService,

@@ -2,7 +2,7 @@ import { describe, expect, it } from "@effect/vitest"
 import { ConfigProvider, Effect, FileSystem, Layer, Logger, Path, Result } from "effect"
 import { TestClock } from "effect/testing"
 
-import { SessionService, SessionServiceUnavailable, SessionTenantMismatch } from "../../src/session.ts"
+import { SessionService } from "../../src/session.ts"
 import { TenantConfigService } from "../../src/tenant.ts"
 import { makeSessionMemoryRedis } from "../helpers/session.ts"
 
@@ -98,11 +98,9 @@ describe("selected tenant policy and session refresh [PREETS-SESSION-008, PREETS
         expect(Result.isFailure(established)).toBe(true)
         expect(Result.isFailure(refreshed)).toBe(true)
         if (Result.isFailure(established)) {
-          expect(established.failure).toHaveProperty("status", 404)
-          expect(established.failure).not.toBeInstanceOf(SessionServiceUnavailable)
-          expect(established.failure).not.toBeInstanceOf(SessionTenantMismatch)
+          expect(established.failure).toMatchObject({ _tag: "TenantNotFound" })
         }
-        if (Result.isFailure(refreshed)) expect(refreshed.failure).toHaveProperty("status", 404)
+        if (Result.isFailure(refreshed)) expect(refreshed.failure).toMatchObject({ _tag: "TenantNotFound" })
         expect(redis.commands).toEqual([])
       }).pipe(Effect.provide(world(redis, documents)))
     }

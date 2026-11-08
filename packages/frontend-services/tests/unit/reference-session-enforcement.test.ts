@@ -2,6 +2,7 @@ import { NodeServices } from "@effect/platform-node"
 import { Effect, Layer, References, Result, Schema } from "effect"
 import { describe, expect, it, vi } from "vitest"
 
+import { tenantFailureStatus } from "../../src/error.ts"
 import { readSessionRequest } from "../../src/session-request.ts"
 import {
   type NoUsableSession,
@@ -221,7 +222,7 @@ describe("readSessionRequest [PREETS-SESSION-005, PREETS-TENANT-003]", () => {
     expect(recorded.events).toEqual(["alias:alias.localhost:3000", "alias:alias.localhost"])
     expect(error).toBeInstanceOf(NotFoundError)
     expect(error).not.toBe(retryFailure)
-    expect(retryFailure.status).toBe(500)
+    expect(tenantFailureStatus(retryFailure)).toBe(500)
   })
 
   it("loads the selected configuration before reading the tenant-bound session", async () => {

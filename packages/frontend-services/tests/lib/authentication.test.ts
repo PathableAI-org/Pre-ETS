@@ -11,7 +11,6 @@ import {
   AuthenticationUnavailable,
   CallbackExpectedFailure
 } from "../../src/authentication.ts"
-import { HttpError } from "../../src/error.ts"
 import { TenantConfigService } from "../../src/tenant.ts"
 import { makeMemoryRedis } from "../helpers/authentication.ts"
 
@@ -218,7 +217,7 @@ const expectCallbackFailure = (
   expect(Result.isFailure(result)).toBe(true)
   if (!Result.isFailure(result)) return
   expect(result.failure).toBeInstanceOf(CallbackExpectedFailure)
-  if (result.failure instanceof CallbackExpectedFailure) {
+  if (Schema.is(CallbackExpectedFailure)(result.failure)) {
     expect(result.failure.correlationDisposition).toBe(disposition)
     expect(result.failure.reason).toBeInstanceOf(reason)
   }
@@ -315,8 +314,7 @@ describe("AuthenticationService preparation [PREETS-SESSION-002, PREETS-SESSION-
         const result = yield* prepare("unbound.test").pipe(Effect.result)
         expect(Result.isFailure(result)).toBe(true)
         if (Result.isFailure(result)) {
-          expect(result.failure).toBeInstanceOf(HttpError)
-          expect(result.failure).toMatchObject({ status: 404 })
+          expect(result.failure).toMatchObject({ _tag: "TenantNotFound" })
         }
       }))
     ))

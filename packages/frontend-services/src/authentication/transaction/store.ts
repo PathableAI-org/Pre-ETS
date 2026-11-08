@@ -71,7 +71,7 @@ export class AuthenticationTransactionStore extends Context.Service<Authenticati
     payload: string
   ) => Effect.Effect<"created" | "exists", TransactionStoreUnavailable>
   readonly settings: TransactionStoreSettings
-}>()("@pathableai/pre-ets-frontend/AuthenticationTransactionStore") {
+}>()("AuthenticationTransactionStore") {
   static readonly layer = Layer.effect(
     AuthenticationTransactionStore,
     Effect.gen(function*() {

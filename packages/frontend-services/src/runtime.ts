@@ -9,8 +9,6 @@ import { type ObservabilityInitializationError, observabilityLayer } from "./obs
 import { SessionService } from "./session.js"
 import { TenantConfigService } from "./tenant.js"
 
-const startupNotReadyTag = "@pathableai/pre-ets-frontend/StartupNotReady"
-
 export type ApplicationServices = AuthenticationService | SessionService | TenantConfigService
 
 export interface ProcessStartup {
@@ -21,7 +19,7 @@ export interface ProcessStartup {
   readonly server: Config.Success<typeof ServerConfig>
 }
 
-export class StartupNotReady extends Schema.TaggedError<StartupNotReady>()(startupNotReadyTag, {}) {}
+class StartupNotReady extends Schema.TaggedError<StartupNotReady>()("StartupNotReady", {}) {}
 
 export const loadProcessStartup: Effect.Effect<ProcessStartup, Config.ConfigError> = Effect.gen(function*() {
   const configProvider = ConfigProvider.fromEnv()

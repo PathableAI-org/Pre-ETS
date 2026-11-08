@@ -15,9 +15,8 @@ import {
   AuthenticationUnavailable,
   CallbackExpectedFailure
 } from "../../src/authentication.ts"
-import { HttpError } from "../../src/error.ts"
 import { SessionService, SessionServiceUnavailable } from "../../src/session.ts"
-import { TenantAlias, TenantConfigService } from "../../src/tenant.ts"
+import { TenantAlias, TenantConfigService, TenantNotFound, TenantReadError } from "../../src/tenant.ts"
 
 const runtime = vi.hoisted(() => ({ runPromise: vi.fn() }))
 vi.mock("../../src/runtime.ts", () => ({ Runtime: runtime }))
@@ -64,17 +63,18 @@ const request = (path: string, cookie?: string) =>
 
 afterEach(() => vi.resetAllMocks())
 
+const controlledTenantFailure = (status: 404 | 500) => {
+  const fields = { cause: new Error("controlled tenant failure"), message: "Selected tenant unavailable" }
+  return status === 404 ? new TenantNotFound(fields) : new TenantReadError(fields)
+}
+
 describe("login expected-failure mapping [PREETS-SESSION-002, PREETS-TENANT-004]", () => {
   it.each([404, 500] as const)("preserves tenant HTTP %s without a correlation cookie", async (status) => {
     useService({
       complete: () => Effect.die("complete must remain unused"),
       prepare: () =>
         Effect.fail(
-          new HttpError({
-            cause: new Error("controlled tenant failure"),
-            message: "Selected tenant unavailable",
-            status
-          })
+          controlledTenantFailure(status)
         )
     })
 
@@ -129,11 +129,7 @@ describe("callback expected-failure mapping [PREETS-SESSION-002]", () => {
         Effect.fail(
           new CallbackExpectedFailure({
             correlationDisposition: "preserve",
-            reason: new HttpError({
-              cause: new Error("controlled tenant failure"),
-              message: "Selected tenant unavailable",
-              status
-            })
+            reason: controlledTenantFailure(status)
           })
         ),
       prepare: () => Effect.die("prepare must remain unused")

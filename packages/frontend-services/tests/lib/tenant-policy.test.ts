@@ -1,6 +1,7 @@
 import { describe, expect, it } from "@effect/vitest"
 import { Effect, FileSystem, Layer, Logger, Path, Result } from "effect"
 
+import { tenantFailureStatus } from "../../src/error.ts"
 import { TenantConfigService } from "../../src/tenant.ts"
 
 const tenantFile = {
@@ -100,7 +101,7 @@ describe("effective tenant session policy [PREETS-SESSION-008, PREETS-SESSION-01
       Effect.gen(function*() {
         const result = yield* readPolicy({ idleTimeoutMinutes })
         expect(Result.isFailure(result)).toBe(true)
-        if (Result.isFailure(result)) expect(result.failure.status).toBe(404)
+        if (Result.isFailure(result)) expect(tenantFailureStatus(result.failure)).toBe(404)
       })
   )
 
@@ -118,7 +119,7 @@ describe("effective tenant session policy [PREETS-SESSION-008, PREETS-SESSION-01
       Effect.gen(function*() {
         const result = yield* readPolicy({ warningLeadMinutes })
         expect(Result.isFailure(result)).toBe(true)
-        if (Result.isFailure(result)) expect(result.failure.status).toBe(404)
+        if (Result.isFailure(result)) expect(tenantFailureStatus(result.failure)).toBe(404)
       })
   )
 
@@ -129,7 +130,7 @@ describe("effective tenant session policy [PREETS-SESSION-008, PREETS-SESSION-01
         for (const warningLeadMinutes of [idleTimeoutMinutes, idleTimeoutMinutes + 1]) {
           const result = yield* readPolicy({ idleTimeoutMinutes, warningLeadMinutes })
           expect(Result.isFailure(result)).toBe(true)
-          if (Result.isFailure(result)) expect(result.failure.status).toBe(404)
+          if (Result.isFailure(result)) expect(tenantFailureStatus(result.failure)).toBe(404)
         }
       })
   )
