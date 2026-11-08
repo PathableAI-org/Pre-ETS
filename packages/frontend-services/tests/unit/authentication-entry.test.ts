@@ -57,9 +57,6 @@ const routeSessionLayer = SessionService.layer.pipe(
 )
 
 const routeTenantLayer = Layer.succeed(TenantConfigService, {
-  effectiveSessionPolicy: () => {
-    throw new Error("effectiveSessionPolicy must remain unused for an unconfirmed result")
-  },
   getAlias: (): never => {
     throw new Error("getAlias must remain unused for an unconfirmed result")
   },

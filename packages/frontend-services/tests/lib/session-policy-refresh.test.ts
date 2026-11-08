@@ -3,7 +3,7 @@ import { ConfigProvider, Effect, FileSystem, Layer, Logger, Path, Result } from 
 import { TestClock } from "effect/testing"
 
 import { SessionService } from "../../src/session.ts"
-import { TenantConfigService } from "../../src/tenant.ts"
+import { effectiveSessionPolicy, TenantConfigService } from "../../src/tenant.ts"
 import { makeSessionMemoryRedis } from "../helpers/session.ts"
 
 const baseDocument = {
@@ -33,7 +33,7 @@ const selectedPolicy = Effect.fnUntraced(function*(host: string) {
   const config = yield* tenant.getConfigFromHost(host)
   const alias = tenant.getAlias(host)
   if (Result.isFailure(alias)) return yield* alias.failure
-  return { alias: alias.success, policy: tenant.effectiveSessionPolicy(config) }
+  return { alias: alias.success, policy: effectiveSessionPolicy(config) }
 })
 
 const establishFromHost = Effect.fnUntraced(function*(host: string, subject: string) {

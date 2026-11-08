@@ -5,7 +5,6 @@ import { AuthenticationService, type CallbackExpectedFailure, type TrustedIdenti
 import { tenantFailureStatus } from "../error.js"
 import { toNext } from "../next.js"
 import {
-  type EffectiveSessionPolicy,
   type EstablishedSession,
   type EstablishSessionInput,
   type NoUsableSession,
@@ -14,7 +13,7 @@ import {
   SessionServiceUnavailable,
   type UsableSession
 } from "../session.js"
-import { TenantConfigService } from "../tenant.js"
+import { effectiveSessionPolicy, type SessionPolicy, TenantConfigService } from "../tenant.js"
 import { PRIVATE_NO_STORE } from "./constants.js"
 import { CORRELATION_COOKIE, isLoopbackHost, setSessionCookie } from "./cookie.js"
 import { callbackFreshnessPolicy } from "./freshness.js"
@@ -66,7 +65,7 @@ const establishSession = Effect.fn("establishSession")(function*(
   const config = yield* tenant.getConfigFromAlias(identity.tenantAlias).pipe(
     Effect.mapError(() => new SessionServiceUnavailable({}))
   )
-  const policy: EffectiveSessionPolicy = tenant.effectiveSessionPolicy(config)
+  const policy: SessionPolicy = effectiveSessionPolicy(config)
   const input: EstablishSessionInput = {
     identity: { issuer: identity.issuer, subject: identity.subject } satisfies SessionIdentity,
     policy,

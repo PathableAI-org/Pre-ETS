@@ -2,7 +2,7 @@ import type { Redis } from "effect/persistence/Redis"
 
 import { Clock, type Config, Context, Effect, Layer, Option, Schema } from "effect"
 
-import type { TenantAlias } from "./tenant.js"
+import type { SessionPolicy, TenantAlias } from "./tenant.js"
 
 import {
   decodeSessionReference,
@@ -16,11 +16,6 @@ import { SessionStore } from "./session/store.js"
 
 export type { SessionReference }
 
-export interface EffectiveSessionPolicy {
-  readonly idleTimeoutMinutes: number
-  readonly warningLeadMinutes: number
-}
-
 export interface EstablishedSession {
   readonly reference: SessionReference
   readonly session: UsableSession
@@ -28,7 +23,7 @@ export interface EstablishedSession {
 
 export interface EstablishSessionInput {
   readonly identity: SessionIdentity
-  readonly policy: EffectiveSessionPolicy
+  readonly policy: SessionPolicy
   readonly tenantAlias: TenantAlias
 }
 
@@ -67,7 +62,7 @@ export type RefreshSessionForTenantInput =
   }
   | {
     readonly activity: QualifyingSessionActivity
-    readonly policy: EffectiveSessionPolicy
+    readonly policy: SessionPolicy
     readonly reference?: string
     readonly tenantAlias: TenantAlias
   }
