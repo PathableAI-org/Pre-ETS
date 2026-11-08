@@ -48,7 +48,11 @@ provider availability. The proxy remains pass-through.
 `OIDC_CALLBACK_ORIGINS_JSON` is a non-secret JSON map from resolved tenant alias to
 exact public origin, default `{}`. Origins forbid credentials, non-root paths, query
 and fragment. Login appends `/auth/callback`; incoming Host, forwarded headers and
-query data cannot supply the callback authority. A malformed explicit map fails
+query data cannot supply the callback authority. Login and callback select the tenant
+from the Host as [multi-tenancy.md](./multi-tenancy.md#tenant-selection) describes, where a
+port never changes the tenant, then require the Host's hostname and port to equal that
+tenant's origin (an absent port is the scheme default); otherwise login is unavailable
+and a callback is denied. A malformed explicit map fails
 runtime startup; an absent selected alias makes preparation unavailable while
 diagnostics remain usable.
 
