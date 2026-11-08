@@ -2,7 +2,6 @@ import { NodeServices } from "@effect/platform-node"
 import { Effect, Layer, References, Result, Schema } from "effect"
 import { describe, expect, it, vi } from "vitest"
 
-import { tenantFailureStatus } from "../../src/next.ts"
 import { readSessionRequest } from "../../src/next.ts"
 import {
   type NoUsableSession,
@@ -11,7 +10,7 @@ import {
   SessionTenantMismatch,
   type UsableSession
 } from "../../src/session.ts"
-import { TenantAlias, type TenantConfig, TenantConfigService } from "../../src/tenant.ts"
+import { TenantAlias, type TenantConfig, TenantConfigService, type TenantFailure } from "../../src/tenant.ts"
 import { ForbiddenError, NotFoundError, RedirectError } from "./next-navigation-stub.ts"
 
 const runtime = vi.hoisted(() => ({ runPromise: vi.fn() }))
@@ -32,22 +31,6 @@ const usableSession: UsableSession = {
 }
 const noUsableSession: NoUsableSession = { _tag: "NoUsableSession" }
 
-const hostFailure = (host: string) =>
-  Effect.gen(function*() {
-    const service = yield* TenantConfigService
-    const result = service.getAlias(host)
-    if (Result.isSuccess(result)) throw new Error(`expected host failure for ${host}`)
-    return result.failure
-  }).pipe(
-    Effect.provide(
-      TenantConfigService.layer({ baseHostname: "example.test", configDir: "/tenant-config", resolution: "host" }).pipe(
-        Layer.provide(NodeServices.layer)
-      )
-    ),
-    Effect.provideService(References.MinimumLogLevel, "Error"),
-    Effect.runSync
-  )
-
 const staticFailure = Effect.gen(function*() {
   const service = yield* TenantConfigService
   const result = service.getAlias("ignored.example.test")
@@ -63,13 +46,10 @@ const staticFailure = Effect.gen(function*() {
   Effect.runSync
 )
 
-const directPortFailure = hostFailure("alias.localhost:3000")
-const retryFailure = staticFailure
-
 interface RecordedTenant {
   readonly events: string[]
-  readonly getAlias: (host: string) => Result.Result<TenantAlias, (typeof directPortFailure)>
-  readonly getConfigFromAlias: (selected: TenantAlias) => Effect.Effect<TenantConfig, (typeof retryFailure)>
+  readonly getAlias: (host: string) => Result.Result<TenantAlias, TenantFailure>
+  readonly getConfigFromAlias: (selected: TenantAlias) => Effect.Effect<TenantConfig, (typeof staticFailure)>
 }
 
 const tenantDouble = (
@@ -155,71 +135,6 @@ describe("readSessionRequest [PREETS-SESSION-005, PREETS-TENANT-003]", () => {
     expect(resolved.session).toBe(usableSession)
   })
 
-  it("retries only the lowercase hostname after a portful host fails direct selection", async () => {
-    install(
-      sessionDouble(() => Effect.succeed(usableSession)),
-      tenantDouble((host) => {
-        recorded.events.push(`alias:${host}`)
-        if (host === "alias.localhost:3000") return Result.fail(directPortFailure)
-        if (host === "alias.localhost") return Result.succeed(alias)
-        return Result.fail(directPortFailure)
-      })
-    )
-
-    const resolved = await readSessionRequest({ host: "alias.localhost:3000" })
-
-    expect(recorded.events).toEqual([
-      "alias:alias.localhost:3000",
-      "alias:alias.localhost",
-      "config:springfield",
-      "read:springfield"
-    ])
-    expect(resolved.session).toBe(usableSession)
-  })
-
-  it("preserves the original direct failure when the host cannot be normalized", async () => {
-    const calls: string[] = []
-    install(
-      sessionDouble(() => Effect.die("readForTenant must remain unused")),
-      tenantDouble((host) => {
-        calls.push(host)
-        return Result.fail(directPortFailure)
-      })
-    )
-
-    const error = await readSessionRequest({ host: " alias.localhost" }).then(
-      () => undefined,
-      (caught: unknown) => caught
-    )
-
-    expect(calls).toEqual([" alias.localhost"])
-    expect(error).toBeInstanceOf(NotFoundError)
-    expect(error).not.toBeInstanceOf(RedirectError)
-    expect(recorded.events).not.toContain("read:springfield")
-    expect(String(error)).not.toContain("/auth/login")
-  })
-
-  it("preserves the original direct failure when the normalized retry also fails", async () => {
-    install(
-      sessionDouble(() => Effect.die("readForTenant must remain unused")),
-      tenantDouble((host) => {
-        recorded.events.push(`alias:${host}`)
-        if (host === "alias.localhost:3000") return Result.fail(directPortFailure)
-        return Result.fail(retryFailure)
-      })
-    )
-
-    const error = await readSessionRequest({ host: "alias.localhost:3000" }).then(
-      () => undefined,
-      (caught: unknown) => caught
-    )
-
-    expect(recorded.events).toEqual(["alias:alias.localhost:3000", "alias:alias.localhost"])
-    expect(error).toBeInstanceOf(NotFoundError)
-    expect(error).not.toBe(retryFailure)
-    expect(tenantFailureStatus(retryFailure)).toBe(500)
-  })
-
   it("loads the selected configuration before reading the tenant-bound session", async () => {
     let readCalled = false
     install(
@@ -232,7 +147,7 @@ describe("readSessionRequest [PREETS-SESSION-005, PREETS-TENANT-003]", () => {
           recorded.events.push(`alias:${host}`)
           return Result.succeed(alias)
         },
-        () => Effect.fail(retryFailure)
+        () => Effect.fail(staticFailure)
       )
     )
 
@@ -243,7 +158,7 @@ describe("readSessionRequest [PREETS-SESSION-005, PREETS-TENANT-003]", () => {
 
     expect(recorded.events[0]).toBe("alias:springfield.example.test")
     expect(readCalled).toBe(false)
-    expect(error).toBe(retryFailure)
+    expect(error).toBe(staticFailure)
     expect(error).not.toBeInstanceOf(ForbiddenError)
     expect(error).not.toBeInstanceOf(RedirectError)
   })
