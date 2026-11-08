@@ -1,5 +1,5 @@
 import "server-only"
-import { Clock, Context, Duration, Effect, Layer, Option, Result, Schema } from "effect"
+import { Clock, Context, Duration, Effect, Layer, Option, Schema } from "effect"
 
 import { ClientCredentials } from "./authentication/credentials.js"
 import { completeProvider, prepareProvider } from "./authentication/provider.js"
@@ -175,43 +175,40 @@ const authenticationServiceLayer = (settings: AuthenticationSettings) => {
           Effect.mapError(() => unavailable())
         )
 
-        const createCandidate = (remaining: number): Effect.Effect<PreparedAuthentication, AuthenticationUnavailable> =>
-          Effect.gen(function*() {
-            const provider = yield* prepareProvider({
-              allowInsecureLoopback: settings.allowInsecureLoopback,
-              clientAuthentication,
-              clientId: config.oidc.clientId,
-              issuer: config.oidc.issuer,
-              redirectUri: callback.redirectUri,
-              validateUrl
-            }).pipe(Effect.mapError(() => unavailable()))
-            const correlation = yield* makeBrowserCorrelation
-            const createdAt = yield* Clock.currentTimeMillis
-            const expiresAt = createdAt + Duration.toMillis(transactions.ttl)
-            const stored = yield* transactions.create({
-              callbackAuthority: callback.authority,
-              clientId: config.oidc.clientId,
-              correlation,
-              createdAt,
-              expiresAt,
-              issuer: provider.issuer,
-              nonce: provider.nonce,
-              pkceVerifier: provider.pkceVerifier,
-              redirectUri: callback.redirectUri,
-              state: provider.state,
-              tenantAlias: alias,
-              version: 1
-            }).pipe(Effect.result)
-            if (Result.isFailure(stored)) {
-              if (stored.failure._tag === "AuthenticationAttemptCollision" && remaining > 1) {
-                return yield* createCandidate(remaining - 1)
-              }
-              return yield* unavailable()
-            }
-            return { correlation, destination: provider.destination, expiresAt }
+        /** A fresh provider state and correlation per attempt; only a correlation collision is retried. */
+        const createCandidate = Effect.gen(function*() {
+          const provider = yield* prepareProvider({
+            allowInsecureLoopback: settings.allowInsecureLoopback,
+            clientAuthentication,
+            clientId: config.oidc.clientId,
+            issuer: config.oidc.issuer,
+            redirectUri: callback.redirectUri,
+            validateUrl
+          }).pipe(Effect.mapError(() => unavailable()))
+          const correlation = yield* makeBrowserCorrelation
+          const createdAt = yield* Clock.currentTimeMillis
+          const expiresAt = createdAt + Duration.toMillis(transactions.ttl)
+          yield* transactions.create({
+            callbackAuthority: callback.authority,
+            clientId: config.oidc.clientId,
+            correlation,
+            createdAt,
+            expiresAt,
+            issuer: provider.issuer,
+            nonce: provider.nonce,
+            pkceVerifier: provider.pkceVerifier,
+            redirectUri: callback.redirectUri,
+            state: provider.state,
+            tenantAlias: alias,
+            version: 1
           })
+          return { correlation, destination: provider.destination, expiresAt } satisfies PreparedAuthentication
+        })
 
-        return yield* createCandidate(3)
+        return yield* createCandidate.pipe(
+          Effect.retry({ times: 2, while: (failure) => failure._tag === "AuthenticationAttemptCollision" }),
+          Effect.mapError(() => unavailable())
+        )
       })
 
       const qualifyCallback = Effect.fnUntraced(function*(input: CompleteAuthenticationInput) {

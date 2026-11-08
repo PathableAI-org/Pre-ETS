@@ -1,7 +1,7 @@
 import type { NodeServices } from "@effect/platform-node"
 import type * as Redis from "effect/persistence/Redis"
 
-import { type Config, ConfigProvider, Effect, Layer, type ManagedRuntime, Schema } from "effect"
+import { type Config, ConfigProvider, type Effect, Layer, type ManagedRuntime, Schema } from "effect"
 
 import { AuthenticationService } from "./authentication.js"
 import { StartupConfig, type StartupSettings } from "./config/index.js"
@@ -53,12 +53,10 @@ const readInstalledRuntime = (): InstalledRuntime | undefined => {
   return published as InstalledRuntime
 }
 
-const rejectNotReady = <A>(): Promise<A> => Effect.runPromise(Effect.fail(new StartupNotReady({})))
-
 export const Runtime = {
   runPromise: <A, E>(effect: Effect.Effect<A, E, ApplicationServices>): Promise<A> => {
     const runtime = readInstalledRuntime()
-    if (runtime === undefined) return rejectNotReady()
+    if (runtime === undefined) return Promise.reject(new StartupNotReady({}))
     return runtime.runPromise(effect)
   }
 }

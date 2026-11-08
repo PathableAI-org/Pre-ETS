@@ -27,6 +27,10 @@ export interface Entry {
 }
 
 export interface MemoryRedis {
+  /** The next `count` attempt creations report an existing key, as a correlation collision would. */
+  readonly collideNextCreates: (count: number) => void
+  /** Commands sent, in order. */
+  readonly commands: string[]
   readonly entries: Map<string, Entry>
   readonly failNextConsume: (cause: unknown) => void
   readonly layer: Layer.Layer<Redis.Redis>
@@ -66,11 +70,18 @@ const execute = (entries: Map<string, Entry>, command: string, args: readonly st
 
 export const makeMemoryRedis = (): MemoryRedis => {
   const entries = new Map<string, Entry>()
+  const commands: string[] = []
+  let collisions = 0
   let consumeCause: unknown
   const failNextConsume = (cause: unknown) => {
     consumeCause = cause
   }
   const send = <A>(command: string, ...args: readonly string[]) => {
+    commands.push(command)
+    if (command === "SET" && collisions > 0) {
+      collisions -= 1
+      return Effect.succeed(null as A)
+    }
     if (command === "GETDEL" && consumeCause !== undefined) {
       const cause = consumeCause
       consumeCause = undefined
@@ -83,5 +94,13 @@ export const makeMemoryRedis = (): MemoryRedis => {
   }
 
   const service = makeRedis(send)
-  return { entries, failNextConsume, layer: Layer.effect(Redis.Redis, service) }
+  return {
+    collideNextCreates: (count) => {
+      collisions = count
+    },
+    commands,
+    entries,
+    failNextConsume,
+    layer: Layer.effect(Redis.Redis, service)
+  }
 }

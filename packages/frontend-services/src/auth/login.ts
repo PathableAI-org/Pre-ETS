@@ -1,4 +1,4 @@
-import { Effect } from "effect"
+import { Clock, Effect } from "effect"
 import { type NextRequest, NextResponse } from "next/server"
 
 import { AuthenticationService } from "../authentication.js"
@@ -18,29 +18,28 @@ const redirect = (status: number, location?: string) =>
     status
   })
 
-const prepareAuthentication = (
-  respondToTenantFailure: TenantFailureResponse,
-  request: NextRequest
-) =>
-  Effect.gen(function*() {
+const prepareAuthentication = Effect.fn("prepareAuthentication")(
+  function*(_respondToTenantFailure: TenantFailureResponse, request: NextRequest) {
     const authentication = yield* AuthenticationService
-    return yield* authentication.prepare({ host: request.headers.get("host") ?? "" })
-  }).pipe(
-    Effect.map((prepared) => {
-      const response = redirect(307, prepared.destination)
-      const redirectUri = new URL(prepared.destination).searchParams.get("redirect_uri")
-      response.cookies.set(CORRELATION_COOKIE, prepared.correlation, {
-        httpOnly: true,
-        maxAge: Math.max(1, Math.ceil((prepared.expiresAt - Date.now()) / 1_000)),
-        path: "/auth/callback",
-        sameSite: "lax",
-        secure: redirectUri === null || new URL(redirectUri).protocol === "https:"
-      })
-      return response
-    }),
-    Effect.catchTag("AuthenticationUnavailable", () => Effect.succeed(redirect(307, "/login-unavailable"))),
-    Effect.catch((failure) => Effect.promise(() => respondToTenantFailure(tenantFailureStatus(failure))))
-  )
+    const prepared = yield* authentication.prepare({ host: request.headers.get("host") ?? "" })
+    const now = yield* Clock.currentTimeMillis
+    const response = redirect(307, prepared.destination)
+    const redirectUri = new URL(prepared.destination).searchParams.get("redirect_uri")
+    response.cookies.set(CORRELATION_COOKIE, prepared.correlation, {
+      httpOnly: true,
+      maxAge: Math.max(1, Math.ceil((prepared.expiresAt - now) / 1_000)),
+      path: "/auth/callback",
+      sameSite: "lax",
+      secure: redirectUri === null || new URL(redirectUri).protocol === "https:"
+    })
+    return response
+  },
+  (effect, respondToTenantFailure) =>
+    effect.pipe(
+      Effect.catchTag("AuthenticationUnavailable", () => Effect.succeed(redirect(307, "/login-unavailable"))),
+      Effect.catch((failure) => Effect.promise(() => respondToTenantFailure(tenantFailureStatus(failure))))
+    )
+)
 
 export const createLoginHandler = (respondToTenantFailure: TenantFailureResponse) =>
   toNext((request) => prepareAuthentication(respondToTenantFailure, request))

@@ -7,7 +7,7 @@ import { join } from "node:path"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { createCallbackHandler } from "../../src/auth/callback.ts"
-import { callbackFreshnessPolicy } from "../../src/auth/freshness.ts"
+import { CallbackFreshness } from "../../src/auth/freshness.ts"
 import { createLoginHandler } from "../../src/auth/login.ts"
 import {
   AuthenticationDenied,
@@ -169,6 +169,7 @@ describe("callback session-establishment failure mapping [PREETS-SESSION-003]", 
           complete: () => Effect.succeed(identity),
           prepare: () => Effect.die("prepare must remain unused")
         }),
+        Effect.provideService(CallbackFreshness, { confirmed: () => true }),
         Effect.provide(Layer.mergeAll(layers.session, layers.tenant))
       ))
     )
@@ -188,34 +189,28 @@ describe("callback session-establishment failure mapping [PREETS-SESSION-003]", 
   }
 
   it("returns the safe page when tenant lookup fails after a confirmed trusted result", async () => {
-    const confirmed = vi.spyOn(callbackFreshnessPolicy, "confirmed").mockReturnValue(true)
     const missingDirectory = join(tmpdir(), "preets-missing-tenant-config")
     const establish = vi.fn(() => Effect.die("establish must remain unused"))
-    try {
-      runConfirmed({
-        session: Layer.succeed(SessionService, {
-          establish,
-          invalidate: () => Effect.die("invalidate must remain unused"),
-          read: () => Effect.die("read must remain unused"),
-          readForTenant: () => Effect.succeed({ _tag: "NoUsableSession" }),
-          refreshForTenant: () => Effect.die("refreshForTenant must remain unused")
-        }),
-        tenant: tenantLayer(missingDirectory)
-      })
-      const response = await callback(request(
-        "/auth/callback?code=secret-code&state=state-1",
-        `oidc-correlation=${"F".repeat(43)}`
-      ))
-      await expectSafeReturn(response, missingDirectory)
-      expect(establish).not.toHaveBeenCalled()
-    } finally {
-      confirmed.mockRestore()
-    }
+    runConfirmed({
+      session: Layer.succeed(SessionService, {
+        establish,
+        invalidate: () => Effect.die("invalidate must remain unused"),
+        read: () => Effect.die("read must remain unused"),
+        readForTenant: () => Effect.succeed({ _tag: "NoUsableSession" }),
+        refreshForTenant: () => Effect.die("refreshForTenant must remain unused")
+      }),
+      tenant: tenantLayer(missingDirectory)
+    })
+    const response = await callback(request(
+      "/auth/callback?code=secret-code&state=state-1",
+      `oidc-correlation=${"F".repeat(43)}`
+    ))
+    await expectSafeReturn(response, missingDirectory)
+    expect(establish).not.toHaveBeenCalled()
   })
 
   it("returns the safe page when establishment fails after a confirmed trusted result", async () => {
     const directory = await mkdtemp(join(tmpdir(), "preets-session-failure-"))
-    const confirmed = vi.spyOn(callbackFreshnessPolicy, "confirmed").mockReturnValue(true)
     const establish = vi.fn(() => Effect.fail(new SessionServiceUnavailable({})))
     try {
       await writeFile(
@@ -244,7 +239,6 @@ describe("callback session-establishment failure mapping [PREETS-SESSION-003]", 
       await expectSafeReturn(response, "SessionServiceUnavailable")
       expect(establish).toHaveBeenCalledTimes(1)
     } finally {
-      confirmed.mockRestore()
       await rm(directory, { force: true, recursive: true })
     }
   })

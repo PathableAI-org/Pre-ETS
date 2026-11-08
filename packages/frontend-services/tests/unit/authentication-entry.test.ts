@@ -8,7 +8,7 @@ import { join } from "node:path"
 import { afterEach, describe, expect, vi } from "vitest"
 
 import { createCallbackHandler } from "../../src/auth/callback.ts"
-import { callbackFreshnessPolicy } from "../../src/auth/freshness.ts"
+import { CallbackFreshness } from "../../src/auth/freshness.ts"
 import { createLoginHandler } from "../../src/auth/login.ts"
 import { AuthenticationDenied, AuthenticationService, CallbackExpectedFailure } from "../../src/authentication.ts"
 import { SessionService } from "../../src/session.ts"
@@ -77,6 +77,7 @@ const trustedIdentity = {
 const routeRuntime = (
   service: AuthenticationService["Service"],
   provided: {
+    readonly confirmed?: boolean
     readonly session: Layer.Layer<SessionService, unknown>
     readonly tenant: Layer.Layer<TenantConfigService, unknown>
   } = { session: routeSessionLayer, tenant: routeTenantLayer }
@@ -85,6 +86,10 @@ const routeRuntime = (
     Effect.runPromise(
       program.pipe(
         Effect.provideService(AuthenticationService, service),
+        // Without `confirmed`, the production default (fail closed) applies.
+        provided.confirmed === true
+          ? Effect.provideService(CallbackFreshness, { confirmed: () => true })
+          : (effect) => effect,
         Effect.provide(Layer.mergeAll(provided.session, provided.tenant))
       )
     )
@@ -182,7 +187,6 @@ describe("authentication Route Handlers [PREETS-SESSION-003, PREETS-SESSION-013]
 
   it("writes one host-only session cookie after a freshness-confirmed establishment", async () => {
     const directory = await mkdtemp(join(tmpdir(), "preets-session-callback-"))
-    const confirmed = vi.spyOn(callbackFreshnessPolicy, "confirmed").mockReturnValue(true)
     try {
       await writeFile(
         join(directory, "alpha.json"),
@@ -200,7 +204,7 @@ describe("authentication Route Handlers [PREETS-SESSION-003, PREETS-SESSION-013]
       )
       routeRuntime(
         { complete: () => Effect.succeed(trustedIdentity), prepare: () => Effect.die("prepare must remain unused") },
-        { session, tenant }
+        { confirmed: true, session, tenant }
       )
       const correlation = `oidc-correlation=${"B".repeat(43)}`
       const secureRequest = new NextRequest("https://alpha.example.test/auth/callback?code=secret-code&state=state-1", {
@@ -232,7 +236,6 @@ describe("authentication Route Handlers [PREETS-SESSION-003, PREETS-SESSION-013]
       expect(loopbackSession).toHaveLength(1)
       expectHostOnlyCookie(loopbackSession[0] ?? "", "/", false)
     } finally {
-      confirmed.mockRestore()
       await rm(directory, { force: true, recursive: true })
     }
   })
