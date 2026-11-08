@@ -1,6 +1,5 @@
 import { describe, expect, it } from "@effect/vitest"
-import { fc, test } from "@fast-check/vitest"
-import { Deferred, Effect, Fiber, Layer, Result, Schema } from "effect"
+import { Deferred, Effect, Fiber, Result, Schema, type Scope } from "effect"
 import { TestClock } from "effect/testing"
 import { vi } from "vitest"
 
@@ -17,13 +16,11 @@ import {
   SessionTenantMismatch
 } from "../../src/session.ts"
 import { type SessionPolicy, TenantAlias } from "../../src/tenant.ts"
-import { makeSessionMemoryRedis } from "../helpers/session.ts"
+import { SessionRedis, sessionWorld, type StoredSessionRecord } from "../helpers/session.ts"
 
 const alias = Schema.decodeSync(TenantAlias)("alpha")
 const otherAlias = Schema.decodeSync(TenantAlias)("beta")
 const noUsableSession: NoUsableSession = { _tag: "NoUsableSession" }
-const aliasCharacter = fc.constantFrom(..."abcdefghijklmnopqrstuvwxyz-".split(""))
-const aliasArb = fc.array(aliasCharacter, { maxLength: 12, minLength: 1 }).map((characters) => characters.join(""))
 
 const publicDiagnostic = (value: unknown): string => {
   const seen = new Set<unknown>()
@@ -51,17 +48,34 @@ const policyOf = (idleTimeoutMinutes: number, warningLeadMinutes: number): Sessi
   warningLeadMinutes
 })
 
-const redisWorld = (redis: ReturnType<typeof makeSessionMemoryRedis>) =>
-  SessionService.layer({ keyPrefix: "test:session" }).pipe(
-    Layer.provide(redis.layer)
-  )
+const scenario = <A, E>(program: Effect.Effect<A, E, Scope.Scope | SessionRedis | SessionService>) =>
+  program.pipe(Effect.provide(sessionWorld))
 
-const scenario = <A, E>(
-  program: (redis: ReturnType<typeof makeSessionMemoryRedis>) => Effect.Effect<A, E, SessionService>
+const commandsNamed = Effect.fnUntraced(function*(command: string) {
+  const redis = yield* SessionRedis
+  return (yield* redis.commands).filter((sent) => sent === command)
+})
+
+const recordCount = SessionRedis.use((redis) => redis.records).pipe(Effect.map((records) => records.size))
+
+/** Neither bytes nor TTL were rewritten: the TTL only ran down in wall-clock time. */
+const expectUnchanged = (
+  before: ReadonlyMap<string, StoredSessionRecord>,
+  after: ReadonlyMap<string, StoredSessionRecord>
 ) => {
-  const redis = makeSessionMemoryRedis()
-  return program(redis).pipe(Effect.provide(redisWorld(redis)))
+  expect([...after.keys()]).toStrictEqual([...before.keys()])
+  for (const [key, record] of before) {
+    const current = after.get(key)
+    expect(current?.payload).toBe(record.payload)
+    expect(current?.ttlMilliseconds).toBeLessThanOrEqual(record.ttlMilliseconds)
+    expect(current?.ttlMilliseconds).toBeGreaterThan(record.ttlMilliseconds - 5_000)
+  }
 }
+
+const unchangedSince = Effect.fnUntraced(function*(before: ReadonlyMap<string, StoredSessionRecord>) {
+  const redis = yield* SessionRedis
+  expectUnchanged(before, yield* redis.records)
+})
 
 const establish = (
   service: SessionService["Service"],
@@ -79,7 +93,7 @@ const establish = (
 
 describe("SessionService establishment [PREETS-SESSION-003, PREETS-SESSION-008]", () => {
   it.effect("establishes a tenant-bound session with the effective deadline and warning policy", () =>
-    scenario(() =>
+    scenario(
       Effect.gen(function*() {
         yield* TestClock.setTime(BASE_TIME)
         const service = yield* SessionService
@@ -98,7 +112,7 @@ describe("SessionService establishment [PREETS-SESSION-003, PREETS-SESSION-008]"
     ))
 
   it.effect("preserves a disabled warning policy", () =>
-    scenario(() =>
+    scenario(
       Effect.gen(function*() {
         yield* TestClock.setTime(BASE_TIME)
         const service = yield* SessionService
@@ -109,7 +123,7 @@ describe("SessionService establishment [PREETS-SESSION-003, PREETS-SESSION-008]"
     ))
 
   it.effect("returns a readable usable session with identical public fields", () =>
-    scenario(() =>
+    scenario(
       Effect.gen(function*() {
         yield* TestClock.setTime(BASE_TIME)
         const service = yield* SessionService
@@ -130,12 +144,13 @@ describe("SessionService invalidation [PREETS-SESSION-013]", () => {
   it.effect.each([undefined, "not-a-valid-reference"])(
     "returns NoUsableSession for %s input without a Redis command",
     (reference) =>
-      scenario((redis) =>
+      scenario(
         Effect.gen(function*() {
+          const redis = yield* SessionRedis
           const service = yield* SessionService
           const result = yield* service.invalidate({ reference })
           expect(result).toStrictEqual(noUsableSession)
-          expect(redis.commands).toStrictEqual([])
+          expect(yield* redis.commands).toStrictEqual([])
           expect(Object.keys(result)).toStrictEqual(["_tag"])
         })
       )
@@ -144,62 +159,60 @@ describe("SessionService invalidation [PREETS-SESSION-013]", () => {
   it.effect.each(["current", "expired", "malformed", "unknown-version"] as const)(
     "removes %s addressed state without exposing its prior contents",
     (state) =>
-      scenario((redis) =>
+      scenario(
         Effect.gen(function*() {
+          const redis = yield* SessionRedis
           yield* TestClock.setTime(BASE_TIME)
           const service = yield* SessionService
           const established = yield* establish(service, 30, 5)
-          const commandCountBeforeInvalidation = redis.commands.length
+          const commandCountBeforeInvalidation = (yield* redis.commands).length
           if (state === "expired") yield* TestClock.adjust("30 minutes")
           if (state === "malformed") {
-            for (const key of redis.entries.keys()) redis.entries.set(key, "not-json")
+            yield* redis.rewriteAll(() => "not-json")
           }
           if (state === "unknown-version") {
-            for (const [key, payload] of redis.entries) {
-              const record = JSON.parse(payload) as Record<string, unknown>
-              redis.entries.set(key, JSON.stringify({ ...record, version: 2 }))
-            }
+            yield* redis.rewriteAll((payload) => JSON.stringify({ ...JSON.parse(payload), version: 2 }))
           }
 
           const result = yield* service.invalidate({ reference: established.reference })
 
           expect(result).toStrictEqual(noUsableSession)
           expect(Object.keys(result)).toStrictEqual(["_tag"])
-          expect(redis.entries.size).toBe(0)
-          expect(redis.ttls.size).toBe(0)
-          expect(redis.commands.slice(commandCountBeforeInvalidation)).toStrictEqual(["DEL"])
-          expect(redis.commands.filter((command) => command === "DEL")).toHaveLength(1)
+          expect(yield* recordCount).toBe(0)
+          expect((yield* redis.commands).slice(commandCountBeforeInvalidation)).toStrictEqual(["DEL"])
+          expect(yield* commandsNamed("DEL")).toHaveLength(1)
         })
       )
   )
 
   it.effect("returns the same terminal outcome for missing and already invalidated state", () =>
-    scenario((redis) =>
+    scenario(
       Effect.gen(function*() {
+        const redis = yield* SessionRedis
         yield* TestClock.setTime(BASE_TIME)
         const service = yield* SessionService
         const established = yield* establish(service, 30, 5)
-        redis.entries.clear()
-        redis.ttls.clear()
+        yield* redis.removeAll
 
         const missing = yield* service.invalidate({ reference: established.reference })
         const alreadyInvalidated = yield* service.invalidate({ reference: established.reference })
 
         expect(missing).toStrictEqual(noUsableSession)
         expect(alreadyInvalidated).toStrictEqual(noUsableSession)
-        expect(redis.commands.filter((command) => command === "DEL")).toHaveLength(2)
+        expect(yield* commandsNamed("DEL")).toHaveLength(2)
       })
     ))
 
   it.effect.each([2, -1, "1", null])(
     "fails closed for the unexpected DEL reply %#",
     (reply) =>
-      scenario((redis) =>
+      scenario(
         Effect.gen(function*() {
+          const redis = yield* SessionRedis
           yield* TestClock.setTime(BASE_TIME)
           const service = yield* SessionService
           const established = yield* establish(service, 30, 5)
-          redis.returnNextDeletion(reply)
+          yield* redis.injectNext("DEL", { _tag: "Reply", value: reply })
 
           const result = yield* service.invalidate({ reference: established.reference }).pipe(Effect.result)
 
@@ -217,12 +230,13 @@ describe("SessionService invalidation [PREETS-SESSION-013]", () => {
   )
 
   it.effect("returns a fieldless service failure when DEL cannot be dispatched", () =>
-    scenario((redis) =>
+    scenario(
       Effect.gen(function*() {
+        const redis = yield* SessionRedis
         yield* TestClock.setTime(BASE_TIME)
         const service = yield* SessionService
         const established = yield* establish(service, 30, 5)
-        redis.failNextCommand("DEL", new Error("private Redis diagnostic"))
+        yield* redis.injectNext("DEL", { _tag: "Fail", cause: new Error("private Redis diagnostic") })
 
         const result = yield* service.invalidate({ reference: established.reference }).pipe(Effect.result)
 
@@ -239,12 +253,13 @@ describe("SessionService invalidation [PREETS-SESSION-013]", () => {
     ))
 
   it.effect("does not retry or claim success when DEL applies before its reply fails", () =>
-    scenario((redis) =>
+    scenario(
       Effect.gen(function*() {
+        const redis = yield* SessionRedis
         yield* TestClock.setTime(BASE_TIME)
         const service = yield* SessionService
         const established = yield* establish(service, 30, 5)
-        redis.failNextDeletionAfterMutation()
+        yield* redis.injectNext("DEL", { _tag: "FailAfterApply" })
 
         const indeterminate = yield* service.invalidate({ reference: established.reference }).pipe(Effect.result)
 
@@ -252,70 +267,72 @@ describe("SessionService invalidation [PREETS-SESSION-013]", () => {
         if (Result.isFailure(indeterminate)) {
           expect(indeterminate.failure).toBeInstanceOf(SessionServiceUnavailable)
         }
-        expect(redis.commands.filter((command) => command === "DEL")).toHaveLength(1)
-        expect(redis.entries.size).toBe(0)
+        expect(yield* commandsNamed("DEL")).toHaveLength(1)
+        expect(yield* recordCount).toBe(0)
         expect(yield* service.read({ reference: established.reference })).toStrictEqual(noUsableSession)
         expect(yield* service.invalidate({ reference: established.reference })).toStrictEqual(noUsableSession)
-        expect(redis.commands.filter((command) => command === "DEL")).toHaveLength(2)
+        expect(yield* commandsNamed("DEL")).toHaveLength(2)
       })
     ))
 })
 
 describe("SessionService read outcomes [PREETS-SESSION-008]", () => {
   it.effect("returns NoUsableSession for an absent reference without a Redis lookup", () =>
-    scenario((redis) =>
+    scenario(
       Effect.gen(function*() {
         const service = yield* SessionService
         const result = yield* service.read({})
         expect(result).toStrictEqual(noUsableSession)
-        expect(redis.entries.size).toBe(0)
+        expect(yield* recordCount).toBe(0)
       })
     ))
 
   it.effect("returns NoUsableSession for a malformed reference without a Redis lookup", () =>
-    scenario((redis) =>
+    scenario(
       Effect.gen(function*() {
         const service = yield* SessionService
         const result = yield* service.read({ reference: "not-a-valid-reference" })
         expect(result).toStrictEqual(noUsableSession)
-        expect(redis.entries.size).toBe(0)
+        expect(yield* recordCount).toBe(0)
       })
     ))
 
   it.effect("returns NoUsableSession for a missing record", () =>
-    scenario((redis) =>
+    scenario(
       Effect.gen(function*() {
+        const redis = yield* SessionRedis
         yield* TestClock.setTime(BASE_TIME)
         const service = yield* SessionService
         const { reference } = yield* establish(service, 30, 5)
-        redis.entries.clear()
+        yield* redis.removeAll
         const result = yield* service.read({ reference })
         expect(result).toStrictEqual(noUsableSession)
       })
     ))
 
   it.effect("returns NoUsableSession at and after the stored deadline", () =>
-    scenario((redis) =>
+    scenario(
       Effect.gen(function*() {
         yield* TestClock.setTime(BASE_TIME)
         const service = yield* SessionService
         const { reference } = yield* establish(service, 30, 5)
         yield* TestClock.adjust("30 minutes")
         expect(yield* service.read({ reference })).toStrictEqual(noUsableSession)
-        expect(redis.entries.size).toBe(0)
+        expect(yield* recordCount).toBe(0)
         yield* TestClock.adjust("1 minute")
         expect(yield* service.read({ reference })).toStrictEqual(noUsableSession)
-        expect(redis.entries.size).toBe(0)
+        expect(yield* recordCount).toBe(0)
       })
     ))
 
   it.effect("returns SessionServiceUnavailable for a corrupted stored record", () =>
-    scenario((redis) =>
+    scenario(
       Effect.gen(function*() {
+        const redis = yield* SessionRedis
         yield* TestClock.setTime(BASE_TIME)
         const service = yield* SessionService
         const { reference } = yield* establish(service, 30, 5)
-        for (const key of redis.entries.keys()) redis.entries.set(key, "not-json")
+        yield* redis.rewriteAll(() => "not-json")
         const result = yield* service.read({ reference }).pipe(Effect.result)
         expect(Result.isFailure(result)).toBe(true)
         if (Result.isFailure(result)) expect(result.failure).toBeInstanceOf(SessionServiceUnavailable)
@@ -323,15 +340,13 @@ describe("SessionService read outcomes [PREETS-SESSION-008]", () => {
     ))
 
   it.effect("returns SessionServiceUnavailable for an unknown record version", () =>
-    scenario((redis) =>
+    scenario(
       Effect.gen(function*() {
+        const redis = yield* SessionRedis
         yield* TestClock.setTime(BASE_TIME)
         const service = yield* SessionService
         const { reference } = yield* establish(service, 30, 5)
-        for (const [key, payload] of redis.entries) {
-          const record = JSON.parse(payload) as Record<string, unknown>
-          redis.entries.set(key, JSON.stringify({ ...record, version: 2 }))
-        }
+        yield* redis.rewriteAll((payload) => JSON.stringify({ ...JSON.parse(payload), version: 2 }))
         const result = yield* service.read({ reference }).pipe(Effect.result)
         expect(Result.isFailure(result)).toBe(true)
         if (Result.isFailure(result)) {
@@ -344,35 +359,40 @@ describe("SessionService read outcomes [PREETS-SESSION-008]", () => {
     ))
 
   it.effect("returns SessionServiceUnavailable after three exhausted creation collisions", () =>
-    scenario(() =>
+    scenario(
       Effect.gen(function*() {
         yield* TestClock.setTime(BASE_TIME)
         const service = yield* SessionService
         const fixedBytes = new Uint8Array(32)
         fixedBytes[0] = 1
-        const spy = vi.spyOn(globalThis.crypto, "getRandomValues").mockImplementation((array) => {
-          const target = array as Uint8Array
-          target.set(fixedBytes)
-          return target
-        })
-        try {
-          yield* establish(service, 30, 5)
-          const result = yield* establish(service, 30, 5).pipe(Effect.result)
-          expect(Result.isFailure(result)).toBe(true)
-          if (Result.isFailure(result)) expect(result.failure).toBeInstanceOf(SessionServiceUnavailable)
-        } finally {
-          spy.mockRestore()
-        }
+        yield* Effect.acquireRelease(
+          Effect.sync(() =>
+            vi.spyOn(globalThis.crypto, "getRandomValues").mockImplementation((array) => {
+              const target = array as Uint8Array
+              target.set(fixedBytes)
+              return target
+            })
+          ),
+          (spy) =>
+            Effect.sync(() => {
+              spy.mockRestore()
+            })
+        )
+        yield* establish(service, 30, 5)
+        const result = yield* establish(service, 30, 5).pipe(Effect.result)
+        expect(Result.isFailure(result)).toBe(true)
+        if (Result.isFailure(result)) expect(result.failure).toBeInstanceOf(SessionServiceUnavailable)
       })
     ))
 
   it.effect("fails closed on a Redis read failure", () =>
-    scenario((redis) =>
+    scenario(
       Effect.gen(function*() {
+        const redis = yield* SessionRedis
         yield* TestClock.setTime(BASE_TIME)
         const service = yield* SessionService
         const { reference } = yield* establish(service, 30, 5)
-        redis.failNextCommand("EVALSHA")
+        yield* redis.injectNext("EVALSHA", { _tag: "Fail", cause: new Error("controlled EVALSHA failure") })
         const result = yield* service.read({ reference }).pipe(Effect.result)
         expect(Result.isFailure(result)).toBe(true)
         if (Result.isFailure(result)) expect(result.failure).toBeInstanceOf(SessionServiceUnavailable)
@@ -382,11 +402,12 @@ describe("SessionService read outcomes [PREETS-SESSION-008]", () => {
   it.effect.each(["QUEUED", 1, "ok", ["OK"]])(
     "fails closed without retrying creation for the unexpected SET reply %#",
     (reply) =>
-      scenario((redis) =>
+      scenario(
         Effect.gen(function*() {
+          const redis = yield* SessionRedis
           yield* TestClock.setTime(BASE_TIME)
           const service = yield* SessionService
-          redis.returnNextCreation(reply)
+          yield* redis.injectNext("SET", { _tag: "Reply", value: reply })
 
           const result = yield* establish(service, 30, 5).pipe(Effect.result)
 
@@ -395,17 +416,18 @@ describe("SessionService read outcomes [PREETS-SESSION-008]", () => {
             expect(result.failure).toBeInstanceOf(SessionServiceUnavailable)
             expect(Object.keys(result.failure)).toStrictEqual(["_tag"])
           }
-          expect(redis.commands.filter((command) => command === "SET")).toHaveLength(1)
+          expect(yield* commandsNamed("SET")).toHaveLength(1)
         })
       )
   )
 
   it.effect("returns SessionServiceUnavailable when establishment cannot persist", () =>
-    scenario((redis) =>
+    scenario(
       Effect.gen(function*() {
+        const redis = yield* SessionRedis
         yield* TestClock.setTime(BASE_TIME)
         const service = yield* SessionService
-        redis.failNextCommand("SET")
+        yield* redis.injectNext("SET", { _tag: "Fail", cause: new Error("controlled SET failure") })
         const result = yield* establish(service, 30, 5).pipe(Effect.result)
         expect(Result.isFailure(result)).toBe(true)
         if (Result.isFailure(result)) {
@@ -419,7 +441,7 @@ describe("SessionService read outcomes [PREETS-SESSION-008]", () => {
 
 describe("SessionService tenant admission [PREETS-SESSION-005]", () => {
   it.effect("returns the usable session read for the same branded alias", () =>
-    scenario(() =>
+    scenario(
       Effect.gen(function*() {
         yield* TestClock.setTime(BASE_TIME)
         const service = yield* SessionService
@@ -438,7 +460,7 @@ describe("SessionService tenant admission [PREETS-SESSION-005]", () => {
     ))
 
   it.effect("fails with a fieldless tenant mismatch and no identity or tenant diagnostic", () =>
-    scenario(() =>
+    scenario(
       Effect.gen(function*() {
         yield* TestClock.setTime(BASE_TIME)
         const service = yield* SessionService
@@ -462,7 +484,7 @@ describe("SessionService tenant admission [PREETS-SESSION-005]", () => {
     ))
 
   it.effect("passes absent and malformed references through as NoUsableSession", () =>
-    scenario((redis) =>
+    scenario(
       Effect.gen(function*() {
         const service = yield* SessionService
         const absent = yield* service.readForTenant({ tenantAlias: alias }).pipe(Effect.result)
@@ -476,17 +498,18 @@ describe("SessionService tenant admission [PREETS-SESSION-005]", () => {
         if (Result.isSuccess(malformed)) expect(malformed.success).toStrictEqual(noUsableSession)
         expect(absent).not.toBeInstanceOf(SessionTenantMismatch)
         expect(malformed).not.toBeInstanceOf(SessionServiceUnavailable)
-        expect(redis.entries.size).toBe(0)
+        expect(yield* recordCount).toBe(0)
       })
     ))
 
   it.effect("keeps a Redis read failure distinct from absence and mismatch", () =>
-    scenario((redis) =>
+    scenario(
       Effect.gen(function*() {
+        const redis = yield* SessionRedis
         yield* TestClock.setTime(BASE_TIME)
         const service = yield* SessionService
         const { reference } = yield* establish(service, 30, 5)
-        redis.failNextCommand("EVALSHA")
+        yield* redis.injectNext("EVALSHA", { _tag: "Fail", cause: new Error("controlled EVALSHA failure") })
         const result = yield* service.readForTenant({ reference, tenantAlias: alias }).pipe(Effect.result)
         expect(Result.isFailure(result)).toBe(true)
         if (Result.isFailure(result)) {
@@ -496,13 +519,11 @@ describe("SessionService tenant admission [PREETS-SESSION-005]", () => {
       })
     ))
 
-  test.prop([aliasArb, aliasArb])(
+  it.effect.prop(
     "admits a stored session only when the request alias is branded-equal",
-    async (storedText, requestText) => {
-      const storedAlias = Schema.decodeSync(TenantAlias)(storedText)
-      const requestAlias = Schema.decodeSync(TenantAlias)(requestText)
-      const redis = makeSessionMemoryRedis()
-      const outcome = await Effect.runPromise(
+    [TenantAlias, TenantAlias],
+    ([storedAlias, requestAlias]) =>
+      scenario(
         Effect.gen(function*() {
           const service = yield* SessionService
           const established = yield* service.establish({
@@ -515,19 +536,15 @@ describe("SessionService tenant admission [PREETS-SESSION-005]", () => {
             reference: established.reference,
             tenantAlias: requestAlias
           }).pipe(Effect.result)
-          return { admitted, read }
-        }).pipe(Effect.provide(redisWorld(redis)))
+          if (storedAlias === requestAlias) {
+            expect(Result.isSuccess(admitted)).toBe(true)
+            if (Result.isSuccess(admitted)) expect(admitted.success).toStrictEqual(read)
+            return
+          }
+          expect(Result.isFailure(admitted)).toBe(true)
+          if (Result.isFailure(admitted)) expect(admitted.failure).toBeInstanceOf(SessionTenantMismatch)
+        })
       )
-      if (storedAlias === requestAlias) {
-        expect(Result.isSuccess(outcome.admitted)).toBe(true)
-        if (Result.isSuccess(outcome.admitted)) expect(outcome.admitted.success).toStrictEqual(outcome.read)
-        return
-      }
-      expect(Result.isFailure(outcome.admitted)).toBe(true)
-      if (Result.isFailure(outcome.admitted)) {
-        expect(outcome.admitted.failure).toBeInstanceOf(SessionTenantMismatch)
-      }
-    }
   )
 })
 
@@ -562,17 +579,14 @@ const qualifyingListIsClosed: [MissingQualifying] extends [never] ? true : false
 const excludedListIsClosed: [MissingExcluded] extends [never] ? true : false = true
 const excludedActivityRejectsPolicy: ExcludedCarryingPolicy extends RefreshSessionForTenantInput ? false : true = true
 
-const storedSnapshot = (redis: ReturnType<typeof makeSessionMemoryRedis>) => ({
-  entries: new Map(redis.entries),
-  ttls: new Map(redis.ttls)
-})
+const minutesBetween = (minimum: number, maximum: number) =>
+  Schema.Int.pipe(Schema.check(Schema.isBetween({ maximum, minimum })))
 
-const validPolicyArb = fc.integer({ max: 30, min: 5 }).chain((idleTimeoutMinutes) =>
-  fc.integer({ max: idleTimeoutMinutes - 1, min: 0 }).map((warningLeadMinutes) => ({
-    idleTimeoutMinutes,
-    warningLeadMinutes
-  }))
-)
+/** Any accepted tenant policy: a 5-30 minute timeout with a warning lead below it. */
+const ValidPolicy = Schema.Struct({
+  idleTimeoutMinutes: minutesBetween(5, 30),
+  warningLeadMinutes: minutesBetween(0, 29)
+}).pipe(Schema.check(Schema.makeFilter((policy) => policy.warningLeadMinutes < policy.idleTimeoutMinutes)))
 
 describe("SessionService.refreshForTenant renewal [PREETS-SESSION-008, PREETS-SESSION-009, PREETS-SESSION-011]", () => {
   it("rejects excluded activity that carries policy and keeps the activity lists closed", () => {
@@ -584,7 +598,7 @@ describe("SessionService.refreshForTenant renewal [PREETS-SESSION-008, PREETS-SE
   it.effect.each(qualifyingActivities)(
     "renews a still-usable session for %s from one effective policy",
     (activity) =>
-      scenario(() =>
+      scenario(
         Effect.gen(function*() {
           yield* TestClock.setTime(BASE_TIME)
           const service = yield* SessionService
@@ -610,7 +624,7 @@ describe("SessionService.refreshForTenant renewal [PREETS-SESSION-008, PREETS-SE
   )
 
   it.effect("adopts a changed timeout and warning together, including a disabled warning", () =>
-    scenario(() =>
+    scenario(
       Effect.gen(function*() {
         yield* TestClock.setTime(BASE_TIME)
         const service = yield* SessionService
@@ -646,8 +660,9 @@ describe("SessionService.refreshForTenant renewal [PREETS-SESSION-008, PREETS-SE
     ))
 
   it.effect("leaves an unrefreshed session on the policy from its own establishment", () =>
-    scenario((redis) =>
+    scenario(
       Effect.gen(function*() {
+        const redis = yield* SessionRedis
         yield* TestClock.setTime(BASE_TIME)
         const service = yield* SessionService
         const first = yield* establish(service, 30, 5)
@@ -656,7 +671,7 @@ describe("SessionService.refreshForTenant renewal [PREETS-SESSION-008, PREETS-SE
           policy: policyOf(20, 3),
           tenantAlias: alias
         })
-        const before = storedSnapshot(redis)
+        const before = yield* redis.records
         const receivedAt = BASE_TIME + 15_000
         yield* TestClock.setTime(receivedAt)
         const renewed = yield* service.refreshForTenant({
@@ -670,18 +685,20 @@ describe("SessionService.refreshForTenant renewal [PREETS-SESSION-008, PREETS-SE
           warningLeadMinutes: 0
         })
         expect(yield* service.read({ reference: second.reference })).toStrictEqual(second.session)
-        const secondKey = [...before.entries.keys()].find((key) => before.entries.get(key)?.includes("\"subject-2\""))
-        expect(secondKey).toEqual(expect.any(String))
-        if (secondKey !== undefined) {
-          expect(redis.entries.get(secondKey)).toBe(before.entries.get(secondKey))
-          expect(redis.ttls.get(secondKey)).toBe(before.ttls.get(secondKey))
-        }
+        const secondRecords = [...before].filter(([, record]) => record.payload.includes("\"subject-2\""))
+        expect(secondRecords).toHaveLength(1)
+        const after = yield* redis.records
+        expectUnchanged(
+          new Map(secondRecords),
+          new Map([...after].filter(([key]) => secondRecords.some(([owned]) => owned === key)))
+        )
       })
     ))
 
   it.effect("returns NoUsableSession for an absent or invalid reference without a Redis lookup", () =>
-    scenario((redis) =>
+    scenario(
       Effect.gen(function*() {
+        const redis = yield* SessionRedis
         const service = yield* SessionService
         const absent = yield* service.refreshForTenant({
           activity: "continue-session",
@@ -696,20 +713,18 @@ describe("SessionService.refreshForTenant renewal [PREETS-SESSION-008, PREETS-SE
         })
         expect(absent).toStrictEqual(noUsableSession)
         expect(invalid).toStrictEqual(noUsableSession)
-        expect(redis.entries.size).toBe(0)
-        expect(redis.commands).not.toContain("EVALSHA")
-        expect(redis.commands).not.toContain("GET")
-        expect(redis.commands).not.toContain("SET")
+        expect(yield* redis.commands).toStrictEqual([])
       })
     ))
 
   it.effect("returns fieldless SessionTenantMismatch and leaves bytes and TTL unchanged", () =>
-    scenario((redis) =>
+    scenario(
       Effect.gen(function*() {
+        const redis = yield* SessionRedis
         yield* TestClock.setTime(BASE_TIME)
         const service = yield* SessionService
         const established = yield* establish(service, 30, 5)
-        const before = storedSnapshot(redis)
+        const before = yield* redis.records
         const mismatched = yield* service.refreshForTenant({
           activity: "deliberate-page-request",
           policy: policyOf(10, 1),
@@ -726,18 +741,19 @@ describe("SessionService.refreshForTenant renewal [PREETS-SESSION-008, PREETS-SE
           expect(diagnostic).not.toContain("alpha")
           expect(diagnostic).not.toContain("beta")
         }
-        expect(storedSnapshot(redis)).toEqual(before)
+        yield* unchangedSince(before)
         expect(yield* service.read({ reference: established.reference })).toStrictEqual(established.session)
       })
     ))
 
   it.effect("keeps mismatch ahead of an already expired deadline without mutation", () =>
-    scenario((redis) =>
+    scenario(
       Effect.gen(function*() {
+        const redis = yield* SessionRedis
         yield* TestClock.setTime(BASE_TIME)
         const service = yield* SessionService
         const established = yield* establish(service, 30, 5)
-        const before = storedSnapshot(redis)
+        const before = yield* redis.records
         yield* TestClock.adjust("30 minutes")
         const mismatched = yield* service.refreshForTenant({
           activity: "continue-session",
@@ -747,20 +763,20 @@ describe("SessionService.refreshForTenant renewal [PREETS-SESSION-008, PREETS-SE
         }).pipe(Effect.result)
         expect(Result.isFailure(mismatched)).toBe(true)
         if (Result.isFailure(mismatched)) expect(mismatched.failure).toBeInstanceOf(SessionTenantMismatch)
-        expect(storedSnapshot(redis)).toEqual(before)
-        expect(redis.entries.size).toBe(1)
+        yield* unchangedSince(before)
+        expect(yield* recordCount).toBe(1)
       })
     ))
 })
 
 describe("SessionService.refreshForTenant policy properties [PREETS-SESSION-008]", () => {
-  test.prop([validPolicyArb, validPolicyArb, fc.integer({ max: 299_999, min: 0 })], { numRuns: 40 })(
+  it.effect.prop(
     "renewed deadline and warning come from the same refresh policy",
-    async (establishedPolicy, refreshPolicy, offset) => {
-      const redis = makeSessionMemoryRedis()
-      const receivedAt = BASE_TIME + offset
-      const renewed = await Effect.runPromise(
+    [ValidPolicy, ValidPolicy, minutesBetween(0, 299_999)],
+    ([establishedPolicy, refreshPolicy, offset]) =>
+      scenario(
         Effect.gen(function*() {
+          const receivedAt = BASE_TIME + offset
           yield* TestClock.setTime(BASE_TIME)
           const service = yield* SessionService
           const established = yield* service.establish({
@@ -769,22 +785,20 @@ describe("SessionService.refreshForTenant policy properties [PREETS-SESSION-008]
             tenantAlias: alias
           })
           yield* TestClock.setTime(receivedAt)
-          return yield* service.refreshForTenant({
+          const renewed = yield* service.refreshForTenant({
             activity: "continue-session",
             policy: refreshPolicy,
             reference: established.reference,
             tenantAlias: alias
           })
-        }).pipe(
-          Effect.provide(Layer.mergeAll(redisWorld(redis), TestClock.layer()))
-        )
-      )
-      expect(renewed).toMatchObject({
-        _tag: "UsableSession",
-        idleDeadlineEpochMilliseconds: receivedAt + refreshPolicy.idleTimeoutMinutes * 60_000,
-        warningLeadMinutes: refreshPolicy.warningLeadMinutes
-      })
-    }
+          expect(renewed).toMatchObject({
+            _tag: "UsableSession",
+            idleDeadlineEpochMilliseconds: receivedAt + refreshPolicy.idleTimeoutMinutes * 60_000,
+            warningLeadMinutes: refreshPolicy.warningLeadMinutes
+          })
+        })
+      ),
+    { arbitrary: { runs: 40 } }
   )
 })
 
@@ -792,19 +806,20 @@ describe("SessionService.refreshForTenant expiration [PREETS-SESSION-008, PREETS
   it.effect.each(excludedActivities)(
     "returns the current session for %s without writing",
     (activity) =>
-      scenario((redis) =>
+      scenario(
         Effect.gen(function*() {
+          const redis = yield* SessionRedis
           yield* TestClock.setTime(BASE_TIME)
           const service = yield* SessionService
           const established = yield* establish(service, 30, 5)
-          const before = storedSnapshot(redis)
+          const before = yield* redis.records
           const observed = yield* service.refreshForTenant({
             activity,
             reference: established.reference,
             tenantAlias: alias
           })
           expect(observed).toStrictEqual(established.session)
-          expect(storedSnapshot(redis)).toEqual(before)
+          yield* unchangedSince(before)
         })
       )
   )
@@ -812,7 +827,7 @@ describe("SessionService.refreshForTenant expiration [PREETS-SESSION-008, PREETS
   it.effect.each(qualifyingActivities)(
     "returns NoUsableSession for %s at the stored deadline and deletes the record",
     (activity) =>
-      scenario((redis) =>
+      scenario(
         Effect.gen(function*() {
           yield* TestClock.setTime(BASE_TIME)
           const service = yield* SessionService
@@ -825,14 +840,14 @@ describe("SessionService.refreshForTenant expiration [PREETS-SESSION-008, PREETS
             tenantAlias: alias
           })
           expect(result).toStrictEqual(noUsableSession)
-          expect(redis.entries.size).toBe(0)
+          expect(yield* recordCount).toBe(0)
           expect(yield* service.read({ reference: established.reference })).toStrictEqual(noUsableSession)
         })
       )
   )
 
   it.effect("does not revive an expired session when the timeout later increases", () =>
-    scenario((redis) =>
+    scenario(
       Effect.gen(function*() {
         yield* TestClock.setTime(BASE_TIME)
         const service = yield* SessionService
@@ -845,13 +860,13 @@ describe("SessionService.refreshForTenant expiration [PREETS-SESSION-008, PREETS
           tenantAlias: alias
         })
         expect(revived).toStrictEqual(noUsableSession)
-        expect(redis.entries.size).toBe(0)
+        expect(yield* recordCount).toBe(0)
         expect(yield* service.read({ reference: established.reference })).toStrictEqual(noUsableSession)
       })
     ))
 
   it.effect("returns NoUsableSession for an expired record before tenant admission on read", () =>
-    scenario((redis) =>
+    scenario(
       Effect.gen(function*() {
         yield* TestClock.setTime(BASE_TIME)
         const service = yield* SessionService
@@ -862,57 +877,58 @@ describe("SessionService.refreshForTenant expiration [PREETS-SESSION-008, PREETS
           tenantAlias: otherAlias
         })
         expect(result).toStrictEqual(noUsableSession)
-        expect(redis.entries.size).toBe(0)
+        expect(yield* recordCount).toBe(0)
       })
     ))
 
   it.effect("returns NoUsableSession when a usable read completes after its deadline", () =>
-    scenario((redis) =>
+    scenario(
       Effect.gen(function*() {
+        const redis = yield* SessionRedis
         yield* TestClock.setTime(BASE_TIME)
         const service = yield* SessionService
         const established = yield* establish(service, 30, 5)
         const started = yield* Deferred.make<undefined>()
         const release = yield* Deferred.make<undefined>()
-        redis.holdNextEvaluation({ release, started })
+        yield* redis.injectNext("EVALSHA", { _tag: "Hold", release, started })
         const fiber = yield* Effect.forkChild(service.read({ reference: established.reference }))
         yield* Deferred.await(started)
         yield* TestClock.setTime(established.session.idleDeadlineEpochMilliseconds)
         yield* Deferred.succeed(release, undefined)
         expect(yield* Fiber.join(fiber)).toStrictEqual(noUsableSession)
-        expect(redis.entries.size).toBe(1)
+        expect(yield* recordCount).toBe(1)
       })
     ))
 })
 
 describe("SessionService storage failures", () => {
   it.effect("returns NoUsableSession for missing and deleted state without a tombstone", () =>
-    scenario((redis) =>
+    scenario(
       Effect.gen(function*() {
+        const redis = yield* SessionRedis
         yield* TestClock.setTime(BASE_TIME)
         const service = yield* SessionService
         const established = yield* establish(service, 30, 5)
-        redis.entries.clear()
+        yield* redis.removeAll
         expect(yield* service.read({ reference: established.reference })).toStrictEqual(noUsableSession)
         const expired = yield* establish(service, 5, 0)
         yield* TestClock.setTime(expired.session.idleDeadlineEpochMilliseconds)
         expect(yield* service.read({ reference: expired.reference })).toStrictEqual(noUsableSession)
-        expect(redis.entries.size).toBe(0)
-        expect([...redis.entries.values()].join("\n")).not.toContain("tombstone")
+        expect(yield* recordCount).toBe(0)
       })
     ))
 
   it.effect("does not renew or delete a record with an unsafe integer warning", () =>
-    scenario((redis) =>
+    scenario(
       Effect.gen(function*() {
+        const redis = yield* SessionRedis
         yield* TestClock.setTime(BASE_TIME)
         const service = yield* SessionService
         const established = yield* establish(service, 30, 5)
-        for (const [key, payload] of redis.entries) {
-          const record = JSON.parse(payload) as Record<string, unknown>
-          redis.entries.set(key, JSON.stringify({ ...record, warningLeadMinutes: 9_007_199_254_740_992 }))
-        }
-        const before = storedSnapshot(redis)
+        yield* redis.rewriteAll((payload) =>
+          JSON.stringify({ ...JSON.parse(payload), warningLeadMinutes: 9_007_199_254_740_992 })
+        )
+        const before = yield* redis.records
         const refreshed = yield* service.refreshForTenant({
           activity: "continue-session",
           policy: policyOf(12, 1),
@@ -925,18 +941,19 @@ describe("SessionService storage failures", () => {
         const expired = yield* service.read({ reference: established.reference }).pipe(Effect.result)
         expect(Result.isFailure(expired)).toBe(true)
         if (Result.isFailure(expired)) expect(expired.failure).toBeInstanceOf(SessionServiceUnavailable)
-        expect(storedSnapshot(redis)).toEqual(before)
+        yield* unchangedSince(before)
       })
     ))
 
   it.effect("returns SessionServiceUnavailable when refresh cannot evaluate or decode", () =>
-    scenario((redis) =>
+    scenario(
       Effect.gen(function*() {
+        const redis = yield* SessionRedis
         yield* TestClock.setTime(BASE_TIME)
         const service = yield* SessionService
         const established = yield* establish(service, 30, 5)
-        const before = storedSnapshot(redis)
-        redis.failNextCommand("EVALSHA")
+        const before = yield* redis.records
+        yield* redis.injectNext("EVALSHA", { _tag: "Fail", cause: new Error("controlled EVALSHA failure") })
         const transport = yield* service.refreshForTenant({
           activity: "text-entry",
           policy: policyOf(12, 1),
@@ -952,8 +969,8 @@ describe("SessionService storage failures", () => {
           expect(diagnostic).not.toContain("subject-1")
           expect(diagnostic).not.toContain("test:session")
         }
-        expect(storedSnapshot(redis)).toEqual(before)
-        redis.returnNextEvaluation(["unrecognized"])
+        yield* unchangedSince(before)
+        yield* redis.injectNext("EVALSHA", { _tag: "Reply", value: ["unrecognized"] })
         const decoded = yield* service.refreshForTenant({
           activity: "text-entry",
           policy: policyOf(12, 1),
@@ -962,7 +979,7 @@ describe("SessionService storage failures", () => {
         }).pipe(Effect.result)
         expect(Result.isFailure(decoded)).toBe(true)
         if (Result.isFailure(decoded)) expect(decoded.failure).toBeInstanceOf(SessionServiceUnavailable)
-        expect(storedSnapshot(redis)).toEqual(before)
+        yield* unchangedSince(before)
       })
     ))
 
@@ -976,12 +993,13 @@ describe("SessionService storage failures", () => {
     "current",
     null
   ])("fails closed for the unexpected script reply %j", (reply) =>
-    scenario((redis) =>
+    scenario(
       Effect.gen(function*() {
+        const redis = yield* SessionRedis
         yield* TestClock.setTime(BASE_TIME)
         const service = yield* SessionService
         const established = yield* establish(service, 30, 5)
-        redis.returnNextEvaluation(reply)
+        yield* redis.injectNext("EVALSHA", { _tag: "Reply", value: reply })
         const result = yield* service.read({ reference: established.reference }).pipe(Effect.result)
         expect(Result.isFailure(result)).toBe(true)
         if (Result.isFailure(result)) expect(result.failure).toBeInstanceOf(SessionServiceUnavailable)
@@ -1002,16 +1020,14 @@ describe("SessionService storage failures", () => {
   )(
     "leaves a %s record unchanged when refresh fails closed",
     ([_name, corrupt]) =>
-      scenario((redis) =>
+      scenario(
         Effect.gen(function*() {
+          const redis = yield* SessionRedis
           yield* TestClock.setTime(BASE_TIME)
           const service = yield* SessionService
           const established = yield* establish(service, 30, 5)
-          const key = [...redis.entries.keys()][0]
-          expect(key).toEqual(expect.any(String))
-          if (key === undefined) return
-          redis.entries.set(key, corrupt(redis.entries.get(key) ?? ""))
-          const before = storedSnapshot(redis)
+          yield* redis.rewriteAll(corrupt)
+          const before = yield* redis.records
           const result = yield* service.refreshForTenant({
             activity: "continue-session",
             policy: policyOf(20, 4),
@@ -1020,21 +1036,22 @@ describe("SessionService storage failures", () => {
           }).pipe(Effect.result)
           expect(Result.isFailure(result)).toBe(true)
           if (Result.isFailure(result)) expect(result.failure).toBeInstanceOf(SessionServiceUnavailable)
-          expect(storedSnapshot(redis)).toEqual(before)
+          yield* unchangedSince(before)
         })
       )
   )
 
   it.effect("does not retry a refresh after the final write's result fails", () =>
-    scenario((redis) =>
+    scenario(
       Effect.gen(function*() {
+        const redis = yield* SessionRedis
         yield* TestClock.setTime(BASE_TIME)
         const service = yield* SessionService
         const established = yield* establish(service, 30, 5)
         const receivedAt = BASE_TIME + 5_000
         yield* TestClock.setTime(receivedAt)
-        const evaluationsBefore = redis.commands.filter((command) => command === "EVALSHA").length
-        redis.failNextEvaluationAfterMutation()
+        const evaluationsBefore = (yield* commandsNamed("EVALSHA")).length
+        yield* redis.injectNext("EVALSHA", { _tag: "FailAfterApply" })
         const failed = yield* service.refreshForTenant({
           activity: "continue-session",
           policy: policyOf(11, 2),
@@ -1043,7 +1060,7 @@ describe("SessionService storage failures", () => {
         }).pipe(Effect.result)
         expect(Result.isFailure(failed)).toBe(true)
         if (Result.isFailure(failed)) expect(failed.failure).toBeInstanceOf(SessionServiceUnavailable)
-        expect(redis.commands.filter((command) => command === "EVALSHA").length).toBe(evaluationsBefore + 1)
+        expect(yield* commandsNamed("EVALSHA")).toHaveLength(evaluationsBefore + 1)
         expect(yield* service.read({ reference: established.reference })).toMatchObject({
           _tag: "UsableSession",
           idleDeadlineEpochMilliseconds: receivedAt + 11 * 60_000,
@@ -1055,7 +1072,7 @@ describe("SessionService storage failures", () => {
 
 describe("SessionService shared reads", () => {
   it.effect("repeated reads preserve identical public state", () =>
-    scenario(() =>
+    scenario(
       Effect.gen(function*() {
         yield* TestClock.setTime(BASE_TIME)
         const service = yield* SessionService

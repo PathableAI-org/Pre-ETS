@@ -4,7 +4,7 @@ import { TestClock } from "effect/testing"
 
 import { SessionService } from "../../src/session.ts"
 import { effectiveSessionPolicy, TenantConfigService } from "../../src/tenant.ts"
-import { makeSessionMemoryRedis } from "../helpers/session.ts"
+import { SessionRedis, sessionWorld } from "../helpers/session.ts"
 
 const baseDocument = {
   displayName: "Synthetic policy",
@@ -57,14 +57,9 @@ const refreshFromHost = Effect.fnUntraced(function*(host: string, reference: str
   })
 })
 
-const world = (
-  redis: ReturnType<typeof makeSessionMemoryRedis>,
-  documents: ReadonlyMap<string, ReturnType<typeof tenantDocument>>
-) =>
+const world = (documents: ReadonlyMap<string, ReturnType<typeof tenantDocument>>) =>
   Layer.mergeAll(
-    SessionService.layer({ keyPrefix: "test:session" }).pipe(
-      Layer.provide(redis.layer)
-    ),
+    sessionWorld,
     TenantConfigService.layer({ baseHostname: "example.test", configDir: "/tenant-config", resolution: "host" })
   ).pipe(
     Layer.provide(FileSystem.layerNoop({
@@ -85,10 +80,10 @@ describe("selected tenant policy and session refresh [PREETS-SESSION-008, PREETS
   it.effect.each(invalidPolicies)(
     "rejects a %s tenant policy before establish or refresh",
     ([name, policy]) => {
-      const redis = makeSessionMemoryRedis()
       const documents = new Map([[`${name}.json`, tenantDocument(policy)]])
       const host = `${name}.example.test`
       return Effect.gen(function*() {
+        const redis = yield* SessionRedis
         const established = yield* establishFromHost(host, "subject-policy").pipe(Effect.result)
         const refreshed = yield* refreshFromHost(host, "not-a-reference").pipe(Effect.result)
         expect(Result.isFailure(established)).toBe(true)
@@ -97,8 +92,8 @@ describe("selected tenant policy and session refresh [PREETS-SESSION-008, PREETS
           expect(established.failure).toMatchObject({ _tag: "TenantNotFound" })
         }
         if (Result.isFailure(refreshed)) expect(refreshed.failure).toMatchObject({ _tag: "TenantNotFound" })
-        expect(redis.commands).toEqual([])
-      }).pipe(Effect.provide(world(redis, documents)))
+        expect(yield* redis.commands).toStrictEqual([])
+      }).pipe(Effect.provide(world(documents)))
     }
   )
 
@@ -106,7 +101,6 @@ describe("selected tenant policy and session refresh [PREETS-SESSION-008, PREETS
     const documents = new Map<string, ReturnType<typeof tenantDocument>>([
       ["renewal.json", tenantDocument({ idleTimeoutMinutes: 30, warningLeadMinutes: 5 })]
     ])
-    const redis = makeSessionMemoryRedis()
     return Effect.gen(function*() {
       yield* TestClock.setTime(BASE_TIME)
       const session = yield* SessionService
@@ -139,8 +133,6 @@ describe("selected tenant policy and session refresh [PREETS-SESSION-008, PREETS
         warningLeadMinutes: 5
       })
       expect(yield* session.read({ reference: first.reference })).toStrictEqual(renewed)
-    }).pipe(
-      Effect.provide(Layer.mergeAll(world(redis, documents), TestClock.layer()))
-    )
+    }).pipe(Effect.provide(world(documents)))
   })
 })

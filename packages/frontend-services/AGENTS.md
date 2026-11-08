@@ -51,6 +51,7 @@ From the repository root, run:
 
 - `pnpm --filter @pathableai/pre-ets-frontend-services lint`
 - `pnpm --filter @pathableai/pre-ets-frontend-services typecheck`
-- `pnpm --filter @pathableai/pre-ets-frontend-services test`
+- `pnpm --filter @pathableai/pre-ets-frontend-services test` (session scenarios need Redis at `REDIS_URL`,
+  default `redis://127.0.0.1:6379`)
 - `pnpm --filter @pathableai/pre-ets-frontend-services test:integration`
 - `pnpm --filter @pathableai/pre-ets-frontend-services build`

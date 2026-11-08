@@ -1,362 +1,151 @@
-import { Deferred, Effect, Layer } from "effect"
+import { NodeRedis } from "@effect/platform-node"
+import { Clock, Context, Deferred, Effect, Layer } from "effect"
 import * as Redis from "effect/persistence/Redis"
-import { createHash } from "node:crypto"
+import { randomUUID } from "node:crypto"
 
-import { makeRedis, parseSetNx } from "./redis.ts"
+import { SessionService } from "../../src/session.ts"
+import { makeRedis, poolClock } from "./redis.ts"
 
-export interface EvaluationHold {
-  readonly release: Deferred.Deferred<undefined>
-  readonly started: Deferred.Deferred<undefined>
+export interface StoredSessionRecord {
+  readonly payload: string
+  readonly ttlMilliseconds: number
 }
 
-export interface SessionMemoryRedis {
-  readonly commands: string[]
-  readonly entries: Map<string, string>
-  readonly failNextCommand: (command: SessionMemoryRedisFailableCommand, cause?: unknown) => void
-  readonly failNextDeletionAfterMutation: () => void
-  readonly failNextEvaluationAfterMutation: () => void
-  readonly holdNextEvaluation: (hold: EvaluationHold) => void
-  readonly layer: Layer.Layer<Redis.Redis>
-  readonly returnNextCreation: (value: unknown) => void
-  readonly returnNextDeletion: (value: unknown) => void
-  readonly returnNextEvaluation: (value: unknown) => void
-  readonly ttls: Map<string, number>
-}
+type SessionRedisCommand = "DEL" | "EVALSHA" | "SET"
 
-interface MemoryState {
-  readonly entries: Map<string, string>
-  readonly ttls: Map<string, number>
-}
+/**
+ * A fault the next matching command meets instead of, or around, real Redis.
+ *
+ * - `Fail`: the command is not sent and fails with `cause`.
+ * - `FailAfterApply`: the command runs on Redis, then its reply is lost.
+ * - `Hold`: the command waits on `release` after signalling `started`, then runs.
+ * - `Reply`: the command is not sent and returns `value`.
+ */
+type SessionRedisFault =
+  | { readonly _tag: "Fail"; readonly cause: unknown }
+  | { readonly _tag: "FailAfterApply" }
+  | {
+    readonly _tag: "Hold"
+    readonly release: Deferred.Deferred<undefined>
+    readonly started: Deferred.Deferred<undefined>
+  }
+  | { readonly _tag: "Reply"; readonly value: unknown }
 
-type ScriptReply = readonly [string, string] | readonly [string]
+/**
+ * Real Redis for one scenario's key prefix, so session tests run the production
+ * Lua script. Faults cover only replies and failures the session parent must handle;
+ * record semantics always come from Redis.
+ */
+export class SessionRedis extends Context.Service<SessionRedis, {
+  /** Store commands the session service sent, in order. Setup and inspection are not recorded. */
+  readonly commands: Effect.Effect<readonly string[]>
+  readonly injectNext: (command: SessionRedisCommand, fault: SessionRedisFault) => Effect.Effect<void>
+  /** Every live record under this scenario's prefix, by key. */
+  readonly records: Effect.Effect<ReadonlyMap<string, StoredSessionRecord>, Redis.RedisError>
+  readonly removeAll: Effect.Effect<void, Redis.RedisError>
+  /** Replaces each live record's payload, keeping its TTL. */
+  readonly rewriteAll: (rewrite: (payload: string) => string) => Effect.Effect<void, Redis.RedisError>
+}>()("SessionRedis") {}
 
-interface StoredFields {
-  readonly idleDeadlineEpochMilliseconds: number
-  readonly issuer: string
-  readonly subject: string
-  readonly telemetryId: string
-  readonly tenantAlias: string
-  readonly version: 1
-  readonly warningLeadMinutes: number
-}
+const redisUrl = process.env.REDIS_URL ?? "redis://127.0.0.1:6379"
 
-const allowedFields = new Set([
-  "idleDeadlineEpochMilliseconds",
-  "issuer",
-  "subject",
-  "telemetryId",
-  "tenantAlias",
-  "version",
-  "warningLeadMinutes"
-])
+const nodeRedis = NodeRedis.layer({ disableOfflineQueue: true, url: redisUrl }).pipe(
+  Layer.provide(Layer.succeed(Clock.Clock, poolClock))
+)
 
-const uuidPattern =
-  /^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|[fF]{8}-[fF]{4}-[fF]{4}-[fF]{4}-[fF]{12})$/
+const ownedKeys = Effect.fnUntraced(function*(redis: Redis.Redis["Service"], prefix: string) {
+  const keys: string[] = []
+  let cursor = "0"
+  do {
+    const [next, page] = yield* redis.send<readonly [string, readonly string[]]>(
+      "SCAN",
+      cursor,
+      "MATCH",
+      `${prefix}:*`,
+      "COUNT",
+      "1000"
+    )
+    keys.push(...page)
+    cursor = next
+  } while (cursor !== "0")
+  return keys
+})
 
-export type SessionMemoryRedisFailableCommand = "DEL" | "EVALSHA" | "GET" | "SCRIPT" | "SET"
+const readRecords = Effect.fnUntraced(function*(redis: Redis.Redis["Service"], prefix: string) {
+  const records = new Map<string, StoredSessionRecord>()
+  for (const key of yield* ownedKeys(redis, prefix)) {
+    const payload = yield* redis.send<null | string>("GET", key)
+    const ttlMilliseconds = yield* redis.send<number>("PTTL", key)
+    if (payload !== null) records.set(key, { payload, ttlMilliseconds })
+  }
+  return records
+})
 
-const failableCommands = new Set<SessionMemoryRedisFailableCommand>(["DEL", "EVALSHA", "GET", "SCRIPT", "SET"])
+const removeOwned = Effect.fnUntraced(function*(redis: Redis.Redis["Service"], prefix: string) {
+  const keys = yield* ownedKeys(redis, prefix)
+  if (keys.length > 0) yield* redis.send("DEL", ...keys)
+})
 
-const isInteger = (value: unknown): value is number => typeof value === "number" && Number.isSafeInteger(value)
-
-const isNonEmptyString = (value: unknown): value is string => typeof value === "string" && value.length > 0
-
-const isExactRecord = (value: unknown): value is Record<string, unknown> => {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return false
-  const keys = Object.keys(value)
-  return keys.length === allowedFields.size && keys.every((key) => allowedFields.has(key))
-}
-
-const identityValid = (record: Record<string, unknown>): boolean =>
-  isNonEmptyString(record.issuer) &&
-  isNonEmptyString(record.subject) &&
-  isNonEmptyString(record.telemetryId) &&
-  uuidPattern.test(record.telemetryId)
-
-const boundsValid = (record: Record<string, unknown>): boolean => {
-  const deadline = record.idleDeadlineEpochMilliseconds
-  const warning = record.warningLeadMinutes
-  const tenant = record.tenantAlias
-  return isInteger(deadline) && deadline > 0 && isInteger(warning) && warning >= 0 &&
-    isNonEmptyString(tenant) && /^[a-z-]+$/.test(tenant)
-}
-
-const parsePayload = (payload: string): unknown => {
-  try {
-    return JSON.parse(payload)
-  } catch {
-    return undefined
+const applyFault = <A>(
+  fault: SessionRedisFault,
+  forward: Effect.Effect<A, Redis.RedisError>
+): Effect.Effect<A, Redis.RedisError> => {
+  switch (fault._tag) {
+    case "Fail":
+      return Effect.fail(new Redis.RedisError({ cause: fault.cause }))
+    case "FailAfterApply":
+      return forward.pipe(
+        Effect.andThen(Effect.fail(new Redis.RedisError({ cause: new Error("controlled lost reply") })))
+      )
+    case "Hold":
+      return Deferred.succeed(fault.started, undefined).pipe(
+        Effect.andThen(Deferred.await(fault.release)),
+        Effect.andThen(forward)
+      )
+    case "Reply":
+      return Effect.succeed(fault.value as A)
   }
 }
 
-const storedFields = (parsed: Record<string, unknown>): StoredFields | undefined => {
-  if (!isNonEmptyString(parsed.issuer) || !isNonEmptyString(parsed.subject)) return undefined
-  if (!isNonEmptyString(parsed.telemetryId) || !isNonEmptyString(parsed.tenantAlias)) return undefined
-  if (!isInteger(parsed.idleDeadlineEpochMilliseconds) || !isInteger(parsed.warningLeadMinutes)) return undefined
-  return {
-    idleDeadlineEpochMilliseconds: parsed.idleDeadlineEpochMilliseconds,
-    issuer: parsed.issuer,
-    subject: parsed.subject,
-    telemetryId: parsed.telemetryId,
-    tenantAlias: parsed.tenantAlias,
-    version: 1,
-    warningLeadMinutes: parsed.warningLeadMinutes
-  }
-}
+const makeSessionRedis = Effect.fnUntraced(function*(prefix: string) {
+  const real = yield* Redis.Redis
+  yield* Effect.addFinalizer(() => Effect.ignore(removeOwned(real, prefix)))
+  const commands: string[] = []
+  const faults = new Map<string, SessionRedisFault>()
 
-const readStored = (payload: string): StoredFields | undefined => {
-  const parsed = parsePayload(payload)
-  if (!isExactRecord(parsed) || parsed.version !== 1 || !identityValid(parsed) || !boundsValid(parsed)) {
-    return undefined
-  }
-  return storedFields(parsed)
-}
-
-const replacementPayload = (record: StoredFields, deadline: number, warning: number): string =>
-  JSON.stringify({
-    idleDeadlineEpochMilliseconds: deadline,
-    issuer: record.issuer,
-    subject: record.subject,
-    telemetryId: record.telemetryId,
-    tenantAlias: record.tenantAlias,
-    version: 1,
-    warningLeadMinutes: warning
-  })
-
-const renewRecord = (
-  state: MemoryState,
-  key: string,
-  record: StoredFields,
-  receivedAt: number,
-  timeoutText: string | undefined,
-  warningText: string | undefined
-): ScriptReply => {
-  const timeout = Number(timeoutText)
-  const warning = Number(warningText)
-  if (!isInteger(receivedAt) || !isInteger(timeout) || timeout <= 0 || !isInteger(warning) || warning < 0) {
-    return ["rejected"]
-  }
-  const deadline = receivedAt + timeout
-  const payload = replacementPayload(record, deadline, warning)
-  state.entries.set(key, payload)
-  state.ttls.set(key, deadline - receivedAt)
-  return ["renewed", payload]
-}
-
-const expireRecord = (state: MemoryState, key: string): ScriptReply => {
-  state.entries.delete(key)
-  state.ttls.delete(key)
-  return ["expired"]
-}
-
-interface LoadedRecord {
-  readonly _tag: "Loaded"
-  readonly raw: string
-  readonly record: StoredFields
-}
-
-const loadRecord = (state: MemoryState, key: string): LoadedRecord | ScriptReply => {
-  const raw = state.entries.get(key)
-  if (raw === undefined) return ["missing"]
-  const record = readStored(raw)
-  if (record === undefined) return ["malformed"]
-  return { _tag: "Loaded", raw, record }
-}
-
-const isLoadedRecord = (value: LoadedRecord | ScriptReply): value is LoadedRecord => !Array.isArray(value)
-
-const finishUsable = (
-  state: MemoryState,
-  key: string,
-  loaded: LoadedRecord,
-  mode: string | undefined,
-  tenant: string | undefined,
-  activity: string | undefined,
-  receivedAt: number,
-  timeoutText: string | undefined,
-  warningText: string | undefined
-): ScriptReply => {
-  if (mode === "refresh" && loaded.record.tenantAlias !== tenant) return ["mismatch"]
-  if (loaded.record.idleDeadlineEpochMilliseconds <= receivedAt) return expireRecord(state, key)
-  if (mode === "read" || activity === "excluded") return ["current", loaded.raw]
-  return renewRecord(state, key, loaded.record, receivedAt, timeoutText, warningText)
-}
-
-const applyTransition = (state: MemoryState, key: string, args: readonly string[]): ScriptReply => {
-  const [mode, receivedAtText, tenant, activity, timeoutText, warningText] = args
-  const receivedAt = Number(receivedAtText)
-  if ((mode !== "read" && mode !== "refresh") || !isInteger(receivedAt)) return ["rejected"]
-  const loaded = loadRecord(state, key)
-  if (!isLoadedRecord(loaded)) return loaded
-  return finishUsable(state, key, loaded, mode, tenant, activity, receivedAt, timeoutText, warningText)
-}
-
-const createEntry = (state: MemoryState, args: readonly string[]): null | string => {
-  const { key, payload, ttlMilliseconds } = parseSetNx(args)
-  if (state.entries.has(key)) return null
-  state.entries.set(key, payload)
-  state.ttls.set(key, ttlMilliseconds)
-  return "OK"
-}
-
-/** An injected reply replaces the whole SET, so nothing is stored. */
-const createReply = (state: MemoryState, controls: CreationControls, args: readonly string[]): unknown => {
-  if (controls.injected === undefined) return createEntry(state, args)
-  const value = controls.injected
-  controls.injected = undefined
-  return value
-}
-
-const readEntry = (state: MemoryState, args: readonly string[]): null | string => {
-  const key = args[0]
-  if (key === undefined) throw new Error("Missing GET key")
-  return state.entries.get(key) ?? null
-}
-
-const deleteEntry = (state: MemoryState, args: readonly string[]): 0 | 1 => {
-  const [key, ...rest] = args
-  if (key === undefined || rest.length > 0) throw new Error("Unexpected DEL shape")
-  if (!state.entries.delete(key)) return 0
-  state.ttls.delete(key)
-  return 1
-}
-
-const loadScript = (scripts: Map<string, string>, args: readonly string[]): string => {
-  const [subcommand, source] = args
-  if (subcommand !== "LOAD" || source === undefined) throw new Error("Unexpected SCRIPT")
-  const sha = createHash("sha1").update(source).digest("hex")
-  scripts.set(sha, source)
-  return sha
-}
-
-const redisFailure = (cause: unknown) => new Redis.RedisError({ cause })
-
-interface CreationControls {
-  injected: unknown
-}
-
-interface DeletionControls {
-  failAfterMutation: boolean
-  injected: unknown
-}
-
-interface EvaluationControls {
-  failAfterMutation: boolean
-  readonly holds: EvaluationHold[]
-  injected: unknown
-}
-
-const commandFailure = (
-  failures: Map<SessionMemoryRedisFailableCommand, unknown>,
-  command: string
-): unknown => {
-  if (!failableCommands.has(command as SessionMemoryRedisFailableCommand)) return undefined
-  const typed = command as SessionMemoryRedisFailableCommand
-  const cause = failures.get(typed)
-  failures.delete(typed)
-  return cause
-}
-
-const makeEvaluateSha = (
-  state: MemoryState,
-  scripts: Map<string, string>,
-  controls: EvaluationControls
-) =>
-  Effect.fnUntraced(function*(args: readonly string[]) {
-    const [sha, keyCount, key, ...rest] = args
-    if (sha === undefined || keyCount !== "1" || key === undefined) throw new Error("Unexpected EVALSHA")
-    if (!scripts.has(sha)) return yield* redisFailure(new Error("NOSCRIPT No matching script"))
-    const hold = controls.holds.shift()
-    if (hold !== undefined) {
-      yield* Deferred.succeed(hold.started, undefined)
-      yield* Deferred.await(hold.release)
-    }
-    if (controls.injected !== undefined) {
-      const value = controls.injected
-      controls.injected = undefined
-      return value
-    }
-    const reply = applyTransition(state, key, rest)
-    if (!controls.failAfterMutation) return reply
-    controls.failAfterMutation = false
-    return yield* redisFailure(new Error("controlled post-mutation failure"))
-  })
-
-const makeDelete = (state: MemoryState, controls: DeletionControls) =>
-  Effect.fnUntraced(function*(args: readonly string[]) {
-    if (controls.injected !== undefined) {
-      const value = controls.injected
-      controls.injected = undefined
-      return value
-    }
-    const reply = deleteEntry(state, args)
-    if (!controls.failAfterMutation) return reply
-    controls.failAfterMutation = false
-    return yield* redisFailure(new Error("controlled post-deletion failure"))
-  })
-
-const makeSend =
-  (
-    state: MemoryState,
-    scripts: Map<string, string>,
-    commands: string[],
-    failures: Map<SessionMemoryRedisFailableCommand, unknown>,
-    creationControls: CreationControls,
-    deleteEntryEffect: (args: readonly string[]) => Effect.Effect<unknown, Redis.RedisError>,
-    evaluateSha: (args: readonly string[]) => Effect.Effect<unknown, Redis.RedisError>
-  ) =>
-  <A>(command: string, ...args: readonly string[]) =>
-    Effect.gen(function*() {
+  const send = <A>(command: string, ...args: readonly string[]) =>
+    Effect.suspend(() => {
       commands.push(command)
-      const cause = commandFailure(failures, command)
-      if (cause !== undefined) return yield* redisFailure(cause)
-      if (command === "DEL") return (yield* deleteEntryEffect(args)) as A
-      if (command === "SCRIPT") return loadScript(scripts, args) as A
-      if (command === "EVALSHA") return (yield* evaluateSha(args)) as A
-      if (command === "GET") return readEntry(state, args) as A
-      if (command === "SET") return createReply(state, creationControls, args) as A
-      return yield* redisFailure(new Error(`Unexpected Redis command: ${command}`))
+      const fault = faults.get(command)
+      faults.delete(command)
+      const forward = real.send<A>(command, ...args)
+      return fault === undefined ? forward : applyFault(fault, forward)
     })
 
-export const makeSessionMemoryRedis = (): SessionMemoryRedis => {
-  const entries = new Map<string, string>()
-  const ttls = new Map<string, number>()
-  const scripts = new Map<string, string>()
-  const commands: string[] = []
-  const failures = new Map<SessionMemoryRedisFailableCommand, unknown>()
-  const creationControls: CreationControls = { injected: undefined }
-  const deletionControls: DeletionControls = { failAfterMutation: false, injected: undefined }
-  const controls: EvaluationControls = { failAfterMutation: false, holds: [], injected: undefined }
-  const state = { entries, ttls }
-  const deleteEntryEffect = makeDelete(state, deletionControls)
-  const evaluateSha = makeEvaluateSha(state, scripts, controls)
-  const send = makeSend(state, scripts, commands, failures, creationControls, deleteEntryEffect, evaluateSha)
-  const service = makeRedis(send)
-  return {
-    commands,
-    entries,
-    failNextCommand: (command, cause) => {
-      failures.set(command, cause ?? new Error(`controlled ${command} failure`))
-    },
-    failNextDeletionAfterMutation: () => {
-      deletionControls.failAfterMutation = true
-    },
-    failNextEvaluationAfterMutation: () => {
-      controls.failAfterMutation = true
-    },
-    holdNextEvaluation: (hold) => {
-      controls.holds.push(hold)
-    },
-    layer: Layer.effect(Redis.Redis, service),
-    returnNextCreation: (value) => {
-      creationControls.injected = value
-    },
-    returnNextDeletion: (value) => {
-      deletionControls.injected = value
-    },
-    returnNextEvaluation: (value) => {
-      controls.injected = value
-    },
-    ttls
-  }
-}
+  const control = SessionRedis.of({
+    commands: Effect.sync(() => [...commands]),
+    injectNext: (command, fault) => Effect.sync(() => faults.set(command, fault)),
+    records: readRecords(real, prefix),
+    removeAll: removeOwned(real, prefix),
+    rewriteAll: Effect.fnUntraced(function*(rewrite) {
+      for (const [key, { payload }] of yield* readRecords(real, prefix)) {
+        yield* real.send("SET", key, rewrite(payload), "KEEPTTL")
+      }
+    })
+  })
+  const redis = yield* makeRedis(send)
+  return Context.make(SessionRedis, control).pipe(Context.add(Redis.Redis, redis))
+})
+
+/**
+ * A fresh session world per build: the real SessionService on real Redis under a
+ * unique key prefix, plus the scenario's SessionRedis controls. Owned keys are
+ * deleted when the scope closes.
+ */
+export const sessionWorld: Layer.Layer<SessionRedis | SessionService, Redis.RedisError> = Layer.unwrap(
+  Effect.sync(() => {
+    const prefix = `test:session:${randomUUID()}`
+    const redis = Layer.effectContext(makeSessionRedis(prefix)).pipe(Layer.provide(nodeRedis))
+    return SessionService.layer({ keyPrefix: prefix }).pipe(Layer.provideMerge(redis))
+  })
+)
