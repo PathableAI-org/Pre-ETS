@@ -150,16 +150,16 @@ const exactCallback = (origin: URL): { readonly authority: string; readonly redi
   redirectUri: new URL("/auth/callback", origin).href
 })
 
-const authenticationServiceLayer = (settings: AuthenticationSettings) =>
-  Layer.effect(
+const authenticationServiceLayer = (settings: AuthenticationSettings) => {
+  // The provider adapter's fetch hook runs outside Effect and needs a throwing validator.
+  const validateUrl = Schema.decodeUnknownSync(permittedUrl(settings.allowInsecureLoopback))
+  const decodeUrl = Schema.decodeUnknownEffect(permittedUrl(settings.allowInsecureLoopback))
+  return Layer.effect(
     AuthenticationService,
     Effect.gen(function*() {
       const credentials = yield* ClientCredentials
       const tenant = yield* TenantConfigService
       const transactions = yield* AuthenticationTransactions
-      // The provider adapter's fetch hook runs outside Effect and needs a throwing validator.
-      const validateUrl = Schema.decodeUnknownSync(permittedUrl(settings.allowInsecureLoopback))
-      const decodeUrl = Schema.decodeUnknownEffect(permittedUrl(settings.allowInsecureLoopback))
 
       const prepare = Effect.fn("AuthenticationService.prepare")(function*({ host }: { readonly host: string }) {
         const requestHost = parseRequestHost(host)
@@ -309,3 +309,4 @@ const authenticationServiceLayer = (settings: AuthenticationSettings) =>
       AuthenticationTransactions.layer(settings.transactions)
     ))
   )
+}

@@ -86,6 +86,20 @@ under test. For small runtime type guards in Effect code, use existing `Predicat
 helpers instead of inventing `isRecord`/`isString` utilities. Outside Effect code,
 use the owning framework's and TypeScript's normal narrowing tools.
 
+Describe untrusted input by the shapes you accept, not by the checks you run. A callback
+query, a Redis reply, or a token's claims is a Schema: a union of exact structs or tuples,
+decoded once, with `onExcessProperty: "error"` where unknown fields must be rejected.
+A chain of `typeof`, `Array.isArray`, and `=== undefined` helpers is the same decoder
+written by hand, spread across functions, and harder to check against the contract.
+
+Inside Effect code, decode with `Schema.decodeUnknownEffect` or `Schema.decodeUnknownOption`.
+A `*Sync` codec throws, so wrapping it in `Effect.try` turns a typed `SchemaError` into
+`unknown`. Build a sync validator only for a non-Effect caller, such as a third-party
+callback, and build it outside the generator. To brand a value the code generated itself,
+use the schema's `make`. The root `no-restricted-syntax` rejects a `Schema.*Sync` call
+inside a generator function or `Effect.try`. The language service's `schemaSyncInEffect`
+does not report these calls in this Effect version.
+
 A file, request body, or stored record is input, not configuration. Read it with the
 owning capability, such as `FileSystem.readFileString`, and decode it with Schema, for
 example `Schema.fromJsonString`. Do not wrap it in a `ConfigProvider` to reuse `Config`

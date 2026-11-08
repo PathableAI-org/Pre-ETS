@@ -14,8 +14,12 @@ Review the implementation against the approved specification and engineering pla
   untagged wrapper error where a tagged `reason` union belongs. Check for both.
 - In Effect workspaces, flag file, request, or stored content routed through a `ConfigProvider` or `Config` recipe
   instead of being read and decoded with Schema. Also flag a failure classified by string matching on a cause,
-  including when the matching is wrapped in a helper that lint does not see. See
+  including when the matching is wrapped in a helper that lint does not see. Flag hand-written type checks on
+  untrusted input where a Schema of the accepted shapes belongs. Flag a sync decoder bound outside a generator and
+  called inside one. See
   [Validation, errors, and runtime checks](../../docs/engineering/effect-guidance.md#validation-errors-and-runtime-checks).
+- Flag single-use helpers whose only purpose is to lower a complexity score. Ask for a representation that removes
+  the branches; see [Fallow](../../docs/engineering/fallow.md#complexity-dead-code-and-type-aware-analysis).
 - Flag behavior or signatures that drift from the approved specification or `contracts/modules.md`.
 - A planned `quickstart.md` procedure is not defective because it has not yet been executed. On an implementation
   review, identify evidence the pull request claims but does not show.

@@ -160,6 +160,18 @@ Shared [`.fallowrc.shared.json`](../../.fallowrc.shared.json) fails complexity a
 - Root [`tests/bdd/support/server.ts`](../../tests/bdd/support/server.ts): CRAP 60 for `response.on("end")`, `signalProcessGroup`, `stopSite`, and `waitUntilReady`.
 - Frontend [`src/features/onsite/visit-state.ts`](../../packages/frontend/src/features/onsite/visit-state.ts): cyclomatic 15 for `transitionVisit`.
 
+Fix a complexity finding by changing the representation, not by moving branches into
+single-use helpers. Splitting one decision into `isX`, `kindOf`, and `shapeFromValues`
+helpers lowers each function's score but keeps every branch, and the reader now has to
+assemble the rule from several places. Look for a shape that removes the branches:
+
+- Untrusted input: describe the accepted shapes as a Schema (a union of exact structs or
+  tuples) and decode it once.
+- A fixed mapping: use a lookup object or a `switch` on a literal union.
+- Several equal comparisons: write one boolean expression instead of an array of pairs.
+
+A helper is worth extracting when it names a reusable concept or has a second caller.
+
 Frontend dead-code analysis runs in production mode. Production code counts as live only when it
 is reachable from Next.js framework entry points, including routes, layouts, proxy, and
 instrumentation. Library files, ordinary helpers under `app`, and server-action modules need an

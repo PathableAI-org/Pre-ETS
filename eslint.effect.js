@@ -42,6 +42,8 @@ const identifierMatchesClass = {
 
 const schemaInstanceOfError = "CallExpression[callee.object.name='Schema'][callee.property.name='instanceOf']"
 
+const schemaSyncCodec = "CallExpression[callee.object.name='Schema'][callee.property.name=/^(decode|encode)\\w*Sync$/]"
+
 /** `no-restricted-syntax` entries for Effect error shapes; the root config merges them into its single entry. */
 export const effectRestrictedSyntax = [
   {
@@ -51,6 +53,14 @@ export const effectRestrictedSyntax = [
   {
     message: "Construct errors with `new X({ ... })`; do not add a static `new` factory.",
     selector: "MethodDefinition[static=true][key.name='new']"
+  },
+  {
+    message:
+      "Inside Effect code, use `Schema.decodeUnknownEffect`/`encodeEffect` so failures stay typed; a sync codec throws. Build a throwing validator outside the generator only for non-Effect callers.",
+    selector: [
+      `:function[generator=true] ${schemaSyncCodec}`,
+      `CallExpression[callee.object.name='Effect'][callee.property.name=/^try(Promise)?$/] ${schemaSyncCodec}`
+    ].join(", ")
   },
   {
     message: "Use `Schema.Defect()` for an error cause.",
