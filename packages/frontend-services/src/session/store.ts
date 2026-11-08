@@ -213,7 +213,7 @@ const unavailable = () => new SessionStoreUnavailable({})
 
 const makeCreate = (redis: Redis.Redis["Service"], prefix: string) =>
   Effect.fnUntraced(function*(address: SessionStoreAddress, payload: string, ttlMilliseconds: number) {
-    const result = yield* redis.send<null | string>(
+    const reply = yield* redis.send(
       "SET",
       keyFor(prefix, address.reference),
       payload,
@@ -221,7 +221,9 @@ const makeCreate = (redis: Redis.Redis["Service"], prefix: string) =>
       "PX",
       String(ttlMilliseconds)
     ).pipe(Effect.mapError(unavailable))
-    return result === "OK" ? "created" : "exists"
+    if (reply === "OK") return "created" as const
+    if (reply === null) return "exists" as const
+    return yield* unavailable()
   })
 
 const makeInvalidate = (redis: Redis.Redis["Service"], prefix: string) =>

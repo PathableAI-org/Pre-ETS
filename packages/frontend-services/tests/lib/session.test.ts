@@ -381,6 +381,27 @@ describe("SessionService read outcomes", () => {
       })
     ))
 
+  it.effect.each(["QUEUED", 1, "ok", ["OK"]])(
+    "fails closed without retrying creation for the unexpected SET reply %#",
+    (reply) =>
+      scenario((redis) =>
+        Effect.gen(function*() {
+          yield* TestClock.setTime(BASE_TIME)
+          const service = yield* SessionService
+          redis.returnNextCreation(reply)
+
+          const result = yield* establish(service, 30, 5).pipe(Effect.result)
+
+          expect(Result.isFailure(result)).toBe(true)
+          if (Result.isFailure(result)) {
+            expect(result.failure).toBeInstanceOf(SessionServiceUnavailable)
+            expect(Object.keys(result.failure)).toStrictEqual(["_tag"])
+          }
+          expect(redis.commands.filter((command) => command === "SET")).toHaveLength(1)
+        })
+      )
+  )
+
   it.effect("returns SessionServiceUnavailable when establishment cannot persist", () =>
     scenario((redis) =>
       Effect.gen(function*() {

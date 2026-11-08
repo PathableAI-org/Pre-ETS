@@ -17,6 +17,7 @@ export interface SessionMemoryRedis {
   readonly failNextEvaluationAfterMutation: () => void
   readonly holdNextEvaluation: (hold: EvaluationHold) => void
   readonly layer: Layer.Layer<Redis.Redis>
+  readonly returnNextCreation: (value: unknown) => void
   readonly returnNextDeletion: (value: unknown) => void
   readonly returnNextEvaluation: (value: unknown) => void
   readonly ttls: Map<string, number>
@@ -200,6 +201,14 @@ const createEntry = (state: MemoryState, args: readonly string[]): null | string
   return "OK"
 }
 
+/** An injected reply replaces the whole SET, so nothing is stored. */
+const createReply = (state: MemoryState, controls: CreationControls, args: readonly string[]): unknown => {
+  if (controls.injected === undefined) return createEntry(state, args)
+  const value = controls.injected
+  controls.injected = undefined
+  return value
+}
+
 const readEntry = (state: MemoryState, args: readonly string[]): null | string => {
   const key = args[0]
   if (key === undefined) throw new Error("Missing GET key")
@@ -223,6 +232,10 @@ const loadScript = (scripts: Map<string, string>, args: readonly string[]): stri
 }
 
 const redisFailure = (cause: unknown) => new Redis.RedisError({ cause })
+
+interface CreationControls {
+  injected: unknown
+}
 
 interface DeletionControls {
   failAfterMutation: boolean
@@ -290,6 +303,7 @@ const makeSend =
     scripts: Map<string, string>,
     commands: string[],
     failures: Map<SessionMemoryRedisFailableCommand, unknown>,
+    creationControls: CreationControls,
     deleteEntryEffect: (args: readonly string[]) => Effect.Effect<unknown, Redis.RedisError>,
     evaluateSha: (args: readonly string[]) => Effect.Effect<unknown, Redis.RedisError>
   ) =>
@@ -302,7 +316,7 @@ const makeSend =
       if (command === "SCRIPT") return loadScript(scripts, args) as A
       if (command === "EVALSHA") return (yield* evaluateSha(args)) as A
       if (command === "GET") return readEntry(state, args) as A
-      if (command === "SET") return createEntry(state, args) as A
+      if (command === "SET") return createReply(state, creationControls, args) as A
       return yield* redisFailure(new Error(`Unexpected Redis command: ${command}`))
     })
 
@@ -312,12 +326,13 @@ export const makeSessionMemoryRedis = (): SessionMemoryRedis => {
   const scripts = new Map<string, string>()
   const commands: string[] = []
   const failures = new Map<SessionMemoryRedisFailableCommand, unknown>()
+  const creationControls: CreationControls = { injected: undefined }
   const deletionControls: DeletionControls = { failAfterMutation: false, injected: undefined }
   const controls: EvaluationControls = { failAfterMutation: false, holds: [], injected: undefined }
   const state = { entries, ttls }
   const deleteEntryEffect = makeDelete(state, deletionControls)
   const evaluateSha = makeEvaluateSha(state, scripts, controls)
-  const send = makeSend(state, scripts, commands, failures, deleteEntryEffect, evaluateSha)
+  const send = makeSend(state, scripts, commands, failures, creationControls, deleteEntryEffect, evaluateSha)
   const service = makeRedis(send)
   return {
     commands,
@@ -335,6 +350,9 @@ export const makeSessionMemoryRedis = (): SessionMemoryRedis => {
       controls.holds.push(hold)
     },
     layer: Layer.effect(Redis.Redis, service),
+    returnNextCreation: (value) => {
+      creationControls.injected = value
+    },
     returnNextDeletion: (value) => {
       deletionControls.injected = value
     },
