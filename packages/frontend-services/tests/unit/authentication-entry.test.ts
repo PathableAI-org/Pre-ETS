@@ -13,7 +13,7 @@ import { CallbackFreshness } from "../../src/next.ts"
 import { createLoginHandler } from "../../src/next.ts"
 import { SessionService } from "../../src/session.ts"
 import { TenantAlias, TenantConfigService } from "../../src/tenant.ts"
-import { makeSessionMemoryRedis } from "../helpers/session.ts"
+import { sessionWorld } from "../helpers/session.ts"
 
 const runtime = vi.hoisted(() => ({ runPromise: vi.fn() }))
 vi.mock("../../src/runtime.ts", () => ({ Runtime: runtime }))
@@ -49,11 +49,23 @@ afterEach(() => {
   vi.clearAllMocks()
 })
 
-const redis = makeSessionMemoryRedis()
-
-const routeSessionLayer = SessionService.layer({ keyPrefix: "test:session" }).pipe(
-  Layer.provide(redis.layer)
-)
+const routeSessionLayer = Layer.succeed(SessionService, {
+  establish: (): never => {
+    throw new Error("establish must remain unused without a confirmed result")
+  },
+  invalidate: (): never => {
+    throw new Error("invalidate must remain unused by authentication entry")
+  },
+  read: (): never => {
+    throw new Error("read must remain unused by authentication entry")
+  },
+  readForTenant: (): never => {
+    throw new Error("readForTenant must remain unused by authentication entry")
+  },
+  refreshForTenant: (): never => {
+    throw new Error("refreshForTenant must remain unused by authentication entry")
+  }
+})
 
 const routeTenantLayer = Layer.succeed(TenantConfigService, {
   getAlias: (): never => {
@@ -199,12 +211,9 @@ describe("authentication Route Handlers [PREETS-SESSION-003, PREETS-SESSION-013]
       )
       const tenant = TenantConfigService.layer({ configDir: directory, resolution: "static", staticAlias: "alpha" })
         .pipe(Layer.provide(NodeServices.layer))
-      const session = SessionService.layer({ keyPrefix: "test:session" }).pipe(
-        Layer.provide(redis.layer)
-      )
       routeRuntime(
         { complete: () => Effect.succeed(trustedIdentity), prepare: () => Effect.die("prepare must remain unused") },
-        { confirmed: true, session, tenant }
+        { confirmed: true, session: sessionWorld, tenant }
       )
       const correlation = `oidc-correlation=${"B".repeat(43)}`
       const secureRequest = new NextRequest("https://alpha.example.test/auth/callback?code=secret-code&state=state-1", {
