@@ -211,6 +211,15 @@ const sessionTransition = Redis.script(
 
 const unavailable = () => new SessionStoreUnavailable({})
 
+/** Maps a raw mutation reply to its outcome; any other reply is unavailable and is never retried. */
+const expectedReply = <const A>(
+  reply: unknown,
+  outcomes: readonly (readonly [unknown, A])[]
+): Effect.Effect<A, SessionStoreUnavailable> => {
+  const match = outcomes.find(([expected]) => expected === reply)
+  return match === undefined ? Effect.fail(unavailable()) : Effect.succeed(match[1])
+}
+
 const makeCreate = (redis: Redis.Redis["Service"], prefix: string) =>
   Effect.fnUntraced(function*(address: SessionStoreAddress, payload: string, ttlMilliseconds: number) {
     const reply = yield* redis.send(
@@ -221,9 +230,7 @@ const makeCreate = (redis: Redis.Redis["Service"], prefix: string) =>
       "PX",
       String(ttlMilliseconds)
     ).pipe(Effect.mapError(unavailable))
-    if (reply === "OK") return "created" as const
-    if (reply === null) return "exists" as const
-    return yield* unavailable()
+    return yield* expectedReply(reply, [["OK", "created"], [null, "exists"]])
   })
 
 const makeInvalidate = (redis: Redis.Redis["Service"], prefix: string) =>
@@ -231,9 +238,7 @@ const makeInvalidate = (redis: Redis.Redis["Service"], prefix: string) =>
     const reply = yield* redis.send("DEL", keyFor(prefix, address.reference)).pipe(
       Effect.mapError(unavailable)
     )
-    if (reply === 0) return "missing" as const
-    if (reply === 1) return "removed" as const
-    return yield* unavailable()
+    return yield* expectedReply(reply, [[0, "missing"], [1, "removed"]])
   })
 
 const makeTransition = (redis: Redis.Redis["Service"], prefix: string) =>
