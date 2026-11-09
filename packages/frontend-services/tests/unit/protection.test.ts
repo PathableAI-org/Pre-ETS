@@ -159,11 +159,25 @@ afterEach(() => {
 
 const designatedPaths = ["/auth/callback", "/auth/login", "/login-unavailable", "/_test"] as const
 
-/** Independent statement of the closed designation, evaluated on the pathname the gate receives. */
-const isDesignated = (method: string, pathname: string) =>
-  (method === "GET" || method === "HEAD") &&
-  ((designatedPaths as readonly string[]).includes(pathname) ||
-    (pathname.startsWith("/_test/") && !/%(?:2f|5c|2e)/i.test(pathname)))
+const separators = ["/", "\\", "."]
+const count = (text: string, character: string) => text.split(character).length - 1
+
+/** A segment is safe when decoding it introduces no separator that the raw spelling lacked. */
+const decodesWithoutNewSeparator = (rawSegment: string) => {
+  const decoded = decodeURIComponent(rawSegment)
+  return separators.every((character) => count(decoded, character) === count(rawSegment, character))
+}
+
+/**
+ * Independent statement of the closed designation, evaluated segment by segment on the pathname the gate receives:
+ * an exact designated path, or `_test` as the first segment followed by segments that decode without a new separator.
+ */
+const isDesignated = (method: string, pathname: string) => {
+  if (method !== "GET" && method !== "HEAD") return false
+  if ((designatedPaths as readonly string[]).includes(pathname)) return true
+  const [root, first, ...rest] = pathname.split("/")
+  return root === "" && first === "_test" && rest.length > 0 && rest.every(decodesWithoutNewSeparator)
+}
 
 const segment = fc.array(
   fc.constantFrom("a", "z", "_", "-", ".", "test", "_test", "auth", "login", "%2F", "%2f", "%5C", "%2e", "%5F", "%41"),
@@ -190,7 +204,7 @@ describe("createProtectionProxy designation [PREETS-SESSION-001]", () => {
     pathname,
     fc.constantFrom("GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"),
     headerSubset
-  ])(
+  ], { numRuns: 500 })(
     "passes a request without a usable session through iff it is a designated GET or HEAD",
     async (path, method, headers) => {
       install(sessionDouble(() => Effect.succeed(noUsableSession)))
@@ -233,6 +247,8 @@ describe("createProtectionProxy designation [PREETS-SESSION-001]", () => {
     "/_test/..%2F",
     "/_test/%2e%2e/",
     "/_test/%5C",
+    "/_test/a%2eb",
+    "/_test/x/%2E%2Fy",
     "/_TEST/x",
     "/auth/login/extra",
     "/auth/login/",
