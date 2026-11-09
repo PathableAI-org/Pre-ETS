@@ -9,7 +9,8 @@ its transitions carry the B5 rules. All of it is private to that feature except 
 
 ## Server-provided snapshot
 
-`SessionCoordinationSnapshot` — `{ coordinationTag, idleDeadlineEpochMilliseconds, serverTimeEpochMilliseconds,
+`SessionCoordinationSnapshot` — `{ coordinationTag, idleDeadlineEpochMilliseconds, observedAtEpochMilliseconds,
+serverTimeEpochMilliseconds,
 warningLeadMinutes }`. Delivered as `(app)/layout.tsx` props and as the 200 body of activity and status. Converted on
 receipt to a **local deadline** `localNow + (idleDeadlineEpochMilliseconds - serverTimeEpochMilliseconds)`.
 
@@ -43,14 +44,14 @@ for a moved window reschedules (D5).
 `BroadcastChannel("preets-session-coordination")`. Every message carries `coordinationTag`; receivers ignore other
 tags and malformed messages.
 
-| `type`            | Additional fields                                                    | Sent when                                                                                                        | Receiver effect                                                                                                     |
-| ----------------- | -------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `renewed`         | `localDeadline`, `serverTimeEpochMilliseconds`, `warningLeadMinutes` | A tab receives a newer snapshot (activity, status, the inline mount script).                                     | Adopt if its server time is later than the held snapshot's, even with an earlier deadline; reschedule confirmation. |
-| `pending`         | `sendAt`                                                             | A tab coalesces an interaction.                                                                                  | Schedule a window-end flush at `sendAt`.                                                                            |
-| `logged-out`      | none                                                                 | A tab's logout ends the session, or 401/409 shows it no longer in force; sent after the ended record is written. | Unmount protected content; show the signed-out notice.                                                              |
-| `logout-started`  | none                                                                 | A tab sends a logout request (before the request).                                                               | Confirm with status once per second until `logged-out` or `logout-failed`, at most 10 s (D8).                       |
-| `logout-failed`   | none                                                                 | The initiator's logout answered 403, 503, or failed.                                                             | Stop the logout watch.                                                                                              |
-| `session-current` | none                                                                 | A protected document mounts (inline script).                                                                     | A tab whose own tag differs ends at once.                                                                           |
+| `type`            | Additional fields                                                    | Sent when                                                                                                        | Receiver effect                                                                                                                |
+| ----------------- | -------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `renewed`         | `localDeadline`, `observedAtEpochMilliseconds`, `warningLeadMinutes` | A tab receives a newer snapshot (activity, status, the inline mount script).                                     | Adopt if its store observation time is later than the held snapshot's, even with an earlier deadline; reschedule confirmation. |
+| `pending`         | `sendAt`                                                             | A tab coalesces an interaction.                                                                                  | Schedule a window-end flush at `sendAt`.                                                                                       |
+| `logged-out`      | none                                                                 | A tab's logout ends the session, or 401/409 shows it no longer in force; sent after the ended record is written. | Unmount protected content; show the signed-out notice.                                                                         |
+| `logout-started`  | none                                                                 | A tab sends a logout request (before the request).                                                               | Confirm with status once per second until `logged-out` or `logout-failed`, at most 10 s (D8).                                  |
+| `logout-failed`   | none                                                                 | The initiator's logout answered 403, 503, or failed.                                                             | Stop the logout watch.                                                                                                         |
+| `session-current` | none                                                                 | A protected document mounts (inline script).                                                                     | A tab whose own tag differs ends at once.                                                                                      |
 
 ## Tab coordination states
 

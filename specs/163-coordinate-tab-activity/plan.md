@@ -11,12 +11,13 @@ decisions in [docs/delivery/session-management.md](../../docs/delivery/session-m
 
 Add three frontend-services Next host adapters — `POST /session/activity`, `GET /session/status`, and
 `POST /auth/logout` — and one client feature, `session-coordination`, rendered by the protected `(app)` layout. The
-S2 `SessionService` is reused unchanged. The S1 gate gains one closed set: the three endpoint paths are protected
+S2 `SessionService` is reused with one additive field, the store observation time that orders snapshots. The S1 gate gains one closed set: the three endpoint paths are protected
 application requests that never renew, whatever the request shape. Activity renews through `refreshForTenant` after a
 tag check, status only reads, and logout calls `invalidate` and leaves the cookie alone, so a delayed logout response
 cannot delete a later session's cookie. A derived, one-way **coordination tag** binds every activity and logout request and every cross-tab message to
 the session the tab observed, so a stale tab can never renew or end a later session. Protected Server Action forms
-carry the same tag, and a client submit guard refuses submissions from a tab whose session is no longer current.
+carry the same tag, and a client submit guard holds a submission from a tab whose session may no longer be current until the server
+confirms it, then replays or ends.
 
 In the browser, a pure classifier admits only trusted control activation, text entry, keyboard and touch interaction,
 and user-driven focus on meaningful inputs. A pure B5 window policy, shared across tabs through one `localStorage`
@@ -40,7 +41,8 @@ designed. No new package, service, Layer, dependency, stored field, or configura
 browser `BroadcastChannel`, `navigator.locks`, `localStorage`, Page Visibility and Page Lifecycle events
 
 **Storage**: Existing frontend-services Redis session records only (unchanged schema and key layout); the existing
-host-only `pathable-session` cookie (re-issued on activity renewal, expired on logout); per-origin `localStorage`
+host-only `pathable-session` cookie, now written only at establishment and without `Max-Age` (no renewal or logout
+response sets it, research D15); per-origin `localStorage`
 record `preets-session-activity:v1` holding only a tag and two timestamps
 
 **Testing**: Vitest 5.1.0 with `@effect/vitest` 4.1.2 and `@fast-check/vitest` 0.5.0 (frontend-services unit and
@@ -112,11 +114,15 @@ specs/163-coordinate-tab-activity/
 packages/frontend-services/
 ├── src/
 │   ├── index.ts                     # + three handler factories, wire types
+│   ├── session.ts                   # UsableSession.observedAtEpochMilliseconds
+│   ├── session/store.ts             # script returns Redis TIME
 │   ├── next.ts                      # + re-exports from next/coordination.ts
 │   └── next/
 │       ├── coordination.ts          # NEW private child: schema, origin check, three programs
 │       ├── coordination-snapshot.ts # NEW leaf child: tag derivation, snapshot construction
-│       ├── protection.ts            # + NON_RENEWING_PATHS in the private classifier
+│       ├── protection.ts            # + NON_RENEWING_PATHS; renewals set no cookie
+│       ├── callback.ts              # session cookie without Max-Age (only writer)
+│       ├── cookies.ts               # setSessionCookie drops maxAgeSeconds
 │       └── session.ts               # ResolvedSessionRequest.coordination (via the leaf child)
 └── tests/
     ├── unit/coordination.test.ts             # NEW: examples + Fast-Check properties via src/next.ts
@@ -161,8 +167,9 @@ session service, store, and history guard are preserved.
 ### Phase 1 — Module architecture
 
 Decisions per responsibility are tabulated in
-[contracts/modules.md](contracts/modules.md#module-architecture-decisions). In short: **preserve** `SessionService`,
-the store, and `RestoredPageGuard`; **extend** the S1 gate's private classifier with the non-renewing endpoint paths;
+[contracts/modules.md](contracts/modules.md#module-architecture-decisions). In short: **preserve** `RestoredPageGuard` and every `SessionService` operation;
+**extend** `UsableSession` additively with the store observation time (research D6); **change** the session cookie
+so only establishment writes it, without `Max-Age` (research D15); **extend** the S1 gate's private classifier with the non-renewing endpoint paths;
 **extend** `frontend-services/src/next.ts` with activity, status, and logout handler factories in private
 `next/coordination.ts`, with tag and snapshot construction in the leaf child `next/coordination-snapshot.ts` so the
 page read does not import the handler module (avoiding a cycle through `next/cookies.ts`); **extend** `ResolvedSessionRequest` with the initial coordination snapshot; **add** the `session-coordination` feature
@@ -228,7 +235,7 @@ Claim-based evidence is tabulated per module in [contracts/modules.md](contracts
   `Schema.decodeUnknownEffect(Schema.fromJsonString(SessionActivityBody))` → 400 on failure; `resolveRequestTenant`
   (shared with the gate); `decodeSessionReference` on the cookie; derive the tag and compare in constant time → 409;
   `refreshForTenant({ activity, policy: effectiveSessionPolicy(config), reference, tenantAlias })`; on
-  `UsableSession`, `NextResponse.json(snapshot)` with `PRIVATE_NO_STORE` and `setSessionCookie(..., remainingIdleSeconds)`;
+  `UsableSession`, `NextResponse.json(snapshot)` with `PRIVATE_NO_STORE` and no `Set-Cookie`;
   on `NoUsableSession` 401. Failures are matched on `_tag` as `next/protection.ts` does: `SessionTenantMismatch` 403,
   `SessionServiceUnavailable` 503, `TenantFailure` → `tenantFailureStatus`.
 - `sessionStatus`: tenant, `readForTenant`, snapshot or 401/403/503. No origin check (a `GET` without effect, already
@@ -240,12 +247,16 @@ Claim-based evidence is tabulated per module in [contracts/modules.md](contracts
   from `node:crypto`; comparison uses `timingSafeEqual` on equal-length buffers. The handlers run in the Node runtime.
 
 **Snapshot for pages** (`next/session.ts`): when the read returns `UsableSession`, attach
-`{ coordinationTag, idleDeadlineEpochMilliseconds, serverTimeEpochMilliseconds: Clock.currentTimeMillis,
+`{ coordinationTag, idleDeadlineEpochMilliseconds, observedAtEpochMilliseconds, serverTimeEpochMilliseconds: Clock.currentTimeMillis,
 warningLeadMinutes }` built by `next/coordination-snapshot.ts`.
 
 **Gate classification** (`next/protection.ts`): `classify` returns `{ entry: "application", renewal: undefined }` for
 any request whose pathname is in `NON_RENEWING_PATHS`, before the document and action rules. The public designation
-is checked first and does not include these paths.
+is checked first and does not include these paths. `admit` no longer re-issues the session cookie; the callback's
+establishment response is its only writer, without `Max-Age` (research D15).
+
+**Store observation time** (`session/store.ts`, `session.ts`): the read/refresh script appends `redis.call("TIME")` to
+its reply; `UsableSession.observedAtEpochMilliseconds` carries it (research D6, R13).
 
 **Next host composition**: `app/session/activity/route.ts` exports `POST = createSessionActivityHandler()` with
 `dynamic = "force-dynamic"`; `app/session/status/route.ts` exports `GET`; `app/auth/logout/route.ts` exports `POST`.
@@ -267,7 +278,7 @@ protected content wrapper. A document-level capture `submit` listener applies th
 Classified activity enters `decideActivityCommunication` inside `navigator.locks.request`; `SendNow` posts to
 `/session/activity`, `Coalesce` broadcasts `pending` and schedules the flush, which runs
 `flushActivityCommunication` under the lock and reschedules a stale timer. Every snapshot (activity 200, status 200,
-broadcast) passes `adoptSnapshot` (later server read time wins, even with an earlier deadline), is broadcast as
+broadcast) passes `adoptSnapshot` (later store observation time wins, even with an earlier deadline), is broadcast as
 `renewed` when newly adopted, and reschedules the single confirmation timer at the local deadline. Listeners for `visibilitychange`, `resume`, and `pagehide` implement research D9; confirmation uses
 `AbortSignal.timeout(1500)`. Logout bypasses the window. `logout-control.tsx` renders the header `Button`;
 `signed-out-notice.tsx` renders `Alert` + `Heading` + `Text` + `Link href="/"`; the coordinator renders the provider
@@ -292,13 +303,13 @@ logout). `specs/` outside this directory are not touched. The delivery plan is n
 
 **Implementation increments** (each a reviewable implementation branch or commit series; gates in bold):
 
-| # | Increment                       | Content                                                                                                                                                                                                           | Evidence completed                                                                          | Gate                                           |
-| - | ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- | ---------------------------------------------- |
-| 1 | Coordination server contract    | `next/coordination.ts`, `next/coordination-snapshot.ts`, gate `NON_RENEWING_PATHS`, `ResolvedSessionRequest.coordination`, exports; unit, property, composed gate-plus-handler, and real-Redis integration suites | Module evidence for the adapters                                                            | None                                           |
-| 2 | Browser coordination policy     | `activity-classification.ts`, `activity-window.ts`, `tab-channel.ts`, `session-endpoints.ts`, coordinator, logout control, signed-out notice, shared provider; frontend unit suite                                | Module evidence for classifier and window                                                   | None                                           |
-| 3 | Application composition         | Route files, `(app)/layout.tsx`, fixture feature, pages, and action, `session-reference` tag and confirmation, docs, BDD feature (`@partial`) with **only executable ungated scenarios**, and support helpers     | V-005 (HTTP part), V-009 (HTTP denial part)                                                 | None                                           |
-| 4 | Ungated running-app evidence    | Quickstart §3 with prepared records; V-015 store-outage rows that need no login (status and logout handler mapping through the running app with a prepared record)                                                | V-005 HTTP, V-009 HTTP, V-015 server part                                                   | None                                           |
-| 5 | Live multi-tab feature evidence | Real-login BDD scenarios (added to the feature file only now), browser lifecycle and timing evidence, manual steps 3–10                                                                                           | V-001–V-004, V-006–V-008, V-009 browser part, V-010–V-014, V-015 browser part, V-016, V-017 | **#158 B6 freshness confirmation functioning** |
+| # | Increment                       | Content                                                                                                                                                                                                                                                                                                                                         | Evidence completed                                                                          | Gate                                           |
+| - | ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| 1 | Coordination server contract    | `next/coordination.ts`, `next/coordination-snapshot.ts`, gate `NON_RENEWING_PATHS` and no renewal cookie writes, callback cookie without `Max-Age`, store `TIME` and `UsableSession.observedAtEpochMilliseconds`, `ResolvedSessionRequest.coordination`, exports; unit, property, composed gate-plus-handler, and real-Redis integration suites | Module evidence for the adapters                                                            | None                                           |
+| 2 | Browser coordination policy     | `activity-classification.ts`, `activity-window.ts`, `tab-channel.ts`, `session-endpoints.ts`, coordinator, logout control, signed-out notice, shared provider; frontend unit suite                                                                                                                                                              | Module evidence for classifier and window                                                   | None                                           |
+| 3 | Application composition         | Route files, `(app)/layout.tsx`, fixture feature, pages, and action, `session-reference` tag and confirmation, docs, BDD feature (`@partial`) with **only executable ungated scenarios**, and support helpers                                                                                                                                   | V-005 (HTTP part), V-009 (HTTP denial part)                                                 | None                                           |
+| 4 | Ungated running-app evidence    | Quickstart §3 with prepared records; V-015 store-outage rows that need no login (status and logout handler mapping through the running app with a prepared record)                                                                                                                                                                              | V-005 HTTP, V-009 HTTP, V-015 server part                                                   | None                                           |
+| 5 | Live multi-tab feature evidence | Real-login BDD scenarios (added to the feature file only now), browser lifecycle and timing evidence, manual steps 3–10                                                                                                                                                                                                                         | V-001–V-004, V-006–V-008, V-009 browser part, V-010–V-014, V-015 browser part, V-016, V-017 | **#158 B6 freshness confirmation functioning** |
 
 Gated real-login journeys stay planned prose in [quickstart.md](quickstart.md) until increment 5. Committing them
 earlier would fail the nightly requirements BDD run, which discovers every requirements feature; `@partial` does not
