@@ -9,6 +9,7 @@ const tenantConfigDir = fileURLToPath(new URL("../../../fixtures/tenant-config",
 export class AppWorld extends World {
   allowInsecureLoopback = true
   baseHostname: string | undefined
+  browserEntries: string[] = []
   callbackOrigins: Record<string, string> = {
     shelbyville: "http://shelbyville.localhost:3000",
     springfield: "http://springfield.localhost:3000"
@@ -22,6 +23,7 @@ export class AppWorld extends World {
   ownedDirectory: string | undefined
   port = 0
   process: ChildProcess | undefined
+  protectedDocuments: string[] = []
   readonly redisUrl = process.env.REDIS_URL ?? "redis://127.0.0.1:6379"
   replayResponse: undefined | { body: string; headers: Record<string, string>; status: number }
   response: undefined | { body: string; headers: Record<string, string>; status: number }

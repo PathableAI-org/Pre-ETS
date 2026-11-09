@@ -326,8 +326,13 @@ these tasks change BDD only where a removed resource would leave an existing row
 
 ### 9e. Remaining correction work
 
-- [ ] T072 Author the requirement-tagged BDD rows of quickstart.md §4 (research D14) with the `requirements-bdd-*`
-      skills — separate pass, not part of commit boundaries 11–14
+- [x] T072 Author the requirement-tagged BDD rows of quickstart.md §4 (research D14) with the `requirements-bdd-*`
+      skills — separate pass, not part of commit boundaries 11–14 (authored the §4 rows in
+      `default-entry-protection.feature` and the `/_test` non-`GET` row in `authentication-public-resources.feature`;
+      undesignated and near-miss navigation rows removed. Deviation: the navigation rows use host
+      `springfield.localhost:3000`, because `/auth/login` at `springfield.example.test` has no registered callback
+      origin and leads to `/login-unavailable`. A temporary gate-bypassed build confirmed the D14 payload decodes and
+      runs the action)
 - [x] T073 Run the final gates of T059 on the corrected revision and report findings as pre-existing or introduced
       (all passed; `pnpm test:bdd` 67 scenarios passed with Keycloak and Redis ready; no Fallow findings)
 

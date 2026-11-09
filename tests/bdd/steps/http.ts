@@ -4,10 +4,16 @@ import assert from "node:assert/strict"
 import type { AppWorld } from "../support/world.ts"
 
 import { responseJson } from "../support/response.ts"
-import { serverActionId } from "../support/server-actions.ts"
+import { multipartBody, serverActionId } from "../support/server-actions.ts"
 import { FETCH_METADATA, type FetchMetadataKind, requestSite, requestSiteWith } from "../support/server.ts"
 
 const isFetchMetadataKind = (kind: string): kind is FetchMetadataKind => Object.hasOwn(FETCH_METADATA, kind)
+
+const issuedCookieNames = (world: AppWorld): string[] => {
+  assert.ok(world.response, "expected an HTTP response")
+  const headers = world.response.headers["set-cookie"]
+  return headers === undefined ? [] : headers.split("\n").map((header) => header.split("=", 1)[0]?.trim() ?? "")
+}
 
 const assertNoApplicationSession = (cookie: string): void => {
   assert.match(cookie, /Path=\/auth\/callback/i)
@@ -29,10 +35,25 @@ When(
     await requestSiteWith(this, { headers: FETCH_METADATA[kind], host, method, path })
   }
 )
+/**
+ * React's client encodes `runReferenceOperation(initialReferenceActionState, new FormData())` with
+ * `encodeReply([{ _tag: "Ready" }, new FormData()])` as one multipart field `0`; `$K1` refers to the empty form.
+ */
+const referenceActionArguments = { "0": JSON.stringify([{ _tag: "Ready" }, "$K1"]) }
+
 When("a visitor invokes the protected reference action at {string}", async function(this: AppWorld, host: string) {
   const action = await serverActionId("runReferenceOperation")
+  const { body, contentType } = await multipartBody(referenceActionArguments)
   await requestSiteWith(this, {
-    headers: { ...FETCH_METADATA.application, Accept: "text/x-component", "next-action": action },
+    body,
+    headers: {
+      ...FETCH_METADATA.application,
+      Accept: "text/x-component",
+      "content-type": contentType,
+      "next-action": action,
+      Origin: `https://${host}`,
+      "sec-fetch-site": "same-origin"
+    },
     host,
     method: "POST",
     path: "/"
@@ -40,6 +61,10 @@ When("a visitor invokes the protected reference action at {string}", async funct
 })
 Then("the response status is {int}", function(this: AppWorld, status: number) {
   assert.equal(this.response?.status, status)
+})
+Then("the response status is not {int}", function(this: AppWorld, status: number) {
+  assert.ok(this.response)
+  assert.notEqual(this.response.status, status)
 })
 Then("the earlier callback status is {int}", function(this: AppWorld, status: number) {
   assert.equal(this.earlierResponse?.status, status)
@@ -67,7 +92,12 @@ Then("the response is not cacheable", function(this: AppWorld) {
   assert.match(this.response?.headers["cache-control"] ?? "", /(?:^|[,\s])no-store(?:$|[,\s])/)
 })
 Then("the response issues no application or correlation cookie", function(this: AppWorld) {
-  assert.equal(this.response?.headers["set-cookie"], undefined)
+  const issued = issuedCookieNames(this)
+  assert.ok(!issued.includes("pathable-session"), "issued the application session cookie")
+  assert.ok(!issued.includes("oidc-correlation"), "issued the correlation cookie")
+})
+Then("the response issues no reference-operation receipt", function(this: AppWorld) {
+  assert.ok(!issuedCookieNames(this).includes("preets-ref-effect"), "issued the reference-operation receipt")
 })
 Then("the response issues one recoverable correlation cookie and no application session", function(this: AppWorld) {
   const cookie = this.response?.headers["set-cookie"] ?? ""

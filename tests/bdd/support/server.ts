@@ -29,6 +29,7 @@ export const FETCH_METADATA = {
 export type FetchMetadataKind = keyof typeof FETCH_METADATA
 
 interface SiteRequest {
+  readonly body?: Buffer | undefined
   readonly cookie?: string | undefined
   readonly headers: Readonly<Record<string, string>>
   readonly host: string
@@ -60,6 +61,7 @@ export async function requestSite(world: AppWorld, host: string, document = true
 export async function requestSiteWith(
   world: AppWorld,
   request: {
+    readonly body?: Buffer | undefined
     readonly headers: Readonly<Record<string, string>>
     readonly host: string
     readonly method: string
@@ -106,7 +108,7 @@ async function sendRequest(world: AppWorld, site: SiteRequest): Promise<Recorded
     request.setTimeout(30000, () => {
       request.destroy(new Error("BDD HTTP request timed out"))
     })
-    request.end()
+    request.end(site.body)
   })
 }
 
@@ -143,14 +145,8 @@ export async function startSecondSite(world: AppWorld): Promise<void> {
   await waitUntilReady(child, logs)
 }
 
-export async function stopSite(world: AppWorld): Promise<void> {
-  await stopProcess(world.secondaryProcess)
-  await stopProcess(world.process)
-  world.secondaryProcess = undefined
-  world.process = undefined
-}
-
-async function startSite(world: AppWorld): Promise<void> {
+/** Starts the owned site once per scenario. */
+export async function startSite(world: AppWorld): Promise<void> {
   if (world.process) return
   world.port = await freePort()
   world.logs = ""
@@ -158,4 +154,11 @@ async function startSite(world: AppWorld): Promise<void> {
   world.process = child
   attachLogToWorld(world, child, false)
   await waitUntilReady(child, logs)
+}
+
+export async function stopSite(world: AppWorld): Promise<void> {
+  await stopProcess(world.secondaryProcess)
+  await stopProcess(world.process)
+  world.secondaryProcess = undefined
+  world.process = undefined
 }
