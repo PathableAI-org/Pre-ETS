@@ -243,7 +243,7 @@ describe("authentication Route Handlers [PREETS-SESSION-003, PREETS-SESSION-013]
     })
   })
 
-  it("writes one host-only session cookie after a freshness-confirmed establishment", async () => {
+  it("navigates to the application entry with one host-only session cookie after a freshness-confirmed establishment", async () => {
     const directory = await mkdtemp(join(tmpdir(), "preets-session-callback-"))
     try {
       await writeFile(
@@ -266,7 +266,8 @@ describe("authentication Route Handlers [PREETS-SESSION-003, PREETS-SESSION-013]
         headers: { cookie: correlation, host: "alpha.example.test" }
       })
       const secure = await callback(secureRequest)
-      expect(secure.status).toBe(204)
+      expect(secure.status).toBe(303)
+      expect(secure.headers.get("location")).toBe("/")
       expect(await secure.text()).toBe("")
       expect(secure.headers.get("cache-control")).toBe("private, no-store")
       const secureSession = cookiesNamed(secure, "pathable-session")
@@ -287,7 +288,8 @@ describe("authentication Route Handlers [PREETS-SESSION-003, PREETS-SESSION-013]
         })
       )
       const loopbackSession = cookiesNamed(loopback, "pathable-session")
-      expect(loopback.status).toBe(204)
+      expect(loopback.status).toBe(303)
+      expect(loopback.headers.get("location")).toBe("/")
       expect(loopbackSession).toHaveLength(1)
       expectHostOnlyCookie(loopbackSession[0] ?? "", "/", false)
     } finally {

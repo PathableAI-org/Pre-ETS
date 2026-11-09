@@ -48,9 +48,10 @@ const establishSession = Effect.fn("establishSession")(function*(
   })
   const now = yield* Clock.currentTimeMillis
   const maxAgeSeconds = remainingIdleSeconds(established.session.idleDeadlineEpochMilliseconds, now)
+  // A navigable 303 so the browser leaves the provider and its next request presents the new session.
   const response = new NextResponse(null, {
-    headers: { "cache-control": PRIVATE_NO_STORE },
-    status: 204
+    headers: { "cache-control": PRIVATE_NO_STORE, location: "/" },
+    status: 303
   })
   return setSessionCookie(clearCorrelation(response, request), request, established.reference, maxAgeSeconds)
 })

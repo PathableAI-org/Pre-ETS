@@ -198,9 +198,9 @@ application because `CallbackFreshness` keeps its fail-closed default.
 **Independent Test**: Adapter scenarios with `CallbackFreshness` provided show 303 `Location: /`, host-only
 `pathable-session`, cleared correlation, `private, no-store`; default-path scenarios show no session cookie.
 
-- [ ] T042 [US2] Revise the confirmed-branch examples in packages/frontend-services/tests/unit/authentication-entry.test.ts (current 204 assertions near lines 223 and 244) to expect 303 with `Location: /`, the session cookie, cleared correlation, and `Cache-Control: private, no-store`; keep the default-freshness scenarios asserting no session cookie unchanged (contracts/modules.md "createCallbackHandler" evidence). Confirm they fail first
-- [ ] T043 [US2] Change `establishSession` in packages/frontend-services/src/next/callback.ts to return `new NextResponse(null, { status: 303, headers: { location: "/", "cache-control": PRIVATE_NO_STORE } })` with the existing cookie writes; do not touch packages/frontend-services/src/next/freshness.ts; T042 passes; run workspace `typecheck`, `lint` (incl. `lint:effect`), `test` (depends on T042)
-- [ ] T044 [P] [US2] Update docs/authentication.md: confirmed completion now navigates to `/` with 303; it remains unreachable until #158 supplies freshness confirmation
+- [x] T042 [US2] Revise the confirmed-branch examples in packages/frontend-services/tests/unit/authentication-entry.test.ts (current 204 assertions near lines 223 and 244) to expect 303 with `Location: /`, the session cookie, cleared correlation, and `Cache-Control: private, no-store`; keep the default-freshness scenarios asserting no session cookie unchanged (contracts/modules.md "createCallbackHandler" evidence). Confirm they fail first
+- [x] T043 [US2] Change `establishSession` in packages/frontend-services/src/next/callback.ts to return `new NextResponse(null, { status: 303, headers: { location: "/", "cache-control": PRIVATE_NO_STORE } })` with the existing cookie writes; do not touch packages/frontend-services/src/next/freshness.ts; T042 passes; run workspace `typecheck`, `lint` (incl. `lint:effect`), `test` (depends on T042)
+- [x] T044 [P] [US2] Update docs/authentication.md: confirmed completion now navigates to `/` with 303; it remains unreachable until #158 supplies freshness confirmation
 
 **Commit boundary 9**: `feat(frontend-services): navigate to the application entry after confirmed sign-in for #154`
 (T042–T044).

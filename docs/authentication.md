@@ -39,8 +39,10 @@ the callback currently treats every trusted result as unconfirmed. It returns th
 no `pathable-session`. Once freshness is confirmed, the callback derives the tenant's
 effective session policy, establishes a Redis-backed session through `SessionService`, and
 only then writes the host-only `pathable-session` cookie alongside the cleared correlation
-cookie; establishment or tenant failure fails closed to the same safe page with no session
-cookie. See [session-state.md](./session-state.md) for the session contract.
+cookie, answering 303 to `/` with `Cache-Control: private, no-store` so the browser leaves
+the provider and its next request presents the new session. This branch stays unreachable
+in the running application until #158 supplies freshness confirmation. Establishment or
+tenant failure fails closed to the same safe page with no session cookie. See [session-state.md](./session-state.md) for the session contract.
 
 Unqualified input and qualified lookup misses preserve correlation so the original valid
 return can still complete. Actual consumption and ambiguous in-flight consumption clear
