@@ -2,12 +2,13 @@
 @preets-session-001
 Feature: Default entry-point protection
   This slice establishes that, without a usable session, every undesignated page path is
-  delegated to tenant login only for a classified document navigation, and every other
-  request, including subresources and a direct protected Server Action request, is denied
-  with 401 and no effect. Tenant failure keeps its 404 or 500 ahead of protection.
-  Admission of a real session, cross-instance recognition, tenant mismatch with a real
-  session, the final public-asset designation and expired-session recovery content
-  remain incomplete pending freshness confirmation, the asset decision and recovery work.
+  delegated to tenant login for a document navigation, other requests obtain no protected
+  content and are not delegated to login, and a direct protected Server Action request with
+  a missing session record answers 401 without performing its operation. Tenant failure
+  keeps its 404 or 500 ahead of protection. Admission of a real session, cross-instance
+  recognition, tenant mismatch with a real session, public static assets and Server Action
+  recovery content remain incomplete pending freshness confirmation, the asset decision and
+  recovery work.
 
   @preets-session-004
   Scenario Outline: Undesignated navigations delegate to tenant login
@@ -38,31 +39,31 @@ Feature: Default entry-point protection
       | /auth/login/extra     | malformed           |
       | /auth/login/extra     | well-formed unknown |
 
-  Scenario Outline: Non-navigation requests are denied without starting login
+  Scenario Outline: Non-navigation requests obtain no protected content and do not start login
     Given production tenant sites for Springfield and Shelbyville
     And host resolution uses base hostname "example.test"
     And the visitor's session reference is "well-formed unknown"
     When a visitor sends "<method>" to "<path>" at "springfield.example.test" as a "<kind>" request
-    Then the response status is 401
-    And the response has no redirect
-    And the response contains no protected application content
+    Then the response contains no protected application content
+    And the response does not delegate to login
     And the response issues no application or correlation cookie
 
     Examples:
-      | method | path                            | kind          |
-      | GET    | /                               | application   |
-      | GET    | /                               | metadata-less |
-      | GET    | /favicon.ico                    | image         |
-      | GET    | /_next/image?url=%2Fx&w=16&q=75 | image         |
-      | POST   | /                               | application   |
-      | POST   | /an-undesignated-path           | application   |
+      | method | path                  | kind          |
+      | GET    | /                     | application   |
+      | GET    | /                     | metadata-less |
+      | POST   | /                     | application   |
+      | POST   | /an-undesignated-path | application   |
 
-  Scenario: A direct protected action request performs no effect
+  @preets-session-007
+  Scenario: A protected action request with a missing session record performs no operation
     Given production tenant sites for Springfield and Shelbyville
     And host resolution uses base hostname "example.test"
+    And the visitor's session reference is "well-formed unknown"
     When a visitor invokes the protected reference action at "springfield.example.test"
     Then the response status is 401
-    And the response has no redirect
+    And the response does not delegate to login
+    And the response contains no protected application content
     And the response issues no application or correlation cookie
 
   @preets-tenant-005

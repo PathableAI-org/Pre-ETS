@@ -84,6 +84,11 @@ Then("the response delegates to the same-origin login", function(this: AppWorld)
   assert.equal(destination.pathname, "/auth/login")
   assert.equal(destination.search, "")
 })
+Then("the response does not delegate to login", function(this: AppWorld) {
+  const location = this.response?.headers.location
+  if (location === undefined) return
+  assert.notEqual(new URL(location, "http://logical-application").pathname, "/auth/login")
+})
 Then("the response contains no protected application content", function(this: AppWorld) {
   assert.ok(this.response)
   assert.doesNotMatch(this.response.body, /Welcome to the Pre-ETS workspace|Reference session/)
