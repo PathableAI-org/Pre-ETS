@@ -99,7 +99,8 @@ own, and that actual protected page requests and protected operations from every
    **Then** the logged-out session is not revived.
 6. **Given** the session was logged out, **When** the logging-out tab or any other running sharing tab conceals its
    protected content, **Then** it shows an accessible signed-out notice with an explicit Log in action that enters the
-   tenant's fresh-entry flow when activated, and authentication does not start automatically.
+   tenant's fresh-entry flow when activated, and the already-open page does not start authentication automatically.
+   A later protected-page navigation, refresh, or back/forward restoration follows the fresh-entry policy as usual.
 
 ---
 
@@ -149,6 +150,8 @@ and access are unchanged.
    other context's session is neither renewed nor logged out.
 4. **Given** activity was observed in a tab under one session, **When** a different session is in force by the time it
    would be communicated, **Then** that activity does not renew the different session.
+5. **Given** a tab still associated with an earlier session, **When** a logout from it reaches the server after a
+   different session is in force, **Then** that logout does not end the different session, which stays usable.
 
 ---
 
@@ -190,6 +193,8 @@ confirm concealment and denial on resume.
 - A tab is logged out while a coalesced communication is pending: the pending activity does not revive the session.
 - A user logs out in tab A and signs in again in tab B before stale tab C communicates queued activity: tab C's activity
   does not renew the new session.
+- The same stale tab C instead sends a logout after the user signed in again in tab B: the new session stays usable
+  with its deadline unchanged.
 - A deliberate page fetch or form submission races with logout: once the server has ended the session, the request is
   denied and produces no protected content or effect.
 - Programmatic focus follows a user-driven action, such as focus moving into a newly shown field: the user-driven
@@ -261,8 +266,9 @@ confirm concealment and denial on resume.
   tenants, or browser contexts.
 - **FR-023**: After logout, the logging-out tab and every other sharing tab that conceals protected content MUST show a
   signed-out notice that is announced to assistive technology, explains that the user is signed out, and offers an
-  explicit Log in action, keyboard-operable with visible focus, that enters the tenant's fresh-entry flow. No tab may
-  start authentication automatically after logout.
+  explicit Log in action, keyboard-operable with visible focus, that enters the tenant's fresh-entry flow. Presenting
+  the logout outcome in an already-open page MUST NOT start authentication automatically; a later protected-page
+  navigation, refresh, or back/forward restoration still follows the fresh-entry policy (FR-020, PREETS-SESSION-004).
 
 ### Key Entities
 
@@ -303,7 +309,8 @@ confirm concealment and denial on resume.
   across logout conceals within the B5 bounds and permits no protected use.
 - **SC-010**: A keyboard-only user can reach and activate logout with visible focus and perceive its outcome.
 - **SC-011**: After every exercised logout, each sharing tab shows the signed-out notice, assistive technology announces
-  it, its Log in action reaches tenant sign-in only when activated, and no tab starts authentication on its own.
+  it, its Log in action reaches tenant sign-in only when activated, and no already-open page starts authentication on
+  its own; later navigation, refresh, or history restoration still follows fresh entry.
 
 ## Assumptions
 
