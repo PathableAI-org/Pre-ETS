@@ -126,8 +126,8 @@ V-016, V-017).
 
 ### 3a. Move access responses behind a feature entry
 
-- [ ] T022 [US4] Move packages/frontend/src/app/auth/presentation.tsx to packages/frontend/src/features/access-responses/presentation.tsx unchanged, add public entry packages/frontend/src/features/access-responses.ts exporting `authenticationReturnBody: () => ReturnType<typeof renderToReadableStream>` and `tenantFailureResponse: TenantFailureResponse`, delete the old file, and point packages/frontend/src/app/auth/login/route.ts, packages/frontend/src/app/auth/callback/route.ts, and packages/frontend/tests/unit/authentication-return.test.ts at the entry (contracts/modules.md "access-responses")
-- [ ] T023 [US4] Run `pnpm --filter @pathableai/pre-ets-frontend typecheck`, `lint`, `test:unit`, `exec fallow dead-code`; existing `authentication-entry`/`authentication-return` tests pass unmodified apart from the import path
+- [x] T022 [US4] Move packages/frontend/src/app/auth/presentation.tsx to packages/frontend/src/features/access-responses/presentation.tsx unchanged, add public entry packages/frontend/src/features/access-responses.ts exporting `authenticationReturnBody: () => ReturnType<typeof renderToReadableStream>` and `tenantFailureResponse: TenantFailureResponse`, delete the old file, and point packages/frontend/src/app/auth/login/route.ts, packages/frontend/src/app/auth/callback/route.ts, and packages/frontend/tests/unit/authentication-return.test.ts at the entry (contracts/modules.md "access-responses")
+- [x] T023 [US4] Run `pnpm --filter @pathableai/pre-ets-frontend typecheck`, `lint`, `test:unit`, `exec fallow dead-code`; existing `authentication-entry`/`authentication-return` tests pass unmodified apart from the import path
 
 **Commit boundary 4**: `refactor(frontend): move access responses behind a feature entry for #154` (T022–T023).
 

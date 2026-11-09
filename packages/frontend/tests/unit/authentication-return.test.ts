@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { describe, expect, it } from "vitest"
 
-import { authenticationReturnBody, tenantFailureResponse } from "../../src/app/auth/presentation.tsx"
+import { authenticationReturnBody, tenantFailureResponse } from "../../src/features/access-responses.ts"
 
 describe("authentication return presentation", () => {
   it("renders the safe return page without request data", async () => {
