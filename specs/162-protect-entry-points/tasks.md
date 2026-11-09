@@ -354,10 +354,13 @@ these tasks change BDD only where a removed resource would leave an existing row
       "not 401"); the fresh-entry step observes the browser's own reload of a page showing `/` (harness stub stands in for
       the earlier view, which the application never renders without a usable session)
 - [x] T078 Replace `/access-denied` in T047 with the host-rendered forbidden document
-- [ ] T079 Rerun quickstart.md §6 steps 2, 4, 6 (with and without `-H 127.0.0.1`, host mode, plus a static-mode repeat),
+- [x] T079 Rerun quickstart.md §6 steps 2, 4, 6 (with and without `-H 127.0.0.1`, host mode, plus a static-mode repeat),
       and 8 on the final revision; verify in Chromium the 403 document's title, keyboard reachability, and visible focus;
-      append a dated results addendum and mark superseded results
-- [ ] T080 Run the final gates of T059 on the final revision and report findings as pre-existing or introduced
+      append a dated results addendum and mark superseded results (all executed steps passed; see quickstart.md
+      "Results addendum (2026-11-09, revision `d4da131`)")
+- [x] T080 Run the final gates of T059 on the final revision and report findings as pre-existing or introduced
+      (all passed; two introduced findings fixed in BDD steps: a CRAP score above threshold and a duplication warning;
+      two pre-existing duplication warnings remain)
 
 ---
 
