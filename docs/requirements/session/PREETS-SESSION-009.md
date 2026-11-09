@@ -32,10 +32,11 @@ Activity should reflect use of the application rather than incidental events.
   requirement was supplied here. This contract does not define heartbeat, connection-loss input handling,
   or an offline browser-expiration policy; existing server-authoritative expiration remains binding.
 
-- Decision: Maintainer direction on 2026-11-09 resolves B5 activity communication delay. The first in-page
-  qualifying interaction after the session's most recent communicated renewal is sent immediately; later
-  interaction is coalesced and communicated no later than 60 seconds after it occurs, and immediately when the
-  authoritative deadline is less than 60 seconds away. Continue and logout are never coalesced. See the
+- Decision: Maintainer direction on 2026-11-09 resolves B5 activity communication delay. In-page qualifying
+  interaction is communicated in 60-second windows measured from the session's most recent in-page activity
+  communication: interaction with no such communication in the previous 60 seconds is sent immediately and opens
+  a window; interaction within an open window is coalesced and sent when it ends; interaction when the
+  authoritative deadline is less than 60 seconds away is sent immediately. Continue and logout are never coalesced. See the
   [session delivery plan](../../delivery/session-management.md#b5-browser-timing-and-resume-decision-2026-11-09). This decision establishes no implemented or verified behavior and awaits Git/PR approval.
 
 ## Acceptance criteria
@@ -59,9 +60,11 @@ no offline UI policy is adopted here. Local activity alone does not grant server
 Browser Gherkin exercises semantic controls and raw movement with controllable time, observing authoritative renewal or expiration. HTTP/application evidence must distinguish deliberate page fetches and form submissions from automatic
 background requests. Browser evidence must establish authoritative renewal from meaningful clicks, typing,
 keyboard/touch interaction, and user-driven focus changes, including exclusion of programmatic focus changes
-and raw mouse movement. With controllable time, browser evidence must establish that the first interaction after a
-renewal and interaction within 60 seconds of the deadline renew immediately, and that coalesced interaction renews
-no later than 60 seconds after it occurs. Merely observing a browser event or network call is insufficient.
+and raw mouse movement. With controllable time, browser evidence must establish that interaction with no in-page
+activity communication in the previous 60 seconds, including interaction in another sharing tab, and interaction
+within 60 seconds of the deadline renew immediately; that repeated interaction within an open window, including
+interaction after its first renewal completes, is coalesced; and that coalesced interaction renews no later than
+60 seconds after it occurs. Merely observing a browser event or network call is insufficient.
 
 Evidence assumptions follow the shared session context. Connectivity-loss input and heartbeat evidence
 belong to the separate pending requirement and are not claimed by this contract. Unresolved verification conditions follow the Open questions above; no additional operational monitoring claim is introduced.
