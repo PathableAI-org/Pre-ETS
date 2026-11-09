@@ -1,5 +1,6 @@
 import { fc, it } from "@fast-check/vitest"
 import { Effect, Layer, Result, Schema } from "effect"
+import { getServerActionRequestMetadata } from "next/dist/server/lib/server-action-request-meta.js"
 import { NextRequest, NextResponse } from "next/server"
 import { afterEach, beforeEach, describe, expect, vi } from "vitest"
 
@@ -169,21 +170,23 @@ const decodesWithoutNewSeparator = (rawSegment: string) => {
   return separators.every((character) => count(decoded, character) === count(rawSegment, character))
 }
 
-/** Next decodes a Server Action from an action header or a form-encoded `POST` body. */
-const invokesServerAction = (method: string, headers: Metadata) => {
-  if (headers["next-action"] !== undefined) return true
-  const contentType = headers["content-type"]
-  return method === "POST" &&
-    (contentType === "application/x-www-form-urlencoded" || contentType?.startsWith("multipart/form-data") === true)
-}
+/**
+ * A Server Action candidate per Next's installed predicate (an action header on `POST`, or a form-encoded `POST`), so
+ * the oracle follows Next if an upgrade changes what it decodes as an action. The gate deliberately widens this: an
+ * action header on any method is a candidate, because a request naming a Server Action must never be public.
+ */
+const invokesServerAction = (incoming: NextRequest) =>
+  getServerActionRequestMetadata(incoming).isPossibleServerAction || incoming.headers.has("next-action")
 
 /**
  * Independent statement of the closed designation, evaluated segment by segment on the pathname the gate receives.
  * No Server Action invocation is public. Otherwise `_test` as the first segment, followed only by segments that decode
  * without a new separator, is public for every method; an exact document path is public for `GET` and `HEAD`.
  */
-const isDesignated = (method: string, pathname: string, headers: Metadata) => {
-  if (invokesServerAction(method, headers)) return false
+const isDesignated = (incoming: NextRequest) => {
+  if (invokesServerAction(incoming)) return false
+  const { method } = incoming
+  const { pathname } = incoming.nextUrl
   const [root, first, ...rest] = pathname.split("/")
   if (root === "" && first === "_test" && rest.every(decodesWithoutNewSeparator)) return true
   return (method === "GET" || method === "HEAD") && (documentPaths as readonly string[]).includes(pathname)
@@ -200,13 +203,21 @@ const pathname = fc.oneof(
   fc.array(segment, { maxLength: 4, minLength: 0 }).map((segments) => `/${segments.join("/")}`)
 )
 
+const anyMethod = fc.constantFrom("GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
+
 const headerSubset = fc.record(
   {
     "content-type": fc.constantFrom(
-      "multipart/form-data; boundary=----x",
+      "multipart/form-data; boundary=x",
+      "multipart/form-data",
+      "Multipart/Form-Data",
+      "MULTIPART/FORM-DATA; boundary=x",
       "application/x-www-form-urlencoded",
-      "application/json",
-      "text/plain;charset=UTF-8"
+      "application/x-www-form-urlencoded;charset=UTF-8",
+      "Application/X-WWW-Form-Urlencoded",
+      "text/plain",
+      "text/plain;charset=UTF-8",
+      "application/json"
     ),
     "next-action": fc.constant("0123456789abcdef"),
     "sec-fetch-dest": fc.constantFrom("document", "empty", "image"),
@@ -216,11 +227,7 @@ const headerSubset = fc.record(
 )
 
 describe("createProtectionProxy designation [PREETS-SESSION-001]", () => {
-  it.prop([
-    pathname,
-    fc.constantFrom("GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"),
-    headerSubset
-  ], { numRuns: 500 })(
+  it.prop([pathname, anyMethod, headerSubset], { numRuns: 500 })(
     "passes a request without a usable session through iff it is designated and invokes no Server Action",
     async (path, method, headers) => {
       install(sessionDouble(() => Effect.succeed(noUsableSession)))
@@ -228,7 +235,7 @@ describe("createProtectionProxy designation [PREETS-SESSION-001]", () => {
 
       const response = await protect(incoming)
 
-      const designated = isDesignated(method, incoming.nextUrl.pathname, headers)
+      const designated = isDesignated(incoming)
       expect(passedThrough(response)).toBe(designated)
       if (designated) {
         expect(recorded.reads).toEqual([])
@@ -237,6 +244,18 @@ describe("createProtectionProxy designation [PREETS-SESSION-001]", () => {
       } else {
         expect([307, 401]).toContain(response.status)
       }
+    }
+  )
+
+  it.prop([fc.constantFrom("/_test", "/_test/tenant-config", "/_test/x/y"), anyMethod, headerSubset], { numRuns: 300 })(
+    "passes a request under /_test iff it is not a Server Action candidate by Next's predicate or an action header",
+    async (path, method, headers) => {
+      install(sessionDouble(() => Effect.succeed(noUsableSession)))
+      const incoming = request(path, { cookie: reference, headers, method })
+
+      const response = await protect(incoming)
+
+      expect(passedThrough(response)).toBe(!invokesServerAction(incoming))
     }
   )
 
