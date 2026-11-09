@@ -44,6 +44,11 @@ A person reading without interacting needs an opportunity to keep working.
   values cause rejection of the tenant configuration as invalid, following PREETS-TENANT-004’s existing
   schema-invalid selected-file policy, rather than default substitution. The refinement is subject to Git/PR approval.
 
+- Decision: Maintainer direction on 2026-11-09 resolves B5 for warnings. The warning opens in every running
+  sharing tab within 2 seconds of its threshold, and a successful Continue dismisses it in other tabs within
+  2 seconds of the renewal response. Resumed tabs apply the same local-check-then-confirm rule as expiration.
+  See the [session delivery plan](../../delivery/session-management.md#b5-browser-timing-and-resume-decision-2026-11-09). This decision establishes no implemented or verified behavior and awaits Git/PR approval.
+
 ## Acceptance criteria
 
 1. The warning setting expresses minutes before idle expiration. An explicit `0` disables the warning at
@@ -62,8 +67,8 @@ A person reading without interacting needs an opportunity to keep working.
 
 ## Open questions
 
-None for warning defaults, value domain, disabling, or gradual live-policy propagation. Cross-tab timing and
-suspended/resumed behavior remain decisions under PREETS-SESSION-010 and PREETS-SESSION-012.
+None for warning defaults, value domain, disabling, gradual live-policy propagation, cross-tab timing, or
+suspended/resumed behavior; the 2026-11-09 B5 decision above sets the 2-second bound and resume rule.
 
 ## Verification Plan
 
@@ -75,7 +80,7 @@ Verify that default-disabled warnings also retain normal expiration. Configurati
 the effective timeout, and rejection of negative, fractional, nonnumeric, and equal-to-or-greater-than-timeout
 values. Actual tenant-consuming application requests must demonstrate schema-invalid tenant rejection under
 PREETS-TENANT-004, with no default substitution or fallback. Enabled warnings must occur at the accepted lead
-time before expiration. Browser Gherkin uses controllable time to establish focus movement into the warning, visible focus, keyboard continuation, blocked background interaction, appropriate focus restoration, cross-tab dismissal, and authoritative renewal. Supplement browser assertions with assistive-technology observations of warning announcement and accessible explanation/action. Integrated boundary checks cover late continuation races. Application and multi-tab evidence must establish
+time before expiration. Browser Gherkin uses controllable time to establish focus movement into the warning, visible focus, keyboard continuation, blocked background interaction, appropriate focus restoration, cross-tab opening and dismissal within 2 seconds, resumed-tab warning behavior, and authoritative renewal. Supplement browser assertions with assistive-technology observations of warning announcement and accessible explanation/action. Integrated boundary checks cover late continuation races. Application and multi-tab evidence must establish
 adoption of changed warning settings on an authoritative server timer refresh, including transitions into
 or out of disabled warnings through explicit `0` and the five-minute-timeout default. Independent sessions may retain
 different settings until their respective refreshes, as explicitly accepted by the maintainer.

@@ -30,6 +30,16 @@ Server rejection alone cannot protect sensitive information already rendered, in
   Rendering mechanisms belong to engineering. No expiration-recognition retention period is required by
   this policy. This refinement is subject to Git/PR approval.
 
+- Decision: Maintainer direction on 2026-11-09 resolves B5 for expiration. Running sharing tabs conceal
+  protected content within 2 seconds of authoritative expiration and never before the server session ends. On
+  resume, a tab past its locally known deadline temporarily conceals protected content at once and confirms with
+  the server; this temporary concealment is not the expired state, and content is restored if the session was
+  renewed in another tab. Otherwise the tab confirms with the server and conceals within 2 seconds if the session
+  ended while suspended. A back/forward-cache restoration with no valid session follows
+  PREETS-SESSION-004's fresh-entry policy (AC2) instead of the modal. Pixels painted before page scripts run on
+  resume are a recorded limitation. See the [session delivery plan](../../delivery/session-management.md#b5-browser-timing-and-resume-decision-2026-11-09). This decision establishes no implemented or verified behavior
+  and awaits Git/PR approval.
+
 ## Acceptance criteria
 
 1. At expiration, protected information already rendered in every session-sharing tab is no longer readable.
@@ -44,14 +54,14 @@ Server rejection alone cannot protect sensitive information already rendered, in
 
 ## Open questions
 
-Define acceptable synchronization latency and suspended/resumed tab protection. Keyboard and assistive-technology protection is required by AC5.
+None for synchronization latency or suspended/resumed protection: the 2026-11-09 B5 decision above sets the 2-second bound and resume rule. Server-unreachable behavior belongs to the separate pending heartbeat/connection-loss requirement. Keyboard and assistive-technology protection is required by AC5.
 
 ## Verification Plan
 
 Browser Gherkin observes actual rendered-content concealment, blocking behavior, focus movement and visible focus, keyboard recovery, multiple tabs, and explicit recovery with controllable time. Assistive-technology observations establish expiration announcement, explanation/action availability, and inability to read or navigate protected background information. Browser evidence must establish blocked in-page navigation while the modal is active and the fresh-entry
 behavior of refresh and browser back/forward navigation under PREETS-SESSION-004.
 Compare the already-open tab’s modal with the Server Action recovery content for equivalent expiration explanation
-and recovery. Server-only denial or modal-string assertions cannot establish concealment.
+and recovery. Server-only denial or modal-string assertions cannot establish concealment. With controllable time, browser evidence must establish concealment in every running sharing tab within 2 seconds of expiration, no expired state in a running tab while the session remains valid, expired-state concealment on resume for tabs suspended across expiration or logout, and, for a tab suspended past its local deadline while another tab renewed the session, temporary resume concealment followed by server confirmation of the renewed session and restoration of its content without the expired state, recording pre-script paint as a limitation.
 
 Evidence assumptions follow the shared session context. Unresolved verification conditions follow the Open questions above; no additional operational monitoring claim is introduced.
 

@@ -14,8 +14,8 @@ warning/expiration recovery across tabs and application instances, starting from
 
 All 13 session requirements and their 52 acceptance criteria are accepted in the inspected `origin/main`.
 PR #185 resolved B1–B4; its merged contracts govern this proposal even where historical source prose still says
-approval is pending. B5 communication/synchronization timing and suspended/resumed behavior remains a decision; B6 OIDC
-freshness is resolved (see [B6 freshness comparison](#b6-freshness-comparison-and-provider-handling-2026-11-09)). This plan changes delivery sequencing, not requirements.
+approval is pending. B5 communication/synchronization timing and suspended/resumed behavior is resolved (see
+[B5 browser timing](#b5-browser-timing-and-resume-decision-2026-11-09)); B6 OIDC freshness is resolved (see [B6 freshness comparison](#b6-freshness-comparison-and-provider-handling-2026-11-09)). This plan changes delivery sequencing, not requirements.
 
 **Revision scope:** Preserve S1–S6 and their existing issues. Make session/OIDC reconstruction and new evidence
 fixtures explicit; separate S5 Server Action recovery from its browser synchronization prerequisite; bring S6
@@ -171,6 +171,46 @@ Microsoft scenarios remain outstanding: whether a Microsoft integration emits `a
 unverified, and an integration that does not is unsupported under this policy until configuration or evidence
 establishes otherwise. This decision awaits Git/PR approval.
 
+## B5 browser timing and resume decision (2026-11-09)
+
+The maintainer selected the B5 browser communication, synchronization, and resume policy on 2026-11-09:
+
+- **Activity communication delay (SESSION-009):** deliberate page fetches and form submissions reach the server
+  with their own request. In-page qualifying interaction (control activation, typing, keyboard/touch interaction,
+  user-driven focus changes) is communicated in 60-second windows measured from the session's most recent in-page
+  activity communication, whichever tab sent it. Interaction occurring when no such communication was sent in the
+  previous 60 seconds is sent immediately and opens a new window. Interaction within an open window is coalesced
+  and sent once when that window ends, so no interaction waits more than 60 seconds. Interaction when the shared
+  authoritative deadline is less than 60 seconds away is sent immediately. Continue and logout are deliberate
+  actions communicated immediately, never coalesced. Because the server renews on receipt, the authoritative idle
+  period may begin up to 60 seconds after the user's actual last interaction.
+- **Synchronization latency (SESSION-010/011/012):** while sharing tabs are running and the server is reachable,
+  every other sharing tab reflects these events within 2 seconds: a renewed authoritative deadline (measured from
+  the renewal response), logout (measured from the server ending the session), authoritative expiration (measured
+  from the deadline), warning opening at its threshold, and warning dismissal after a successful Continue. Logout
+  and expiration conceal protected content within that bound.
+- **No early expiration:** a running tab must not present the expired state while the server session remains
+  valid. A tab reaching a locally known deadline confirms with the server before expiring, so activity renewed in another
+  tab keeps it usable (SESSION-010 AC3).
+- **Suspended and resumed tabs:** resume means the tab becomes visible, is unfrozen, or is restored from the
+  back/forward cache. On resume, a tab whose locally known deadline has passed temporarily conceals protected
+  content immediately, before further interaction, and confirms the session with the server. Temporary resume
+  concealment is not the expired state: if the server confirms the session is still valid (for example, renewed in
+  another tab while this tab was suspended), the tab adopts the current deadline and restores its content; if the
+  session ended, the tab enters the expired state. A tab whose locally known deadline has not passed confirms with
+  the server and conceals within the 2-second bound if the session expired or was logged out while suspended;
+  protected content may remain visible during that confirmation. Interaction after resume cannot revive an ended
+  session (SESSION-009 AC4). The warning follows the same local-check-then-confirm rule. Back/forward-cache
+  restoration is browser history navigation: it keeps concealment during confirmation, but when no valid session
+  remains it follows PREETS-SESSION-004's fresh-entry policy (tenant OIDC) rather than showing the expiration
+  modal, as PREETS-SESSION-012 AC2 requires. The expired state on resume applies to visibility and unfreeze.
+
+Server authority and session/tenant/browser-context isolation remain required. This resolves B5. It selects no
+implementation structure or browser mechanism and claims no implemented or verified behavior. Limitations: pixels
+painted by the browser or operating system before page scripts run on resume (for example, a wake snapshot) are
+outside application control. Behavior when the server is unreachable at a local deadline or on resume belongs to
+the separate pending heartbeat/connection-loss requirement. This decision awaits Git/PR approval.
+
 ## Blockers and decisions
 
 | ID | Affected work                                          | Current disposition                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
@@ -180,7 +220,7 @@ establishes otherwise. This decision awaits Git/PR approval.
 | B2 | SESSION-004/007/012 / S1, S5                           | Resolved in PR #185: fresh page entry starts tenant OIDC; expired/missing-record Server Actions return HTTP 401 with explicit recovery; running tabs conceal content with a blocking modal. No recognition-retention duration is adopted.                                                                                                                                                                                                                                                                                    |
 | B3 | SESSION-006 / S2                                       | Resolved in PR #185: distributed session storage without affinity; no arbitrary application-value representation or capacity obligation.                                                                                                                                                                                                                                                                                                                                                                                     |
 | B4 | SESSION-008/009/011 / S2–S4                            | Resolved in PR #185: omitted timeout is 30 minutes; warning defaults to five minutes before expiry except default disabling at a five-minute timeout; explicit 0 disables warning. Reject invalid settings. Adopt current timeout/warning policy on qualifying authoritative refresh; deliberate requests and meaningful input qualify, movement/background traffic do not.                                                                                                                                                  |
-| B5 | SESSION-009/010/011/012 / S3, S4, S5 browser increment | Decide communication delay, synchronization latency, and suspended/resumed protection before affected browser implementation/evidence. Isolation and server authority are required. S5 Server Action recovery is independent of this browser gate. Heartbeat/connection-loss input behavior belongs to a separate pending requirement.                                                                                                                                                                                       |
+| B5 | SESSION-009/010/011/012 / S3, S4, S5 browser increment | Resolved by maintainer on 2026-11-09: in-page interaction opens a 60 s window with an immediate send and coalesces within it, immediate near the deadline; Continue/logout immediate. Running tabs reflect renewal, warning, logout, and expiration within 2 s and never expire while the server session is valid. Resumed tabs past a known deadline conceal temporarily until server confirmation, otherwise confirm and conceal within 2 s. Connection loss stays separate. Awaits Git/PR approval.                       |
 | B6 | SESSION-013 and SESSION-004 / S6, S1/S2 composition    | Resolved by maintainer on 2026-10-17 and 2026-11-09: every login without a valid application session requires fresh authentication, including first-time visits; prior-expiration recognition is unnecessary solely to select freshness. Request `max_age=0`; confirm signed-ID-token `auth_time` within the login transaction start and callback time, each with a fixed 30-second tolerance. Missing/stale evidence is denial; unsupported providers fail closed; brokers need their own evidence. Awaits Git/PR approval. |
 
 B5/B6 design can proceed independently. Partial increments can merge with explicit limits; final shipping requires
@@ -954,7 +994,8 @@ early Server Action recovery, early freshness/recognition design, expiration-fir
 conditional deployed-state compatibility. S5-A and S6-A now have useful observation boundaries before browser
 coordination/recovery exists; later increments extend their retained evidence. No unexplained AC deferrals remain.
 
-B5 timing/resume and B6 protocol/provider/recognition decisions remain unresolved. Heartbeat/connection-loss input
+B5 timing/resume and B6 freshness/provider decisions are resolved by the 2026-11-09 maintainer decisions, pending
+Git/PR approval. Heartbeat/connection-loss input
 scope remains deferred to its separate pending requirement. Current tenant boundaries and closed issues supply
 context, not session satisfaction. Open PR diffs, external planning, and deployed legacy state were not assessed.
 No behavioral execution or requirement-to-evidence relationship is authorized by these document changes.

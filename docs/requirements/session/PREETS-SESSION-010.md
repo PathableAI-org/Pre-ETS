@@ -20,6 +20,7 @@ Reading a roster in one tab must remain compatible with working in a participant
 - Source clarification: Maintainer review direction on 2026-10-05 requires all tabs to share the session, new tabs to join an existing session, and logout to apply across tabs. Session requirements depend on resolved tenant identity rather than the resolution mechanism.
 - Source clarification: Maintainer direction on 2026-10-05 authorizes isolation between sessions and resolved tenants, addressing the [Copilot review comment](https://github.com/PathableAI-org/Pre-ETS/pull/112#discussion_r4184264108).
 - Decision: Maintainer approval on 2026-10-05 ("mark these requirements as approved") accepts this requirement and its acceptance criteria. Open policy and design questions remain delivery gates.
+- Decision: Maintainer direction on 2026-11-09 resolves B5 synchronization and resume. While sharing tabs run and the server is reachable, other tabs reflect a renewed deadline, logout, and expiration within 2 seconds; no tab presents expiration while the server session remains valid. On resume, a tab past its locally known deadline temporarily conceals protected content at once and confirms with the server, restoring content if the session was renewed elsewhere and entering the expired state only if it ended; otherwise it confirms with the server and conceals within 2 seconds if the session ended while suspended. See the [session delivery plan](../../delivery/session-management.md#b5-browser-timing-and-resume-decision-2026-11-09). This decision establishes no implemented or verified behavior and awaits Git/PR approval.
 
 ## Acceptance criteria
 
@@ -32,11 +33,11 @@ Reading a roster in one tab must remain compatible with working in a participant
 
 ## Open questions
 
-Synchronization timing and suspended/resumed tab behavior need design. Session isolation is required by AC6 and is not an unresolved policy.
+None for synchronization timing or suspended/resumed behavior: the 2026-11-09 B5 decision above sets a 2-second bound and the resume rule. Server-unreachable behavior belongs to the separate pending heartbeat/connection-loss requirement. Session isolation is required by AC6 and is not an unresolved policy.
 
 ## Verification Plan
 
-Multi-tab browser/BDD and application HTTP evidence must establish a common session and idle state, new-tab joining, cross-tab activity renewal, synchronized warning/expiration, and logout denial across all sharing tabs. Separate tenant and browser-context evidence must establish isolation for activity, continuation, warning, expiration, and logout. Adapter evidence alone does not establish browser synchronization; synchronization timing and suspended/resumed behavior remain unresolved.
+Multi-tab browser/BDD and application HTTP evidence must establish a common session and idle state, new-tab joining, cross-tab activity renewal, synchronized warning/expiration, and logout denial across all sharing tabs. Separate tenant and browser-context evidence must establish isolation for activity, continuation, warning, expiration, and logout. Adapter evidence alone does not establish browser synchronization. With controllable time, browser evidence must establish the 2-second bound for renewed deadlines and logout, that an inactive tab past its former deadline stays usable after renewal in another tab, and resume behavior for tabs suspended across renewal, logout, and expiration.
 
 ## Observability
 

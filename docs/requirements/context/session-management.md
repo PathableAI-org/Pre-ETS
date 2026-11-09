@@ -101,6 +101,46 @@ Microsoft scenarios remain outstanding: whether a Microsoft integration emits `a
 unverified, and an integration that does not is unsupported under this policy until configuration or evidence
 establishes otherwise. This decision awaits Git/PR approval.
 
+## B5 browser timing and resume decision (2026-11-09)
+
+The maintainer selected the B5 browser communication, synchronization, and resume policy on 2026-11-09:
+
+- **Activity communication delay (SESSION-009):** deliberate page fetches and form submissions reach the server
+  with their own request. In-page qualifying interaction (control activation, typing, keyboard/touch interaction,
+  user-driven focus changes) is communicated in 60-second windows measured from the session's most recent in-page
+  activity communication, whichever tab sent it. Interaction occurring when no such communication was sent in the
+  previous 60 seconds is sent immediately and opens a new window. Interaction within an open window is coalesced
+  and sent once when that window ends, so no interaction waits more than 60 seconds. Interaction when the shared
+  authoritative deadline is less than 60 seconds away is sent immediately. Continue and logout are deliberate
+  actions communicated immediately, never coalesced. Because the server renews on receipt, the authoritative idle
+  period may begin up to 60 seconds after the user's actual last interaction.
+- **Synchronization latency (SESSION-010/011/012):** while sharing tabs are running and the server is reachable,
+  every other sharing tab reflects these events within 2 seconds: a renewed authoritative deadline (measured from
+  the renewal response), logout (measured from the server ending the session), authoritative expiration (measured
+  from the deadline), warning opening at its threshold, and warning dismissal after a successful Continue. Logout
+  and expiration conceal protected content within that bound.
+- **No early expiration:** a running tab must not present the expired state while the server session remains
+  valid. A tab reaching a locally known deadline confirms with the server before expiring, so activity renewed in another
+  tab keeps it usable (SESSION-010 AC3).
+- **Suspended and resumed tabs:** resume means the tab becomes visible, is unfrozen, or is restored from the
+  back/forward cache. On resume, a tab whose locally known deadline has passed temporarily conceals protected
+  content immediately, before further interaction, and confirms the session with the server. Temporary resume
+  concealment is not the expired state: if the server confirms the session is still valid (for example, renewed in
+  another tab while this tab was suspended), the tab adopts the current deadline and restores its content; if the
+  session ended, the tab enters the expired state. A tab whose locally known deadline has not passed confirms with
+  the server and conceals within the 2-second bound if the session expired or was logged out while suspended;
+  protected content may remain visible during that confirmation. Interaction after resume cannot revive an ended
+  session (SESSION-009 AC4). The warning follows the same local-check-then-confirm rule. Back/forward-cache
+  restoration is browser history navigation: it keeps concealment during confirmation, but when no valid session
+  remains it follows PREETS-SESSION-004's fresh-entry policy (tenant OIDC) rather than showing the expiration
+  modal, as PREETS-SESSION-012 AC2 requires. The expired state on resume applies to visibility and unfreeze.
+
+Server authority and session/tenant/browser-context isolation remain required. This resolves B5. It selects no
+implementation structure or browser mechanism and claims no implemented or verified behavior. Limitations: pixels
+painted by the browser or operating system before page scripts run on resume (for example, a wake snapshot) are
+outside application control. Behavior when the server is unreachable at a local deadline or on resume belongs to
+the separate pending heartbeat/connection-loss requirement. This decision awaits Git/PR approval.
+
 ## Historical implementation context
 
 The following comparisons use implementation notes at the accepted session requirements revision
