@@ -122,6 +122,34 @@ const expectHostOnlyCookie = (cookie: string, path: string, secure: boolean) => 
 
 const navigationHeaders = { host: "alpha.example.test", "sec-fetch-dest": "document", "sec-fetch-mode": "navigate" }
 
+const tenantDirectory = async () => {
+  const directory = await mkdtemp(join(tmpdir(), "preets-login-tenant-"))
+  await writeFile(
+    join(directory, "alpha.json"),
+    JSON.stringify({
+      displayName: "Alpha",
+      idleTimeoutMinutes: 30,
+      oidc: { clientAuth: "public", clientId: "alpha-web", issuer: "https://provider.test" },
+      warningLeadMinutes: 5
+    })
+  )
+  return directory
+}
+
+const hostTenants = (directory: string) =>
+  TenantConfigService.layer({ baseHostname: "example.test", configDir: directory, resolution: "host" })
+    .pipe(Layer.provide(NodeServices.layer))
+
+const nonNavigationLogin = (host: string, mode: string) =>
+  new NextRequest(`https://${host}/auth/login`, {
+    headers: {
+      cookie: `oidc-correlation=${"D".repeat(43)}`,
+      host,
+      "sec-fetch-dest": "empty",
+      "sec-fetch-mode": mode
+    }
+  })
+
 const maxAge = (cookie: string) => Number(/Max-Age=(\d+)/.exec(cookie)?.[1])
 
 describe("authentication Route Handlers [PREETS-SESSION-003, PREETS-SESSION-013]", () => {
@@ -167,30 +195,61 @@ describe("authentication Route Handlers [PREETS-SESSION-003, PREETS-SESSION-013]
   )
 
   it.each(["cors", "no-cors", "same-origin"])(
-    "refuses a %s login request with 401 and prepares nothing",
+    "refuses a %s login request on a resolved tenant with 401 and prepares nothing",
     async (mode) => {
-      const prepare = vi.fn(() => Effect.die("prepare must remain unused for a non-navigation"))
-      routeRuntime({ complete: () => Effect.die("complete must remain unused"), prepare })
+      const directory = await tenantDirectory()
+      try {
+        const prepare = vi.fn(() => Effect.die("prepare must remain unused for a non-navigation"))
+        routeRuntime(
+          { complete: () => Effect.die("complete must remain unused"), prepare },
+          { session: routeSessionLayer, tenant: hostTenants(directory) }
+        )
 
-      const response = await login(
-        new NextRequest("https://alpha.example.test/auth/login", {
-          headers: {
-            cookie: `oidc-correlation=${"D".repeat(43)}`,
-            host: "alpha.example.test",
-            "sec-fetch-dest": "empty",
-            "sec-fetch-mode": mode
-          }
-        })
-      )
+        const response = await login(nonNavigationLogin("alpha.example.test", mode))
 
-      expect(response.status).toBe(401)
-      expect(response.headers.get("cache-control")).toBe("private, no-store")
-      expect(response.headers.get("location")).toBeNull()
-      expect(response.headers.getSetCookie()).toEqual([])
-      expect(await response.text()).toBe("")
-      expect(prepare).not.toHaveBeenCalled()
+        expect(response.status).toBe(401)
+        expect(response.headers.get("cache-control")).toBe("private, no-store")
+        expect(response.headers.get("location")).toBeNull()
+        expect(response.headers.getSetCookie()).toEqual([])
+        expect(await response.text()).toBe("")
+        expect(prepare).not.toHaveBeenCalled()
+      } finally {
+        await rm(directory, { force: true, recursive: true })
+      }
     }
   )
+
+  it("keeps tenant failures ahead of refusing a non-navigation login request, preparing nothing", async () => {
+    const directory = await tenantDirectory()
+    try {
+      const prepare = vi.fn(() => Effect.die("prepare must remain unused for a non-navigation"))
+      const service = { complete: () => Effect.die("complete must remain unused"), prepare }
+      const missingStatic = TenantConfigService.layer({
+        configDir: directory,
+        resolution: "static",
+        staticAlias: "beta"
+      })
+        .pipe(Layer.provide(NodeServices.layer))
+
+      for (
+        const [tenant, host, status] of [
+          [hostTenants(directory), "capital-city.example.test", 404],
+          [missingStatic, "alpha.example.test", 500]
+        ] as const
+      ) {
+        routeRuntime(service, { session: routeSessionLayer, tenant })
+
+        const response = await login(nonNavigationLogin(host, "cors"))
+
+        expect(response.status).toBe(status)
+        expect(response.headers.get("location")).toBeNull()
+        expect(response.headers.getSetCookie()).toEqual([])
+      }
+      expect(prepare).not.toHaveBeenCalled()
+    } finally {
+      await rm(directory, { force: true, recursive: true })
+    }
+  })
 
   it("answers login and callback before runtime startup with a private, empty 503", async () => {
     runtime.runPromise.mockImplementation(() =>

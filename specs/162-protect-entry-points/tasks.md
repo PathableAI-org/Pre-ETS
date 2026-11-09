@@ -85,7 +85,7 @@ entry", "Private next/ helpers").
 - [x] T007 Add login non-navigation examples to packages/frontend-services/tests/unit/authentication-entry.test.ts through the public `src/next.ts` `createLoginHandler`: `sec-fetch-mode` `cors`, `no-cors`, `same-origin` → 401 with `Cache-Control: private, no-store`, no `AuthenticationService.prepare` call, no `Set-Cookie`; `navigate` and absent Fetch Metadata keep today's 307/`/login-unavailable`/404/500 behavior (contracts/modules.md "Non-navigation login requests prepare nothing"; research D13). Confirm the new examples fail first
 - [x] T008 Create private packages/frontend-services/src/next/request.ts exporting `type NavigationStatus = "navigation" | "non-navigation" | "unknown"`, `navigationStatus(headers: Headers): NavigationStatus` (`sec-fetch-mode` present → navigation iff `navigate`; else `sec-fetch-dest` present → navigation iff `document`; else `unknown`), and `resolveRequestTenant(host: string): Effect.Effect<{ readonly alias: TenantAlias; readonly config: TenantConfig }, TenantFailure, TenantConfigService>` built from `TenantConfigService.getAlias` then `getConfigFromAlias` (contracts/modules.md "Private next/ helpers"; research D3)
 - [x] T009 Replace the inline alias-then-configuration step in packages/frontend-services/src/next/session.ts `readSessionRequest` with `resolveRequestTenant`; keep its public contract (tenant failure → `notFound()`/throw, mismatch → `forbidden()`, store failure → throw) unchanged; existing packages/frontend-services/tests/unit/reference-session-enforcement.test.ts must pass unmodified (depends on T008)
-- [x] T010 Make packages/frontend-services/src/next/login.ts return 401 + `PRIVATE_NO_STORE` for `navigationStatus(request.headers) === "non-navigation"` without calling `prepare`, creating a transaction, or setting a cookie, so T007 passes (depends on T008)
+- [x] T010 (tenant resolution now precedes the refusal, 2026-11-09 by T070, research D13) Make packages/frontend-services/src/next/login.ts return 401 + `PRIVATE_NO_STORE` for `navigationStatus(request.headers) === "non-navigation"` without calling `prepare`, creating a transaction, or setting a cookie, so T007 passes (depends on T008)
 - [x] T011 Extract `remainingIdleSeconds(idleDeadlineEpochMilliseconds: number, nowEpochMilliseconds: number): number` from packages/frontend-services/src/next/callback.ts into packages/frontend-services/src/next/cookies.ts and use it from `establishSession`; callback behavior unchanged (still 204 in this increment), existing callback examples pass unmodified (contracts/modules.md "Private next/ helpers")
 - [x] T012 Run `pnpm --filter @pathableai/pre-ets-frontend-services typecheck`, `lint` (includes `lint:effect`), `test`, and `exec fallow dead-code` / `exec fallow dupes`; fix introduced findings
 
@@ -313,13 +313,13 @@ these tasks change BDD only where a removed resource would leave an existing row
 
 ### 9d. Login resolves the tenant before refusing (research D13)
 
-- [ ] T069 Add login examples to packages/frontend-services/tests/unit/authentication-entry.test.ts first: a
+- [x] T069 Add login examples to packages/frontend-services/tests/unit/authentication-entry.test.ts first: a
       non-navigation at an unknown host → 404 and in static mode with a missing selected file → 500, neither calling
       `prepare` nor setting a cookie; confirm they fail
-- [ ] T070 In packages/frontend-services/src/next/login.ts resolve the request tenant with `resolveRequestTenant` on the
+- [x] T070 In packages/frontend-services/src/next/login.ts resolve the request tenant with `resolveRequestTenant` on the
       non-navigation branch only; tenant failure → `respondToTenantFailure(404 | 500)`, success → 401 `private, no-store`;
       navigations unchanged; T069 passes
-- [ ] T071 Update docs/authentication.md; run the workspace `typecheck`, `lint` (incl. `lint:effect`), `test`
+- [x] T071 Update docs/authentication.md; run the workspace `typecheck`, `lint` (incl. `lint:effect`), `test`
 
 **Commit boundary 14**: `fix(frontend-services): resolve the tenant before refusing non-navigation login for #154`
 (T069–T071).
@@ -328,7 +328,8 @@ these tasks change BDD only where a removed resource would leave an existing row
 
 - [ ] T072 Author the requirement-tagged BDD rows of quickstart.md §4 (research D14) with the `requirements-bdd-*`
       skills — separate pass, not part of commit boundaries 11–14
-- [ ] T073 Run the final gates of T059 on the corrected revision and report findings as pre-existing or introduced
+- [x] T073 Run the final gates of T059 on the corrected revision and report findings as pre-existing or introduced
+      (all passed; `pnpm test:bdd` 67 scenarios passed with Keycloak and Redis ready; no Fallow findings)
 
 ---
 

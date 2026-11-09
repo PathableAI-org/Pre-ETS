@@ -14,9 +14,11 @@ Tenant errors retain actual login 404/500 outcomes; expected provider, credentia
 transaction failure redirects to `/login-unavailable`. A document request that is
 itself a tenant failure keeps that failure's 404 or 500 and does not redirect to login.
 A login request whose Fetch Metadata marks it as a non-navigation (`sec-fetch-mode` other
-than `navigate`, or without a mode, `sec-fetch-dest` other than `document`) receives 401
-with `Cache-Control: private, no-store`; it prepares nothing, creates no transaction, and
-sets no cookie, so a fetch, prefetch, or subresource cannot overwrite a login in progress.
+than `navigate`, or without a mode, `sec-fetch-dest` other than `document`) first resolves
+the request tenant: a tenant failure keeps its 404 or 500. For a resolved tenant it receives
+401 with `Cache-Control: private, no-store`. Either way it prepares nothing, creates no
+transaction, and sets no cookie, so a fetch, prefetch, or subresource cannot overwrite a
+login in progress.
 Navigations and requests without Fetch Metadata keep the behavior above.
 
 Before redirecting, login stores a versioned recoverable attempt in Redis with atomic
