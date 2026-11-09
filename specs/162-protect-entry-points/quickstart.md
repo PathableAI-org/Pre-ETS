@@ -10,20 +10,20 @@ result (pass / fail / incomplete), cleanup, and limitations.
 Each claim is observed once at its responsible boundary. Module evidence (contracts) is cited, not repeated as
 feature evidence.
 
-| Claims                    | Feature evidence (this guide)                                                                                                                      | Supporting module evidence                             | Gate / limitation                                                                |
-| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ | -------------------------------------------------------------------------------- |
-| V-001, V-012 (fabricated) | Cucumber HTTP: inventoried and undesignated entries with absent, malformed, and well-formed-unknown references                                     | Gate property and outcome matrix                       | Expired/invalidated real records and outage: manual (F-2)                        |
-| V-002                     | §3 temporary undesignated page, handler, and action probe (never committed) + route-policy inspection                                              | Matcher test; designation property                     | One revision only                                                                |
-| V-003, V-017              | Cucumber: public reachability, diagnostic issues no cookie, no-store, lookup keys only                                                             | Public requests read no session (gate examples)        | Production ingress and diagnostic safety need their own evidence                 |
-| V-004                     | Manual §6 step 4 asset assessment                                                                                                                  | —                                                      | **Open until F-1 decides the asset classes**                                     |
-| V-005                     | Existing initiation BDD (root → login → selected provider, `max_age=0`) plus `/access-denied` and absent-path rows                                 | —                                                      | Local Keycloak only                                                              |
-| V-006 (non-success)       | Existing callback BDD (crafted, replayed, cross-tenant, expired, denied returns) re-run under the gate                                             | Callback adapter scenarios                             | Confirmed-vs-unconfirmed distinction gated on #158                               |
-| V-007, V-008              | Increment-5 Cucumber + manual steps 9–10                                                                                                           | Callback 303 scenarios; renewal examples               | **Gated on #158**                                                                |
-| V-009, V-010              | Cucumber: application-request 403 needs a usable session → increment 5; manual step 6 with a prepared session now                                  | Gate mismatch examples; `protection-redis` integration | Running-app automated mismatch gated on #158 (F-2)                               |
-| V-011                     | Cucumber: protected document and application requests on invalid hosts/configurations keep 404/500; `/login-unavailable` on an invalid host is 404 | Gate tenant-first examples                             | —                                                                                |
-| V-013, V-016              | Cucumber: direct action POST (fetch metadata) without a session → 401, no receipt, no `Location`; manual step 8 through the consumer               | Outcome matrix (application request never 307)         | Consumer path needs a session at page load (manual now, Cucumber in increment 5) |
-| V-014, V-015              | Cucumber browser: fabricated reference refresh/new tab → provider; manual step 7; §5 guard probe                                                   | —                                                      | Joining and step 7b gated on #158                                                |
-| V-018                     | Manual steps 5, 6, 8 (keyboard, visible focus, perceivable outcome)                                                                                | —                                                      | Chromium only                                                                    |
+| Claims                    | Feature evidence (this guide)                                                                                                                                                              | Supporting module evidence                             | Gate / limitation                                                                |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------ | -------------------------------------------------------------------------------- |
+| V-001, V-012 (fabricated) | Cucumber HTTP: inventoried and undesignated entries with absent, malformed, and well-formed-unknown references                                                                             | Gate property and outcome matrix                       | Expired/invalidated real records and outage: manual (F-2)                        |
+| V-002                     | §3 temporary undesignated page, handler, and action probe (never committed) + route-policy inspection                                                                                      | Matcher test; designation property                     | One revision only                                                                |
+| V-003, V-017              | Cucumber: public reachability, diagnostic issues no cookie, no-store, lookup keys only                                                                                                     | Public requests read no session (gate examples)        | Production ingress and diagnostic safety need their own evidence                 |
+| V-004                     | Manual §6 step 4 asset assessment                                                                                                                                                          | —                                                      | **Open until F-1 decides the asset classes**                                     |
+| V-005                     | Existing initiation BDD (root → login → selected provider, `max_age=0`) plus the new feature's `/` entry rows                                                                              | —                                                      | Local Keycloak only                                                              |
+| V-006 (non-success)       | Existing callback BDD (crafted, replayed, cross-tenant, expired, denied returns) re-run under the gate                                                                                     | Callback adapter scenarios                             | Confirmed-vs-unconfirmed distinction gated on #158                               |
+| V-007, V-008              | Increment-5 Cucumber + manual steps 9–10                                                                                                                                                   | Callback 303 scenarios; renewal examples               | **Gated on #158**                                                                |
+| V-009, V-010              | Cucumber: application-request 403 needs a usable session → increment 5; manual step 6 with a prepared session now                                                                          | Gate mismatch examples; `protection-redis` integration | Running-app automated mismatch gated on #158 (F-2)                               |
+| V-011                     | Cucumber: protected document and application requests on invalid hosts/configurations keep 404/500; `/login-unavailable` and a non-navigation `GET /auth/login` on an invalid host are 404 | Gate tenant-first examples                             | —                                                                                |
+| V-013, V-016              | Cucumber: direct action POST with the browser's own action encoding and no usable session → 401, no reference-operation receipt, no login started; manual step 8 through the consumer      | Outcome matrix (application request never 307)         | Consumer path needs a session at page load (manual now, Cucumber in increment 5) |
+| V-014, V-015              | Cucumber browser: fabricated reference refresh/new tab → provider; manual step 7; §5 guard probe                                                                                           | —                                                      | Joining and step 7b gated on #158                                                |
+| V-018                     | Manual steps 5, 6, 8 (keyboard, visible focus, perceivable outcome)                                                                                                                        | —                                                      | Chromium only                                                                    |
 
 ## Prerequisites
 
@@ -72,7 +72,8 @@ pnpm --filter @pathableai/pre-ets-frontend test:unit
 Expected: the designation property finds no counterexample; outcome-matrix, tenant-first, renewal, and no-session-read
 examples pass; the confirmed callback branch returns 303 `Location: /` with a session cookie while the default branch
 issues none; real-Redis expired, invalidated, mismatched, and disconnected outcomes map to 307/401, 403, and 503;
-matcher and rewrite wiring pass. These do not establish Next routing, browser behavior, or provider login.
+non-navigation login requests on invalid tenants keep 404/500; the forbidden document is a host-rendered 403 page and
+matcher wiring passes. These do not establish Next routing, browser behavior, or provider login.
 
 ## 2. Build and running instances
 
@@ -139,30 +140,35 @@ Fetch Metadata to.
 - `tenant-oidc-callback.feature`: no assertion changes; re-run under the gate.
 
 **New feature** `tests/bdd/requirements/default-entry-protection.feature` (`@partial`, `@preets-session-001`; add
-`@preets-session-004` only to automatic-login rows, `@preets-tenant-004`/`@preets-tenant-005` only to tenant-failure
-rows):
+`@preets-session-004` only to automatic-login rows, `@preets-session-013` only to the fresh-entry row,
+`@preets-session-007` only to the action row, and `@preets-tenant-004`/`@preets-tenant-005` only to tenant-failure
+rows). Each assertion stays within the tagged promise. Private mechanics (the exact 307 versus 401 split, `no-store`,
+and absence of cookies on general denials) are module evidence in
+[contracts/modules.md](contracts/modules.md#contract-evidence--protection-gate), not product promises:
 
-| Scenario                                                  | Requests (host-mode Springfield unless noted)                                                                                                                                                                 | Assertions                                                                                   |
-| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| Undesignated navigations delegate to tenant login         | `GET` `/`, `/access-denied`, `/an-undesignated-path`, `/_testing`, `/auth/login/extra` with navigation metadata; each with no cookie, a malformed cookie, and a well-formed unknown 43-character reference    | 307 to same-origin `/auth/login`; no protected content; not cacheable; no application cookie |
-| Non-navigation requests are denied without starting login | `GET /` with RSC-fetch metadata (`cors`/`empty`); `GET /` with no Fetch Metadata; `GET /favicon.ico` and `GET /_next/image?url=%2Fx&w=16&q=75` with image metadata; `POST /` and `POST /an-undesignated-path` | 401; no `Location`; no protected content; no application or correlation cookie               |
-| A direct protected action request performs no effect      | `POST /` with `next-action` set to the real `runReferenceOperation` ID read from the production build's server-reference manifest                                                                             | 401; no receipt cookie; no `Location`                                                        |
-| Tenant failure wins over protection                       | `GET /` and `POST /` at `capital-city.example.test`; static mode with a missing selected file; `GET /login-unavailable` at an invalid host                                                                    | 404 (host) / 500 (static); never 307, 401, or 403                                            |
-| Fresh entry without a valid session starts tenant sign-in | Chromium at `springfield.localhost:3000` with a fabricated well-formed reference cookie: open `/`, reload, open a new page in the same context                                                                | Each arrives at the Springfield provider with `max_age=0`; no protected content first        |
+| Scenario                                                  | Requests (host-mode Springfield unless noted)                                                                                                                                                                                                                                                                                                                 | Assertions                                                                                                                                                                                                                                                                                   |
+| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Protected page entry delegates to the tenant provider     | `GET /` with navigation metadata; examples with no cookie, a malformed cookie, and a well-formed unknown 43-character reference                                                                                                                                                                                                                               | The response is a redirect; following its chain (`/auth/login` with navigation metadata) reaches the authorization endpoint of the provider configured for Springfield, with Springfield's client; no protected content (SESSION-001 AC1, SESSION-004 AC1)                                   |
+| Non-navigation requests obtain no protected content       | `GET /` with RSC-fetch metadata (`cors`/`empty`); `GET /` with no Fetch Metadata; `GET /favicon.ico` and `GET /_next/image?url=%2Fx&w=16&q=75` with image metadata; `POST /` and `POST /an-undesignated-path`                                                                                                                                                 | No protected content (SESSION-001 AC1). No claim about login delegation: no requirement promises it for these requests                                                                                                                                                                       |
+| A direct protected action request performs no effect      | `POST /` sending the browser's own action request (research D14): `next-action` = the real `runReferenceOperation` ID from the production build's server-reference manifest, `Origin` = request origin, action-fetch metadata, multipart field `0` = `[{"_tag":"Ready"},"$K1"]`; examples with no cookie and a well-formed unknown reference (missing record) | Status 401; no reference-operation receipt (`preets-ref-effect` absent); does not start login (no redirect, no correlation cookie); the response issues no `pathable-session` or `oidc-correlation` cookie (a step that checks only the cookies it names) (SESSION-001 AC1, SESSION-007 AC1) |
+| Tenant failure wins over protection                       | `GET /` and `POST /` at `capital-city.example.test`; static mode with a missing selected file; `GET /login-unavailable` at an invalid host; non-navigation (`cors`/`empty`) `GET /auth/login` at an invalid host                                                                                                                                              | 404 (host) / 500 (static); no redirect (SESSION-001 AC2, TENANT-004, TENANT-005)                                                                                                                                                                                                             |
+| A `/_test` route is available for a non-`GET` method      | `POST /_test/tenant-config` with no cookie and no form body                                                                                                                                                                                                                                                                                                   | Not denied by protection: status is not 401 and the response is not a redirect to login. The `GET`-only handler's 405 is acceptable evidence (SESSION-001 AC2)                                                                                                                               |
+| Fresh entry without a valid session starts tenant sign-in | Chromium at `springfield.localhost:3000` with a fabricated well-formed reference cookie: open `/`, reload, open a new page in the same context                                                                                                                                                                                                                | Each arrives at the Springfield provider with no protected content first (SESSION-004 AC1); the authorization request carries `max_age=0` — bounded request-level evidence for SESSION-013's selected request only, not `auth_time` validation (#158)                                        |
 
-`POST /_test/tenant-config → 401` encodes finding F-3's planned resolution, which conflicts with the literal reading of
-PREETS-SESSION-001 AC2 until acknowledged; it is therefore **not** asserted in this requirement-tagged feature. It is
-covered by the gate's designation property and examples (module evidence), and may move into BDD only after F-3 is
-acknowledged.
+Undesignated and near-miss paths (`/an-undesignated-path`, `/_testing`, `/auth/login/extra`) are not BDD rows: their
+navigation outcome follows from plan decision D11 rather than a page promise, and the designation property and examples
+cover them. The new-resource default is the §3 probe (V-002).
 
-The "login is never started by a non-navigation" claim is additionally checked at module level (gate and login
-handler examples). A browser-level confirmation belongs to the manual procedure: on `/login-unavailable` (whose `/`
-link is prefetched) and on `/` without a session, Chromium's network log must show no `/auth/login` request other than
-one following a navigation, and the `oidc-correlation` cookie must not change.
+The "login is never started by a non-navigation" claim is module evidence (gate and login handler examples) and a
+manual browser confirmation. No requirement promises it for RSC or subresource requests, so it is not a BDD assertion.
+SESSION-007 AC1 does promise it for Server Actions, so the action row keeps it. The browser-level confirmation belongs to
+the manual procedure: on `/login-unavailable` (whose `/` link is prefetched) and on `/` without a session, Chromium's
+network log must show no `/auth/login` request other than one following a navigation, and the `oidc-correlation`
+cookie must not change.
 
 **Increment 5 (gated on #158; listed now, authored then)**: login through A recognized only through B; new page in the
 same context joins without login; renewal through A observed on B and expiry enforced on B observed on A; captured
-real tenant-A cookie presented to Shelbyville on `/`, `/access-denied`, and the action → 403, forbidden page for the
+real tenant-A cookie presented to Shelbyville on `/` and the action → 403, forbidden page for the
 document, no receipt; back/forward and reload after expiry restore nothing usable; confirmed versus unconfirmed
 callback returns.
 
@@ -188,18 +194,21 @@ Delete the scratch build afterwards.
 Follow verification.md §Procedure; implementation-specific details:
 
 1. Record revision, date/time, service versions, tenant aliases, instance ports, owned prefixes, and "B6 freshness
-   policy: absent" (or its reference). Prepare the inventory: protected pages `/`, `/access-denied`; protected action
-   `runReferenceOperation`; protected route handlers: none; public `GET`/`HEAD` resources per the designation constant;
-   unmatched `/_next/static/**`.
-2. Raw HTTP to A with `Host: springfield.localhost:3000`, no cookie, and navigation metadata for the `GET`s (action
-   fetch metadata for the `POST`): `GET /`, `GET /access-denied`,
-   `POST /` with the real action ID. Expect 307 / 307 / 401, no protected content, no receipt.
-3. Fresh Chromium context: open `/` and `/access-denied` on Springfield. Expect the Springfield Keycloak page, no
+   policy: absent" (or its reference). Prepare the inventory: protected page `/`; protected action
+   `runReferenceOperation`; protected route handlers: none; public resources per the designation constant (`/_test/**`
+   for every method except Server Action candidates; `GET`/`HEAD` callback, login, sign-in error page); unmatched
+   `/_next/static/**`.
+2. Raw HTTP to A with `Host: springfield.localhost:3000`, no cookie, and navigation metadata for the `GET` (action
+   fetch metadata, matching `Origin`, and the browser's multipart action encoding for the `POST`, research D14):
+   `GET /`, `POST /` with the real action ID. Expect 307 / 401, no protected content, no receipt.
+3. Fresh Chromium context: open `/` on Springfield. Expect the Springfield Keycloak page, no
    protected content first, no local credential form. Stop at the provider. Then open `/login-unavailable` in a fresh
    context and record from the network log that the prefetch of `/` and the `/favicon.ico` request received 401 and
    that no `/auth/login` request occurred.
 4. No cookie: `GET /auth/callback`, `/login-unavailable`, `/auth/login`, `/_test/tenant-config`,
-   `/_test/this-page-is-absent`. Record reachability, that the diagnostic sets no cookie and no owned session key
+   `/_test/this-page-is-absent`, and `POST /_test/tenant-config` without a form body (expect not 401 and no login
+   redirect; 405 from the `GET`-only handler is acceptable). With `Host: capital-city.localhost:3000`, a non-navigation
+   (`sec-fetch-mode: cors`) `GET /auth/login` → 404, no cookie. Record reachability, that the diagnostic sets no cookie and no owned session key
    appears (inspect only the owned prefix count), no-store, lookup keys without secrets. Capture every asset URL
    Chromium loads for the public pages (build chunks, `/favicon.ico`, any metadata route or `/_next/image` URL); review each built asset under `packages/frontend/.next/static/` for tenant
    names, issuers, client IDs, subjects, secret values, or other protected information. **Record V-004 incomplete
@@ -207,7 +216,9 @@ Follow verification.md §Procedure; implementation-specific details:
 5. Submit a crafted callback without a matching attempt and a cancelled provider return. With keyboard only, reach the
    "Return to the application entry" link; record visible focus, the explanation, and no provider or storage details.
 6. Prepare a Springfield session. Present its cookie with `Host: shelbyville.localhost:3000`: `GET /` → 403 with the
-   rendered forbidden page (keyboard reaches its link with visible focus); `POST /` with the action ID → 403, receipt
+   rendered forbidden page (keyboard reaches its link with visible focus). Observe the document once against an
+   instance started with `next start -H 127.0.0.1` and once without `-H`; both must give 403 with the forbidden page
+   (#356); `POST /` with the action ID → 403, receipt
    count unchanged; route handler: none inventoried (the §3 probe handler, if run, → 403). Confirm the request tenant
    stayed Shelbyville (no Springfield content). Repeat once in static mode with an alias different from the session's.
 7. Prepare a Springfield session, set its cookie in a browser context without viewing protected content, invalidate it

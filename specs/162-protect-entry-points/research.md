@@ -7,6 +7,20 @@ depends on. It does not change the approved specification or verification plan. 
 `162-protect-entry-points-plan` on top of `929566a`; requirement baseline `origin/main` at
 `43215557c35380322d759d2918456e02c3a0c7b2`.
 
+## Review corrections (2026-11-09)
+
+Code review of PRs #353 and #355 found plan decisions that contradicted the unchanged specification. The plan is the
+earliest owning phase, so these decisions changed here. Requirement baseline re-read on `origin/main`
+(PREETS-SESSION-001, -004, -005, -007, -013).
+
+| Decision                 | Change                                                                                                                                                                                                                                                                                                             | Finding                                                                                                    |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------- |
+| D2 / F-3                 | `/_test` and `/_test/…` are public for every method except Server Action candidates; F-3 resolved with proposal B. The other public paths stay `GET`/`HEAD` only.                                                                                                                                                  | `/_test` narrowed to `GET`/`HEAD` contradicted PREETS-SESSION-001 AC2 and FR-006.                          |
+| D4                       | The forbidden document is rendered by the proxy response itself from the shared forbidden presentation, without a rewrite; `/access-denied` is dropped.                                                                                                                                                            | The rewrite becomes an external proxy when Next binds a loopback address (#356); violates SESSION-005 AC2. |
+| D5 (tenant context)      | `requireTenantConfig` moves from `src/app/(app)/tenant-context.ts` to `src/app/tenant-context.ts`, the common parent of its consumers.                                                                                                                                                                             | `login-unavailable` and `/_test/onsite` imported a private child of the `(app)` route group.               |
+| D13                      | Login resolves the request tenant before refusing a non-navigation, so tenant failures keep 404/500.                                                                                                                                                                                                               | Refusal before tenant lookup let a public exception bypass tenant resolution (FR-008, SESSION-001 AC2).    |
+| D14, quickstart §4 (BDD) | Requirement-tagged rows assert only promised outcomes: redirect chains to the tenant provider, no protected content, no reference-operation receipt. Status-code and cookie mechanics stay module evidence; `max_age=0` rows carry `@preets-session-013`; the direct action sends the browser's encoded arguments. | Rows encoded private mechanics as product promises, and the action request could not reach the operation.  |
+
 ## Current implementation facts
 
 | Area                       | Fact (source)                                                                                                                                                                                                                                                                                           |
@@ -56,6 +70,34 @@ Verified against the owning workspaces' installed declarations and source (Next.
   client router perform a hard (MPA) navigation to the response URL.
 - `next/dist/server/app-render/action-handler.js`: Server Action requests can be forwarded to another worker
   (`x-action-forwarded`, `selectWorkerForForwarding`), so an action is not tied to the path that hosts its page.
+- Proxy rewrites and loopback binding (#356). `next/dist/server/next-server.js` (`runMiddleware`, about line 1164)
+  builds the proxy request URL from `fetchHostname`, the formatted `-H` value (`base-server.js` about line 352), or
+  `localhost`. `next/dist/server/web/next-url.js` (`parseURL`) rewrites every loopback hostname (`127.x.x.x`, `[::1]`,
+  `localhost`) to `localhost`, so `request.url`, `request.nextUrl`, and `request.nextUrl.clone()` all report
+  `http://localhost:<port>` when Next binds `127.0.0.1`. `next/dist/server/web/adapter.js` (about lines 354–366)
+  re-serializes an `x-middleware-rewrite` destination through `NextURL` whenever its host equals `request.nextUrl.host`,
+  so it is always `localhost` for a loopback destination. `next/dist/server/lib/router-utils/resolve-routes.js` (about
+  lines 118 and 468–476) then relativizes it against `initUrl` (`http://<-H hostname>:<port>`). A different origin keeps
+  its protocol and `router-server.js` (about line 468) proxies it externally. Redirects differ: `adapter.js` (about lines
+  418–431) relativizes `Location` against the request's own `NextURL`, so `new URL("/auth/login", request.nextUrl)`
+  stays same-origin. A transient script using the installed `NextRequest`, `NextURL`, and `parseRelativeURL` showed the
+  rewrite is internal when Next binds `localhost` or `0.0.0.0` and external when it binds `127.0.0.1`. This held for all
+  three forms: `new URL(…, request.url)`, `new URL(…, request.nextUrl)`, and a cloned `nextUrl` with a new pathname. No
+  rewrite destination is internal by construction under loopback binding (research D4).
+- Server Action transport. `next/dist/client/components/router-reducer/reducers/server-action-reducer.js`
+  (`fetchServerAction`) posts `encodeReply(usedArgs)` to the current URL with `next-action: <id>`, `Accept:
+  text/x-component`, and `next-router-state-tree`. `omitUnusedArgs` drops arguments the ID marks unused; both arguments
+  of `runReferenceOperation` are used. `next/dist/compiled/react-server-dom-turbopack/cjs/*-client.*.production.js`
+  (`processReply`) encodes a `FormData` argument by appending its entries under a `_<n>_` prefix and referencing it as
+  `"$K<n>"`, and then writes the root model as field `0` of a `multipart/form-data` body. Running the installed client
+  `encodeReply` on the consumer's arguments (`[{ _tag: "Ready" }, new FormData()]`) gives one field, `0` =
+  `[{"_tag":"Ready"},"$K1"]`. The form has no named controls, so the browser's `FormData` is empty. On the server,
+  `next/dist/server/lib/server-action-request-meta.js` treats a `POST` with `next-action` as a fetch action. Any `POST`
+  with a `multipart/form-data` or `application/x-www-form-urlencoded` body is a possible (progressive-enhancement)
+  action (`isPossibleServerAction`). `action-handler.js` decodes multipart fetch actions with `decodeReply` or
+  `decodeReplyFromBusboy`. The `$K` case in the server decoder rebuilds the `FormData`. `action-handler.js` (about
+  lines 434–456) rejects an `Origin` whose host differs from `Host` or `x-forwarded-host`, and only warns when `Origin`
+  is absent.
 - `next/navigation`: `forbidden(): never`, `useRouter(): AppRouterInstance` with `refresh(): void`.
 - `@fast-check/vitest` 0.5.0 and `@effect/vitest` 4.1.2 are installed in `frontend-services`; no new dependency is
   needed. Every Effect API the design uses (`Effect.fn`, `Effect.fnUntraced`, `Effect.matchEffect`, `Effect.catchTag`,
@@ -89,29 +131,44 @@ future resource with no own check must still deny forged, missing-record, expire
   resource-level enforcement. This plan keeps resource-level checks and adds the proxy as the default layer that slice
   explicitly left to #154.
 
-### D2. Public designation by method and exact path
+### D2. Public designation by path, with method limits outside `/_test`
 
-**Decision**: A request is public only when its method is `GET` or `HEAD` and its pathname is exactly `/auth/callback`,
-`/auth/login`, or `/login-unavailable`, or is `/_test` or begins with `/_test/`. Every other matched request is
-protected, including every non-`GET`/`HEAD` request on any path. Requests under `/_next/static/`, `/_next/webpack-hmr`,
-and `/__nextjs` are not matched by the proxy (see D11 and finding F-1 for build assets).
+**Decision** (corrected 2026-11-09, finding F-3 resolved with proposal B): A request is a **Server Action candidate**
+when it carries a `next-action` header (any method), or when it is a `POST` whose `content-type` is
+`multipart/form-data` or `application/x-www-form-urlencoded`. This is Next's own possible-action predicate
+(`isPossibleServerAction`, installed `server-action-request-meta.js`). A Server Action candidate is never public. A
+request that is not a candidate is public when either:
 
-**Rationale**: Server Actions are POSTs that can target any rendered route path and can be forwarded between workers;
-progressive-enhancement submissions carry the action in the form body rather than the `next-action` header. Making
-every non-`GET`/`HEAD` request protected guarantees that no Server Action invocation bypasses the gate through a public
-path. Every current public resource is `GET`. Next applies trailing-slash redirects before the proxy, so exact matching
-does not reject the canonical paths. Path matching is exact and case-sensitive on the
-pathname the proxy receives; any other spelling is protected (fail closed). The WHATWG URL parser already resolves
-literal and `%2e`-encoded dot segments before the proxy sees the pathname. Because Next may decode the path further
-when routing, a pathname under the designated prefix that contains a percent-encoded `/`, `\`, or `.`
-(`%2f`, `%5c`, `%2e`, any case) is treated as protected, so the dangerous direction — the gate seeing a public path
-while Next routes to a protected resource — cannot occur. The safe direction is accepted: `/%5Ftest/...` is protected
-by the gate even if Next routes it to a `/_test` resource. This narrows FR-006's "all routes under `/_test`" for hypothetical future non-`GET` routes; see finding F-3.
+- its pathname is `/_test` or begins with `/_test/` and contains no percent-encoded `/`, `\`, or `.`
+  (`%2f`, `%5c`, `%2e`, any case), for **every method**; or
+- its method is `GET` or `HEAD` and its pathname is exactly `/auth/callback`, `/auth/login`, or `/login-unavailable`.
 
-**Alternatives considered**: method-agnostic prefixes (lets an action invocation through a public path); detecting
-actions by `next-action` only (misses progressive-enhancement posts); a public list supplied by the Next app (splits
-security policy from the adapter that enforces it; the callback, login, and `/login-unavailable` paths are already
-owned by `frontend-services`).
+Every other matched request is protected. Requests under `/_next/static/`, `/_next/webpack-hmr`, and `/__nextjs` are
+not matched by the proxy (see D11 and finding F-1 for build assets).
+
+**Rationale**: PREETS-SESSION-001 AC2 designates "all routes under `/_test`" without a method limit, and FR-006 repeats
+it. The earlier `GET`/`HEAD` limit was narrower than the requirement (review finding on PR #353). AC1 makes Server
+Actions protected entry points in their own right. Next routes an action `POST` to whatever page URL it is sent to
+(the page's worker, or another worker through forwarding), so a method-free `/_test` exemption without the candidate
+exception would let `POST /_test/x` with `next-action` reach an action without the gate. Progressive-enhancement
+submissions carry the action ID in a form-encoded body instead of the header. Next decides whether to decode an action
+from exactly this method-and-content-type predicate, so reusing it keeps the gate's view of an action invocation the
+same as Next's. The cost is that a form-encoded `POST` to a `/_test` resource is protected. No current `/_test`
+resource accepts one, and a future one needs an explicit, reviewed designation. AC2's method-free wording is specific
+to `/_test`. The callback, login, and sign-in error page are all `GET`, so they keep the narrower reviewed
+`GET`/`HEAD` designation. Next applies trailing-slash redirects before the proxy, so exact matching does not reject
+the canonical paths. Path matching is exact and case-sensitive on the pathname the proxy receives; any other spelling
+is protected (fail closed). The WHATWG URL parser already resolves literal and `%2e`-encoded dot segments before the
+proxy sees the pathname. Next may decode the path further when routing, so a pathname under the `/_test` prefix that
+contains an encoded separator or dot is protected. The dangerous direction therefore cannot occur: the gate never sees
+a public path while Next routes to a protected resource. The safe direction is accepted: `/%5Ftest/...` is protected
+by the gate even if Next routes it to a `/_test` resource.
+
+**Alternatives considered**: a method-agnostic `/_test` prefix with no action exception (lets an action invocation
+through a public path — F-3 proposal C); `GET`/`HEAD` only (narrower than AC2 — F-3 proposal A, superseded); detecting
+actions by `next-action` only (misses progressive-enhancement posts, which Next still decodes); a public list supplied
+by the Next app (splits security policy from the adapter that enforces it; the callback, login, and
+`/login-unavailable` paths are already owned by `frontend-services`).
 
 The dedicated expired/missing-session recovery content does not exist yet; #157 creates it and adds its path to this
 closed designation. #154 preserves the exception category rather than inventing a placeholder page.
@@ -138,7 +195,7 @@ navigation status is unknown** — is an **application request**. Outcomes after
 | Usable, matching session     | Pass through                                                  | Pass through        |
 
 Tenant failure precedes all of these and uses the host's existing 404/500 tenant-failure response. All responses the
-gate returns or rewrites carry `Cache-Control: private, no-store` and no session or correlation cookie. Login
+gate returns, including the host-rendered forbidden document, carry `Cache-Control: private, no-store` and no session or correlation cookie. Login
 initiation is therefore reachable from the gate only through a 307 answered to a classified navigation; no fetch,
 prefetch, refresh, or subresource request can be redirected into `/auth/login`, create an OIDC transaction, or
 overwrite the `oidc-correlation` cookie through the gate (see also D13 for the login handler itself).
@@ -165,28 +222,50 @@ setting `skipProxyUrlNormalize` to see Flight headers — rejected because it is
 header stripping for every request, which Next documents as keeping RSC and HTML handling aligned, and it would change
 the pathname semantics the designation relies on.
 
-### D4. Forbidden document through a protected internal page
+### D4. Forbidden document rendered by the proxy response
 
-**Decision**: The Next app's `forbiddenDocument` response rewrites the request to a new protected page,
-`/access-denied`, whose only behavior is `forbidden()`. The existing `src/app/forbidden.tsx` remains the single
-forbidden presentation and gains a keyboard-reachable link back to the application entry.
+**Decision** (corrected 2026-11-09, #356): The Next app's `forbiddenDocument` returns the forbidden document directly.
+It is a `NextResponse` with status 403, `content-type: text/html; charset=utf-8`, and a body rendered with
+`react-dom/server.edge`, the same way `tenantFailureResponse` renders the tenant 404. The forbidden content is one
+component, `ForbiddenNotice`, in `src/features/access-responses`: heading, explanation, and a keyboard-reachable link
+back to the application entry. `src/app/forbidden.tsx` (the `forbidden()` convention used by resource-level checks)
+renders the same `ForbiddenNotice`, so proxy-level and resource-level forbidden outcomes share one presentation. No
+rewrite and no `/access-denied` page exist.
 
-**Rationale**: One presentation for proxy-level and resource-level forbidden outcomes, rendered inside the root layout,
-with Next's own HTTP 403 semantics. A rewrite from proxy does not re-enter the proxy; a direct request to
-`/access-denied` is an ordinary protected request and can only ever produce login, 403, or the forbidden page.
+**Rationale**: PREETS-SESSION-005 AC2 and FR-018 require HTTP 403 with an accessible forbidden page at every
+protected entry point. The planned rewrite to `/access-denied` failed under `next start -H 127.0.0.1`, which the BDD
+harness uses: the request received 404 in host mode or 500 in static mode. Building the destination from
+`request.nextUrl` does not fix this. Next normalizes every loopback host in the proxy request to `localhost`. It
+compares the rewrite destination with the bound `-H` origin only after that normalization. So no rewrite destination is
+internal by construction ([installed facts](#installed-dependency-facts)). A response body involves no second routing
+step, so it is the same under every binding. The tenant 404 already uses this host-rendered pattern, and the root
+layout adds nothing beyond `<html lang>` and `<body>`, so the proxy document matches the convention page. Rendering
+`ForbiddenNotice` in both places keeps one presentation, which was the earlier objection to proxy rendering.
 
-**Alternative considered**: render forbidden HTML inside the proxy as `presentation.tsx` does for the tenant 404 —
-duplicates the forbidden presentation outside the app layout.
+**Alternatives considered**: `NextResponse.rewrite(new URL("/access-denied", request.nextUrl))` or a cloned `nextUrl`
+(still external under loopback binding, verified above); a redirect to a public forbidden page (adds a public
+designation the specification does not list, and turns the original request's 403 into a redirect); rewriting only
+when not loopback-bound (deployment-dependent behavior); passing the request through with a trusted header for
+resources to read (per-resource opt-in and a forgeable channel).
 
 ### D5. Tenant failures and public resources
 
 **Decision**: For protected requests the proxy resolves the tenant first and returns the host `TenantFailureResponse`
 (existing `tenantFailureResponse`: 404 missing page, 500 empty) on failure, before any session read. Public resources
 are passed through without proxy tenant resolution; each owns its tenant resolution. `/login-unavailable` gains request
-tenant resolution through the existing `requireTenantConfig`.
+tenant resolution through the existing `requireTenantConfig`. The login handler resolves the tenant before it refuses
+a non-navigation (D13).
 
-Request tenant resolution (alias, then that alias's configuration) is one private step in `next/` shared by the gate
-and `readSessionRequest`, so both resolve the tenant identically.
+Request tenant resolution (alias, then that alias's configuration) is one private step in `next/` shared by the gate,
+`readSessionRequest`, and the login handler's non-navigation branch, so all three resolve the tenant identically.
+
+`requireTenantConfig` (React `cache`d, `server-only`, unchanged behavior) moves from `src/app/(app)/tenant-context.ts`
+to `src/app/tenant-context.ts` (corrected 2026-11-09). Its consumers are `src/app/login-unavailable/page.tsx` and
+`src/app/%5Ftest/onsite/page.tsx`. No file inside `(app)` uses it today. Under the recursive module rule, a file under
+`(app)/` is a private child of that route group, and neither consumer is in the group. `src/app` is the nearest common
+parent. `fallow guard` places `src/app/tenant-context.ts` in the Bulletproof `app` zone, the same zone as both
+consumers, so the move needs no zone change. `src/features/` holds feature UI, not a request helper, and
+`packages/frontend/AGENTS.md` keeps `src/server` absent while the helper's callers all live in `src/app`.
 
 **Rationale**: FR-020 and FR-008. Pre-resolving tenant in the proxy for public resources would replace the
 diagnostic's accepted JSON failure body (`tenantFailureJson`) with the HTML failure. `/login-unavailable` was the only
@@ -269,17 +348,42 @@ here. Success-path feature evidence is gated on #158 (plan increment 5).
 
 **Rationale**: FR-012 and the maintainer's direction ("we will cross that bridge when we come to 158").
 
-### D13. Login preparation refuses explicit non-navigations
+### D13. Login preparation refuses explicit non-navigations after tenant resolution
 
-**Decision**: `createLoginHandler` answers 401 with `Cache-Control: private, no-store`, no transaction, and no cookie
-when the request's navigation status (D3) is an explicit non-navigation. Navigations and metadata-less requests keep
-the existing behavior.
+**Decision** (corrected 2026-11-09): When the request's navigation status (D3) is an explicit non-navigation,
+`createLoginHandler` first resolves the request tenant through the shared private `resolveRequestTenant(host)`. A
+tenant failure goes to the existing tenant-failure response (404 missing page, 500). Only after the tenant resolves
+does the handler answer 401 with `Cache-Control: private, no-store`, no transaction, and no cookie. Navigations and
+metadata-less requests keep the existing path unchanged: `AuthenticationService.prepare` performs its own tenant lookup,
+so a normal login does not look the tenant up twice. The signature is unchanged.
 
 **Rationale**: The gate never redirects a non-navigation into login (D3), but `/auth/login` is itself public. A fetch,
 prefetch, or cross-site subresource request to it would otherwise prepare a Redis transaction and overwrite the
 correlation cookie of a login in progress. Metadata-less direct requests are explicit login requests (and the existing
-raw-HTTP BDD sends `sec-fetch-dest: document`), so they are not refused. The navigation predicate is shared with the
-gate as one private helper in `next/`.
+raw-HTTP BDD sends `sec-fetch-dest: document`), so they are not refused. The gate does not resolve the tenant for public
+paths (D5). If the handler refused first, a non-navigation at an unknown host or with a missing static tenant file would
+get 401 instead of 404/500. A public exception would then bypass tenant resolution, contrary to FR-008 and
+PREETS-SESSION-001 AC2 (review finding on PR #353). The navigation predicate and the tenant step are shared with the gate
+as private helpers in `next/request.ts`.
+
+### D14. Direct Server Action evidence uses the browser's own encoding
+
+**Decision**: The running-application request that shows a protected Server Action performs no effect sends the same
+request the browser sends for the reference consumer. It is `POST /` with `next-action` set to the real
+`runReferenceOperation` ID from the production build's server-reference manifest, `Origin` equal to the request
+origin, action-fetch Fetch Metadata, and a `multipart/form-data` body whose only field `0` is
+`[{"_tag":"Ready"},"$K1"]` ([installed facts](#installed-dependency-facts)). The observed effect is the absence of the
+`preets-ref-effect` receipt.
+
+**Rationale**: A request with `next-action` and no body cannot decode into `(previousState, formData)`.
+`runReferenceOperation` reads `previousState._tag` before its own session check, so without the gate it would fail with
+500 anyway. Such a request cannot show that protection prevented the operation (review finding on PR #355). With the
+browser's own encoding, the request would reach the operation if nothing denied it. BDD cannot run a gate-bypassed
+control, because steps do not alter the application. The bounded claim is therefore: the request is a well-formed
+invocation of the real action, shown by matching the installed client encoder's output; the response is a denial; and
+no receipt is issued. That the gate rather than the action's own check denied it is module evidence (outcome matrix:
+an application request without a session gets 401 before any resource runs). If implementation finds the decoder
+rejects this body, record the direct action row as an open item rather than inventing an encoding.
 
 ## Findings
 
@@ -334,16 +438,22 @@ that the decision makes public; V-004 and the final asset designation remain ope
    policy to sanction a support hook that prepares records through the public session service (testing-documentation
    owner decision). (C) Defer those automated rows entirely to #158 without adapter integration evidence.
 
-### F-3. Method scope of the `/_test` exemption (non-blocking; planned resolution A)
+### F-3. Method scope of the `/_test` exemption (resolved 2026-11-09 with proposal B)
 
-1. **Source**: spec FR-006 ("all routes under `/_test`"); PREETS-SESSION-001 AC2.
+1. **Source**: spec FR-006 ("all routes under `/_test`"); PREETS-SESSION-001 AC1 (Server Actions are protected entry
+   points) and AC2 (all routes under `/_test` are public), `origin/main` `43215557`.
 2. **Ambiguity**: A method-agnostic `/_test` exemption would admit a Server Action invocation posted to a `/_test` path
-   (D2). Every current `/_test` route is `GET`.
-3. **Impact**: Only a hypothetical future non-`GET` `/_test` route is affected; no current resource changes
-   reachability. Until acknowledged, the planned `POST /_test/... → 401` observation is module evidence only and is not
-   asserted in requirement-tagged BDD.
-4. **Decision required**: Confirm that the exemption covers `GET`/`HEAD` requests under `/_test`, with any future
-   non-`GET` `/_test` route requiring an explicit, reviewed designation.
-5. **Proposals**: (A, planned) `GET`/`HEAD` only. (B) All methods except requests detected as Server Action invocations
+   (D2); a `GET`/`HEAD`-only exemption is narrower than AC2's method-free wording.
+3. **Impact**: Determines whether non-`GET` requests under `/_test` pass the gate. No current resource changes
+   reachability; no signature changes.
+4. **Decision required**: Which requests under `/_test` are public.
+5. **Proposals**: (A) `GET`/`HEAD` only. (B) All methods except requests detected as Server Action invocations
    (`next-action` header or form-encoded POST), accepting detection risk. (C) All methods, relying on each Server
    Action's own check.
+
+**Resolution**: B. Planning had proposed A, but review of PR #353 found that A contradicts PREETS-SESSION-001 AC2 and
+FR-006. B keeps AC2 (every non-action request under `/_test` is public whatever its method) and AC1 (no action
+invocation passes through a public path). Detection uses Next's own possible-action predicate, so the gate and Next
+agree on what an action invocation is. The remaining narrowing is that a form-encoded `POST` to a `/_test` resource is
+protected; no current resource is affected (D2). `POST /_test/tenant-config` without a form body is public and may be
+asserted in requirement-tagged BDD as not denied by protection.
