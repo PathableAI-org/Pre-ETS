@@ -159,7 +159,7 @@ V-016, V-017).
 
 ### 3e. Current-behavior documentation
 
-- [ ] T037 [P] [US1] Update docs/authentication.md (proxy is no longer pass-through; login refuses non-navigations with 401; `/login-unavailable` resolves tenant) and docs/session-state.md (default protection, closed public designation with `GET`/`HEAD` only for `/_test`, request classes and outcome matrix, renewal sources and cookie re-issue, entry-point inventory, interim asset behavior pending F-1, #157/#158 gaps); then `pnpm format:check` (plan.md Phase 4 "Documentation")
+- [x] T037 [P] [US1] Update docs/authentication.md (proxy is no longer pass-through; login refuses non-navigations with 401; `/login-unavailable` resolves tenant) and docs/session-state.md (default protection, closed public designation with `GET`/`HEAD` only for `/_test`, request classes and outcome matrix, renewal sources and cookie re-issue, entry-point inventory, interim asset behavior pending F-1, #157/#158 gaps); then `pnpm format:check` (plan.md Phase 4 "Documentation")
 
 **Commit boundary 7**: `docs: describe default entry protection for #154` (T037). May be folded into commit 5 if the
 reviewer prefers one decision per commit.
