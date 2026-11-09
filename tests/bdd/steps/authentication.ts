@@ -195,27 +195,25 @@ When(
       }
       const entry = `http://${host}${entryPath}`
       this.protectedDocuments = []
-      let observing = true
-      context.on("response", (response) => {
-        const url = new URL(response.url())
-        const document = response.request().resourceType() === "document"
-        if (observing && url.host === host && document && response.status() === 200) {
-          this.protectedDocuments.push(url.pathname)
-        }
-      })
-      const first = await context.newPage()
+      const observe = (page: Page) =>
+        page.on("response", (response) => {
+          const url = new URL(response.url())
+          if (url.host === host && response.request().resourceType() === "document" && response.status() === 200) {
+            this.protectedDocuments.push(url.pathname)
+          }
+        })
+      const first = observe(await context.newPage())
       await first.goto(entry)
       const opened = first.url()
       // A tab can show the entry only after an earlier view; without a usable session the application never renders
-      // one, so the harness stands in for that earlier view and the browser's own reload is the observed entry.
+      // one, so an unobserved harness stub stands in for that earlier view and the browser's own reload is observed.
       const refreshed = await context.newPage()
-      observing = false
       await refreshed.route(entry, (route) => route.fulfill({ body: "<p>Earlier view</p>", contentType: "text/html" }))
       await refreshed.goto(entry)
       await refreshed.unrouteAll()
-      observing = true
+      observe(refreshed)
       await refreshed.reload()
-      const another = await context.newPage()
+      const another = observe(await context.newPage())
       await another.goto(entry)
       this.browserEntries = [opened, refreshed.url(), another.url()]
     } finally {
