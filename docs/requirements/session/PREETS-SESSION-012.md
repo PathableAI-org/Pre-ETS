@@ -35,7 +35,8 @@ Server rejection alone cannot protect sensitive information already rendered, in
   resume, a tab past its locally known deadline temporarily conceals protected content at once and confirms with
   the server; this temporary concealment is not the expired state, and content is restored if the session was
   renewed in another tab. Otherwise the tab confirms with the server and conceals within 2 seconds if the session
-  ended while suspended. Pixels painted before page scripts run on
+  ended while suspended. A back/forward-cache restoration with no valid session follows
+  PREETS-SESSION-004's fresh-entry policy (AC2) instead of the modal. Pixels painted before page scripts run on
   resume are a recorded limitation. See the [session delivery plan](../../delivery/session-management.md#b5-browser-timing-and-resume-decision-2026-11-09). This decision establishes no implemented or verified behavior
   and awaits Git/PR approval.
 

@@ -200,7 +200,10 @@ The maintainer selected the B5 browser communication, synchronization, and resum
   session ended, the tab enters the expired state. A tab whose locally known deadline has not passed confirms with
   the server and conceals within the 2-second bound if the session expired or was logged out while suspended;
   protected content may remain visible during that confirmation. Interaction after resume cannot revive an ended
-  session (SESSION-009 AC4). The warning follows the same local-check-then-confirm rule.
+  session (SESSION-009 AC4). The warning follows the same local-check-then-confirm rule. Back/forward-cache
+  restoration is browser history navigation: it keeps concealment during confirmation, but when no valid session
+  remains it follows PREETS-SESSION-004's fresh-entry policy (tenant OIDC) rather than showing the expiration
+  modal, as PREETS-SESSION-012 AC2 requires. The expired state on resume applies to visibility and unfreeze.
 
 Server authority and session/tenant/browser-context isolation remain required. This resolves B5. It selects no
 implementation structure or browser mechanism and claims no implemented or verified behavior. Limitations: pixels
