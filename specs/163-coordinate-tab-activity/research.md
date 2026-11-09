@@ -2,7 +2,7 @@
 
 **Plan**: [plan.md](plan.md) | **Spec**: [spec.md](spec.md) | **Verification**: [verification.md](verification.md)
 
-Facts were read on 2026-11-09 from the specification branch `163-coordinate-tab-activity` at `275300e`, which sits on
+Facts were read on 2026-11-09 from the specification branch `163-coordinate-tab-activity` at `9ebdccc`, which sits on
 `origin/main` `00116612`. That revision includes S1 (PR #355), S2, the B5 decision (PR #360), and the B6 decision
 (PR #359). Installed versions were read from this worktree's `node_modules`.
 
@@ -251,7 +251,7 @@ broadcast already knows, and otherwise expiration is the remaining cause.
   broadcasts. It does not state that it ended a session (FR-021).
 - **403/503/network failure**: logout did not complete. The tab conceals protected content, announces that logout could
   not be completed, keeps the Log out control available to retry, and does not broadcast (FR-021).
-- **Signed-out notice (spec Authority finding 3, maintainer decision A, 2026-11-09)**: every tab — the initiating tab
+- **Signed-out notice (FR-023, SC-011, V-017; maintainer decision A, 2026-11-09)**: every tab — the initiating tab
   and each other sharing tab — shows an accessible signed-out notice (`Alert` with a heading and a polite live region)
   and an explicit **Log in** link to `/`. Following it is a deliberate navigation through S1's fresh-entry boundary;
   authentication never starts automatically. Focus moves to the notice heading in the initiating tab; other tabs do
@@ -264,7 +264,7 @@ broadcast already knows, and otherwise expiration is the remaining cause.
   same signed-out notice. #157 replaces that branch with the expired-state modal; this plan presents no expiration
   modal and no warning.
 
-**Rationale**: Decision A was chosen by the maintainer in this planning session. Unmounting after logout is stronger
+**Rationale**: FR-023 requires this outcome; the maintainer chose it (spec Authority finding 3, proposal A). Unmounting after logout is stronger
 than hiding for a shared workstation, while hiding is required for temporary concealment that must restore content.
 
 ### D9. Resume handling
@@ -341,7 +341,7 @@ real time with the shortest permitted timeout is slower but changes no product c
 - **Source**: issue #155 evidence progression; `docs/session-state.md`; #158 open.
 - **Ambiguity**: none in the design; only execution of live multi-tab claims is blocked.
 - **Impact**: increments 1–4 in [plan.md](plan.md#phase-4--implementation-architecture) are implementable and their
-  module evidence is complete without a real session. Live browser claims V-001–V-004 and V-006–V-016 stay
+  module evidence is complete without a real session. Live browser claims V-001–V-004 and V-006–V-017 stay
   incomplete. Only the HTTP classification part of V-005 and the denial part of V-009 run with prepared records.
 - **Decision required**: maintainer acceptance of proposal A from the spec, following S1's precedent (PR #355 merged
   increments 1–4 with `@partial` BDD and an evidence record reporting gated claims incomplete).
@@ -359,13 +359,12 @@ real time with the shortest permitted timeout is slower but changes no product c
   design (RP-initiated logout, post-logout redirect registration per tenant, token-hint storage) is a separate plan.
   Nothing in this plan forecloses it: the logout handler is the single place a provider step would be added.
 
-### F-3. Presentation in tabs after logout (spec Authority finding 3; decided A by the maintainer on 2026-11-09)
+### F-3. Presentation in tabs after logout (spec Authority finding 3; resolved in the specification)
 
-- **Decision**: proposal A — every tab shows an accessible signed-out notice with an explicit Log in action that uses
-  S1's fresh-entry boundary, without starting authentication automatically. Encoded in D8.
-- **Follow-up for the specification owner**: spec.md and verification.md still list Authority finding 3 as open. The
-  workflow's correction table assigns acceptance wording to the specification. The specification pull request
-  (#361) should record the decision; this plan does not edit spec files.
+- **Decision**: the maintainer selected proposal A on 2026-11-09. The specification records it as US3 scenario 6,
+  FR-023, SC-011, and V-017: after logout, every sharing tab shows an accessible signed-out notice with an explicit
+  Log in action into the tenant's fresh-entry flow, and no tab starts authentication automatically. The design is
+  in D8.
 
 ### F-4. Logout when a later session is in force (non-blocking)
 

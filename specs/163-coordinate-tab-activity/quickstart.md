@@ -29,6 +29,7 @@ reported as feature evidence.
 | V-014 | Browser lifecycle across logout; back/forward after logout                      | §4, §5 10    | Yes           |
 | V-015 | Running app with the store stopped during status, resume, logout                | §4           | Yes (browser) |
 | V-016 | Inspection of tab-visible outcomes, channel messages, other contexts            | §4, §5 7–8   | Yes           |
+| V-017 | Browser: signed-out notice and Log in in every tab; no automatic sign-in        | §4, §5 7     | Yes           |
 
 ## Prerequisites
 
@@ -121,6 +122,7 @@ contexts and tenants use separate `BrowserContext`s and `*.localhost` hosts.
 | Each qualifying kind renews; pointer movement and programmatic focus do not (009)                               | V-006, V-007 | #158 |
 | First interaction sends at once; repeats coalesce into one send; near-deadline sends at once, across tabs (009) | V-008        | #158 |
 | Keyboard logout in one tab conceals and denies in every tab (010)                                               | V-010, V-011 | #158 |
+| Every tab shows the signed-out notice; sign-in starts only from Log in (010)                                    | V-017        | #158 |
 | Activity and logout leave another tenant, another context, and a later session unchanged (010)                  | V-012, V-016 | #158 |
 
 Non-BDD Playwright browser evidence (retained under `tests/bdd/support` helpers, run by the same harness) covers the

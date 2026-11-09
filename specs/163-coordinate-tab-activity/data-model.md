@@ -68,7 +68,7 @@ tags and malformed messages.
 | `Concealed`    | `hidden` + `inert` (state preserved) | No                    | Status "Checking your session…" (not the expired state)          |
 | `LoggingOut`   | Rendered, Log out control busy       | No                    | Busy state on the control                                        |
 | `LogoutFailed` | `hidden` + `inert`                   | No                    | Alert: logout could not be completed; Log out available to retry |
-| `Ended`        | Unmounted                            | No                    | Signed-out notice with Log in link to `/` (decision A)           |
+| `Ended`        | Unmounted                            | No                    | Signed-out notice with Log in link to `/` (FR-023)               |
 
 `Ended` is terminal for the document. Leaving it requires a navigation (Log in), which the S1 gate decides.
 #157 will distinguish expiration within `Ended` and present the expired-state modal there.
