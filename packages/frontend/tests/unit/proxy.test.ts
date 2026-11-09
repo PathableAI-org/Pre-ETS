@@ -1,7 +1,7 @@
 import type * as FrontendServices from "@pathableai/pre-ets-frontend-services"
 import type { ProtectionResponses } from "@pathableai/pre-ets-frontend-services"
 
-import { tryToParsePath } from "next/dist/lib/try-to-parse-path"
+import { unstable_doesMiddlewareMatch } from "next/experimental/testing/server"
 import { NextRequest } from "next/server"
 import { describe, expect, it, vi } from "vitest"
 
@@ -21,11 +21,12 @@ const { config } = await import("../../src/proxy.ts")
 
 const MATCHER = "/((?!_next/static/|_next/webpack-hmr|__nextjs).*)"
 
-const matches = (pathname: string) => {
-  const { regexStr } = tryToParsePath(MATCHER)
-  if (regexStr === undefined) throw new Error("matcher does not parse")
-  return new RegExp(regexStr).test(pathname)
-}
+/**
+ * Next's own matcher pipeline, so the examples exercise how Next applies the config. The installed 16.4.5 exports
+ * `unstable_doesMiddlewareMatch`; its bundled proxy guide names `unstable_doesProxyMatch`. Revisit on Next upgrades.
+ */
+const matches = (pathname: string) =>
+  unstable_doesMiddlewareMatch({ config, url: `https://springfield.example.test${pathname}` })
 
 describe("proxy [PREETS-SESSION-001]", () => {
   it("matches every application path and excludes only build assets and development tooling", () => {
