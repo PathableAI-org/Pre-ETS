@@ -157,7 +157,8 @@ afterEach(() => {
   vi.clearAllMocks()
 })
 
-const designatedPaths = ["/auth/callback", "/auth/login", "/login-unavailable", "/_test"] as const
+const documentPaths = ["/auth/callback", "/auth/login", "/login-unavailable"] as const
+const designatedPaths = [...documentPaths, "/_test"] as const
 
 const separators = ["/", "\\", "."]
 const count = (text: string, character: string) => text.split(character).length - 1
@@ -168,15 +169,24 @@ const decodesWithoutNewSeparator = (rawSegment: string) => {
   return separators.every((character) => count(decoded, character) === count(rawSegment, character))
 }
 
+/** Next decodes a Server Action from an action header or a form-encoded `POST` body. */
+const invokesServerAction = (method: string, headers: Metadata) => {
+  if (headers["next-action"] !== undefined) return true
+  const contentType = headers["content-type"]
+  return method === "POST" &&
+    (contentType === "application/x-www-form-urlencoded" || contentType?.startsWith("multipart/form-data") === true)
+}
+
 /**
- * Independent statement of the closed designation, evaluated segment by segment on the pathname the gate receives:
- * an exact designated path, or `_test` as the first segment followed by segments that decode without a new separator.
+ * Independent statement of the closed designation, evaluated segment by segment on the pathname the gate receives.
+ * No Server Action invocation is public. Otherwise `_test` as the first segment, followed only by segments that decode
+ * without a new separator, is public for every method; an exact document path is public for `GET` and `HEAD`.
  */
-const isDesignated = (method: string, pathname: string) => {
-  if (method !== "GET" && method !== "HEAD") return false
-  if ((designatedPaths as readonly string[]).includes(pathname)) return true
+const isDesignated = (method: string, pathname: string, headers: Metadata) => {
+  if (invokesServerAction(method, headers)) return false
   const [root, first, ...rest] = pathname.split("/")
-  return root === "" && first === "_test" && rest.length > 0 && rest.every(decodesWithoutNewSeparator)
+  if (root === "" && first === "_test" && rest.every(decodesWithoutNewSeparator)) return true
+  return (method === "GET" || method === "HEAD") && (documentPaths as readonly string[]).includes(pathname)
 }
 
 const segment = fc.array(
@@ -192,6 +202,12 @@ const pathname = fc.oneof(
 
 const headerSubset = fc.record(
   {
+    "content-type": fc.constantFrom(
+      "multipart/form-data; boundary=----x",
+      "application/x-www-form-urlencoded",
+      "application/json",
+      "text/plain;charset=UTF-8"
+    ),
     "next-action": fc.constant("0123456789abcdef"),
     "sec-fetch-dest": fc.constantFrom("document", "empty", "image"),
     "sec-fetch-mode": fc.constantFrom("navigate", "cors", "no-cors", "same-origin")
@@ -205,14 +221,14 @@ describe("createProtectionProxy designation [PREETS-SESSION-001]", () => {
     fc.constantFrom("GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"),
     headerSubset
   ], { numRuns: 500 })(
-    "passes a request without a usable session through iff it is a designated GET or HEAD",
+    "passes a request without a usable session through iff it is designated and invokes no Server Action",
     async (path, method, headers) => {
       install(sessionDouble(() => Effect.succeed(noUsableSession)))
       const incoming = request(path, { cookie: reference, headers, method })
 
       const response = await protect(incoming)
 
-      const designated = isDesignated(method, incoming.nextUrl.pathname)
+      const designated = isDesignated(method, incoming.nextUrl.pathname, headers)
       expect(passedThrough(response)).toBe(designated)
       if (designated) {
         expect(recorded.reads).toEqual([])
@@ -263,14 +279,52 @@ describe("createProtectionProxy designation [PREETS-SESSION-001]", () => {
     expect(recorded.reads).toHaveLength(1)
   })
 
-  it.each([...designatedPaths, "/_test/tenant-config"])(
-    "protects POST %s like any other non-GET request",
-    async (path) => {
-      install(sessionDouble(() => Effect.succeed(noUsableSession)))
+  it.each(["PUT", "PATCH", "DELETE", "OPTIONS"])("passes %s under /_test without session state", async (method) => {
+    install(sessionDouble(() => Effect.die("a public request must not read session state")))
 
-      await expectEmptyDenial(await protect(request(path, { headers: navigation, method: "POST" })), 401)
+    for (const path of ["/_test", "/_test/tenant-config", "/_test/this-page-is-absent"]) {
+      expect(passedThrough(await protect(request(path, { cookie: reference, method })))).toBe(true)
+    }
+    expect(runtime.runPromise).not.toHaveBeenCalled()
+  })
+
+  it.each([undefined, "application/json", "text/plain;charset=UTF-8"])(
+    "passes POST /_test/tenant-config with content type %s without session state",
+    async (contentType) => {
+      install(sessionDouble(() => Effect.die("a public request must not read session state")))
+      const headers = contentType === undefined ? navigation : { ...navigation, "content-type": contentType }
+
+      expect(passedThrough(await protect(request("/_test/tenant-config", { headers, method: "POST" })))).toBe(true)
+      expect(runtime.runPromise).not.toHaveBeenCalled()
     }
   )
+
+  it.each([
+    { headers: { ...rscFetch, "next-action": "0123456789abcdef" }, method: "POST", name: "an action header" },
+    { headers: { ...navigation, "next-action": "0123456789abcdef" }, method: "GET", name: "an action header on GET" },
+    {
+      headers: { ...navigation, "content-type": "multipart/form-data; boundary=----x" },
+      method: "POST",
+      name: "a multipart body"
+    },
+    {
+      headers: { ...navigation, "content-type": "application/x-www-form-urlencoded" },
+      method: "POST",
+      name: "a form-urlencoded body"
+    }
+  ])("protects a Server Action candidate under /_test: $name", async (row) => {
+    install(sessionDouble(() => Effect.succeed(noUsableSession)))
+
+    for (const path of ["/_test", "/_test/x"]) {
+      await expectEmptyDenial(await protect(request(path, { headers: row.headers, method: row.method })), 401)
+    }
+  })
+
+  it.each(documentPaths)("protects POST %s like any other non-GET request", async (path) => {
+    install(sessionDouble(() => Effect.succeed(noUsableSession)))
+
+    await expectEmptyDenial(await protect(request(path, { headers: navigation, method: "POST" })), 401)
+  })
 })
 
 describe("createProtectionProxy outcomes [PREETS-SESSION-001, PREETS-SESSION-005]", () => {

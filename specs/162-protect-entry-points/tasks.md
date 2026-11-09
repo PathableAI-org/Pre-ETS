@@ -36,8 +36,11 @@ stories.
 - Interim asset behavior (research F-1): `/_next/static/**` stays unmatched and publicly served as today;
   `/favicon.ico`, metadata routes, and `/_next/image` are matched and protected — 401 without a session, never a login
   redirect.
-- F-3 resolution A: the `/_test` exemption covers `GET`/`HEAD` only. `POST /_test/...` → 401 is module evidence only and
-  is never asserted in requirement-tagged BDD.
+- ~~F-3 resolution A: the `/_test` exemption covers `GET`/`HEAD` only. `POST /_test/...` → 401 is module evidence only
+  and is never asserted in requirement-tagged BDD.~~ **Corrected 2026-11-09 (F-3 resolution B, research D2):** `/_test`
+  and `/_test/…` are public for every method except Server Action candidates (`next-action` header on any method, or a
+  `POST` with a `multipart/form-data` or `application/x-www-form-urlencoded` body); the other public paths stay
+  `GET`/`HEAD` only. See Phase 9.
 - #157 recovery content, Server Action HTTP 401 recovery, and the running-tab modal are out of scope; no placeholder
   recovery path is added to the designation.
 - `packages/frontend` imports no `effect`. Tests and consumers use public parents (`src/next.ts`, `src/index.ts`,
@@ -91,11 +94,11 @@ entry", "Private next/ helpers").
 
 ### 2b. Protection gate contract and behavior
 
-- [x] T013 Write packages/frontend-services/tests/unit/protection.test.ts (`describe` titles cite `[PREETS-SESSION-001]`, `[PREETS-SESSION-005]`, and `[PREETS-TENANT-004, PREETS-TENANT-005]` where the block supplies that evidence) importing `createProtectionProxy` only from `src/next.ts`, mocking `src/runtime.ts` and providing `TenantConfigService`/`SessionService` doubles as the existing unit suites do. Fast-Check property: for generated pathnames, methods, and Fetch Metadata/`next-action` header subsets with a `NoUsableSession` double, pass-through (`x-middleware-next`) occurs iff method ∈ {`GET`,`HEAD`} and pathname is exactly `/auth/callback`, `/auth/login`, `/login-unavailable`, `/_test`, or begins with `/_test/`. Named examples: each designated path; `/_testing`, `/auth/login/extra`, trailing-slash and case variants; `POST` to every public path including `POST /_test/tenant-config` → 401 (F-3 resolution A, module evidence only); percent-encoded `/%5Ftest/x`, `/_test/%2e%2e/`, `/_test/..%2F`, `/_test%2Fx`, `/_test/%5C` protected (contracts/modules.md, first evidence row). Confirm it fails first
+- [x] T013 Write packages/frontend-services/tests/unit/protection.test.ts (`describe` titles cite `[PREETS-SESSION-001]`, `[PREETS-SESSION-005]`, and `[PREETS-TENANT-004, PREETS-TENANT-005]` where the block supplies that evidence) importing `createProtectionProxy` only from `src/next.ts`, mocking `src/runtime.ts` and providing `TenantConfigService`/`SessionService` doubles as the existing unit suites do. Fast-Check property: for generated pathnames, methods, and Fetch Metadata/`next-action` header subsets with a `NoUsableSession` double, pass-through (`x-middleware-next`) occurs iff method ∈ {`GET`,`HEAD`} and pathname is exactly `/auth/callback`, `/auth/login`, `/login-unavailable`, `/_test`, or begins with `/_test/`. Named examples: each designated path; `/_testing`, `/auth/login/extra`, trailing-slash and case variants; `POST` to every public path including `POST /_test/tenant-config` → 401 (F-3 resolution A, module evidence only); percent-encoded `/%5Ftest/x`, `/_test/%2e%2e/`, `/_test/..%2F`, `/_test%2Fx`, `/_test/%5C` protected (contracts/modules.md, first evidence row). Confirm it fails first. **Superseded 2026-11-09 by T062 (F-3 → B).**
 - [x] T014 In packages/frontend-services/tests/unit/protection.test.ts add table-driven examples over request class × session outcome (contracts/modules.md "Success semantics and invariants"): public → no session double call and no header change; runtime not started (`StartupNotReady`) → 503; `getAlias` and `getConfigFromAlias` failures in host and static semantics → `responses.tenantFailure(404 | 500)` with no session call (tenant first); `SessionServiceUnavailable` → 503; `NoUsableSession` → document 307 with `Location` = `new URL("/auth/login", request.nextUrl)`, application 401; `SessionTenantMismatch` → document `forbiddenDocument(request)`, application 403; `UsableSession` → pass-through with `Cache-Control: private, no-store`. Fetch Metadata rows: `navigate`/`document`, `cors`/`empty`, `same-origin`/`empty`, `no-cors`/`image` for `/favicon.ico` and `/_next/image`, absent metadata → application (never 307). Every gate response, including host-factory results, carries `private, no-store`; gate-built denials have empty bodies and no `Set-Cookie`
 - [x] T015 In packages/frontend-services/tests/unit/protection.test.ts add renewal examples with a fixed `Clock`: document entry → `refreshForTenant({ activity: "deliberate-page-request", policy: effectiveSessionPolicy(config), reference, tenantAlias })`; `POST` with `next-action` → `deliberate-form-submission`; RSC/prefetch/absent-metadata/other → `readForTenant` only; at most one store call per request; renewed `pathable-session` re-issued via `setSessionCookie` with the request's own reference and `Max-Age` = `remainingIdleSeconds(deadline, now)`; plus a throwing `forbiddenDocument`/`tenantFailure` factory and a defecting double each make the promise reject (never pass through)
 - [x] T016 Add `export { decodeSessionReference } from "./session/codec.js"` to packages/frontend-services/src/session.ts (unchanged signature `(value: string | undefined) => Option.Option<SessionReference>`; not added to the package root) (contracts/modules.md "src/session.ts public entry")
-- [x] T017 Create private packages/frontend-services/src/next/protection.ts: closed designation constant (exact paths above, `GET`/`HEAD` only); pure classifier returning `public | { entry: "document" | "application"; renewal: QualifyingSessionActivity | undefined }` from method, `request.nextUrl.pathname`, `next-action`, and `navigationStatus`; `Effect.fn("protectRequest")` program running `resolveRequestTenant(host)` then `refreshForTenant` or `readForTenant`, mapped with `Effect.matchEffect` branching on `_tag` per the outcome table; `decodeSessionReference` imported only via `../session.js`; `Clock.currentTimeMillis` for `now`; executed through the existing `toNext` from `next/handler.ts`; no span attribute carrying reference, identity, or Host beyond existing spans (plan.md Phase 4 "Gate program"; depends on T008, T011, T016)
+- [x] T017 (designation superseded 2026-11-09 by T063, F-3 → B) Create private packages/frontend-services/src/next/protection.ts: closed designation constant (exact paths above, `GET`/`HEAD` only); pure classifier returning `public | { entry: "document" | "application"; renewal: QualifyingSessionActivity | undefined }` from method, `request.nextUrl.pathname`, `next-action`, and `navigationStatus`; `Effect.fn("protectRequest")` program running `resolveRequestTenant(host)` then `refreshForTenant` or `readForTenant`, mapped with `Effect.matchEffect` branching on `_tag` per the outcome table; `decodeSessionReference` imported only via `../session.js`; `Clock.currentTimeMillis` for `now`; executed through the existing `toNext` from `next/handler.ts`; no span attribute carrying reference, identity, or Host beyond existing spans (plan.md Phase 4 "Gate program"; depends on T008, T011, T016)
 - [x] T018 Export `createProtectionProxy(responses: ProtectionResponses): (request: NextRequest) => Promise<NextResponse>` and `interface ProtectionResponses { readonly forbiddenDocument: (request: NextRequest) => Promise<NextResponse>; readonly tenantFailure: TenantFailureResponse }` with the doc comments from contracts/modules.md from packages/frontend-services/src/next.ts, and re-export `createProtectionProxy` and `type ProtectionResponses` from packages/frontend-services/src/index.ts; T013–T015 pass (depends on T017)
 - [x] T019 Run `pnpm --filter @pathableai/pre-ets-frontend-services typecheck`, `lint` (incl. `lint:effect`), `test`, `exec fallow dead-code`, `exec fallow health --complexity`; fix any complexity finding by changing the representation (for example a table of outcomes), not by single-use helpers
 
@@ -253,6 +256,79 @@ recording, cleanup, and repository gates for increments 1–4.
 
 **Commit boundary 10**: `docs(evidence): record protected entry point verification for #154` (T057–T058, quickstart
 results only).
+
+---
+
+## Phase 9: Review corrections (2026-11-09)
+
+**Purpose**: Bring the implementation to the corrected plan (plan commit `ed79c21`; research.md "Review corrections
+(2026-11-09)"; contracts/modules.md "Review corrections"). Completed tasks above keep their record; each superseded one
+points here. The requirement-tagged BDD rows of quickstart.md §4 (research D14) are authored in a separate pass (T072);
+these tasks change BDD only where a removed resource would leave an existing row inconsistent.
+
+### 9a. `/_test` designation (research D2, F-3 → B)
+
+- [x] T062 Revise packages/frontend-services/tests/unit/protection.test.ts first: the Fast-Check oracle, stated
+      segment by segment and independently of the implementation, passes a request through iff it is not a Server Action
+      candidate (`next-action` on any method, or `POST` with `multipart/form-data…` or exactly
+      `application/x-www-form-urlencoded`) and either its path is `/_test` or under `/_test/` with no segment that decodes to
+      a new separator (any method), or it is `GET`/`HEAD` of an exact document path; generated content types join the
+      header subsets. Named examples: `PUT`/`PATCH`/`DELETE`/`OPTIONS` under `/_test` pass; `POST /_test/tenant-config` with
+      no, JSON, or text body passes; `/_test` and `/_test/x` with `next-action` (`POST` and `GET`), a multipart body, or a
+      form-urlencoded body → 401; `POST` to `/auth/login`, `/auth/callback`, `/login-unavailable` → 401; existing near-miss
+      and percent-encoded examples kept. Confirmed 9 failures against the old designation
+- [x] T063 In packages/frontend-services/src/next/protection.ts add the Server Action candidate predicate (Next's
+      `isPossibleServerAction`, widened to the action header on any method) and make `/_test`/`/_test/…` public for every
+      non-candidate method; `/auth/callback`, `/auth/login`, `/login-unavailable` stay `GET`/`HEAD` only; T062 passes
+- [x] T064 Update the designation in docs/session-state.md; run the workspace `typecheck`, `lint` (incl. `lint:effect`),
+      `test`, and `fallow health --complexity`
+
+**Commit boundary 11**: `fix(frontend-services): make every /_test route public except Server Action candidates for #154`
+(T062–T064).
+
+### 9b. Forbidden document without a rewrite (research D4, #356)
+
+- [ ] T065 Revise packages/frontend/tests/unit/proxy.test.ts first: the captured `forbiddenDocument` returns status
+      403, `content-type: text/html; charset=utf-8`, `cache-control: private, no-store`, a body with the forbidden heading
+      and a link to `/`, no `x-middleware-rewrite`, and no `Location`; drop the `/access-denied` matcher example
+- [ ] T066 Add `ForbiddenNotice` and `forbiddenDocumentResponse` to packages/frontend/src/features/access-responses.ts
+      (implemented in `access-responses/presentation.tsx`, rendered like the tenant 404); make packages/frontend/src/app/forbidden.tsx
+      render `ForbiddenNotice`; pass `forbiddenDocument: forbiddenDocumentResponse` from packages/frontend/src/proxy.ts;
+      delete packages/frontend/src/app/access-denied/page.tsx; update the `ProtectionResponses` doc comment and the
+      mismatch example path in packages/frontend-services
+- [ ] T067 Remove `/access-denied` from docs/session-state.md and from the existing rows of
+      tests/bdd/requirements/default-entry-protection.feature (the page no longer exists); run frontend `typecheck`, `lint`,
+      `test:unit`, `build`, and `fallow dead-code`
+
+**Commit boundary 12**: `fix(frontend): render the forbidden document in the proxy response for #154` (T065–T067;
+`Fixes #356`).
+
+### 9c. Tenant context at the app root (research D5)
+
+- [ ] T068 Run `fallow guard` on the moved and importing files; `git mv` packages/frontend/src/app/(app)/tenant-context.ts
+      to packages/frontend/src/app/tenant-context.ts unchanged; point `login-unavailable/page.tsx` and
+      `%5Ftest/onsite/page.tsx` at it; run frontend `typecheck`, `lint`, `test:unit`, `build`
+
+**Commit boundary 13**: `refactor(frontend): promote tenant context to the app root for #154` (T068).
+
+### 9d. Login resolves the tenant before refusing (research D13)
+
+- [ ] T069 Add login examples to packages/frontend-services/tests/unit/authentication-entry.test.ts first: a
+      non-navigation at an unknown host → 404 and in static mode with a missing selected file → 500, neither calling
+      `prepare` nor setting a cookie; confirm they fail
+- [ ] T070 In packages/frontend-services/src/next/login.ts resolve the request tenant with `resolveRequestTenant` on the
+      non-navigation branch only; tenant failure → `respondToTenantFailure(404 | 500)`, success → 401 `private, no-store`;
+      navigations unchanged; T069 passes
+- [ ] T071 Update docs/authentication.md; run the workspace `typecheck`, `lint` (incl. `lint:effect`), `test`
+
+**Commit boundary 14**: `fix(frontend-services): resolve the tenant before refusing non-navigation login for #154`
+(T069–T071).
+
+### 9e. Remaining correction work
+
+- [ ] T072 Author the requirement-tagged BDD rows of quickstart.md §4 (research D14) with the `requirements-bdd-*`
+      skills — separate pass, not part of commit boundaries 11–14
+- [ ] T073 Run the final gates of T059 on the corrected revision and report findings as pre-existing or introduced
 
 ---
 

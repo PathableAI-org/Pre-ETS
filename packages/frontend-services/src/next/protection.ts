@@ -28,10 +28,11 @@ export interface ProtectionResponses {
 }
 
 /**
- * The closed public designation: `GET`/`HEAD` only, exact paths plus the `/_test/` prefix. Every other request,
- * including every other method on these paths, is protected. #157 adds its recovery path here.
+ * The closed public designation. `/_test` and `/_test/…` are public for every method; the other exact paths for
+ * `GET`/`HEAD` only. A Server Action candidate is never public. #157 adds its recovery path here.
  */
-const PUBLIC_PATHS: ReadonlySet<string> = new Set(["/_test", "/auth/callback", "/auth/login", "/login-unavailable"])
+const PUBLIC_DOCUMENT_PATHS: ReadonlySet<string> = new Set(["/auth/callback", "/auth/login", "/login-unavailable"])
+const PUBLIC_ROOT = "/_test"
 const PUBLIC_PREFIX = "/_test/"
 const PUBLIC_METHODS: ReadonlySet<string> = new Set(["GET", "HEAD"])
 
@@ -46,9 +47,23 @@ interface ProtectedRequest {
   readonly renewal: QualifyingSessionActivity | undefined
 }
 
-const isPublic = (method: string, pathname: string) =>
-  PUBLIC_METHODS.has(method) &&
-  (PUBLIC_PATHS.has(pathname) || (pathname.startsWith(PUBLIC_PREFIX) && !ENCODED_PATH_SEPARATOR.test(pathname)))
+/**
+ * Next's own possible-action predicate (`isPossibleServerAction`), widened to an action header on any method: Next
+ * decodes an action from a form-encoded `POST` even without the header.
+ */
+const isServerActionCandidate = (method: string, headers: Headers) => {
+  if (headers.has("next-action")) return true
+  if (method !== "POST") return false
+  const contentType = headers.get("content-type")
+  return contentType === "application/x-www-form-urlencoded" || contentType?.startsWith("multipart/form-data") === true
+}
+
+const isTestPath = (pathname: string) =>
+  (pathname === PUBLIC_ROOT || pathname.startsWith(PUBLIC_PREFIX)) && !ENCODED_PATH_SEPARATOR.test(pathname)
+
+const isPublic = (method: string, pathname: string, headers: Headers) =>
+  !isServerActionCandidate(method, headers) &&
+  (isTestPath(pathname) || (PUBLIC_METHODS.has(method) && PUBLIC_DOCUMENT_PATHS.has(pathname)))
 
 /**
  * Only a `GET`/`HEAD` navigation without an action is a document entry; anything else, including a request without
@@ -56,7 +71,7 @@ const isPublic = (method: string, pathname: string) =>
  */
 const classify = (request: NextRequest): ProtectedRequest | undefined => {
   const { method } = request
-  if (isPublic(method, request.nextUrl.pathname)) return undefined
+  if (isPublic(method, request.nextUrl.pathname, request.headers)) return undefined
   const action = request.headers.has("next-action")
   const document = PUBLIC_METHODS.has(method) && !action && navigationStatus(request.headers) === "navigation"
   if (document) return { entry: "document", renewal: "deliberate-page-request" }

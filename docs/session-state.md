@@ -49,9 +49,12 @@ and warning/presentation UI ([#155](https://github.com/PathableAI-org/Pre-ETS/is
 `/_next/static/**`, `/_next/webpack-hmr`, and `/__nextjs*`
 ([#154](https://github.com/PathableAI-org/Pre-ETS/issues/154)). Every page, Route Handler,
 and Server Action, including resources added later and absent paths, is protected unless it
-is in the closed public designation: `GET`/`HEAD` of exactly `/auth/callback`,
-`/auth/login`, `/login-unavailable`, `/_test`, or a path under `/_test/` without an encoded
-`/`, `\`, or `.`. Every other method on those paths is protected. Public requests read no
+is in the closed public designation: `/_test` or a path under `/_test/` without an encoded
+`/`, `\`, or `.`, for every method; or `GET`/`HEAD` of exactly `/auth/callback`,
+`/auth/login`, or `/login-unavailable`. A Server Action candidate is never public: a request
+with a `next-action` header (any method), or a `POST` whose `content-type` is
+`multipart/form-data` or `application/x-www-form-urlencoded` (Next's own possible-action
+test). Every other method on the three exact paths is protected. Public requests read no
 session state and each resolves its own tenant.
 
 A protected request is a **document entry** when it is a `GET`/`HEAD` without `next-action`
