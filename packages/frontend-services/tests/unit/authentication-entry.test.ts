@@ -354,9 +354,8 @@ describe("authentication Route Handlers [PREETS-SESSION-003, PREETS-SESSION-013]
       expectHostOnlyCookie(secureSession[0] ?? "", "/", true)
       expectHostOnlyCookie(secureCorrelation[0] ?? "", "/auth/callback", true)
       expect(maxAge(secureCorrelation[0] ?? "")).toBe(0)
-      const sessionLifetime = maxAge(secureSession[0] ?? "")
-      expect(sessionLifetime).toBeGreaterThanOrEqual(1_790)
-      expect(sessionLifetime).toBeLessThanOrEqual(1_800)
+      // A browser-session cookie: establishment is its only writer, so its lifetime cannot track renewals (D15).
+      expect(secureSession[0]).not.toMatch(/Max-Age=|Expires=/i)
       expect(secure.headers.get("set-cookie")).not.toContain("secret-code")
 
       const loopback = await callback(

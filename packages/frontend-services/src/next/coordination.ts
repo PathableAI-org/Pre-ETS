@@ -1,18 +1,17 @@
 import { Clock, Effect, Option, Schema } from "effect"
 import { type NextRequest, NextResponse } from "next/server"
-import { createHash, timingSafeEqual } from "node:crypto"
 
 import {
   decodeSessionReference,
   SessionService,
   type SessionServiceUnavailable,
-  type SessionTenantMismatch,
-  type UsableSession
+  type SessionTenantMismatch
 } from "../session.js"
 import { effectiveSessionPolicy, type TenantFailure } from "../tenant.js"
-import { clearSessionCookie, remainingIdleSeconds, SESSION_COOKIE, setSessionCookie } from "./cookies.js"
+import { coordinationSnapshot, isCoordinationTagOf, type SessionCoordinationSnapshot } from "./coordination-snapshot.js"
 import { PRIVATE_NO_STORE, toNext } from "./handler.js"
 import { resolveRequestTenant } from "./request.js"
+import { SESSION_COOKIE } from "./session.js"
 import { tenantFailureStatus } from "./tenant-failure.js"
 
 /** In-page qualifying kinds a tab may communicate. Deliberate requests renew at the gate; `continue-session` is #156's. */
@@ -25,16 +24,6 @@ const InPageActivity = Schema.Literals([
 ])
 
 export type InPageSessionActivity = typeof InPageActivity.Type
-
-/** What a tab may know about its usable session. Contains no reference, identity, token, or store key. */
-export interface SessionCoordinationSnapshot {
-  /** One-way, domain-separated digest of the session reference. Not a credential. */
-  readonly coordinationTag: string
-  readonly idleDeadlineEpochMilliseconds: number
-  /** Server clock when the snapshot was produced; lets the tab convert the deadline to its own clock. */
-  readonly serverTimeEpochMilliseconds: number
-  readonly warningLeadMinutes: number
-}
 
 const SessionActivityBody = Schema.Struct({ activity: InPageActivity, coordinationTag: Schema.String })
 const LogoutBody = Schema.Struct({ coordinationTag: Schema.String })
@@ -53,30 +42,6 @@ const decodeLogoutBody = Schema.decodeUnknownEffect(Schema.fromJsonString(Logout
 class CoordinationTagMismatch extends Schema.TaggedError<CoordinationTagMismatch>()("CoordinationTagMismatch", {}) {}
 class CrossOriginRequest extends Schema.TaggedError<CrossOriginRequest>()("CrossOriginRequest", {}) {}
 class UnsupportedContentType extends Schema.TaggedError<UnsupportedContentType>()("UnsupportedContentType", {}) {}
-
-/** The store key hashes the bare reference; the domain prefix keeps the tag distinct from it. */
-const TAG_DOMAIN = "preets:session-coordination:v1\0"
-
-const coordinationTagFor = (reference: string): string =>
-  createHash("sha256").update(TAG_DOMAIN).update(reference).digest("base64url")
-
-const sameTag = (expected: string, claimed: string): boolean => {
-  const left = Buffer.from(expected)
-  const right = Buffer.from(claimed)
-  return left.length === right.length && timingSafeEqual(left, right)
-}
-
-/** The snapshot for a usable session read with `reference`. */
-export const coordinationSnapshot = (
-  reference: string,
-  session: UsableSession,
-  serverTimeEpochMilliseconds: number
-): SessionCoordinationSnapshot => ({
-  coordinationTag: coordinationTagFor(reference),
-  idleDeadlineEpochMilliseconds: session.idleDeadlineEpochMilliseconds,
-  serverTimeEpochMilliseconds,
-  warningLeadMinutes: session.warningLeadMinutes
-})
 
 const emptyResponse = (status: number) =>
   new NextResponse(null, { headers: { "cache-control": PRIVATE_NO_STORE }, status })
@@ -104,7 +69,7 @@ const readJsonBody = Effect.fnUntraced(function*(request: NextRequest) {
 const requestTenant = (request: NextRequest) => resolveRequestTenant(request.headers.get("host") ?? "")
 
 const requireTag = (reference: string, claimed: string) =>
-  sameTag(coordinationTagFor(reference), claimed) ? Effect.void : Effect.fail(new CoordinationTagMismatch({}))
+  isCoordinationTagOf(reference, claimed) ? Effect.void : Effect.fail(new CoordinationTagMismatch({}))
 
 type CoordinationFailure =
   | CoordinationTagMismatch
@@ -161,10 +126,8 @@ const sessionActivity = Effect.fn("sessionActivity")(function*(request: NextRequ
     tenantAlias: tenant.alias
   })
   if (session._tag === "NoUsableSession") return emptyResponse(401)
-  const now = yield* Clock.currentTimeMillis
-  const maxAge = remainingIdleSeconds(session.idleDeadlineEpochMilliseconds, now)
-  const response = snapshotResponse(coordinationSnapshot(reference.value, session, now))
-  return setSessionCookie(response, request, reference.value, maxAge)
+  // No Set-Cookie: a delayed renewal must not overwrite a later session's cookie (research D15).
+  return snapshotResponse(coordinationSnapshot(reference.value, session, yield* Clock.currentTimeMillis))
 }, respondToFailures)
 
 const sessionStatus = Effect.fn("sessionStatus")(function*(request: NextRequest) {
@@ -174,14 +137,17 @@ const sessionStatus = Effect.fn("sessionStatus")(function*(request: NextRequest)
   return snapshotResponse(coordinationSnapshot(reference, session, yield* Clock.currentTimeMillis))
 }, respondToFailures)
 
-/** Ends the application session only; no identity-provider logout (research F-2). */
+/**
+ * Ends the application session only; no identity-provider logout (research F-2). Sets no cookie: a delayed response
+ * must not delete a later session's cookie, and the remaining reference names a removed record (research R10).
+ */
 const logout = Effect.fn("logout")(function*(request: NextRequest) {
   const body = yield* decodeLogoutBody(yield* readJsonBody(request))
   const current = yield* currentSession(request)
   if (Option.isNone(current)) return emptyResponse(401)
   yield* requireTag(current.value.reference, body.coordinationTag)
   yield* (yield* SessionService).invalidate({ reference: current.value.reference })
-  return clearSessionCookie(emptyResponse(204), request)
+  return emptyResponse(204)
 }, respondToFailures)
 
 /** `POST /session/activity`: renews the tab's session for one in-page qualifying activity. */

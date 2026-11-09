@@ -1,11 +1,16 @@
 import { NodeRedis } from "@effect/platform-node"
 import { Effect, Layer, ManagedRuntime, Result, Schema } from "effect"
-import { NextRequest } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { randomUUID } from "node:crypto"
 import { setTimeout as sleep } from "node:timers/promises"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
-import { createLogoutHandler, createSessionActivityHandler, createSessionStatusHandler } from "../../src/next.ts"
+import {
+  createLogoutHandler,
+  createProtectionProxy,
+  createSessionActivityHandler,
+  createSessionStatusHandler
+} from "../../src/next.ts"
 import { SessionService } from "../../src/session.ts"
 import { TenantAlias, type TenantConfig, TenantConfigService } from "../../src/tenant.ts"
 import { SessionRedis, sessionWorld } from "../helpers/session.ts"
@@ -26,6 +31,10 @@ const springfieldTenant = Layer.succeed(TenantConfigService, {
   getConfigFromHost: () => Effect.die("getConfigFromHost must remain unused")
 })
 
+const protect = createProtectionProxy({
+  forbiddenDocument: () => Promise.resolve(new NextResponse(null, { status: 403 })),
+  tenantFailure: (status) => Promise.resolve(new NextResponse(null, { status }))
+})
 const activity = createSessionActivityHandler()
 const status = createSessionStatusHandler()
 const logout = createLogoutHandler()
@@ -33,6 +42,7 @@ const logout = createLogoutHandler()
 interface Snapshot {
   readonly coordinationTag: string
   readonly idleDeadlineEpochMilliseconds: number
+  readonly observedAtEpochMilliseconds: number
 }
 
 const ORIGIN = "http://springfield.localhost"
@@ -121,7 +131,60 @@ describe("coordination handlers over the real session store [PREETS-SESSION-009,
       const renewed = (await response.json()) as Snapshot
       expect(renewed.idleDeadlineEpochMilliseconds).toBeGreaterThan(before.idleDeadlineEpochMilliseconds)
       expect(await storedDeadlines(world)).toEqual([renewed.idleDeadlineEpochMilliseconds])
-      expect(response.headers.getSetCookie().join()).toContain(`pathable-session=${established.reference}`)
+      expect(renewed.observedAtEpochMilliseconds).toBeGreaterThanOrEqual(before.observedAtEpochMilliseconds)
+      expect(response.headers.getSetCookie()).toEqual([])
+    }))
+
+  it("orders overlapping status and activity snapshots by store observation, not arrival", () =>
+    withWorld(async (world) => {
+      const established = await establish(world)
+      const { coordinationTag } = await readSnapshot(established.reference)
+      await sleep(20)
+
+      const [statusResponse, activityResponse] = await Promise.all([
+        status(statusRequest(established.reference)),
+        activity(post("/session/activity", established.reference, { activity: "text-entry", coordinationTag }))
+      ])
+
+      const snapshots = [(await statusResponse.json()) as Snapshot, (await activityResponse.json()) as Snapshot]
+      const latest = snapshots.reduce((held, next) =>
+        next.observedAtEpochMilliseconds > held.observedAtEpochMilliseconds ? next : held
+      )
+      expect(await storedDeadlines(world)).toEqual([latest.idleDeadlineEpochMilliseconds])
+    }))
+
+  it("never renews at the gate on a coordination endpoint before the handler refuses", () =>
+    withWorld(async (world) => {
+      const established = await establish(world)
+      const [stored] = await storedDeadlines(world)
+      await sleep(20)
+      const staleAction = new NextRequest(`${ORIGIN}/session/activity`, {
+        body: JSON.stringify({ activity: "text-entry", coordinationTag: "stale-session-tag" }),
+        headers: {
+          "content-type": "application/json",
+          cookie: `pathable-session=${established.reference}`,
+          host: "springfield.localhost",
+          "next-action": "0123456789abcdef",
+          "sec-fetch-site": "same-origin"
+        },
+        method: "POST"
+      })
+      const navigation = new NextRequest(`${ORIGIN}/session/status`, {
+        headers: {
+          cookie: `pathable-session=${established.reference}`,
+          host: "springfield.localhost",
+          "sec-fetch-dest": "document",
+          "sec-fetch-mode": "navigate"
+        }
+      })
+
+      for (const [incoming, handler, expected] of [[staleAction, activity, 409], [navigation, status, 200]] as const) {
+        const gate = await protect(incoming)
+        expect(gate.headers.get("x-middleware-next")).toBe("1")
+        expect(gate.headers.getSetCookie()).toEqual([])
+        expect((await handler(incoming)).status).toBe(expected)
+        expect(await storedDeadlines(world)).toEqual([stored])
+      }
     }))
 
   it("never moves the stored deadline on status reads", () =>
@@ -146,7 +209,7 @@ describe("coordination handlers over the real session store [PREETS-SESSION-009,
       const ended = await logout(post("/auth/logout", established.reference, { coordinationTag }))
 
       expect(ended.status).toBe(204)
-      expect(ended.headers.getSetCookie().join()).toMatch(/pathable-session=;.*Max-Age=0/)
+      expect(ended.headers.getSetCookie()).toEqual([])
       expect(await storedDeadlines(world)).toEqual([])
       const late = await activity(
         post("/session/activity", established.reference, { activity: "keyboard-interaction", coordinationTag })

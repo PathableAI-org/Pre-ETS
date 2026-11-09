@@ -2,8 +2,9 @@ import { NodeRedis } from "@effect/platform-node"
 import { Clock, Context, Deferred, Effect, Layer } from "effect"
 import * as Redis from "effect/persistence/Redis"
 import { randomUUID } from "node:crypto"
+import { expect } from "vitest"
 
-import { SessionService } from "../../src/session.ts"
+import { type NoUsableSession, SessionService, type UsableSession } from "../../src/session.ts"
 import { makeRedis, poolClock } from "./redis.ts"
 
 export interface StoredSessionRecord {
@@ -149,3 +150,11 @@ export const sessionWorld: Layer.Layer<SessionRedis | SessionService, Redis.Redi
     return SessionService.layer({ keyPrefix: prefix }).pipe(Layer.provideMerge(redis))
   })
 )
+
+/** Public session state without the store observation time, which differs per transition by design (research D6). */
+export const sessionState = (session: NoUsableSession | UsableSession) => {
+  if (session._tag === "NoUsableSession") return session
+  const { observedAtEpochMilliseconds, ...state } = session
+  expect(Number.isFinite(observedAtEpochMilliseconds)).toBe(true)
+  return state
+}

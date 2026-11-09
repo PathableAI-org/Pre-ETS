@@ -1,17 +1,11 @@
-import { Clock, Effect, Option } from "effect"
+import { Effect } from "effect"
 import { type NextRequest, NextResponse } from "next/server"
 
-import {
-  decodeSessionReference,
-  type NoUsableSession,
-  type QualifyingSessionActivity,
-  SessionService,
-  type UsableSession
-} from "../session.js"
+import { type NoUsableSession, type QualifyingSessionActivity, SessionService, type UsableSession } from "../session.js"
 import { effectiveSessionPolicy } from "../tenant.js"
-import { remainingIdleSeconds, SESSION_COOKIE, setSessionCookie } from "./cookies.js"
 import { PRIVATE_NO_STORE, toNext } from "./handler.js"
 import { navigationStatus, resolveRequestTenant } from "./request.js"
+import { SESSION_COOKIE } from "./session.js"
 import { type TenantFailureResponse, tenantFailureStatus } from "./tenant-failure.js"
 
 /** Responses the Next host presents for protection outcomes it owns. */
@@ -58,6 +52,12 @@ const isServerActionCandidate = (method: string, headers: Headers) => {
   return contentType === "application/x-www-form-urlencoded" || contentType?.startsWith("multipart/form-data") === true
 }
 
+/**
+ * The coordination endpoints. They are protected application requests that never renew at the gate, whatever their
+ * method, Fetch Metadata, or `next-action` header: only the activity handler renews, after its tag check (research D1).
+ */
+const NON_RENEWING_PATHS: ReadonlySet<string> = new Set(["/auth/logout", "/session/activity", "/session/status"])
+
 const isTestPath = (pathname: string) =>
   (pathname === PUBLIC_ROOT || pathname.startsWith(PUBLIC_PREFIX)) && !ENCODED_PATH_SEPARATOR.test(pathname)
 
@@ -71,7 +71,9 @@ const isPublic = (method: string, pathname: string, headers: Headers) =>
  */
 const classify = (request: NextRequest): ProtectedRequest | undefined => {
   const { method } = request
-  if (isPublic(method, request.nextUrl.pathname, request.headers)) return undefined
+  const { pathname } = request.nextUrl
+  if (isPublic(method, pathname, request.headers)) return undefined
+  if (NON_RENEWING_PATHS.has(pathname)) return { entry: "application", renewal: undefined }
   const action = request.headers.has("next-action")
   const document = PUBLIC_METHODS.has(method) && !action && navigationStatus(request.headers) === "navigation"
   if (document) return { entry: "document", renewal: "deliberate-page-request" }
@@ -88,29 +90,15 @@ const privately = (response: NextResponse): NextResponse => {
 
 const fromHost = (respond: () => Promise<NextResponse>) => Effect.promise(respond).pipe(Effect.map(privately))
 
-const admit = Effect.fnUntraced(function*(
-  request: NextRequest,
-  classified: ProtectedRequest,
-  session: UsableSession
-) {
-  const response = privately(NextResponse.next())
-  const reference = decodeSessionReference(request.cookies.get(SESSION_COOKIE)?.value)
-  if (classified.renewal === undefined || Option.isNone(reference)) return response
-  const now = yield* Clock.currentTimeMillis
-  return setSessionCookie(
-    response,
-    request,
-    reference.value,
-    remainingIdleSeconds(session.idleDeadlineEpochMilliseconds, now)
-  )
-})
+/** A renewal sets no cookie: only establishment writes `pathable-session` (research D15). */
+const admit = () => privately(NextResponse.next())
 
 const respondToSession = (
   request: NextRequest,
   classified: ProtectedRequest,
   session: NoUsableSession | UsableSession
 ) => {
-  if (session._tag === "UsableSession") return admit(request, classified, session)
+  if (session._tag === "UsableSession") return Effect.succeed(admit())
   if (classified.entry === "application") return Effect.succeed(denial(401))
   const login = NextResponse.redirect(new URL("/auth/login", request.nextUrl), 307)
   return Effect.succeed(privately(login))

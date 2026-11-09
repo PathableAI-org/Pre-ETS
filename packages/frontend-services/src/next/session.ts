@@ -11,9 +11,11 @@ import {
   type SessionTenantMismatch,
   type UsableSession
 } from "../session.js"
-import { coordinationSnapshot, type SessionCoordinationSnapshot } from "./coordination.js"
+import { coordinationSnapshot, type SessionCoordinationSnapshot } from "./coordination-snapshot.js"
 import { resolveRequestTenant } from "./request.js"
 import { tenantFailurePage } from "./tenant-failure.js"
+
+export const SESSION_COOKIE = "pathable-session"
 
 export interface ReadSessionRequestInput {
   readonly host: string

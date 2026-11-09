@@ -82,6 +82,11 @@ export interface UsableSession {
   readonly _tag: "UsableSession"
   readonly identity: SessionIdentity
   readonly idleDeadlineEpochMilliseconds: number
+  /**
+   * Redis `TIME` read inside the atomic store transition that returned this state, in milliseconds with microsecond
+   * fraction; orders observations of one record.
+   */
+  readonly observedAtEpochMilliseconds: number
   readonly tenantAlias: TenantAlias
   readonly warningLeadMinutes: number
 }
@@ -113,11 +118,13 @@ const toUsableSession = (
     readonly subject: string
     readonly tenantAlias: TenantAlias
     readonly warningLeadMinutes: number
-  }
+  },
+  observedAtEpochMilliseconds: number
 ): UsableSession => ({
   _tag: "UsableSession",
   identity: { issuer: record.issuer, subject: record.subject },
   idleDeadlineEpochMilliseconds: record.idleDeadlineEpochMilliseconds,
+  observedAtEpochMilliseconds,
   tenantAlias: record.tenantAlias,
   warningLeadMinutes: record.warningLeadMinutes
 })
@@ -129,11 +136,13 @@ const isQualifyingRefresh = (
 ): input is Extract<RefreshSessionForTenantInput, { readonly activity: QualifyingSessionActivity }> =>
   isQualifyingActivity(input.activity)
 
-const exposeIfStillUsable = Effect.fnUntraced(function*(payload: string) {
-  const record = yield* serviceUnavailable(decodeStoredSession(payload))
+const exposeIfStillUsable = Effect.fnUntraced(function*(
+  outcome: { readonly observedAtEpochMilliseconds: number; readonly payload: string }
+) {
+  const record = yield* serviceUnavailable(decodeStoredSession(outcome.payload))
   if (record.idleDeadlineEpochMilliseconds <= (yield* Clock.currentTimeMillis)) return noUsableSession
   yield* Effect.annotateCurrentSpan("session.id", record.telemetryId)
-  return toUsableSession(record)
+  return toUsableSession(record, outcome.observedAtEpochMilliseconds)
 })
 
 const refreshRequest = (
@@ -194,7 +203,7 @@ export class SessionService extends Context.Service<SessionService, {
               }))
               const ttlMilliseconds = idleDeadlineEpochMilliseconds - now
               const outcome = yield* serviceUnavailable(store.create({ reference }, payload, ttlMilliseconds))
-              if (outcome === "exists") return yield* new SessionReferenceCollision({})
+              if (outcome._tag === "Exists") return yield* new SessionReferenceCollision({})
               yield* Effect.annotateCurrentSpan("session.id", telemetryId)
               return {
                 reference,
@@ -204,7 +213,7 @@ export class SessionService extends Context.Service<SessionService, {
                   subject: input.identity.subject,
                   tenantAlias: input.tenantAlias,
                   warningLeadMinutes: input.policy.warningLeadMinutes
-                })
+                }, outcome.observedAtEpochMilliseconds)
               }
             })
 
@@ -232,7 +241,7 @@ export class SessionService extends Context.Service<SessionService, {
           const receivedAt = yield* Clock.currentTimeMillis
           const outcome = yield* serviceUnavailable(store.read({ receivedAt, reference: reference.value }))
           if (outcome._tag === "Missing" || outcome._tag === "Expired") return noUsableSession
-          return yield* exposeIfStillUsable(outcome.payload)
+          return yield* exposeIfStillUsable(outcome)
         })
 
         const readForTenant = Effect.fn("SessionService.readForTenant")(function*(input: ReadSessionForTenantInput) {
@@ -251,7 +260,7 @@ export class SessionService extends Context.Service<SessionService, {
           const outcome = yield* serviceUnavailable(store.refresh(refreshRequest(input, receivedAt, reference.value)))
           if (outcome._tag === "Missing" || outcome._tag === "Expired") return noUsableSession
           if (outcome._tag === "Mismatch") return yield* new SessionTenantMismatch({})
-          return yield* exposeIfStillUsable(outcome.payload)
+          return yield* exposeIfStillUsable(outcome)
         })
 
         return SessionService.of({

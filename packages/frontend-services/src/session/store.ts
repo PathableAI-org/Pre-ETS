@@ -6,12 +6,15 @@ import { createHash } from "node:crypto"
  * Store-level existence outcomes kept deliberately coarse: the parent owns the
  * public session vocabulary and never exposes a key or encoded payload here.
  */
-type CreateOutcome = "created" | "exists"
+type CreateOutcome =
+  | { readonly _tag: "Created"; readonly observedAtEpochMilliseconds: number }
+  | { readonly _tag: "Exists" }
 
 type InvalidateOutcome = "missing" | "removed"
 
+/** `observedAtEpochMilliseconds` is the Redis `TIME` read inside the atomic transition that returned the payload. */
 type ReadOutcome =
-  | { readonly _tag: "Current"; readonly payload: string }
+  | { readonly _tag: "Current"; readonly observedAtEpochMilliseconds: number; readonly payload: string }
   | { readonly _tag: "Expired" }
   | { readonly _tag: "Missing" }
 
@@ -30,11 +33,11 @@ interface SessionStoreAddress {
 }
 
 type StoreTransition =
-  | { readonly _tag: "Current"; readonly payload: string }
+  | { readonly _tag: "Current"; readonly observedAtEpochMilliseconds: number; readonly payload: string }
   | { readonly _tag: "Expired" }
   | { readonly _tag: "Mismatch" }
   | { readonly _tag: "Missing" }
-  | { readonly _tag: "Renewed"; readonly payload: string }
+  | { readonly _tag: "Renewed"; readonly observedAtEpochMilliseconds: number; readonly payload: string }
 
 class SessionStoreUnavailable extends Schema.TaggedError<SessionStoreUnavailable>()(
   "SessionStoreUnavailable",
@@ -52,7 +55,7 @@ const keyFor = (prefix: string, reference: string): string => {
  */
 const TransitionReply = Schema.Union([
   Schema.Tuple([Schema.Literals(["expired", "mismatch", "missing"])]),
-  Schema.Tuple([Schema.Literals(["current", "renewed"]), Schema.String])
+  Schema.Tuple([Schema.Literals(["current", "renewed"]), Schema.String, Schema.NumberFromString])
 ])
 
 const decodeTransitionReply = Schema.decodeUnknownEffect(TransitionReply)
@@ -68,7 +71,7 @@ const transitionTags = {
 const toTransition = (reply: typeof TransitionReply.Type): StoreTransition =>
   reply.length === 1 ?
     { _tag: transitionTags[reply[0]] } :
-    { _tag: transitionTags[reply[0]], payload: reply[1] }
+    { _tag: transitionTags[reply[0]], observedAtEpochMilliseconds: reply[2] / 1_000, payload: reply[1] }
 
 /**
  * One key. Validate the stored record, admit the tenant, and build the reply
@@ -103,6 +106,13 @@ local function is_uuid(value)
   if value == "00000000-0000-0000-0000-000000000000" then return true end
   if string.lower(value) == "ffffffff-ffff-ffff-ffff-ffffffffffff" then return true end
   return string.match(value, "^%x%x%x%x%x%x%x%x%-%x%x%x%x%-[1-8]%x%x%x%-[89abAB]%x%x%x%-%x%x%x%x%x%x%x%x%x%x%x%x$") ~= nil
+end
+
+-- Redis TIME inside this transition, in whole microseconds (exact below 2^53), as a decimal string: Redis would
+-- truncate a fractional Lua number. Microseconds keep a read and a concurrent renewal from tying within a millisecond.
+local function observed_at()
+  local now = redis.call("TIME")
+  return string.format("%.0f", tonumber(now[1]) * 1000000 + tonumber(now[2]))
 end
 
 local function is_alias(value)
@@ -157,7 +167,7 @@ if decoded.idleDeadlineEpochMilliseconds <= received_at then
 end
 
 if mode == "read" or activity == "excluded" then
-  return {"current", raw}
+  return {"current", raw, observed_at()}
 end
 
 if activity ~= "qualifying" or not integral(timeout_ms) or timeout_ms <= 0 or not integral(warning) or warning < 0 then
@@ -179,7 +189,7 @@ if not encoded_ok or type(replacement) ~= "string" or new_deadline <= received_a
 end
 
 redis.call("SET", key, replacement, "PX", new_deadline - received_at)
-return {"renewed", replacement}
+return {"renewed", replacement, observed_at()}
 `
 
 interface TransitionInput {
@@ -216,8 +226,24 @@ const expectedReply = <const A>(
   return match === undefined ? Effect.fail(unavailable()) : Effect.succeed(match[1])
 }
 
+/** Redis `TIME` as `[seconds, microseconds]`. */
+const TimeReply = Schema.Tuple([Schema.NumberFromString, Schema.NumberFromString])
+const decodeTimeReply = Schema.decodeUnknownEffect(TimeReply)
+
+/**
+ * Read before the `SET NX`, so the establishment observation orders before every later transition of the record.
+ * Establishment happens once per reference, so the extra round trip is not on a hot path.
+ */
+const observeTime = (redis: Redis.Redis["Service"]) =>
+  redis.send("TIME").pipe(
+    Effect.flatMap(decodeTimeReply),
+    Effect.map(([seconds, microseconds]) => seconds * 1_000 + microseconds / 1_000),
+    Effect.mapError(unavailable)
+  )
+
 const makeCreate = (redis: Redis.Redis["Service"], prefix: string) =>
   Effect.fnUntraced(function*(address: SessionStoreAddress, payload: string, ttlMilliseconds: number) {
+    const observedAtEpochMilliseconds = yield* observeTime(redis)
     const reply = yield* redis.send(
       "SET",
       keyFor(prefix, address.reference),
@@ -226,7 +252,10 @@ const makeCreate = (redis: Redis.Redis["Service"], prefix: string) =>
       "PX",
       String(ttlMilliseconds)
     ).pipe(Effect.mapError(unavailable))
-    return yield* expectedReply(reply, [["OK", "created"], [null, "exists"]])
+    const outcome = yield* expectedReply(reply, [["OK", "created"], [null, "exists"]])
+    return outcome === "created" ?
+      { _tag: "Created" as const, observedAtEpochMilliseconds } :
+      { _tag: "Exists" as const }
   })
 
 const makeInvalidate = (redis: Redis.Redis["Service"], prefix: string) =>

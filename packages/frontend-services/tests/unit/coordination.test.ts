@@ -44,6 +44,7 @@ const usableSession: UsableSession = {
   _tag: "UsableSession",
   identity: { issuer: "https://provider.test/", subject: "subject-1" },
   idleDeadlineEpochMilliseconds: NOW + 1_234_567,
+  observedAtEpochMilliseconds: 1_799_999_999_000,
   tenantAlias: alias,
   warningLeadMinutes: 4
 }
@@ -139,9 +140,6 @@ const expectEmpty = async (response: Response, expectedStatus: number) => {
   expect(response.headers.getSetCookie()).toEqual([])
   expect(await response.text()).toBe("")
 }
-
-const sessionCookie = (response: Response) =>
-  response.headers.getSetCookie().find((value) => value.startsWith("pathable-session="))
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"] })
@@ -242,7 +240,7 @@ describe("activity and logout bind to the observed session [PREETS-SESSION-009, 
 })
 
 describe("activity handler outcomes [PREETS-SESSION-009]", () => {
-  it("returns the renewed snapshot and re-issues the cookie for the remaining idle time", async () => {
+  it("returns the renewed snapshot without writing the session cookie", async () => {
     const tag = await tagFor(defaultReference)
     install()
 
@@ -253,10 +251,11 @@ describe("activity handler outcomes [PREETS-SESSION-009]", () => {
     expect(await response.json()).toStrictEqual({
       coordinationTag: tag,
       idleDeadlineEpochMilliseconds: usableSession.idleDeadlineEpochMilliseconds,
+      observedAtEpochMilliseconds: usableSession.observedAtEpochMilliseconds,
       serverTimeEpochMilliseconds: NOW,
       warningLeadMinutes: 4
     })
-    expect(sessionCookie(response)).toContain("Max-Age=1234")
+    expect(response.headers.getSetCookie()).toEqual([])
   })
 
   it.each([
@@ -319,13 +318,14 @@ describe("status and logout outcomes [PREETS-SESSION-010]", () => {
     expect(await response.json()).toStrictEqual({
       coordinationTag: tag,
       idleDeadlineEpochMilliseconds: usableSession.idleDeadlineEpochMilliseconds,
+      observedAtEpochMilliseconds: usableSession.observedAtEpochMilliseconds,
       serverTimeEpochMilliseconds: NOW,
       warningLeadMinutes: 4
     })
     expect(recorded.refreshes).toEqual([])
   })
 
-  it("expires the session cookie after invalidating the tab's session", async () => {
+  it("invalidates the tab's session and leaves the cookie untouched", async () => {
     const tag = await tagFor(defaultReference)
     install()
 
@@ -334,7 +334,7 @@ describe("status and logout outcomes [PREETS-SESSION-010]", () => {
     expect(response.status).toBe(204)
     expect(response.headers.get("cache-control")).toBe("private, no-store")
     expect(recorded.invalidations).toEqual([defaultReference])
-    expect(sessionCookie(response)).toMatch(/^pathable-session=;.*Max-Age=0/)
+    expect(response.headers.getSetCookie()).toEqual([])
     expect(await response.text()).toBe("")
   })
 
