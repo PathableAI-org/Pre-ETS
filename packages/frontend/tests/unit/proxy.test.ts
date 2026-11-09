@@ -69,5 +69,9 @@ describe("proxy [PREETS-SESSION-001]", () => {
     const body = await response.text()
     expect(body).toMatch(/<h1[^>]*>Access denied<\/h1>/)
     expect(body).toMatch(/<a[^>]*href="\/"[^>]*>Go to the application entry<\/a>/)
+    const head = /<head>(.*)<\/head>/s.exec(body)?.[1] ?? ""
+    expect(head).toContain("<title>Access denied – Pre-ETS</title>")
+    expect(head).toMatch(/<meta charSet="utf-8"\/>/)
+    expect(head).toMatch(/<meta (?=[^>]*name="viewport")(?=[^>]*content="width=device-width, initial-scale=1")[^>]*>/)
   })
 })

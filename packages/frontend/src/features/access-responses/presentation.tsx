@@ -68,12 +68,19 @@ export function ForbiddenNotice(): ReactElement {
   )
 }
 
-/** Host-rendered 403 document for `ProtectionResponses.forbiddenDocument`; `private, no-store`. */
+/**
+ * Host-rendered 403 document for `ProtectionResponses.forbiddenDocument`; `private, no-store`. It states the root
+ * layout's charset and viewport and its own title, which React hoists into `<head>`, because it does not render through
+ * the layout; app stylesheets are hashed build output and are not linked (research D4).
+ */
 export const forbiddenDocumentResponse = async (): Promise<NextResponse> =>
   new NextResponse(
     await renderToReadableStream(
       <html lang="en">
         <body>
+          <meta charSet="utf-8" />
+          <meta content="width=device-width, initial-scale=1" name="viewport" />
+          <title>Access denied – Pre-ETS</title>
           <ForbiddenNotice />
         </body>
       </html>
