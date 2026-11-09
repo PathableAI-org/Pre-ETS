@@ -72,8 +72,7 @@ pnpm --filter @pathableai/pre-ets-frontend test:unit -- tests/unit/session-coord
 
 Expected: the tag-mismatch property finds no store write for a mismatched tag; same-origin and content-type examples
 reject before any service call; the activity handler returns the stored renewed deadline; activity after invalidation
-or expiry answers 401 with no record; logout answers 204 with `Max-Age=0` only after removal and 503 with the cookie
-untouched during an outage; status never moves the stored deadline; the B5-W window property and the D4
+or expiry answers 401 with no record; logout answers 204 only after removal, 503 during an outage, and never sets a cookie; status never moves the stored deadline; the B5-W window property and the D4
 classification table pass. These do not establish browser timing, cross-tab delivery, or real-session behavior.
 
 ## 2. Build and running instances
@@ -129,6 +128,8 @@ stay planned here and are added to the feature file in increment 5.
 | Every tab shows the signed-out notice; sign-in starts only from Log in (010)                                             | V-017        | #158 |
 | Activity and logout leave another tenant, another context, and a later session unchanged (010)                           | V-012, V-016 | #158 |
 | A stale tab's queued activity and form submission after logout and re-login do not renew or affect the new session (010) | V-012        | #158 |
+| A logout response delayed until another tab completes a new login leaves the new session usable (010)                    | V-012        | #158 |
+| A logout whose tab closes before the response still conceals every other tab within 2 seconds (010)                      | V-011        | #158 |
 | A tab opened before logout but hydrated after it shows no protected content (010)                                        | V-011, V-017 | #158 |
 
 Non-BDD Playwright browser evidence (retained under `tests/bdd/support` helpers, run by the same harness) covers the
