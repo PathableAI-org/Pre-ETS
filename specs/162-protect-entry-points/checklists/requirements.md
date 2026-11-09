@@ -43,15 +43,19 @@
 
 ## Notes
 
-- Validation iteration 1: all items pass; no `[NEEDS CLARIFICATION]` markers were introduced.
+- Validation iteration 1: all items passed; no `[NEEDS CLARIFICATION]` markers were introduced.
+- Validation iteration 2 (independent authority review): public resources now "include" the requirement's list plus
+  the tenant login-initiation entry (FR-006, V-003); the evidence inventory moved from a product requirement to a
+  verification prerequisite; FR-002's demonstrability clause was dropped; valid-session joining and the
+  viewed-under-a-session history precondition are gated on #158 in both artifacts; manual step 7 no longer uses a
+  prepared record for admission. All items pass.
 - HTTP 403, OIDC, pages, route handlers, Server Actions, `/_test`, and the diagnostic route are named because the
   accepted requirements and delivery issue require them; they are observable obligations, not design choices.
-- Three authority findings are recorded in `spec.md`. Finding 1 (B6 freshness confirmation, owned by #158) is an
-  execution gate: it blocks completion of the success-path claims (SESSION-002/003 success, SESSION-005 AC1 real-login
-  admission, multi-instance recognition/renewal/expiry, valid-session joining) but not the stakeholder contract.
-  Finding 2 (owner of first-time freshness evidence) applies the reading that #158 owns all freshness verification
-  and asks the maintainer to confirm. Finding 3 notes stale "pending approval" prose in merged plan content.
+- Authority finding 1 (B6 freshness confirmation, owned by #158) remains open as an execution gate: the real A→B
+  login increment and other success-path claims stay incomplete at S1 merge. It does not block the stakeholder
+  contract. Findings 2 (freshness evidence owner, resolved by plan S1/S6) and 3 (stale approval prose, resolved by
+  the delivery README) are resolved.
 - SESSION-004 AC1 freshness verification is deferred to #158 and SESSION-004 AC2 recovery composition to #157, as the
-  issue states; both remain explicitly incomplete.
+  issue and plan state; both remain explicitly incomplete in #154.
 - `verification.md` records planned evidence only. No runtime, provider, store, browser, accessibility, or operational
   procedure was executed during specification.

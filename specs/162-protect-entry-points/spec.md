@@ -110,15 +110,16 @@ remain intact and accepted tenant failures keep their outcomes.
 **Why this priority**: Default protection must not block login completion, sign-in error explanation, recovery
 content, or diagnostics, and public status must not become a tenant or security bypass.
 
-**Independent Test**: Without a session, request the OIDC callback, sign-in error page, every `/_test` route, the
-dedicated expired/missing-session recovery content, and the static assets needed to display those pages. Confirm
-reachability, that `GET /_test/tenant-config` creates no session, that public assets carry no protected information,
+**Independent Test**: Without a session, request the OIDC callback, sign-in error page, tenant login initiation,
+every `/_test` route, the dedicated expired/missing-session recovery content, and the static assets needed to display
+those pages. Confirm reachability, that `GET /_test/tenant-config` creates no session, that public assets carry no protected information,
 and that invalid tenants retain their accepted 404/500 outcomes.
 
 **Acceptance Scenarios**:
 
-1. **Given** no application session, **When** the OIDC callback, sign-in error page, any route under `/_test`, or the
-   dedicated expired/missing-session recovery content is requested, **Then** it is reachable without authentication.
+1. **Given** no application session, **When** the OIDC callback, sign-in error page, any route under `/_test`, the
+   dedicated expired/missing-session recovery content, or the tenant login-initiation entry the authentication flow
+   needs is requested, **Then** it is reachable without authentication.
 2. **Given** no application session, **When** `GET /_test/tenant-config` completes, **Then** no application session is
    created and its no-store and non-secret configuration obligations still apply.
 3. **Given** a static asset needed to display an unauthenticated page, **When** it is requested without a session,
@@ -154,6 +155,7 @@ protected page; confirm each starts the tenant's OIDC flow directly and that no 
    starts directly rather than a session-expired page, regardless of whether the previous expiration is recognized.
 3. **Given** a protected page was viewed under a session that has since expired, **When** browser history restores
    that page, **Then** no usable protected content or protected action is available under the expired session.
+   Establishing the "viewed under a session" precondition requires a real session and is gated on #158.
 4. **Given** fresh-entry behavior is in place, **When** a running authenticated tab expires or a protected Server
    Action meets an expired or missing session, **Then** fresh entry does not replace the running-tab expiration modal
    or the Server Action recovery path owned by later slices.
@@ -173,7 +175,7 @@ protected page; confirm each starts the tenant's OIDC flow directly and that no 
 - The provider has an existing single sign-on session: login still requests fresh authentication, and no application
   session is established without confirmed freshness evidence; a redirect or new session identifier alone is not
   proof.
-- Session state cannot be read because the session service or store fails: protected access fails closed, the failure
+- Session state cannot be determined: protected access fails closed, the failure
   is not treated as an absent session or success, and no replacement login or session is silently created.
 - The protected Server Action is retried after denial: no denied attempt produces its protected side effect.
 - A route handler, Server Action, or page is added under an existing or new path without explicit public designation:
@@ -188,18 +190,17 @@ protected page; confirm each starts the tenant's OIDC flow directly and that no 
 - **FR-001**: Every frontend page, route handler, and Server Action, including `/`, MUST be protected unless it is
   explicitly designated public; protection MUST apply at each entry point, including direct requests, not only to
   navigation through another page.
-- **FR-002**: A resource added to the application MUST be protected by default without any per-resource opt-in, and
-  the default MUST be demonstrable for resources beyond any finite sample.
+- **FR-002**: A resource added to the application MUST be protected by default without any per-resource opt-in.
 - **FR-003**: A request without a usable application session MUST NOT obtain protected content or cause a protected
   effect at any protected entry point.
 - **FR-004**: A protected page request without an application session and with a successfully resolved tenant MUST
   automatically begin that tenant's OIDC authentication flow without first exposing protected content.
 - **FR-005**: The application MUST provide an actual protected Server Action with a browser consumer whose denied
-  invocation makes the absence of its safe side effect observable, without introducing a new domain workflow or
-  durable business record.
-- **FR-006**: The explicitly public resources MUST be exactly the OIDC callback, the sign-in error page, all routes
-  under `/_test`, the dedicated expired/missing-session recovery content, and static assets needed to display those
-  unauthenticated pages that contain no protected information.
+  invocation makes the absence of its safe side effect observable, without introducing a new domain workflow.
+- **FR-006**: The explicitly designated public resources MUST include the OIDC callback, the sign-in error page, all
+  routes under `/_test`, the dedicated expired/missing-session recovery content, the tenant login-initiation entry the
+  authentication flow needs, and static assets needed to display those unauthenticated pages that contain no
+  protected information. Every resource not explicitly designated public remains protected under FR-001 and FR-002.
 - **FR-007**: `GET /_test/tenant-config` MUST NOT create an application session.
 - **FR-008**: Public status MUST NOT bypass request tenant resolution, the non-secret configuration obligation,
   diagnostic no-store behavior, or separate production-ingress blocking of `/_test`.
@@ -231,9 +232,9 @@ protected page; confirm each starts the tenant's OIDC flow directly and that no 
   alter the resolved request tenant.
 - **FR-020**: Accepted tenant failure outcomes (invalid or unknown host 404, selected-configuration 404/500) MUST be
   preserved for public and protected requests and MUST NOT be converted into login, forbidden, or session outcomes.
-- **FR-021**: A malformed, forged, missing-record, expired, or invalidated session reference, and a session service
-  or store failure, MUST fail closed; a service failure MUST NOT be treated as success or authorize silent replacement
-  login or session creation. No prior-expiration retention MAY be required solely to select freshness.
+- **FR-021**: A malformed, forged, missing-record, expired, or invalidated session reference, and any request whose
+  session state cannot be determined, MUST fail closed; undeterminable session state MUST NOT be treated as success or
+  authorize silent replacement login or session creation. No prior-expiration retention MAY be required solely to select freshness.
 - **FR-022**: Opening a protected page in a new tab while a valid session exists MUST join that session rather than
   start an independent login.
 - **FR-023**: Protected-page entry through a new tab, existing-tab refresh, or browser back/forward navigation without
@@ -246,8 +247,6 @@ protected page; confirm each starts the tenant's OIDC flow directly and that no 
   keyboard with visible focus and meaningful accessible names, and their outcomes MUST be perceivable.
 - **FR-027**: Denied, forbidden, sign-in failure, and public diagnostic responses MUST NOT reveal protected content,
   session identity, tokens, credentials, or provider/storage internals.
-- **FR-028**: The delivered application MUST maintain an inventory of public designations and protected entry-point
-  categories sufficient for a reviewer to confirm FR-001, FR-002, and FR-006.
 
 ### Key Entities
 
@@ -324,13 +323,13 @@ Current `origin/main` authority was inspected at `43215557c35380322d759d2918456e
 
 ### Accepted requirement coverage
 
-| Requirement                                                                                                                                                   | Acceptance criteria in this slice | Feature disposition                                                                                                                                                                                                                                                                                                                                           |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [PREETS-SESSION-001](https://github.com/PathableAI-org/Pre-ETS/blob/43215557c35380322d759d2918456e02c3a0c7b2/docs/requirements/session/PREETS-SESSION-001.md) | AC1–3                             | Specified in full (FR-001–FR-008, FR-028). The recovery-content exception is preserved as public; the recovery content itself is #157's. Production ingress and diagnostic safety retain separate evidence.                                                                                                                                                   |
-| [PREETS-SESSION-002](https://github.com/PathableAI-org/Pre-ETS/blob/43215557c35380322d759d2918456e02c3a0c7b2/docs/requirements/session/PREETS-SESSION-002.md) | AC1–3                             | Specified (FR-009–FR-011). A completed provider round trip that yields a session is gated on #158 freshness confirmation. Microsoft and broker-chain compatibility remain explicitly unexecuted limitations.                                                                                                                                                  |
-| [PREETS-SESSION-003](https://github.com/PathableAI-org/Pre-ETS/blob/43215557c35380322d759d2918456e02c3a0c7b2/docs/requirements/session/PREETS-SESSION-003.md) | AC1–3                             | AC2 specified and completable now (FR-014). AC1 and AC3 specified (FR-013, FR-015, FR-016) but **incomplete** until B6/#158 freshness confirmation permits live session establishment; seeded records cannot establish them.                                                                                                                                  |
-| [PREETS-SESSION-004](https://github.com/PathableAI-org/Pre-ETS/blob/43215557c35380322d759d2918456e02c3a0c7b2/docs/requirements/session/PREETS-SESSION-004.md) | AC1–2                             | AC1 missing-session automatic login, expired/removed-record fresh entry, joining, and history protection specified (FR-004, FR-022–FR-024); verified freshness for first-time and expired entry is **deferred to #158**. AC2 non-replacement specified (FR-025); recovery composition is **deferred to #157** (Server Action recovery and running-tab modal). |
-| [PREETS-SESSION-005](https://github.com/PathableAI-org/Pre-ETS/blob/43215557c35380322d759d2918456e02c3a0c7b2/docs/requirements/session/PREETS-SESSION-005.md) | AC1–4                             | Specified in full (FR-017–FR-020). AC2–4 are completable with prepared denial/isolation records; AC1 matching-tenant admission through real login is **incomplete** until #158 permits live session establishment.                                                                                                                                            |
+| Requirement                                                                                                                                                   | Acceptance criteria in this slice | Feature disposition                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [PREETS-SESSION-001](https://github.com/PathableAI-org/Pre-ETS/blob/43215557c35380322d759d2918456e02c3a0c7b2/docs/requirements/session/PREETS-SESSION-001.md) | AC1–3                             | Specified in full (FR-001–FR-008). The recovery-content exception is preserved as public; the recovery content itself is #157's. Production ingress and diagnostic safety retain separate evidence.                                                                                                                                                                                                                                                                                          |
+| [PREETS-SESSION-002](https://github.com/PathableAI-org/Pre-ETS/blob/43215557c35380322d759d2918456e02c3a0c7b2/docs/requirements/session/PREETS-SESSION-002.md) | AC1–3                             | Specified (FR-009–FR-011). A completed provider round trip that yields a session is gated on #158 freshness confirmation. Microsoft and broker-chain compatibility remain explicitly unexecuted limitations.                                                                                                                                                                                                                                                                                 |
+| [PREETS-SESSION-003](https://github.com/PathableAI-org/Pre-ETS/blob/43215557c35380322d759d2918456e02c3a0c7b2/docs/requirements/session/PREETS-SESSION-003.md) | AC1–3                             | AC2 specified and completable now (FR-014). AC1 and AC3 specified (FR-013, FR-015, FR-016) but **incomplete** until B6/#158 freshness confirmation permits live session establishment; seeded records cannot establish them.                                                                                                                                                                                                                                                                 |
+| [PREETS-SESSION-004](https://github.com/PathableAI-org/Pre-ETS/blob/43215557c35380322d759d2918456e02c3a0c7b2/docs/requirements/session/PREETS-SESSION-004.md) | AC1–2                             | AC1 missing-session automatic login, expired/removed-record fresh entry, joining, and history protection specified (FR-004, FR-022–FR-024); valid-session joining and the viewed-under-a-session history precondition are **incomplete** until #158 permits live sessions; verified freshness for first-time and expired entry is **deferred to #158**. AC2 non-replacement specified (FR-025); recovery composition is **deferred to #157** (Server Action recovery and running-tab modal). |
+| [PREETS-SESSION-005](https://github.com/PathableAI-org/Pre-ETS/blob/43215557c35380322d759d2918456e02c3a0c7b2/docs/requirements/session/PREETS-SESSION-005.md) | AC1–4                             | Specified in full (FR-017–FR-020). AC2–4 are completable with prepared denial/isolation records; AC1 matching-tenant admission through real login is **incomplete** until #158 permits live session establishment.                                                                                                                                                                                                                                                                           |
 
 Related constraints, not coverage claims: [PREETS-SESSION-013](https://github.com/PathableAI-org/Pre-ETS/blob/43215557c35380322d759d2918456e02c3a0c7b2/docs/requirements/session/PREETS-SESSION-013.md)
 (uniform fresh authentication; `max_age=0` and signed-ID-token `auth_time` baseline; owned by #158),
@@ -378,8 +377,9 @@ multi-instance HTTP evidence.
 - #158's B6 freshness confirmation is an execution gate for every success-path claim: the current callback
   establishes no session because the freshness comparison and clock tolerance are unresolved. Planning may separate
   default protection, denial, forbidden, public-exception, tenant-failure, and fresh-entry redirection work from the
-  gated authenticated journeys, but completion may not claim live login, matching-tenant admission, or
-  cross-instance recognition/renewal/expiry until that gate is satisfied.
+  gated authenticated journeys, but completion may not claim live login, matching-tenant admission,
+  cross-instance recognition/renewal/expiry, valid-session joining, or history restoration of a page viewed under a
+  real session until that gate is satisfied. The issue limits prepared records to denial and isolation scenarios.
 - #157 Server Action recovery and #158 verified expired-entry freshness are shipping gates for SESSION-004.
 - The valid/missing-session increment does not depend on #155.
 
@@ -393,23 +393,26 @@ multi-instance HTTP evidence.
      callback therefore establishes no session.
    - _Impact_: SESSION-002/003 success outcomes, SESSION-005 AC1 real-login admission, and multi-instance
      renewal/expiry evidence cannot be executed or completed; everything else can proceed.
-   - _Decision required_: Maintainer resolution of B6 comparison, tolerance, and provider handling under #158, and
-     confirmation that #154 may plan with these claims explicitly incomplete.
-   - _Proposals_: (A) Plan #154 in increments, completing non-success work now and success-path evidence after #158.
-     (B) Resolve B6 under #158 before #154 planning so one plan covers the full journey.
-2. **Ownership of first-time-visit freshness evidence (open; non-blocking, interpretation applied).**
+   - _Decision required_: Maintainer acceptance that the real A→B login observable increment remains incomplete when
+     the S1 feature merges, until #158 resolves the B6 comparison, tolerance, and provider handling.
+   - _Proposals_: (A) Plan #154 in increments, completing non-success work now and success-path evidence after #158,
+     consistent with plan S1 Dependencies (S6 "is not a reverse blanket start dependency").
+2. **Ownership of first-time-visit freshness evidence (resolved by the delivery plan).**
    - _Source_: Issue #154 Requirements line ("SESSION-004 AC1 expired-entry freshness awaits S6") versus its later
-     B6 decision and handoff ("#158 completed provider freshness").
-   - _Ambiguity_: Uniform freshness now applies to first-time visits, but the baseline text defers only
-     expired-entry freshness to #158.
-   - _Impact_: Determines whether #154 must deliver real-provider existing-SSO first-time freshness evidence.
-   - _Decision required_: Confirm the owner of first-time existing-SSO freshness evidence.
-   - _Proposals_: (A) #158 owns all freshness verification (applied here, consistent with the handoff, #216/#217
-     records, and current documentation). (B) #154 owns first-time freshness evidence once #158 decides the policy.
-3. **Stale approval prose in the current plan (open; non-blocking).**
+     B6 decision; resolved by the current plan's S1 Evidence progression ("S6 adds freshness with existing SSO and
+     removed old records") and S6 Coverage ("freshness also completes SESSION-004 AC1").
+   - _Ambiguity_: Uniform freshness now applies to first-time visits, while the issue baseline names only
+     expired-entry freshness.
+   - _Impact_: #154 delivers no real-provider existing-SSO freshness evidence; SESSION-004 AC1 stays incomplete in
+     #154 until #158 supplies it.
+   - _Decision required_: None; the plan assigns freshness evidence to S6/#158.
+   - _Proposals_: (A) #158 owns all freshness verification, including first-time entry (applied).
+3. **Stale approval prose in the current plan (resolved).**
    - _Source_: Current plan header and B6 text still describe the reconstruction scope and 2026-10-17 refinements as
-     awaiting PR approval, although PR #189 and PR #222 merged them to `main`.
-   - _Ambiguity_: Whether merged-but-"pending" prose is approved authority.
-   - _Impact_: None on behavior if merged content is authoritative, which this specification assumes.
-   - _Decision required_: None for specification; a later plan-maintenance PR may refresh the status prose.
-   - _Proposals_: (A) Treat merged `main` content as approved (applied). (B) Refresh status prose separately.
+     awaiting PR approval, although PR #189 and PR #222 merged them; the
+     [delivery README](https://github.com/PathableAI-org/Pre-ETS/blob/43215557c35380322d759d2918456e02c3a0c7b2/docs/delivery/README.md)
+     states that plans merged into `main` are reviewed even when their approval text has not been updated.
+   - _Ambiguity_: None remaining.
+   - _Impact_: None; merged plan content is treated as reviewed authority.
+   - _Decision required_: None.
+   - _Proposals_: (A) Treat merged `main` content as reviewed (applied).
