@@ -4,10 +4,8 @@ description: Auto-commit changes after a Spec Kit command completes
 compatibility: Requires spec-kit project structure with .specify/ directory
 metadata:
   author: spec-kit-core
-  source: extension:git
+  source: git:commands/speckit.git.commit.md
 ---
-
-# Git Commit Skill
 
 # Auto-Commit Changes
 
