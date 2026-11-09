@@ -74,6 +74,33 @@ Source: maintainer direction on 2026-10-17. Repository inspection confirmed the 
 [compose.yaml](../../../compose.yaml) and its tracked realm in
 [docker/keycloak/pre-ets-realm.json](../../../docker/keycloak/pre-ets-realm.json); containers were not started or assessed.
 
+### B6 freshness comparison and provider handling (2026-11-09)
+
+The maintainer selected the remaining B6 freshness policy on 2026-11-09:
+
+- **Comparison:** the callback confirms freshness only when the validated ID token's `auth_time` is no earlier
+  than the start of the login transaction the callback consumes, less the clock tolerance, and no later than the
+  callback's current time plus the clock tolerance. Freshness evidence is bound to that login attempt; a window
+  measured only back from callback time is insufficient.
+- **Clock tolerance:** one fixed application-wide tolerance of 30 seconds applies to both bounds. No tenant- or
+  provider-specific tolerance is adopted.
+- **Missing or stale evidence:** an ID token without `auth_time`, or with `auth_time` outside those bounds, is an
+  expected authentication denial, like cancellation or a provider error. The transaction is consumed, no
+  application session is established, protected access stays unavailable, and Login may be attempted again.
+  Provider or network unavailability remains distinct from this denial.
+- **Unsupported providers:** a provider or broker that ignores `max_age=0`, omits `auth_time`, or returns stale
+  `auth_time` is unsupported, and the application fails closed for that tenant. No per-tenant opt-out,
+  `prompt=login` fallback, or discovery-metadata check substitutes for runtime freshness evidence. Operator
+  diagnostics distinguish missing from stale evidence without exposing tokens or claims.
+- **Broker chains:** the application evaluates the `auth_time` issued by the tenant's configured issuer. Requiring
+  fresh upstream authentication through a broker is deployment configuration; a broker chain is compatible only
+  after its own freshness evidence.
+
+This resolves B6. It selects no implementation structure and claims no implemented or verified provider behavior.
+Microsoft scenarios remain outstanding: whether a Microsoft integration emits `auth_time` and honors `max_age=0` is
+unverified, and an integration that does not is unsupported under this policy until configuration or evidence
+establishes otherwise. This decision awaits Git/PR approval.
+
 ## Historical implementation context
 
 The following comparisons use implementation notes at the accepted session requirements revision
