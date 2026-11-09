@@ -17,7 +17,7 @@ Feature: Unavailable tenant login outcomes
     And host resolution uses base hostname "example.test"
     When a visitor requests the document at "springfield.example.test"
     Then the response delegates to the same-origin login
-    When a visitor requests "/this-page-is-absent" at "springfield.example.test"
+    When a visitor requests "/_test/this-page-is-absent" at "springfield.example.test"
     Then the response status is 404
     And the response has no redirect
     And invalid tenant navigation presents the ordinary missing page

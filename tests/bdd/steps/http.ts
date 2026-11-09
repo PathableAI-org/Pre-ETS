@@ -4,7 +4,10 @@ import assert from "node:assert/strict"
 import type { AppWorld } from "../support/world.ts"
 
 import { responseJson } from "../support/response.ts"
-import { requestSite } from "../support/server.ts"
+import { serverActionId } from "../support/server-actions.ts"
+import { FETCH_METADATA, type FetchMetadataKind, requestSite, requestSiteWith } from "../support/server.ts"
+
+const isFetchMetadataKind = (kind: string): kind is FetchMetadataKind => Object.hasOwn(FETCH_METADATA, kind)
 
 const assertNoApplicationSession = (cookie: string): void => {
   assert.match(cookie, /Path=\/auth\/callback/i)
@@ -18,6 +21,22 @@ When("a visitor requests the document at {string}", async function(this: AppWorl
 })
 When("a visitor requests {string} at {string}", async function(this: AppWorld, path: string, host: string) {
   await requestSite(this, host, true, path)
+})
+When(
+  "a visitor sends {string} to {string} at {string} as a(n) {string} request",
+  async function(this: AppWorld, method: string, path: string, host: string, kind: string) {
+    assert.ok(isFetchMetadataKind(kind), `Unknown request kind ${kind}`)
+    await requestSiteWith(this, { headers: FETCH_METADATA[kind], host, method, path })
+  }
+)
+When("a visitor invokes the protected reference action at {string}", async function(this: AppWorld, host: string) {
+  const action = await serverActionId("runReferenceOperation")
+  await requestSiteWith(this, {
+    headers: { ...FETCH_METADATA.application, Accept: "text/x-component", "next-action": action },
+    host,
+    method: "POST",
+    path: "/"
+  })
 })
 Then("the response status is {int}", function(this: AppWorld, status: number) {
   assert.equal(this.response?.status, status)
@@ -67,7 +86,7 @@ Then("the response delegates to the same-origin login", function(this: AppWorld)
 })
 Then("the response contains no protected application content", function(this: AppWorld) {
   assert.ok(this.response)
-  assert.doesNotMatch(this.response.body, /Welcome to the Pre-ETS workspace/)
+  assert.doesNotMatch(this.response.body, /Welcome to the Pre-ETS workspace|Reference session/)
 })
 Then("the response body is empty", function(this: AppWorld) {
   assert.equal(this.response?.body, "")

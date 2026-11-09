@@ -2,6 +2,7 @@ import type { Page } from "playwright"
 
 import { Given, Then, When } from "@cucumber/cucumber"
 import assert from "node:assert/strict"
+import { randomBytes } from "node:crypto"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { setTimeout as delay } from "node:timers/promises"
@@ -62,6 +63,17 @@ const captureProviderReturn = async (world: AppWorld, host: string) => {
 
 Given("the visitor supplies application cookie {string}", function(this: AppWorld, cookie: string) {
   this.cookie = cookie
+})
+/** Cookie values only: a fabricated reference never has a server-held record. */
+const sessionReferences: Readonly<Record<string, () => string | undefined>> = {
+  absent: () => undefined,
+  malformed: () => "not-a-session-reference",
+  "well-formed unknown": () => randomBytes(32).toString("base64url")
+}
+Given("the visitor's session reference is {string}", function(this: AppWorld, kind: string) {
+  const reference = sessionReferences[kind]
+  assert.ok(reference, `Unknown session reference kind ${kind}`)
+  this.cookie = reference()
 })
 Given("the recoverable authentication lifetime is {int} second", function(this: AppWorld, seconds: number) {
   this.transactionTtlSeconds = seconds

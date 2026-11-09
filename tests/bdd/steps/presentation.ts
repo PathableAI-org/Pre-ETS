@@ -14,7 +14,7 @@ Then("invalid tenant navigation presents the ordinary missing page", async funct
   const browser = owned.browser
   try {
     const page = await browser.newPage()
-    const ordinary = await page.goto("http://springfield.example.test/this-page-is-absent")
+    const ordinary = await page.goto("http://springfield.example.test/_test/this-page-is-absent")
     assert.equal(ordinary?.status(), 404)
     const expected = await page.locator("body").innerText()
     assert.match(expected, /This page could not be found/)
