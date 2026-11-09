@@ -16,6 +16,28 @@ const responseHeaders = (source: IncomingHttpHeaders): Record<string, string> =>
   return headers
 }
 
+export type RecordedResponse = NonNullable<AppWorld["response"]>
+
+/** Fetch Metadata a browser sends: document navigations, application fetches, and image subresources. */
+export const FETCH_METADATA = {
+  application: { "sec-fetch-dest": "empty", "sec-fetch-mode": "cors" },
+  document: { "sec-fetch-dest": "document", "sec-fetch-mode": "navigate" },
+  image: { "sec-fetch-dest": "image", "sec-fetch-mode": "no-cors" },
+  "metadata-less": {}
+} as const satisfies Record<string, Record<string, string>>
+
+export type FetchMetadataKind = keyof typeof FETCH_METADATA
+
+interface SiteRequest {
+  readonly body?: Buffer | undefined
+  readonly cookie?: string | undefined
+  readonly headers: Readonly<Record<string, string>>
+  readonly host: string
+  readonly method: string
+  readonly path: string
+  readonly port: number
+}
+
 export async function requestInstance(
   world: AppWorld,
   port: number,
@@ -23,23 +45,52 @@ export async function requestInstance(
   requestPath: string,
   document = true,
   cookie?: string
-): Promise<{ body: string; headers: Record<string, string>; status: number }> {
+): Promise<RecordedResponse> {
+  const headers = document ?
+    { Accept: "text/html", ...FETCH_METADATA.document } :
+    { Accept: "application/json" }
+  return sendRequest(world, { cookie, headers, host, method: "GET", path: requestPath, port })
+}
+
+export async function requestSite(world: AppWorld, host: string, document = true, requestPath = "/"): Promise<void> {
+  await startSite(world)
+  world.response = await requestInstance(world, world.port, host, requestPath, document)
+}
+
+/** Starts the owned site if needed and records the response to one request with the given Fetch Metadata. */
+export async function requestSiteWith(
+  world: AppWorld,
+  request: {
+    readonly body?: Buffer | undefined
+    readonly headers: Readonly<Record<string, string>>
+    readonly host: string
+    readonly method: string
+    readonly path: string
+  }
+): Promise<void> {
+  await startSite(world)
+  world.response = await sendRequest(world, { ...request, port: world.port })
+}
+
+/** Sends one unfollowed request to an owned instance with the logical Host and the world's session cookie. */
+async function sendRequest(world: AppWorld, site: SiteRequest): Promise<RecordedResponse> {
   return new Promise((resolve, reject) => {
     const headers: Record<string, string> = {
-      Host: host,
+      Host: site.host,
       "x-forwarded-proto": "https",
       ...sessionCookieHeader(world),
       ...world.extraHeaders,
-      ...(document ? { Accept: "text/html", "sec-fetch-dest": "document" } : { Accept: "application/json" })
+      ...site.headers
     }
     // Node rejects an undefined header value, so an absent cookie must stay absent.
-    if (cookie !== undefined) headers.Cookie = cookie
-    const request = http.get(
+    if (site.cookie !== undefined) headers.Cookie = site.cookie
+    const request = http.request(
       {
         headers,
         hostname: "127.0.0.1",
-        path: requestPath,
-        port
+        method: site.method,
+        path: site.path,
+        port: site.port
       },
       (response) => {
         let body = ""
@@ -57,12 +108,8 @@ export async function requestInstance(
     request.setTimeout(30000, () => {
       request.destroy(new Error("BDD HTTP request timed out"))
     })
+    request.end(site.body)
   })
-}
-
-export async function requestSite(world: AppWorld, host: string, document = true, requestPath = "/"): Promise<void> {
-  await startSite(world)
-  world.response = await requestInstance(world, world.port, host, requestPath, document)
 }
 
 const siteOptionsFor = (world: AppWorld) => ({
@@ -98,14 +145,8 @@ export async function startSecondSite(world: AppWorld): Promise<void> {
   await waitUntilReady(child, logs)
 }
 
-export async function stopSite(world: AppWorld): Promise<void> {
-  await stopProcess(world.secondaryProcess)
-  await stopProcess(world.process)
-  world.secondaryProcess = undefined
-  world.process = undefined
-}
-
-async function startSite(world: AppWorld): Promise<void> {
+/** Starts the owned site once per scenario. */
+export async function startSite(world: AppWorld): Promise<void> {
   if (world.process) return
   world.port = await freePort()
   world.logs = ""
@@ -113,4 +154,11 @@ async function startSite(world: AppWorld): Promise<void> {
   world.process = child
   attachLogToWorld(world, child, false)
   await waitUntilReady(child, logs)
+}
+
+export async function stopSite(world: AppWorld): Promise<void> {
+  await stopProcess(world.secondaryProcess)
+  await stopProcess(world.process)
+  world.secondaryProcess = undefined
+  world.process = undefined
 }

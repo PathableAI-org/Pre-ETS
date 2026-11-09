@@ -1,3 +1,5 @@
+import type { ReactElement } from "react"
+
 import { PRIVATE_NO_STORE, type TenantFailureResponse } from "@pathableai/pre-ets-frontend-services"
 import { Alert, Container, Heading, Link, Page, Stack, Text } from "@pathableai/react"
 import { NextResponse } from "next/server"
@@ -48,3 +50,43 @@ export const tenantFailureResponse: TenantFailureResponse = async (status) =>
     },
     status
   })
+
+/** Heading, explanation, and a keyboard-reachable link to `/`; rendered by the proxy document and `forbidden.tsx`. */
+export function ForbiddenNotice(): ReactElement {
+  return (
+    <Page>
+      <Container>
+        <Stack gap="md">
+          <Heading level={1}>Access denied</Heading>
+          <Text>This request is not allowed to continue.</Text>
+          <Text>
+            <Link href="/">Go to the application entry</Link>
+          </Text>
+        </Stack>
+      </Container>
+    </Page>
+  )
+}
+
+/**
+ * Host-rendered 403 document for `ProtectionResponses.forbiddenDocument`; `private, no-store`. It states the root
+ * layout's charset and viewport and its own title, which React hoists into `<head>`, because it does not render through
+ * the layout; app stylesheets are hashed build output and are not linked (research D4).
+ */
+export const forbiddenDocumentResponse = async (): Promise<NextResponse> =>
+  new NextResponse(
+    await renderToReadableStream(
+      <html lang="en">
+        <body>
+          <meta charSet="utf-8" />
+          <meta content="width=device-width, initial-scale=1" name="viewport" />
+          <title>Access denied – Pre-ETS</title>
+          <ForbiddenNotice />
+        </body>
+      </html>
+    ),
+    {
+      headers: { "cache-control": PRIVATE_NO_STORE, "content-type": "text/html; charset=utf-8" },
+      status: 403
+    }
+  )

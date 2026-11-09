@@ -1,7 +1,7 @@
 import { createCallbackHandler, PRIVATE_NO_STORE } from "@pathableai/pre-ets-frontend-services"
 import { NextResponse } from "next/server"
 
-import { authenticationReturnBody, tenantFailureResponse } from "../presentation.tsx"
+import { authenticationReturnBody, tenantFailureResponse } from "../../../features/access-responses.ts"
 
 export const dynamic = "force-dynamic"
 export const runtime = "nodejs"

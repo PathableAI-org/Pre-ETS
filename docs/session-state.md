@@ -38,28 +38,73 @@ unresolved policy.
 tenant with no usable session redirects to `/auth/login`. A host-mode invalid host or
 other tenant failure on `/` remains that tenant 404 or 500. Static mode stays independent
 of Host. A usable session is admitted only when its tenant equals that resolved tenant.
-[#154](https://github.com/PathableAI-org/Pre-ETS/issues/154) owns comprehensive application
-integration. Later lifecycle slices retain their published ownership: renewal and
+Later lifecycle slices retain their published ownership: renewal and
 current-policy adoption ([#220](https://github.com/PathableAI-org/Pre-ETS/issues/220)),
 explicit invalidation and recovery ([#221](https://github.com/PathableAI-org/Pre-ETS/issues/221)),
 and warning/presentation UI ([#155](https://github.com/PathableAI-org/Pre-ETS/issues/155)–#158).
 
-## Reference enforcement inventory
+## Default entry-point protection
 
-This inventory records the bounded [#219](https://github.com/PathableAI-org/Pre-ETS/issues/219)
-reference. It is not evidence that every listed path behaves as described.
+`createProtectionProxy` in `frontend-services` is the Next proxy for every path except
+`/_next/static/**`, `/_next/webpack-hmr`, and `/__nextjs*`
+([#154](https://github.com/PathableAI-org/Pre-ETS/issues/154)). Every page, Route Handler,
+and Server Action, including resources added later and absent paths, is protected unless it
+is in the closed public designation: `/_test` or a path under `/_test/` without an encoded
+`/`, `\`, or `.`, for every method; or `GET`/`HEAD` of exactly `/auth/callback`,
+`/auth/login`, or `/login-unavailable`. A Server Action candidate is never public: a request
+with a `next-action` header (any method), or a `POST` whose `content-type` is
+`multipart/form-data` or `application/x-www-form-urlencoded` (Next's own possible-action
+test). Every other method on the three exact paths is protected. Public requests read no
+session state and each resolves its own tenant.
 
-- Delivered protected consumers: `GET /` and `runReferenceOperation`.
-- Outcomes: a matching session returns 200 with the unchanged idle deadline and warning
-  policy; absence on the page is 307 to `/auth/login`; a tenant mismatch is 403; a session
-  service failure fails closed and stays distinct from login, 403, and success.
-- Public exceptions: `/auth/callback`, `/login-unavailable`, `/auth/login`, and `/_test/*`,
-  including `GET /_test/tenant-config`.
-- Reusable fixtures: the OIDC harness, distributed Redis tests, two-process routing, and
-  receipt-count observation.
-- Unexercised categories: other pages, Route Handlers, Server Actions, direct and new
-  resources, final forbidden and recovery UI, action HTTP 401, history and freshness, and
-  renewal, invalidation, and outage recovery.
+A protected request is a **document entry** when it is a `GET`/`HEAD` without `next-action`
+whose Fetch Metadata is a navigation (`sec-fetch-mode: navigate`, or without a mode,
+`sec-fetch-dest: document`). Every other protected request, including RSC fetches,
+prefetches, `router.refresh()`, subresources such as `/favicon.ico` and `/_next/image`,
+Server Action calls, and requests without Fetch Metadata, is an **application request**.
+Next strips Flight headers before the proxy, so they are not used.
+
+The gate resolves the request tenant first, then reads the session for that tenant. Every
+response it returns carries `Cache-Control: private, no-store`; its denials have empty
+bodies and set no cookie.
+
+| Outcome (in order)                | Document entry                           | Application request |
+| --------------------------------- | ---------------------------------------- | ------------------- |
+| Runtime not started               | 503                                      | 503                 |
+| Tenant failure                    | Tenant 404 page or 500                   | Same                |
+| Session state undeterminable      | 503                                      | 503                 |
+| No usable session                 | 307 to same-origin `/auth/login`         | 401                 |
+| Session for another tenant        | 403 forbidden page rendered by the proxy | 403                 |
+| Usable session for request tenant | Passes through                           | Passes through      |
+
+The forbidden page is the proxy response itself, not a rewrite: the Next app renders the
+same `ForbiddenNotice` that `forbidden()` shows, with status 403 and
+`content-type: text/html; charset=utf-8`. Next normalizes loopback hosts to `localhost`, so a
+rewrite would become an external proxy when Next binds `127.0.0.1`
+([#356](https://github.com/PathableAI-org/Pre-ETS/issues/356)).
+
+A defect rejects the proxy promise (Next answers 500); nothing passes through on failure.
+A document entry renews a usable session as `deliberate-page-request`, and a `POST` with
+`next-action` as `deliberate-form-submission`, through `refreshForTenant` with the tenant's
+effective policy; the gate then re-issues `pathable-session` with `Max-Age` equal to the
+remaining idle seconds. Every other request only reads. The gate never creates a session.
+
+`/` and `runReferenceOperation` keep their own `readSessionRequest` check. The reference
+consumer shows a rejected action invocation as "The operation was not performed." without
+retrying. The root layout renders a history guard that reloads a page restored from the
+back-forward cache and refreshes the route on `popstate`, so history traversal reaches the
+gate.
+
+Inventory: protected page `/`; protected Server Action
+`runReferenceOperation`; no protected Route Handler; public resources as designated above.
+
+Known gaps: `/_next/static/**` is publicly served and `/favicon.ico`, metadata routes, and
+`/_next/image` answer 401 without a session until the public-asset decision is made.
+Expired- or missing-session recovery content and Server Action 401 recovery belong to
+[#157](https://github.com/PathableAI-org/Pre-ETS/issues/157). The callback cannot establish a
+session until freshness confirmation exists
+([#158](https://github.com/PathableAI-org/Pre-ETS/issues/158)), so admission of a real session
+is not yet observable in the running application.
 
 Independent session clients read identical state from the same record without creator
 affinity. This is not independently running protected HTTP recognition, and it does not

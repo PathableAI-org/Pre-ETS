@@ -1,6 +1,6 @@
 import { createLoginHandler } from "@pathableai/pre-ets-frontend-services"
 
-import { tenantFailureResponse } from "../presentation.tsx"
+import { tenantFailureResponse } from "../../../features/access-responses.ts"
 
 export const dynamic = "force-dynamic"
 export const runtime = "nodejs"

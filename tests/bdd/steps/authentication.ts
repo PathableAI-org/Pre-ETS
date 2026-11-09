@@ -2,6 +2,7 @@ import type { Page } from "playwright"
 
 import { Given, Then, When } from "@cucumber/cucumber"
 import assert from "node:assert/strict"
+import { randomBytes } from "node:crypto"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { setTimeout as delay } from "node:timers/promises"
@@ -9,7 +10,7 @@ import { setTimeout as delay } from "node:timers/promises"
 import type { AppWorld } from "../support/world.ts"
 
 import { applicationBrowser } from "../support/browser.ts"
-import { requestInstance, requestSite, startSecondSite } from "../support/server.ts"
+import { requestInstance, requestSite, startSecondSite, startSite } from "../support/server.ts"
 
 type RecordedResponse = NonNullable<AppWorld["response"]>
 
@@ -62,6 +63,17 @@ const captureProviderReturn = async (world: AppWorld, host: string) => {
 
 Given("the visitor supplies application cookie {string}", function(this: AppWorld, cookie: string) {
   this.cookie = cookie
+})
+/** Cookie values only: a fabricated reference never has a server-held record. */
+const sessionReferences: Readonly<Record<string, () => string | undefined>> = {
+  absent: () => undefined,
+  malformed: () => "not-a-session-reference",
+  "well-formed unknown": () => randomBytes(32).toString("base64url")
+}
+Given("the visitor's session reference is {string}", function(this: AppWorld, kind: string) {
+  const reference = sessionReferences[kind]
+  assert.ok(reference, `Unknown session reference kind ${kind}`)
+  this.cookie = reference()
 })
 Given("the recoverable authentication lifetime is {int} second", function(this: AppWorld, seconds: number) {
   this.transactionTtlSeconds = seconds
@@ -134,6 +146,95 @@ Then("browser entry at {string} reaches public sign-in failure", async function(
   } finally {
     await owned.close()
   }
+})
+
+/** The tenant's independently configured provider: its authorization endpoint and client. */
+const tenantProvider = async (world: AppWorld, alias: string) => {
+  const configuration = JSON.parse(await fs.readFile(path.join(world.directory, `${alias}.json`), "utf8")) as {
+    oidc: { clientId: string; issuer: string }
+  }
+  return {
+    authorization: new URL(`${configuration.oidc.issuer}/protocol/openid-connect/auth`),
+    clientId: configuration.oidc.clientId
+  }
+}
+
+const assertTenantAuthorization = (destination: URL, provider: Awaited<ReturnType<typeof tenantProvider>>) => {
+  assert.equal(`${destination.origin}${destination.pathname}`, provider.authorization.href)
+  assert.equal(destination.searchParams.get("client_id"), provider.clientId)
+}
+
+Then(
+  "following the response at {string} reaches the {string} tenant provider",
+  async function(this: AppWorld, host: string, alias: string) {
+    const provider = await tenantProvider(this, alias)
+    let response = this.response
+    for (let hop = 0; hop < 5; hop++) {
+      const location = response?.headers.location
+      assert.ok(location, "expected the response to lead elsewhere")
+      const destination = new URL(location, `http://${host}`)
+      if (destination.host !== host) {
+        assertTenantAuthorization(destination, provider)
+        return
+      }
+      response = await requestInstance(this, this.port, host, `${destination.pathname}${destination.search}`)
+    }
+    assert.fail("the redirect chain did not leave the application")
+  }
+)
+
+When(
+  "the visitor opens {string} at {string} in a browser, refreshes a page showing it, and opens it in another page",
+  async function(this: AppWorld, entryPath: string, host: string) {
+    await startSite(this)
+    const owned = await applicationBrowser(this.port, [host])
+    try {
+      const context = await owned.browser.newContext()
+      if (this.cookie !== undefined) {
+        await context.addCookies([{ name: "pathable-session", url: `http://${host}/`, value: this.cookie }])
+      }
+      const entry = `http://${host}${entryPath}`
+      this.protectedDocuments = []
+      const observe = (page: Page) =>
+        page.on("response", (response) => {
+          const url = new URL(response.url())
+          if (url.host === host && response.request().resourceType() === "document" && response.status() === 200) {
+            this.protectedDocuments.push(url.pathname)
+          }
+        })
+      const first = observe(await context.newPage())
+      await first.goto(entry)
+      const opened = first.url()
+      // A tab can show the entry only after an earlier view; without a usable session the application never renders
+      // one, so an unobserved harness stub stands in for that earlier view and the browser's own reload is observed.
+      const refreshed = await context.newPage()
+      await refreshed.route(entry, (route) => route.fulfill({ body: "<p>Earlier view</p>", contentType: "text/html" }))
+      await refreshed.goto(entry)
+      await refreshed.unrouteAll()
+      observe(refreshed)
+      await refreshed.reload()
+      const another = observe(await context.newPage())
+      await another.goto(entry)
+      this.browserEntries = [opened, refreshed.url(), another.url()]
+    } finally {
+      await owned.close()
+    }
+  }
+)
+
+Then(
+  "each browser entry reaches the {string} tenant provider without protected content",
+  async function(this: AppWorld, alias: string) {
+    const provider = await tenantProvider(this, alias)
+    assert.equal(this.browserEntries.length, 3)
+    for (const entry of this.browserEntries) assertTenantAuthorization(new URL(entry), provider)
+    assert.deepEqual(this.protectedDocuments, [])
+  }
+)
+
+Then("each browser entry's authorization request asks for fresh authentication", function(this: AppWorld) {
+  assert.equal(this.browserEntries.length, 3)
+  for (const entry of this.browserEntries) assert.equal(new URL(entry).searchParams.get("max_age"), "0")
 })
 
 When("the visitor completes real provider sign-in across two application instances at {string}", async function(

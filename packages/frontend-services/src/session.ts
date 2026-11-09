@@ -15,6 +15,7 @@ import {
 } from "./session/codec.js"
 import { SessionStore } from "./session/store.js"
 
+export { decodeSessionReference }
 export type { SessionReference }
 
 export interface EstablishedSession {

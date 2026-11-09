@@ -4,7 +4,7 @@ import { type NextRequest, NextResponse } from "next/server"
 import { AuthenticationService, type CallbackExpectedFailure, type TrustedIdentity } from "../authentication.js"
 import { SessionService, SessionServiceUnavailable } from "../session.js"
 import { effectiveSessionPolicy, TenantConfigService } from "../tenant.js"
-import { clearCorrelation, CORRELATION_COOKIE, setSessionCookie } from "./cookies.js"
+import { clearCorrelation, CORRELATION_COOKIE, remainingIdleSeconds, setSessionCookie } from "./cookies.js"
 import { CallbackFreshness } from "./freshness.js"
 import { PRIVATE_NO_STORE, toNext } from "./handler.js"
 import { type TenantFailureResponse, tenantFailureStatus } from "./tenant-failure.js"
@@ -47,10 +47,11 @@ const establishSession = Effect.fn("establishSession")(function*(
     tenantAlias: identity.tenantAlias
   })
   const now = yield* Clock.currentTimeMillis
-  const maxAgeSeconds = Math.max(0, Math.floor((established.session.idleDeadlineEpochMilliseconds - now) / 1_000))
+  const maxAgeSeconds = remainingIdleSeconds(established.session.idleDeadlineEpochMilliseconds, now)
+  // A navigable 303 so the browser leaves the provider and its next request presents the new session.
   const response = new NextResponse(null, {
-    headers: { "cache-control": PRIVATE_NO_STORE },
-    status: 204
+    headers: { "cache-control": PRIVATE_NO_STORE, location: "/" },
+    status: 303
   })
   return setSessionCookie(clearCorrelation(response, request), request, established.reference, maxAgeSeconds)
 })

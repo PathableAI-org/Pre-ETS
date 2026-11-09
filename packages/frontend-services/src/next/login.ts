@@ -4,6 +4,7 @@ import { type NextRequest, NextResponse } from "next/server"
 import { AuthenticationService } from "../authentication.js"
 import { cookieOptions, CORRELATION_COOKIE } from "./cookies.js"
 import { PRIVATE_NO_STORE, toNext } from "./handler.js"
+import { navigationStatus, resolveRequestTenant } from "./request.js"
 import { type TenantFailureResponse, tenantFailureStatus } from "./tenant-failure.js"
 
 const redirect = (location: string) =>
@@ -11,8 +12,15 @@ const redirect = (location: string) =>
 
 const prepareAuthentication = Effect.fn("prepareAuthentication")(
   function*(_respondToTenantFailure: TenantFailureResponse, request: NextRequest) {
+    const host = request.headers.get("host") ?? ""
+    // A fetch, prefetch, or subresource must not create a transaction or overwrite a login in progress. The tenant
+    // resolves first so tenant failures keep their 404/500; `prepare` looks the tenant up itself for a navigation.
+    if (navigationStatus(request.headers) === "non-navigation") {
+      yield* resolveRequestTenant(host)
+      return new NextResponse(null, { headers: { "cache-control": PRIVATE_NO_STORE }, status: 401 })
+    }
     const authentication = yield* AuthenticationService
-    const prepared = yield* authentication.prepare({ host: request.headers.get("host") ?? "" })
+    const prepared = yield* authentication.prepare({ host })
     const now = yield* Clock.currentTimeMillis
     const response = redirect(prepared.destination)
     const redirectUri = new URL(prepared.destination).searchParams.get("redirect_uri")

@@ -13,6 +13,13 @@ dynamic HTTP 307. Provider preparation has one five-second cancellable deadline.
 Tenant errors retain actual login 404/500 outcomes; expected provider, credential, or
 transaction failure redirects to `/login-unavailable`. A document request that is
 itself a tenant failure keeps that failure's 404 or 500 and does not redirect to login.
+A login request whose Fetch Metadata marks it as a non-navigation (`sec-fetch-mode` other
+than `navigate`, or without a mode, `sec-fetch-dest` other than `document`) first resolves
+the request tenant: a tenant failure keeps its 404 or 500. For a resolved tenant it receives
+401 with `Cache-Control: private, no-store`. Either way it prepares nothing, creates no
+transaction, and sets no cookie, so a fetch, prefetch, or subresource cannot overwrite a
+login in progress.
+Navigations and requests without Fetch Metadata keep the behavior above.
 
 Before redirecting, login stores a versioned recoverable attempt in Redis with atomic
 `SET ... NX PX` and gives the browser only a 32-byte opaque, unpadded base64url
@@ -34,14 +41,23 @@ the callback currently treats every trusted result as unconfirmed. It returns th
 no `pathable-session`. Once freshness is confirmed, the callback derives the tenant's
 effective session policy, establishes a Redis-backed session through `SessionService`, and
 only then writes the host-only `pathable-session` cookie alongside the cleared correlation
-cookie; establishment or tenant failure fails closed to the same safe page with no session
-cookie. See [session-state.md](./session-state.md) for the session contract.
+cookie, answering 303 to `/` with `Cache-Control: private, no-store` so the browser leaves
+the provider and its next request presents the new session. This branch stays unreachable
+in the running application until #158 supplies freshness confirmation. Establishment or
+tenant failure fails closed to the same safe page with no session cookie. See [session-state.md](./session-state.md) for the session contract.
 
 Unqualified input and qualified lookup misses preserve correlation so the original valid
 return can still complete. Actual consumption and ambiguous in-flight consumption clear
 it. Denial uses the existing safe "Authentication return" presentation and never re-emits
 callback parameters or provider/storage details. Public diagnostics remain independent of
-provider availability. The proxy remains pass-through.
+provider availability.
+
+The Next proxy runs the default protection gate (`createProtectionProxy`) on every path
+except framework build assets and development tooling; see
+[session-state.md](./session-state.md#default-entry-point-protection). `/auth/login`,
+`/auth/callback`, and `/login-unavailable` are public `GET`/`HEAD` resources that read no
+session state. `/login-unavailable` resolves the request tenant before rendering, so an
+invalid tenant keeps its 404 or 500.
 
 ## Provider discovery reuse
 

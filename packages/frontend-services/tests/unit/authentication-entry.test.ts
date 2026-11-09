@@ -120,6 +120,36 @@ const expectHostOnlyCookie = (cookie: string, path: string, secure: boolean) => 
   else expect(cookie).not.toContain("Secure")
 }
 
+const navigationHeaders = { host: "alpha.example.test", "sec-fetch-dest": "document", "sec-fetch-mode": "navigate" }
+
+const tenantDirectory = async () => {
+  const directory = await mkdtemp(join(tmpdir(), "preets-login-tenant-"))
+  await writeFile(
+    join(directory, "alpha.json"),
+    JSON.stringify({
+      displayName: "Alpha",
+      idleTimeoutMinutes: 30,
+      oidc: { clientAuth: "public", clientId: "alpha-web", issuer: "https://provider.test" },
+      warningLeadMinutes: 5
+    })
+  )
+  return directory
+}
+
+const hostTenants = (directory: string) =>
+  TenantConfigService.layer({ baseHostname: "example.test", configDir: directory, resolution: "host" })
+    .pipe(Layer.provide(NodeServices.layer))
+
+const nonNavigationLogin = (host: string, mode: string) =>
+  new NextRequest(`https://${host}/auth/login`, {
+    headers: {
+      cookie: `oidc-correlation=${"D".repeat(43)}`,
+      host,
+      "sec-fetch-dest": "empty",
+      "sec-fetch-mode": mode
+    }
+  })
+
 const maxAge = (cookie: string) => Number(/Max-Age=(\d+)/.exec(cookie)?.[1])
 
 describe("authentication Route Handlers [PREETS-SESSION-003, PREETS-SESSION-013]", () => {
@@ -164,6 +194,99 @@ describe("authentication Route Handlers [PREETS-SESSION-003, PREETS-SESSION-013]
     }
   )
 
+  it.each(["cors", "no-cors", "same-origin"])(
+    "refuses a %s login request on a resolved tenant with 401 and prepares nothing",
+    async (mode) => {
+      const directory = await tenantDirectory()
+      try {
+        const prepare = vi.fn(() => Effect.die("prepare must remain unused for a non-navigation"))
+        routeRuntime(
+          { complete: () => Effect.die("complete must remain unused"), prepare },
+          { session: routeSessionLayer, tenant: hostTenants(directory) }
+        )
+
+        const response = await login(nonNavigationLogin("alpha.example.test", mode))
+
+        expect(response.status).toBe(401)
+        expect(response.headers.get("cache-control")).toBe("private, no-store")
+        expect(response.headers.get("location")).toBeNull()
+        expect(response.headers.getSetCookie()).toEqual([])
+        expect(await response.text()).toBe("")
+        expect(prepare).not.toHaveBeenCalled()
+      } finally {
+        await rm(directory, { force: true, recursive: true })
+      }
+    }
+  )
+
+  it("keeps tenant failures ahead of refusing a non-navigation login request, preparing nothing", async () => {
+    const directory = await tenantDirectory()
+    try {
+      const prepare = vi.fn(() => Effect.die("prepare must remain unused for a non-navigation"))
+      const service = { complete: () => Effect.die("complete must remain unused"), prepare }
+      const missingStatic = TenantConfigService.layer({
+        configDir: directory,
+        resolution: "static",
+        staticAlias: "beta"
+      })
+        .pipe(Layer.provide(NodeServices.layer))
+
+      for (
+        const [tenant, host, status] of [
+          [hostTenants(directory), "capital-city.example.test", 404],
+          [missingStatic, "alpha.example.test", 500]
+        ] as const
+      ) {
+        routeRuntime(service, { session: routeSessionLayer, tenant })
+
+        const response = await login(nonNavigationLogin(host, "cors"))
+
+        expect(response.status).toBe(status)
+        expect(response.headers.get("location")).toBeNull()
+        expect(response.headers.getSetCookie()).toEqual([])
+      }
+      expect(prepare).not.toHaveBeenCalled()
+    } finally {
+      await rm(directory, { force: true, recursive: true })
+    }
+  })
+
+  it("answers login and callback before runtime startup with a private, empty 503", async () => {
+    runtime.runPromise.mockImplementation(() =>
+      Promise.reject(Object.assign(new Error("startup not ready"), { _tag: "StartupNotReady" }))
+    )
+
+    for (const handler of [login, callback]) {
+      const response = await handler(
+        new NextRequest("https://alpha.example.test/auth/login", { headers: navigationHeaders })
+      )
+      expect(response.status).toBe(503)
+      expect(response.headers.get("cache-control")).toBe("private, no-store")
+      expect(response.headers.getSetCookie()).toEqual([])
+      expect(await response.text()).toBe("")
+    }
+  })
+
+  it("prepares login for an explicit navigation", async () => {
+    const destination =
+      "https://provider.test/authorize?state=s&redirect_uri=https%3A%2F%2Falpha.example.test%2Fauth%2Fcallback"
+    const prepare = vi.fn(() =>
+      Effect.succeed({ correlation: "A".repeat(43), destination, expiresAt: Date.now() + 600_000 })
+    )
+    routeRuntime({ complete: () => Effect.die("complete must remain unused"), prepare })
+
+    const response = await login(
+      new NextRequest("https://alpha.example.test/auth/login", {
+        headers: { host: "alpha.example.test", "sec-fetch-dest": "document", "sec-fetch-mode": "navigate" }
+      })
+    )
+
+    expect(response.status).toBe(307)
+    expect(response.headers.get("location")).toBe(destination)
+    expect(cookiesNamed(response, "oidc-correlation")).toHaveLength(1)
+    expect(prepare).toHaveBeenCalledTimes(1)
+  })
+
   it("treats a trusted handoff without freshness confirmation as the safe return, clearing correlation without a session cookie", async () => {
     const complete = vi.fn((_input: {
       readonly correlation?: string | undefined
@@ -197,7 +320,7 @@ describe("authentication Route Handlers [PREETS-SESSION-003, PREETS-SESSION-013]
     })
   })
 
-  it("writes one host-only session cookie after a freshness-confirmed establishment", async () => {
+  it("navigates to the application entry with one host-only session cookie after a freshness-confirmed establishment", async () => {
     const directory = await mkdtemp(join(tmpdir(), "preets-session-callback-"))
     try {
       await writeFile(
@@ -220,7 +343,8 @@ describe("authentication Route Handlers [PREETS-SESSION-003, PREETS-SESSION-013]
         headers: { cookie: correlation, host: "alpha.example.test" }
       })
       const secure = await callback(secureRequest)
-      expect(secure.status).toBe(204)
+      expect(secure.status).toBe(303)
+      expect(secure.headers.get("location")).toBe("/")
       expect(await secure.text()).toBe("")
       expect(secure.headers.get("cache-control")).toBe("private, no-store")
       const secureSession = cookiesNamed(secure, "pathable-session")
@@ -241,7 +365,8 @@ describe("authentication Route Handlers [PREETS-SESSION-003, PREETS-SESSION-013]
         })
       )
       const loopbackSession = cookiesNamed(loopback, "pathable-session")
-      expect(loopback.status).toBe(204)
+      expect(loopback.status).toBe(303)
+      expect(loopback.headers.get("location")).toBe("/")
       expect(loopbackSession).toHaveLength(1)
       expectHostOnlyCookie(loopbackSession[0] ?? "", "/", false)
     } finally {

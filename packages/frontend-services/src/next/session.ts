@@ -1,6 +1,8 @@
 import { Effect, Result } from "effect"
 import { forbidden } from "next/navigation"
 
+import type { TenantAlias, TenantConfigService, TenantFailure } from "../tenant.js"
+
 import { Runtime } from "../runtime.js"
 import {
   type NoUsableSession,
@@ -9,7 +11,7 @@ import {
   type SessionTenantMismatch,
   type UsableSession
 } from "../session.js"
-import { type TenantAlias, TenantConfigService, type TenantFailure } from "../tenant.js"
+import { resolveRequestTenant } from "./request.js"
 import { tenantFailurePage } from "./tenant-failure.js"
 
 export const SESSION_COOKIE = "pathable-session"
@@ -33,9 +35,7 @@ const readSession = Effect.fn("readSessionRequest")(function*(
   ReadSessionFailure,
   SessionService | TenantConfigService
 > {
-  const tenant = yield* TenantConfigService
-  const tenantAlias = yield* Effect.fromResult(tenant.getAlias(input.host))
-  yield* tenant.getConfigFromAlias(tenantAlias)
+  const { alias: tenantAlias } = yield* resolveRequestTenant(input.host)
   const sessions = yield* SessionService
   const session = yield* sessions.readForTenant({ reference: input.reference, tenantAlias })
   return { session, tenantAlias }

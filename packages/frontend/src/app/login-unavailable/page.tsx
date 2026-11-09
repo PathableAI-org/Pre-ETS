@@ -1,8 +1,12 @@
 import { Alert, Container, Heading, Link, Page, Stack, Text } from "@pathableai/react"
 
+import { requireTenantConfig } from "../tenant-context.ts"
+
 export const dynamic = "force-dynamic"
 
-export default function LoginUnavailablePage() {
+/** Public, but never outside a resolved tenant: tenant failure keeps its 404/500. */
+export default async function LoginUnavailablePage() {
+  await requireTenantConfig()
   return (
     <Page>
       <Container>

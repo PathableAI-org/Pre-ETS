@@ -1,9 +1,11 @@
 @partial
 @preets-session-001
 Feature: Public authentication and diagnostic resources
-  Existing public callback fallback, sign-in error and diagnostics remain reachable
-  without authentication or provider availability. Callback acceptance, recovery
-  content, comprehensive protection and the full public-asset assessment remain incomplete.
+  Public callback fallback, sign-in error and diagnostics remain reachable without
+  authentication or provider availability under default protection, an absent path
+  under the public test prefix is an ordinary missing page rather than a login, and a
+  test route is not denied by protection for a non-GET method. Callback
+  acceptance, recovery content and the full public-asset assessment remain incomplete.
 
   Scenario Outline: Public authentication content is reachable without starting login
     Given production tenant sites for Springfield and Shelbyville
@@ -30,4 +32,19 @@ Feature: Public authentication and diagnostic resources
     And the response has no redirect
     And the response JSON equals the independently parsed "springfield" tenant file
     And the response is not cacheable
+    And the response issues no application or correlation cookie
+
+  Scenario: A test route is not denied by protection for a non-GET method
+    Given production tenant sites for Springfield and Shelbyville
+    And host resolution uses base hostname "example.test"
+    When a visitor sends "POST" to "/_test/tenant-config" at "springfield.example.test" as an "application" request
+    Then the response is not an authentication, authorization, or server failure
+    And the response does not delegate to login
+
+  Scenario: An absent path under the public test prefix is not found without starting login
+    Given production tenant sites for Springfield and Shelbyville
+    And host resolution uses base hostname "example.test"
+    When a visitor requests "/_test/this-page-is-absent" at "springfield.example.test"
+    Then the response status is 404
+    And the response has no redirect
     And the response issues no application or correlation cookie
