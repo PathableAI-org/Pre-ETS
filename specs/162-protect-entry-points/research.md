@@ -13,13 +13,16 @@ Code review of PRs #353 and #355 found plan decisions that contradicted the unch
 earliest owning phase, so these decisions changed here. Requirement baseline re-read on `origin/main`
 (PREETS-SESSION-001, -004, -005, -007, -013).
 
-| Decision                 | Change                                                                                                                                                                                                                                                                                                             | Finding                                                                                                    |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------- |
-| D2 / F-3                 | `/_test` and `/_test/…` are public for every method except Server Action candidates; F-3 resolved with proposal B. The other public paths stay `GET`/`HEAD` only.                                                                                                                                                  | `/_test` narrowed to `GET`/`HEAD` contradicted PREETS-SESSION-001 AC2 and FR-006.                          |
-| D4                       | The forbidden document is rendered by the proxy response itself from the shared forbidden presentation, without a rewrite; `/access-denied` is dropped.                                                                                                                                                            | The rewrite becomes an external proxy when Next binds a loopback address (#356); violates SESSION-005 AC2. |
-| D5 (tenant context)      | `requireTenantConfig` moves from `src/app/(app)/tenant-context.ts` to `src/app/tenant-context.ts`, the common parent of its consumers.                                                                                                                                                                             | `login-unavailable` and `/_test/onsite` imported a private child of the `(app)` route group.               |
-| D13                      | Login resolves the request tenant before refusing a non-navigation, so tenant failures keep 404/500.                                                                                                                                                                                                               | Refusal before tenant lookup let a public exception bypass tenant resolution (FR-008, SESSION-001 AC2).    |
-| D14, quickstart §4 (BDD) | Requirement-tagged rows assert only promised outcomes: redirect chains to the tenant provider, no protected content, no reference-operation receipt. Status-code and cookie mechanics stay module evidence; `max_age=0` rows carry `@preets-session-013`; the direct action sends the browser's encoded arguments. | Rows encoded private mechanics as product promises, and the action request could not reach the operation.  |
+| Decision                 | Change                                                                                                                                                                                                                                                                                                             | Finding                                                                                                      |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
+| D2 / F-3                 | `/_test` and `/_test/…` are public for every method except Server Action candidates; F-3 resolved with proposal B. The other public paths stay `GET`/`HEAD` only.                                                                                                                                                  | `/_test` narrowed to `GET`/`HEAD` contradicted PREETS-SESSION-001 AC2 and FR-006.                            |
+| D4                       | The forbidden document is rendered by the proxy response itself from the shared forbidden presentation, without a rewrite; `/access-denied` is dropped.                                                                                                                                                            | The rewrite becomes an external proxy when Next binds a loopback address (#356); violates SESSION-005 AC2.   |
+| D5 (tenant context)      | `requireTenantConfig` moves from `src/app/(app)/tenant-context.ts` to `src/app/tenant-context.ts`, the common parent of its consumers.                                                                                                                                                                             | `login-unavailable` and `/_test/onsite` imported a private child of the `(app)` route group.                 |
+| D13                      | Login resolves the request tenant before refusing a non-navigation, so tenant failures keep 404/500.                                                                                                                                                                                                               | Refusal before tenant lookup let a public exception bypass tenant resolution (FR-008, SESSION-001 AC2).      |
+| D4 (document head)       | The forbidden document carries its own `<head>`: `<meta charSet="utf-8">`, the root layout's viewport (`width=device-width, initial-scale=1`), and `<title>Access denied – Pre-ETS</title>`. App stylesheets are not linked (accepted limitation).                                                                 | The proxy document had an empty `<head>` and no title (WCAG 2.4.2, FR-018); D4 misdescribed the root layout. |
+| D2 evidence              | The designation property's action oracle is Next's installed `getServerActionRequestMetadata` plus the gate's separate `next-action`-on-any-method widening, over generated content-type variants.                                                                                                                 | The oracle restated the gate's own content-type predicate, so it could not detect drift from Next.           |
+| F-3                      | The residual narrowing (a form-encoded non-action `POST` to a future `/_test` Route Handler is protected) needs explicit maintainer acknowledgement on #353.                                                                                                                                                       | Resolution B still narrows PREETS-SESSION-001 AC2 for that case; it was recorded as settled.                 |
+| D14, quickstart §4 (BDD) | Requirement-tagged rows assert only promised outcomes: redirect chains to the tenant provider, no protected content, no reference-operation receipt. Status-code and cookie mechanics stay module evidence; `max_age=0` rows carry `@preets-session-013`; the direct action sends the browser's encoded arguments. | Rows encoded private mechanics as product promises, and the action request could not reach the operation.    |
 
 ## Current implementation facts
 
@@ -94,8 +97,11 @@ Verified against the owning workspaces' installed declarations and source (Next.
   `[{"_tag":"Ready"},"$K1"]`. The form has no named controls, so the browser's `FormData` is empty. On the server,
   `next/dist/server/lib/server-action-request-meta.js` treats a `POST` with `next-action` as a fetch action. Any `POST`
   with a `multipart/form-data` or `application/x-www-form-urlencoded` body is a possible (progressive-enhancement)
-  action (`isPossibleServerAction`). `action-handler.js` decodes multipart fetch actions with `decodeReply` or
-  `decodeReplyFromBusboy`. The `$K` case in the server decoder rebuilds the `FormData`. `action-handler.js` (about
+  action (`isPossibleServerAction`). The comparison is case-sensitive on the raw header value: the form-urlencoded
+  type must equal `application/x-www-form-urlencoded` exactly (no parameters), and the multipart type must start with
+  `multipart/form-data`; `next-action` counts only on `POST`. The module is importable from tests as
+  `next/dist/server/lib/server-action-request-meta.js` with its own declarations. `action-handler.js` decodes multipart
+  fetch actions with `decodeReply` or `decodeReplyFromBusboy`. The `$K` case in the server decoder rebuilds the `FormData`. `action-handler.js` (about
   lines 434–456) rejects an `Origin` whose host differs from `Host` or `x-forwarded-host`, and only warns when `Origin`
   is absent.
 - `next/navigation`: `forbidden(): never`, `useRouter(): AppRouterInstance` with `refresh(): void`.
@@ -238,9 +244,21 @@ harness uses: the request received 404 in host mode or 500 in static mode. Build
 `request.nextUrl` does not fix this. Next normalizes every loopback host in the proxy request to `localhost`. It
 compares the rewrite destination with the bound `-H` origin only after that normalization. So no rewrite destination is
 internal by construction ([installed facts](#installed-dependency-facts)). A response body involves no second routing
-step, so it is the same under every binding. The tenant 404 already uses this host-rendered pattern, and the root
-layout adds nothing beyond `<html lang>` and `<body>`, so the proxy document matches the convention page. Rendering
-`ForbiddenNotice` in both places keeps one presentation, which was the earlier objection to proxy rendering.
+step, so it is the same under every binding. The tenant 404 already uses this host-rendered pattern. Rendering `ForbiddenNotice` in
+both places keeps one presentation, which was the earlier objection to proxy rendering.
+
+**Document head** (corrected 2026-11-09): The root layout does more than `<html lang>` and `<body>`: through Next it
+contributes `<meta charSet="utf-8">`, the default viewport `<meta name="viewport" content="width=device-width,
+initial-scale=1">` (the layout exports no `viewport`, so Next's `createDefaultViewport` applies), the `metadata` title
+`Pre-ETS`, and the app stylesheets that `@pathableai/react` imports, which Next emits as hashed
+`/_next/static/css/*.css` links. A proxy-rendered document gets none of these, so it states its own `<head>`:
+`<meta charSet="utf-8">`, the same viewport meta, and `<title>Access denied – Pre-ETS</title>`. An untitled page fails
+WCAG 2.4.2 (level A), and FR-018 requires an accessible forbidden experience. The stylesheets are not linked: their
+paths are content hashes known only from the build manifest, so linking them would couple the proxy to build output,
+and inlining the package CSS would duplicate the design system's delivery. The accepted limitation is an unstyled
+document. Its native link keeps the browser's default visible focus indicator, and keyboard reachability and visible
+focus remain manual evidence (quickstart §6 step 6). The `forbidden()` convention page still renders through the root
+layout with styles.
 
 **Alternatives considered**: `NextResponse.rewrite(new URL("/access-denied", request.nextUrl))` or a cloned `nextUrl`
 (still external under loopback binding, verified above); a redirect to a public forbidden page (adds a public
@@ -438,7 +456,7 @@ that the decision makes public; V-004 and the final asset designation remain ope
    policy to sanction a support hook that prepares records through the public session service (testing-documentation
    owner decision). (C) Defer those automated rows entirely to #158 without adapter integration evidence.
 
-### F-3. Method scope of the `/_test` exemption (resolved 2026-11-09 with proposal B)
+### F-3. Method scope of the `/_test` exemption (resolved 2026-11-09 with proposal B; residual narrowing awaits acknowledgement)
 
 1. **Source**: spec FR-006 ("all routes under `/_test`"); PREETS-SESSION-001 AC1 (Server Actions are protected entry
    points) and AC2 (all routes under `/_test` are public), `origin/main` `43215557`.
@@ -457,3 +475,9 @@ invocation passes through a public path). Detection uses Next's own possible-act
 agree on what an action invocation is. The remaining narrowing is that a form-encoded `POST` to a `/_test` resource is
 protected; no current resource is affected (D2). `POST /_test/tenant-config` without a form body is public and may be
 asserted in requirement-tagged BDD as not denied by protection.
+
+**Open acknowledgement** (2026-11-09): B is not fully settled. It still narrows PREETS-SESSION-001 AC2 for one case: a
+form-encoded `POST` (`multipart/form-data…` or exactly `application/x-www-form-urlencoded`) without `next-action` to a
+future `/_test` Route Handler is protected, because the proxy cannot read the body to tell it from a
+progressive-enhancement action. This residual narrowing needs explicit maintainer acknowledgement on #353 before it is
+treated as accepted.

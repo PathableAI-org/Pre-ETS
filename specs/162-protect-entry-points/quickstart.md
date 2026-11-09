@@ -72,8 +72,8 @@ pnpm --filter @pathableai/pre-ets-frontend test:unit
 Expected: the designation property finds no counterexample; outcome-matrix, tenant-first, renewal, and no-session-read
 examples pass; the confirmed callback branch returns 303 `Location: /` with a session cookie while the default branch
 issues none; real-Redis expired, invalidated, mismatched, and disconnected outcomes map to 307/401, 403, and 503;
-non-navigation login requests on invalid tenants keep 404/500; the forbidden document is a host-rendered 403 page and
-matcher wiring passes. These do not establish Next routing, browser behavior, or provider login.
+non-navigation login requests on invalid tenants keep 404/500; the forbidden document is a host-rendered, titled 403 page
+with a viewport meta, and matcher wiring passes. These do not establish Next routing, browser behavior, or provider login.
 
 ## 2. Build and running instances
 
@@ -216,7 +216,8 @@ Follow verification.md §Procedure; implementation-specific details:
 5. Submit a crafted callback without a matching attempt and a cancelled provider return. With keyboard only, reach the
    "Return to the application entry" link; record visible focus, the explanation, and no provider or storage details.
 6. Prepare a Springfield session. Present its cookie with `Host: shelbyville.localhost:3000`: `GET /` → 403 with the
-   rendered forbidden page (keyboard reaches its link with visible focus). Observe the document once against an
+   rendered forbidden page titled `Access denied – Pre-ETS` (in Chromium: the keyboard reaches its link and the link
+   shows a visible focus indicator; the document is unstyled by accepted limitation, research D4). Observe the document once against an
    instance started with `next start -H 127.0.0.1` and once without `-H`; both must give 403 with the forbidden page
    (#356); `POST /` with the action ID → 403, receipt
    count unchanged; route handler: none inventoried (the §3 probe handler, if run, → 403). Confirm the request tenant
