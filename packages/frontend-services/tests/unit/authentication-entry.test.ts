@@ -120,6 +120,8 @@ const expectHostOnlyCookie = (cookie: string, path: string, secure: boolean) => 
   else expect(cookie).not.toContain("Secure")
 }
 
+const navigationHeaders = { host: "alpha.example.test", "sec-fetch-dest": "document", "sec-fetch-mode": "navigate" }
+
 const maxAge = (cookie: string) => Number(/Max-Age=(\d+)/.exec(cookie)?.[1])
 
 describe("authentication Route Handlers [PREETS-SESSION-003, PREETS-SESSION-013]", () => {
@@ -189,6 +191,22 @@ describe("authentication Route Handlers [PREETS-SESSION-003, PREETS-SESSION-013]
       expect(prepare).not.toHaveBeenCalled()
     }
   )
+
+  it("answers login and callback before runtime startup with a private, empty 503", async () => {
+    runtime.runPromise.mockImplementation(() =>
+      Promise.reject(Object.assign(new Error("startup not ready"), { _tag: "StartupNotReady" }))
+    )
+
+    for (const handler of [login, callback]) {
+      const response = await handler(
+        new NextRequest("https://alpha.example.test/auth/login", { headers: navigationHeaders })
+      )
+      expect(response.status).toBe(503)
+      expect(response.headers.get("cache-control")).toBe("private, no-store")
+      expect(response.headers.getSetCookie()).toEqual([])
+      expect(await response.text()).toBe("")
+    }
+  })
 
   it("prepares login for an explicit navigation", async () => {
     const destination =

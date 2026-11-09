@@ -14,6 +14,8 @@ export const toNext =
   (handler: (request: NextRequest) => Effect.Effect<NextResponse, never, ApplicationServices>) =>
   (request: NextRequest): Promise<NextResponse> =>
     Runtime.runPromise(Effect.suspend(() => handler(request))).catch((error: unknown) => {
-      if (Predicate.isTagged(error, "StartupNotReady")) return new NextResponse(null, { status: 503 })
+      if (Predicate.isTagged(error, "StartupNotReady")) {
+        return new NextResponse(null, { headers: { "cache-control": PRIVATE_NO_STORE }, status: 503 })
+      }
       throw error
     })

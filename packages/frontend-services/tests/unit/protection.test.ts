@@ -264,10 +264,7 @@ describe("createProtectionProxy outcomes [PREETS-SESSION-001, PREETS-SESSION-005
     )
 
     for (const headers of [navigation, rscFetch]) {
-      const response = await protect(request("/", { cookie: reference, headers }))
-      expect(response.status).toBe(503)
-      expect(passedThrough(response)).toBe(false)
-      expect(response.headers.get("location")).toBeNull()
+      await expectEmptyDenial(await protect(request("/", { cookie: reference, headers })), 503)
     }
   })
 
