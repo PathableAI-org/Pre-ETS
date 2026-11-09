@@ -86,11 +86,17 @@ compatibility scenario with the same freshness and failure expectations. Keycloa
 Microsoft compatibility. Exercise existing SSO and any relevant broker chain against the actual integration;
 record unexecuted provider scenarios as limitations rather than treating them as passing evidence.
 
-Evidence assumptions follow the shared session context. Unresolved verification conditions follow the Open questions above; no additional operational monitoring claim is introduced.
+Evidence assumptions follow the shared session context. The freshness diagnostic in Observability is verified
+manually or with temporary probes against real logs or exported telemetry for missing and stale `auth_time`
+denials, confirming that no tokens or identity claims appear; durable tests do not assert log or telemetry
+output. No other operational monitoring claim is introduced.
 
 ## Observability
 
-No additional operational observability obligation is established by the current sources. Migration preserves the existing externally observable behavior; future operational obligations require a separate requirements decision.
+The 2026-11-09 B6 decision establishes one operational obligation: when freshness confirmation denies a
+login, operator diagnostics distinguish missing from stale `auth_time` evidence for the tenant without exposing
+ID tokens, authorization codes, or identity claims. No other operational observability obligation is
+established; further obligations require a separate requirements decision.
 
 ## Shared context
 
