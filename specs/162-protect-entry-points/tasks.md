@@ -221,7 +221,7 @@ and do not substitute prepared records.
 
 - [ ] T045 [US2] **BLOCKED (#158)** Add real-login Cucumber scenarios to tests/bdd/requirements/default-entry-protection.feature (or a new `@partial` feature): login through instance A recognized only through instance B, renewal through A observed on B, expiry enforced on B observed on A (V-007, V-008; SESSION-003 AC1/AC3, real-login SESSION-005 AC1)
 - [ ] T046 [US5] **BLOCKED (#158)** Add Cucumber scenarios: a new page in the same context joins without login; Back/Forward and reload after expiry of a page viewed under a real session restore nothing usable (V-014 joining, V-015 step 7b)
-- [ ] T047 [US3] **BLOCKED (#158)** Add Cucumber scenarios presenting a captured real tenant-A cookie to Shelbyville on `/`, `/access-denied`, and the protected action → 403, forbidden page for the document, no receipt (V-009, V-010 with real cookies)
+- [ ] T047 [US3] **BLOCKED (#158)** Add Cucumber scenarios presenting a captured real tenant-A cookie to Shelbyville on `/` and the protected action → 403, the host-rendered forbidden document (titled `Access denied – Pre-ETS`) for the document entry, no receipt (no `/access-denied` page exists; research D4) (V-009, V-010 with real cookies)
 - [ ] T048 [US2] **BLOCKED (#158)** Add Cucumber scenarios distinguishing confirmed-fresh from freshness-unconfirmed callback returns, and the protected-action consumer denial scenario that needs a session at page load (V-006 distinction; contracts/modules.md "session-reference" evidence)
 - [ ] T049 [US2] **BLOCKED (#158)** Execute manual verification steps 7b, 9, and 10 (quickstart.md §6) and record per-claim results
 
@@ -335,6 +335,29 @@ these tasks change BDD only where a removed resource would leave an existing row
       runs the action)
 - [x] T073 Run the final gates of T059 on the corrected revision and report findings as pre-existing or introduced
       (all passed; `pnpm test:bdd` 67 scenarios passed with Keycloak and Redis ready; no Fallow findings)
+
+### 9f. Second review round (plan commit `cbbcb5b`)
+
+- [x] T074 Give the forbidden document its own head per corrected research D4: in
+      packages/frontend/src/features/access-responses/presentation.tsx render `<meta charSet="utf-8">`, the root layout's
+      viewport meta, and `<title>Access denied – Pre-ETS</title>` (React hoists them into `<head>`; a literal `<head>`
+      outside `app/` trips `@next/next/no-head-element`); extend packages/frontend/tests/unit/proxy.test.ts to assert the
+      title, charset, and viewport inside `<head>`; run frontend `typecheck`, `lint`, `test:unit`
+- [x] T075 In packages/frontend-services/tests/unit/protection.test.ts make the designation property's action oracle
+      Next's installed `getServerActionRequestMetadata` (`next/dist/server/lib/server-action-request-meta.js`) plus the
+      gate's separate `next-action`-on-any-method widening; generate case, parameter, and absent content-type variants; add
+      a focused property over `/_test` paths. Mutation check: lowercasing the content type, accepting form-urlencoded
+      parameters, dropping multipart, and limiting `next-action` to `POST` each produced a counterexample
+- [x] T076 Nits: `%5Ftest/onsite/page.tsx` imports `../../tenant-context.ts`; the `isServerActionCandidate` doc comment in
+      packages/frontend-services/src/next/protection.ts explains the any-method widening
+- [x] T077 BDD nits: the non-`GET` `/_test` row asserts no authentication, authorization, or server failure (not only
+      "not 401"); the fresh-entry step observes the browser's own reload of a page showing `/` (harness stub stands in for
+      the earlier view, which the application never renders without a usable session)
+- [x] T078 Replace `/access-denied` in T047 with the host-rendered forbidden document
+- [ ] T079 Rerun quickstart.md §6 steps 2, 4, 6 (with and without `-H 127.0.0.1`, host mode, plus a static-mode repeat),
+      and 8 on the final revision; verify in Chromium the 403 document's title, keyboard reachability, and visible focus;
+      append a dated results addendum and mark superseded results
+- [ ] T080 Run the final gates of T059 on the final revision and report findings as pre-existing or introduced
 
 ---
 
