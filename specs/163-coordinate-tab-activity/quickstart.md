@@ -113,21 +113,29 @@ criteria promise. Steps never open Redis; the authoritative deadline is read thr
 `context.request` (research D12). Browser time uses `context.clock`; tabs are pages in one context; independent
 contexts and tenants use separate `BrowserContext`s and `*.localhost` hosts.
 
-| Scenario (tag)                                                                                                  | Claims       | Gate |
-| --------------------------------------------------------------------------------------------------------------- | ------------ | ---- |
-| Deliberate navigation renews; prefetch-shaped and subresource requests do not (009)                             | V-005        | none |
-| Activity after logout or expiry leaves access unavailable (009)                                                 | V-009 (HTTP) | none |
-| Two tabs share one session and deadline; a new tab joins without login (010)                                    | V-001, V-002 | #158 |
-| Typing in one tab keeps the other tab usable past its former deadline (010)                                     | V-003        | #158 |
-| Each qualifying kind renews; pointer movement and programmatic focus do not (009)                               | V-006, V-007 | #158 |
-| First interaction sends at once; repeats coalesce into one send; near-deadline sends at once, across tabs (009) | V-008        | #158 |
-| Keyboard logout in one tab conceals and denies in every tab (010)                                               | V-010, V-011 | #158 |
-| Every tab shows the signed-out notice; sign-in starts only from Log in (010)                                    | V-017        | #158 |
-| Activity and logout leave another tenant, another context, and a later session unchanged (010)                  | V-012, V-016 | #158 |
+Only the two ungated scenarios are committed before #158 (increments 3–4). The nightly run discovers every
+requirements feature, and `@partial` neither skips scenarios nor permits pending steps, so the gated scenarios below
+stay planned here and are added to the feature file in increment 5.
+
+| Scenario (tag)                                                                                                           | Claims       | Gate |
+| ------------------------------------------------------------------------------------------------------------------------ | ------------ | ---- |
+| Deliberate navigation renews; prefetch-shaped and subresource requests do not (009)                                      | V-005        | none |
+| Activity after logout or expiry leaves access unavailable (009)                                                          | V-009 (HTTP) | none |
+| Two tabs share one session and deadline; a new tab joins without login (010)                                             | V-001, V-002 | #158 |
+| Typing in one tab keeps the other tab usable past its former deadline (010)                                              | V-003        | #158 |
+| Each qualifying kind renews; pointer movement and programmatic focus do not (009)                                        | V-006, V-007 | #158 |
+| First interaction sends at once; repeats coalesce into one send; near-deadline sends at once, across tabs (009)          | V-008        | #158 |
+| Keyboard logout in one tab conceals and denies in every tab (010)                                                        | V-010, V-011 | #158 |
+| Every tab shows the signed-out notice; sign-in starts only from Log in (010)                                             | V-017        | #158 |
+| Activity and logout leave another tenant, another context, and a later session unchanged (010)                           | V-012, V-016 | #158 |
+| A stale tab's queued activity and form submission after logout and re-login do not renew or affect the new session (010) | V-012        | #158 |
+| A tab opened before logout but hydrated after it shows no protected content (010)                                        | V-011, V-017 | #158 |
 
 Non-BDD Playwright browser evidence (retained under `tests/bdd/support` helpers, run by the same harness) covers the
 timing bounds and lifecycle cases that Gherkin would obscure: V-004 (2-second reflection, measured as a tab hidden and
-shown past its former deadline more than 2 seconds after renewal showing no concealment), V-013 and V-014 (a
+shown past its former deadline more than 2 seconds after renewal showing no concealment; repeated for a document-entry
+renewal with script bundles delayed by request interception, and for a policy refresh that shortens the timeout, where
+the other tab must adopt the earlier deadline), V-013 and V-014 (a
 synthetic `visibilitychange` dispatched by `page.evaluate` is **not** acceptable; change visibility by bringing another
 page to the front with `page.bringToFront()`, freeze and resume with the CDP `Page.setWebLifecycleState` command, and
 exercise the back/forward cache with a navigation and `page.goBack()`; confirm the exact mechanisms against Playwright
@@ -171,8 +179,12 @@ values, tags, references, tokens, or store contents.
 
 - Every gated row is **incomplete** until #158's freshness confirmation functions.
 - Coalesced sends whose only running tabs are hidden can be delayed by browser timer throttling (research D5).
-- A document-entry renewal reaches other tabs after hydration; a slow device may exceed 2 seconds (research D6). Local
-  confirmation still prevents early expiration.
+- A document-entry renewal is broadcast by an inline script when the document is parsed, independent of hydration
+  (research D6); its timing still depends on the browser receiving and parsing the document.
+- A logout that completes after a new document's inline script ran and before its coordinator subscribed is applied at
+  subscription; exposure is bounded by hydration time (research D14).
+- A Server Action already in flight when another tab re-logs in can renew the later session at the gate; it has no
+  protected effect, and the stale tab ends when it observes the new tag (research D2).
 - Pre-script paint on visibility resume is outside application control; bfcache restoration is concealed at `pagehide`
   (research D9).
 - Server time is real; deadline-crossing journeys take at least 5 minutes each (research D12).

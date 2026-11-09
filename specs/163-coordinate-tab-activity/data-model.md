@@ -26,16 +26,29 @@ Stored in `localStorage` under `preets-session-activity:v1`; read and written on
 
 Validation: a malformed or unparseable value is treated as absent. The record holds no protected content.
 
+## Shared session records
+
+Also in `localStorage`, read synchronously on mount and on every resume, and written before the matching broadcast.
+
+| Key                         | Value                                         | Written when                                    | Effect on a reader                                                                |
+| --------------------------- | --------------------------------------------- | ----------------------------------------------- | --------------------------------------------------------------------------------- |
+| `preets-session-current:v1` | `{ coordinationTag }`                         | A protected document is parsed (inline script). | A tab with another tag ends; submissions are refused (D2).                        |
+| `preets-session-ended:v1`   | `{ coordinationTags }` (last 8, newest first) | Logout 204, or 401/409 on logout or status.     | A tab with a listed tag ends; the inline script hides content before paint (D14). |
+
+The window record's flush also checks that `now ≥ lastCommunicatedAt + 60 s` under the lock; a timer that fires early
+for a moved window reschedules (D5).
+
 ## Channel messages
 
 `BroadcastChannel("preets-session-coordination")`. Every message carries `coordinationTag`; receivers ignore other
 tags and malformed messages.
 
-| `type`       | Additional fields                     | Sent when                                                                | Receiver effect                                                  |
-| ------------ | ------------------------------------- | ------------------------------------------------------------------------ | ---------------------------------------------------------------- |
-| `renewed`    | `localDeadline`, `warningLeadMinutes` | A tab receives a newer snapshot (activity, status, mount).               | Adopt if later than the known deadline; reschedule confirmation. |
-| `pending`    | `sendAt`                              | A tab coalesces an interaction.                                          | Schedule a window-end flush at `sendAt`.                         |
-| `logged-out` | none                                  | A tab's logout ends the session, or 401/409 shows it no longer in force. | Unmount protected content; show the signed-out notice.           |
+| `type`            | Additional fields                                                    | Sent when                                                                                                        | Receiver effect                                                                                                     |
+| ----------------- | -------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `renewed`         | `localDeadline`, `serverTimeEpochMilliseconds`, `warningLeadMinutes` | A tab receives a newer snapshot (activity, status, the inline mount script).                                     | Adopt if its server time is later than the held snapshot's, even with an earlier deadline; reschedule confirmation. |
+| `pending`         | `sendAt`                                                             | A tab coalesces an interaction.                                                                                  | Schedule a window-end flush at `sendAt`.                                                                            |
+| `logged-out`      | none                                                                 | A tab's logout ends the session, or 401/409 shows it no longer in force; sent after the ended record is written. | Unmount protected content; show the signed-out notice.                                                              |
+| `session-current` | none                                                                 | A protected document mounts (inline script).                                                                     | A tab whose own tag differs ends at once.                                                                           |
 
 ## Tab coordination states
 
