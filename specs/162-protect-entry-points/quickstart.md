@@ -261,3 +261,79 @@ credentials, or store contents.
 - Local Keycloak and Chromium only; Microsoft and broker-chain compatibility, production ingress blocking of `/_test`,
   and diagnostic configuration safety are not established.
 - No step in this guide was executed during planning.
+
+## Execution results (increments 1–4)
+
+Recorded by the implementation agent. Results only; the procedure above is unchanged.
+
+### Conditions
+
+- Revision under assessment: `182377e` on `162-protect-entry-points-impl` (application code identical at the evidence
+  commit). Executed 2026-11-09 between about 12:00 and 12:25 UTC.
+- Node.js 26.2.0, pnpm 12.18.0, Docker Compose 5.7.0, Next.js 16.4.5 production build (`next start`), Playwright
+  1.65.0 bundled Chromium (headless). Shared Redis 8.10.3 (`pre-ets-redis-1`, already running, untouched beyond owned
+  prefixes). Local Keycloak 26.8.1 (`pre-ets-keycloak-1`, realm `pre-ets`). Owned outage Redis: a separate
+  `redis:8.10.3` container on 127.0.0.1:6390, created for this run and removed afterwards.
+- Tenants `springfield` and `shelbyville` from `fixtures/tenant-config/`; synthetic subject label `verify-user`.
+- Instances, all from one build with `OTEL_SDK_DISABLED=true` and one owned prefix pair
+  (`preets:verify:session:<run-uuid>:`, `preets:verify:oidc-tx:<run-uuid>:`): A `:3000` and B `:3001` (host mode,
+  `BASE_HOSTNAME=localhost`), C `:3002` (static mode, alias `shelbyville`), D `:3003` (host mode, owned outage Redis).
+  Started as in §2, without `-H` (see Findings).
+- B6 freshness policy: absent. `CallbackFreshness` default (deny) in force.
+- Prepared sessions: a transient script in the agent scratchpad that imported only the built public `session.ts`
+  entry (`SessionService.establish` / `invalidate`) under the owned prefix; references stayed in memory. Deleted after
+  the run.
+
+### Probes during implementation (removed)
+
+- §3 undesignated-resource probe (T031), scratch worktree at `c36a06f`: a static probe page (prerendered `○`), a
+  probe route handler (`GET`, marker-cookie `POST`) and a probe Server Action, none designated. Without a session:
+  navigation `GET`s → 307 `Location: /auth/login`, no marker; `cors`/`empty` `GET`s → 401; handler `POST` and the
+  action → 401, no marker cookie. With a prepared Springfield session: both `GET`s → 200 with
+  `Cache-Control: private, no-store` and no `public`/`s-maxage`, including the static page (research D7 holds).
+- §5 history-guard probe (T040), same scratch build, installed Chrome: soft navigation, invalidate, Back → the
+  refresh's RSC requests received 401, the router hard-navigated, 307 → `/auth/login`. `router.refresh()` is kept.
+  Cross-document navigation to `/login-unavailable`, invalidate, Back → document 307 → `/auth/login`. Whether
+  router-cached content is visible for an instant before the hard navigation was not measured.
+- Both scratch trees and the preparer were deleted; the assessed checkout's `git status` was unchanged.
+
+### Manual procedure (§6)
+
+| Step   | Observation                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | Result                                                              |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------- |
+| 1      | Inventory: pages `/`, `/access-denied`, `/_test/onsite`, `/login-unavailable`; route handlers `/auth/login`, `/auth/callback`, `/_test/tenant-config`; Server Action module `(app)/actions.ts` (`runReferenceOperation`). Public designation constant: `GET`/`HEAD` of `/auth/callback`, `/auth/login`, `/login-unavailable`, `/_test`, `/_test/**`. No protected route handler.                                                                                                                                                                                                                                               | Recorded                                                            |
+| 2      | A, Springfield, no cookie: `GET /` (navigate) → 307 `/auth/login`; `GET /access-denied` → 307 `/auth/login`; `POST /` with the real action ID (`cors`) → 401, no `Location`. All `private, no-store`, no protected content, no receipt cookie.                                                                                                                                                                                                                                                                                                                                                                                 | Pass (V-001, V-016)                                                 |
+| 3      | Fresh Chromium context, `/` and `/access-denied`: application documents were only 307 `/` (or `/access-denied`) and 307 `/auth/login`, then the Keycloak authorization endpoint with `client_id=springfield-web`, `max_age=0`; no protected content, no local credential form. Fresh context on `/login-unavailable`: one document request, only `/_next/static/**` subresources, zero `/auth/login` requests, no cookies. No `/` prefetch or `/favicon.ico` request was observed in headless Chromium (the page's link is a plain anchor), so their 401 could not be observed here; module examples cover it.                 | Pass (V-005); prefetch/favicon not observed                         |
+| 4      | No cookie: `/auth/callback` 200, `/login-unavailable` 200, `/auth/login` 307 to Keycloak with only `oidc-correlation`, `/_test/tenant-config` 200 `private, no-store` with keys `displayName`, `oidc.{clientAuth, clientId, issuer}` and no cookie, `/_test/this-page-is-absent` 404 no redirect. Owned session keys before/after the diagnostic: 0/0. Assets loaded by the public page: 3 CSS, 6 JS chunks, 1 SVG, 3 fonts under `/_next/static/`. Scan of all 61 files under `packages/frontend/.next/static/` for tenant names, display names, client IDs, issuer, realm, subject label and secret setting names: no match. | Pass (V-003, V-017); **V-004 incomplete pending F-1**               |
+| 5      | Crafted callback (no matching attempt) and cancelled return (`error=access_denied`): 200 sign-in failure page, `private, no-store`, no cookie, no callback parameter, provider or storage detail. Keyboard: first Tab reaches "Return to the application entry", `:focus-visible` true, visible outline.                                                                                                                                                                                                                                                                                                                       | Pass (V-006 non-success, V-018)                                     |
+| 6      | Springfield session presented with `Host: shelbyville.localhost:3000`: `GET /` (navigate) → 403 rendered "Access denied"; `GET /access-denied` → 403 forbidden page; `POST /` action → 403, no receipt; RSC `GET /` → 403 empty. No Springfield content. Browser: 403 page, second Tab reaches "Go to the application entry" (`href="/"`) with `:focus-visible` and a 4px outline. Static mode (C, alias `shelbyville`): `GET /` → 403 forbidden page, action → 403. Route handler: none inventoried.                                                                                                                          | Pass (V-009, V-010, V-013, V-018)                                   |
+| 7      | Springfield session set in a browser context without viewing protected content, record invalidated: opening `/`, re-entering `/` in the same tab, and a new page each went 307 `/` → 307 `/auth/login` → Keycloak (`max_age=0`); no session-expired page. A literal reload of a protected page is not reachable without first rendering protected content; the reload was of the provider page.                                                                                                                                                                                                                                | Pass (V-014 fresh entry)                                            |
+| 7b     | Gated on #158.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | **Not run (#158)**                                                  |
+| 8      | Prepared session, `/` rendered (200, "Reference session"), session invalidated, first Tab focuses "Record reference operation" (`:focus-visible`), Enter: `POST /` → 401, status region reads "The operation was not performed.", no provider redirect, no receipt cookie.                                                                                                                                                                                                                                                                                                                                                     | Pass (V-016, V-018)                                                 |
+| 9, 10  | Gated on #158.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | **Not run (#158)**                                                  |
+| Outage | D with a prepared session on the owned Redis: before → 200; `docker pause` → `GET /` 503 and action `POST` 503, no `Location`, no cookie; `docker unpause` → still 503 after 120 s. A fresh instance on the same Redis showed the same. The owned Redis then had no client connection from either instance.                                                                                                                                                                                                                                                                                                                    | V-012 outage outcome pass; recovery **not observed** (see Findings) |
+| 11     | Owned session and transaction keys removed (6 transaction keys; 0 session keys remained); browser contexts closed; instances stopped; owned Redis container stopped and removed; preparer and scratch files deleted.                                                                                                                                                                                                                                                                                                                                                                                                           | Done                                                                |
+
+### Findings
+
+1. **A `-H` bind address makes the forbidden rewrite external.** With `next start -H 127.0.0.1`, the proxy's
+   `NextResponse.rewrite(new URL("/access-denied", request.url))` was treated as an external rewrite and proxied to
+   `http://localhost:<port>/access-denied`: host mode returned 404 (no tenant for `localhost`), static mode 500. With
+   §2's command (no `-H`) the same request returned the 403 forbidden page. The BDD harness starts Next with
+   `-H 127.0.0.1`, so increment-5 mismatch scenarios will meet this. Owner: plan (contracts/modules.md
+   `forbiddenDocument`); a deployment binding a hostname is affected the same way.
+2. **No Redis reconnection after a socket-timeout outage.** After `docker pause`/`unpause`, the production runtime's
+   NodeRedis client stopped reconnecting and every protected request answered 503 (fail closed) until restart. The
+   runtime's Redis settings are unchanged by this feature; recovery belongs to the session outage/recovery work.
+
+### Automated evidence on the same revision
+
+All passed on `182377e`: `pnpm typecheck`; `pnpm build`; `pnpm lint`; frontend-services `test` (12 files, 399
+tests) and `test:integration` (3 files, 28 tests, real Redis); frontend `test:unit` (6 files, 30 tests);
+`OTEL_SDK_DISABLED=true pnpm test:bdd` (70 scenarios, 813 steps, bundled Chromium, local Keycloak and Redis);
+`pnpm format:check`; `pnpm check:unused`; `pnpm check:health`; `pnpm check:changes` (no issues in 45 changed files).
+
+### Claims left incomplete
+
+V-007, V-008, V-014 joining, V-015 step 7b, V-006 confirmed/unconfirmed distinction and real-login SESSION-005 AC1
+(#158); V-004 (F-1); SESSION-004 AC2 recovery composition (#157); store-outage recovery (finding 2).
