@@ -48,8 +48,9 @@ interface ProtectedRequest {
 }
 
 /**
- * Next's own possible-action predicate (`isPossibleServerAction`), widened to an action header on any method: Next
- * decodes an action from a form-encoded `POST` even without the header.
+ * Next's own possible-action predicate (`isPossibleServerAction`): a form-encoded `POST`, which Next decodes as an
+ * action even without the header, or an action header. Next treats the header as a fetch action only on `POST`; the
+ * gate protects every method that carries it, because a Server Action candidate must never be public.
  */
 const isServerActionCandidate = (method: string, headers: Headers) => {
   if (headers.has("next-action")) return true
