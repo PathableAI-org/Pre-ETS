@@ -148,6 +148,49 @@ Then("browser entry at {string} reaches public sign-in failure", async function(
   }
 })
 
+Then(
+  "each fresh browser entry to {string} at {string} reaches the Springfield provider for fresh authentication",
+  async function(this: AppWorld, entryPath: string, host: string) {
+    const configuration = JSON.parse(await fs.readFile(path.join(this.directory, "springfield.json"), "utf8")) as {
+      oidc: { clientId: string; issuer: string }
+    }
+    const authorization = new URL(`${configuration.oidc.issuer}/protocol/openid-connect/auth`)
+    const owned = await applicationBrowser(this.port, [host])
+    try {
+      const context = await owned.browser.newContext()
+      if (this.cookie !== undefined) {
+        await context.addCookies([{ name: "pathable-session", url: `http://${host}/`, value: this.cookie }])
+      }
+      const entry = `http://${host}${entryPath}`
+      const protectedDocuments: string[] = []
+      context.on("response", (response) => {
+        const url = new URL(response.url())
+        if (url.host === host && response.request().resourceType() === "document" && response.status() === 200) {
+          protectedDocuments.push(url.pathname)
+        }
+      })
+      const assertProvider = async (page: Page) => {
+        const current = new URL(page.url())
+        assert.equal(`${current.origin}${current.pathname}`, authorization.href)
+        assert.equal(current.searchParams.get("client_id"), configuration.oidc.clientId)
+        assert.equal(current.searchParams.get("max_age"), "0")
+        await page.getByRole("textbox", { name: /username|email/i }).waitFor({ state: "visible" })
+      }
+      const first = await context.newPage()
+      await first.goto(entry)
+      await assertProvider(first)
+      await first.goto(entry)
+      await assertProvider(first)
+      const another = await context.newPage()
+      await another.goto(entry)
+      await assertProvider(another)
+      assert.deepEqual(protectedDocuments, [])
+    } finally {
+      await owned.close()
+    }
+  }
+)
+
 When("the visitor completes real provider sign-in across two application instances at {string}", async function(
   this: AppWorld,
   host: string

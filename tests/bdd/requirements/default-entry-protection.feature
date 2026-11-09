@@ -94,3 +94,12 @@ Feature: Default entry-point protection
       | method | kind        |
       | GET    | document    |
       | POST   | application |
+
+  @preets-session-004
+  Scenario: Fresh entry without a valid session starts tenant sign-in
+    Given production tenant sites for Springfield and Shelbyville
+    And host resolution uses base hostname "localhost"
+    And the visitor's session reference is "well-formed unknown"
+    When a visitor sends "GET" to "/" at "springfield.localhost:3000" as a "document" request
+    Then the response delegates to the same-origin login
+    And each fresh browser entry to "/" at "springfield.localhost:3000" reaches the Springfield provider for fresh authentication
