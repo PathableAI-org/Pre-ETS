@@ -89,14 +89,16 @@ A document entry renews a usable session as `deliberate-page-request`, and a `PO
 effective policy; the gate then re-issues `pathable-session` with `Max-Age` equal to the
 remaining idle seconds. Every other request only reads. The gate never creates a session.
 
-`/` and `runReferenceOperation` keep their own `readSessionRequest` check. The reference
+`/`, the protected `(app)` layout, and `runReferenceOperation` keep their own `readSessionRequest` check. The reference
 consumer shows a rejected action invocation as "The operation was not performed." without
 retrying. The root layout renders a history guard that reloads a page restored from the
 back-forward cache and refreshes the route on `popstate`, so history traversal reaches the
 gate.
 
-Inventory: protected page `/`; protected Server Action
-`runReferenceOperation`; no protected Route Handler; public resources as designated above.
+Inventory: protected pages `/`, `/coordination/roster`, and `/coordination/participant`; protected
+Server Actions `runReferenceOperation` and `recordFixtureOperation`; protected Route Handlers
+`POST /session/activity`, `GET /session/status`, and `POST /auth/logout`; public resources as
+designated above.
 
 Known gaps: `/_next/static/**` is publicly served and `/favicon.ico`, metadata routes, and
 `/_next/image` answer 401 without a session until the public-asset decision is made.
@@ -105,6 +107,55 @@ Expired- or missing-session recovery content and Server Action 401 recovery belo
 session until freshness confirmation exists
 ([#158](https://github.com/PathableAI-org/Pre-ETS/issues/158)), so admission of a real session
 is not yet observable in the running application.
+
+## Cross-tab activity and logout coordination
+
+Tabs of one tenant in one browser context share one session
+([#155](https://github.com/PathableAI-org/Pre-ETS/issues/155)). Three protected Route Handlers
+built by `frontend-services` let a tab take part in it. The gate runs first and only reads, so
+each handler resolves the tenant and re-checks the session itself:
+
+| Handler                  | Rejected before any session operation                             | Outcome                                                                                                                                                                             |
+| ------------------------ | ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /session/activity` | Not same-origin 403; not `application/json` 415; invalid body 400 | Tag of another session 409, nothing renewed. Otherwise `refreshForTenant` with the in-page kind and effective policy: 200 snapshot and a re-issued cookie, or 401 without a session |
+| `GET /session/status`    | none                                                              | Reads only, never renews: 200 snapshot or 401                                                                                                                                       |
+| `POST /auth/logout`      | Not same-origin 403; not `application/json` 415; invalid body 400 | 401 without a session; tag of another session 409, nothing invalidated; otherwise `invalidate`, 204, and `pathable-session` expired (`Max-Age=0`)                                   |
+
+Tenant mismatch answers 403, undeterminable session state 503 (logout then leaves the cookie
+unchanged), and tenant failure 404 or 500. Every response is `private, no-store`; non-200
+bodies are empty. Same-origin means `sec-fetch-site: same-origin`, or without it an `Origin`
+equal to the request origin. The in-page kinds are `intentional-control-activation`,
+`keyboard-interaction`, `text-entry`, `touch-interaction`, and
+`user-driven-meaningful-input-focus`; deliberate requests renew at the gate.
+
+The **snapshot** is `{ coordinationTag, idleDeadlineEpochMilliseconds, serverTimeEpochMilliseconds,
+warningLeadMinutes }`, also returned by `readSessionRequest` as `coordination` for a usable
+session. The **coordination tag** is `base64url(SHA-256("preets:session-coordination:v1\0" +
+reference))`: one-way, distinct from the store-key digest, and not a credential. Activity and
+logout carry the tag the tab observed, so a stale tab cannot renew or end a later session.
+
+The protected `(app)` layout renders the `session-coordination` client feature around every
+protected page. It counts only trusted activity on meaningful inputs: control activation, text
+entry, non-modifier keys, touch, and focus in the same task as a key or pointer press. It
+ignores pointer movement, scrolling, and programmatic focus. In-page activity follows the 60-second
+B5 windows across tabs through one `localStorage` record (`preets-session-activity:v1`) under a
+Web Lock; without Web Locks a tab sends at once. Tabs share renewed deadlines, coalesced
+activity, and logout on `BroadcastChannel("preets-session-coordination")`, ignoring other tags.
+Messages and the record hold only the tag, times, the warning lead, and an activity kind. A tab
+confirms with `GET /session/status` before acting on its local deadline and on resume. Past its
+deadline on resume it first hides content (`hidden` and `inert`). An unanswered or failed
+confirmation (1.5 seconds) hides content and retries. A page entering the back-forward cache is
+hidden first, and the history guard reloads it on restore. Server Action forms confirm after
+they settle, so other tabs learn of the gate's renewal.
+
+Every protected page has a Log out button. Logout is sent at once. On 204, 401, or 409 every
+sharing tab unmounts protected content and shows a signed-out notice with a Log in link to `/`.
+Authentication never starts on its own. The same notice stands in for expiration until
+[#157](https://github.com/PathableAI-org/Pre-ETS/issues/157). If logout fails (403, 503, network),
+the tab hides content and offers Log out again. Logout ends the application session only; see
+[authentication](./authentication.md#application-logout). Coordination and logout need JavaScript;
+without it the gate and idle expiry still enforce access. Live multi-tab behavior is not yet
+observable in the running application until [#158](https://github.com/PathableAI-org/Pre-ETS/issues/158).
 
 Independent session clients read identical state from the same record without creator
 affinity. This is not independently running protected HTTP recognition, and it does not
