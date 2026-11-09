@@ -103,8 +103,8 @@ entry", "Private next/ helpers").
 
 ### 2c. Real-store integration evidence
 
-- [ ] T020 Create packages/frontend-services/tests/integration/protection-redis.test.ts (`describe` cites `[PREETS-SESSION-001, PREETS-SESSION-005]`): real `SessionService` over Redis with an owned per-run key prefix and the existing helpers in packages/frontend-services/tests/helpers/; establish a record then show expired → document 307 / application 401, invalidated → 307/401, other-tenant record → 403/`forbiddenDocument`, disconnected client → 503 with no login redirect and no new cookie; remove only owned keys in a scoped finalizer (contracts/modules.md "Real store outcomes reach the gate unchanged"; research F-2 resolution A)
-- [ ] T021 Run `pnpm --filter @pathableai/pre-ets-frontend-services test:integration -- tests/integration/protection-redis.test.ts` with `docker compose up -d --wait redis`; record the result
+- [x] T020 Create packages/frontend-services/tests/integration/protection-redis.test.ts (`describe` cites `[PREETS-SESSION-001, PREETS-SESSION-005]`): real `SessionService` over Redis with an owned per-run key prefix and the existing helpers in packages/frontend-services/tests/helpers/; establish a record then show expired → document 307 / application 401, invalidated → 307/401, other-tenant record → 403/`forbiddenDocument`, disconnected client → 503 with no login redirect and no new cookie; remove only owned keys in a scoped finalizer (contracts/modules.md "Real store outcomes reach the gate unchanged"; research F-2 resolution A)
+- [x] T021 Run `pnpm --filter @pathableai/pre-ets-frontend-services test:integration -- tests/integration/protection-redis.test.ts` with `docker compose up -d --wait redis`; record the result
 
 **Commit boundary 3**: `test(frontend-services): exercise the protection gate over real Redis for #154` (T020–T021).
 
