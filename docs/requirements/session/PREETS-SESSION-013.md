@@ -41,6 +41,14 @@ Existing SSO alone provides weak evidence that the authorized user returned to a
   handling remain open. See the [session delivery plan](../../delivery/session-management.md#b6-protocol-baseline-2026-10-17).
   This decision does not establish implemented or verified provider behavior and awaits Git/PR approval.
 
+- Decision: Maintainer direction on 2026-11-09 resolves the remaining B6 questions. Freshness is confirmed
+  only when `auth_time` is no earlier than the consumed login transaction's start and no later than the
+  callback time, each with one fixed 30-second tolerance. Missing or stale `auth_time` is an expected
+  authentication denial. Providers or brokers that cannot supply that evidence are unsupported and fail
+  closed, with no opt-out or `prompt=login` fallback. The configured issuer's `auth_time` is evaluated;
+  broker chains need their own evidence. See the [session delivery plan](../../delivery/session-management.md#b6-freshness-comparison-and-provider-handling-2026-11-09).
+  This decision establishes no implemented or verified provider behavior and awaits Git/PR approval.
+
 ## Acceptance criteria
 
 1. Every login without a valid application session, including first-time visits, explicit recovery, and
@@ -56,17 +64,16 @@ Existing SSO alone provides weak evidence that the authorized user returned to a
 
 ## Open questions
 
-The `max_age=0` / signed-ID-token `auth_time` baseline is selected. Define the authentication-time
-comparison, clock tolerance, broker/provider support, and unsupported-provider handling before affected
-implementation. Prior-expiration recognition is no longer a freshness-selection decision:
-all logins without a valid application session require freshness. Do not infer freshness from a new
-application session identifier.
+None for freshness. B6 is resolved by the 2026-11-09 decision above: `max_age=0`, signed-ID-token
+`auth_time` bounded by the login transaction start and callback time with a fixed 30-second tolerance,
+denial for missing or stale evidence, and fail-closed handling of unsupported providers or brokers. Do not
+infer freshness from a new application session identifier.
 
 ## Verification Plan
 
 OIDC contract/integration checks observe the selected `max_age=0` request and validate signed-ID-token
-`auth_time` evidence, including stale/missing evidence and cancellation under the comparison/clock policy
-once decided. Focused real-provider browser Gherkin with an existing SSO session demonstrates fresh authentication and new-session recovery; a mocked callback alone cannot establish provider behavior. Exercise both explicit recovery and automatic
+`auth_time` evidence, including stale/missing evidence and cancellation under the selected comparison and
+30-second tolerance, with `auth_time` just inside and just outside each bound. Focused real-provider browser Gherkin with an existing SSO session demonstrates fresh authentication and new-session recovery; a mocked callback alone cannot establish provider behavior. Exercise both explicit recovery and automatic
 post-expiration entry through new tabs, refresh, and browser history with existing provider SSO, including
 removed old-session records. Also exercise a first-time application visit with an existing provider SSO
 session and no prior application-session record: fresh authentication is required. Confirm that an existing
@@ -79,11 +86,17 @@ compatibility scenario with the same freshness and failure expectations. Keycloa
 Microsoft compatibility. Exercise existing SSO and any relevant broker chain against the actual integration;
 record unexecuted provider scenarios as limitations rather than treating them as passing evidence.
 
-Evidence assumptions follow the shared session context. Unresolved verification conditions follow the Open questions above; no additional operational monitoring claim is introduced.
+Evidence assumptions follow the shared session context. The freshness diagnostic in Observability is verified
+manually or with temporary probes against real logs or exported telemetry for missing and stale `auth_time`
+denials, confirming that no tokens or identity claims appear; durable tests do not assert log or telemetry
+output. No other operational monitoring claim is introduced.
 
 ## Observability
 
-No additional operational observability obligation is established by the current sources. Migration preserves the existing externally observable behavior; future operational obligations require a separate requirements decision.
+The 2026-11-09 B6 decision establishes one operational obligation: when freshness confirmation denies a
+login, operator diagnostics distinguish missing from stale `auth_time` evidence for the tenant without exposing
+ID tokens, authorization codes, or identity claims. No other operational observability obligation is
+established; further obligations require a separate requirements decision.
 
 ## Shared context
 

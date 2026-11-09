@@ -55,8 +55,8 @@ First access should not require finding a separate login control.
 ## Open questions
 
 The `max_age=0` / signed-ID-token `auth_time` protocol baseline is selected under PREETS-SESSION-013.
-Authentication-time comparison, clock tolerance, provider/broker support, and unsupported-provider handling
-remain B6 decisions. Freshness applies to every login without a valid application session, so previous
+Its 2026-11-09 decision resolves the authentication-time comparison, the fixed 30-second clock tolerance,
+broker evaluation, and fail-closed handling of unsupported providers. Freshness applies to every login without a valid application session, so previous
 expiration need not be recognized to select that policy. Server Action failure/status and recovery
 presentation are governed by PREETS-SESSION-007.
 
