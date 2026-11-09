@@ -1,7 +1,6 @@
 import { Container, FormStack, Heading, Page, Stack, Text } from "@pathableai/react"
 import { notFound } from "next/navigation"
 
-import { requireTenantConfig } from "../../(app)/tenant-context"
 import {
   ConsumerInformation,
   EmploymentInformation,
@@ -9,6 +8,7 @@ import {
   SignatureReview,
   VisitLog
 } from "../../../features/onsite.ts"
+import { requireTenantConfig } from "../../tenant-context"
 
 export const dynamic = "force-dynamic"
 

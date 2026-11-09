@@ -1,6 +1,6 @@
 import { Alert, Container, Heading, Link, Page, Stack, Text } from "@pathableai/react"
 
-import { requireTenantConfig } from "../(app)/tenant-context.ts"
+import { requireTenantConfig } from "../tenant-context.ts"
 
 export const dynamic = "force-dynamic"
 

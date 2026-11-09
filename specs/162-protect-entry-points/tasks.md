@@ -141,7 +141,7 @@ V-016, V-017).
 - [x] T026 [P] [US3] (page removed 2026-11-09 by T066, research D4) Create packages/frontend/src/app/access-denied/page.tsx: `export const dynamic = "force-dynamic"` and `export default function AccessDeniedPage(): never { forbidden() }`; protected by default, no public designation (contracts/modules.md "routes"; research D4)
 - [x] T027 [P] [US3] (presentation moved into `ForbiddenNotice` 2026-11-09 by T066) Add one keyboard-reachable `@pathableai/react`-conformant link to `/` with a meaningful name to packages/frontend/src/app/forbidden.tsx; heading and explanation unchanged (FR-018, FR-026; contracts/modules.md "forbidden.tsx")
 - [x] T028 [P] [US1] In packages/frontend/src/features/session-reference/reference-operation.tsx wrap `action(previousState, formData)` in a client function that converts a rejected invocation (gate 401/403/503 or transport failure) into the existing `Denied` state with a generic "operation was not performed" message in the existing `role="status"` region; no retry; exports of packages/frontend/src/features/session-reference.ts unchanged (FR-005, FR-026; research D10)
-- [x] T029 [P] [US4] Make packages/frontend/src/app/login-unavailable/page.tsx await `requireTenantConfig()` from `src/app/(app)/tenant-context.ts` before rendering so tenant failure keeps 404/500 (FR-008, FR-020; research D5)
+- [x] T029 [P] [US4] (helper moved to `src/app/tenant-context.ts` 2026-11-09 by T068, research D5) Make packages/frontend/src/app/login-unavailable/page.tsx await `requireTenantConfig()` from `src/app/(app)/tenant-context.ts` before rendering so tenant failure keeps 404/500 (FR-008, FR-020; research D5)
 - [x] T030 [US1] Run `pnpm --filter @pathableai/pre-ets-frontend typecheck`, `lint`, `test:unit`, `build`, and `exec fallow dead-code` / `exec fallow health --complexity`; confirm `next.config.ts` still enables `experimental.authInterrupts` and its `/` header is unchanged
 
 **Commit boundary 5**: `feat(frontend): protect every entry point by default for #154` (T024–T030).
@@ -305,7 +305,7 @@ these tasks change BDD only where a removed resource would leave an existing row
 
 ### 9c. Tenant context at the app root (research D5)
 
-- [ ] T068 Run `fallow guard` on the moved and importing files; `git mv` packages/frontend/src/app/(app)/tenant-context.ts
+- [x] T068 Run `fallow guard` on the moved and importing files; `git mv` packages/frontend/src/app/(app)/tenant-context.ts
       to packages/frontend/src/app/tenant-context.ts unchanged; point `login-unavailable/page.tsx` and
       `%5Ftest/onsite/page.tsx` at it; run frontend `typecheck`, `lint`, `test:unit`, `build`
 
