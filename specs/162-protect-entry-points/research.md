@@ -40,7 +40,18 @@ Verified against the owning workspaces' installed declarations and source (Next.
   `NextResponse.rewrite(destination, init?)`, `NextResponse.redirect(url, init?)`; `MiddlewareResponseInit` extends
   `ResponseInit` (headers allowed). `next/server` exports `NextProxy`.
 - `next/dist/client/components/app-router-headers.d.ts`: `rsc`, `next-action`, `next-router-prefetch`,
-  `next-router-segment-prefetch` header names.
+  `next-router-segment-prefetch` header names; `FLIGHT_HEADERS` lists `rsc`, `next-router-state-tree`,
+  `next-router-prefetch`, `next-hmr-refresh`, and `next-router-segment-prefetch`.
+- `next/dist/server/web/adapter.js` (about lines 148–156) and installed `proxy.md` (about line 474): before the proxy
+  runs, Next **deletes every `FLIGHT_HEADERS` header** from the proxy's `request.headers` (unless the global
+  `skipProxyUrlNormalize` is set) and normalizes the `_rsc` query away. The proxy therefore cannot tell an RSC soft
+  navigation, prefetch, or `router.refresh()` from an HTML request by those headers. `next-action` is not a Flight
+  header and remains visible.
+- Browsers send Fetch Metadata (`sec-fetch-mode`, `sec-fetch-dest`) to potentially trustworthy origins (HTTPS and
+  loopback/`*.localhost`): a top-level navigation is `navigate`/`document`; RSC fetches, prefetches, and Server Action
+  calls are `cors` or `same-origin` with destination `empty`; `/favicon.ico` and `/_next/image` loads have destination
+  `image`. The BDD raw-HTTP helper already sends `sec-fetch-dest: document` for document requests
+  (`tests/bdd/support/server.ts:33`).
 - `next/dist/client/components/router-reducer/fetch-server-response.js`: a non-Flight or non-OK RSC response makes the
   client router perform a hard (MPA) navigation to the response URL.
 - `next/dist/server/app-render/action-handler.js`: Server Action requests can be forwarded to another worker
@@ -89,8 +100,13 @@ and `/__nextjs` are not matched by the proxy (see D11 and finding F-1 for build 
 progressive-enhancement submissions carry the action in the form body rather than the `next-action` header. Making
 every non-`GET`/`HEAD` request protected guarantees that no Server Action invocation bypasses the gate through a public
 path. Every current public resource is `GET`. Next applies trailing-slash redirects before the proxy, so exact matching
-does not reject the canonical paths. Path matching is exact and case-sensitive; any other spelling is protected (fail
-closed). This narrows FR-006's "all routes under `/_test`" for hypothetical future non-`GET` routes; see finding F-3.
+does not reject the canonical paths. Path matching is exact and case-sensitive on the
+pathname the proxy receives; any other spelling is protected (fail closed). The WHATWG URL parser already resolves
+literal and `%2e`-encoded dot segments before the proxy sees the pathname. Because Next may decode the path further
+when routing, a pathname under the designated prefix that contains a percent-encoded `/`, `\`, or `.`
+(`%2f`, `%5c`, `%2e`, any case) is treated as protected, so the dangerous direction — the gate seeing a public path
+while Next routes to a protected resource — cannot occur. The safe direction is accepted: `/%5Ftest/...` is protected
+by the gate even if Next routes it to a `/_test` resource. This narrows FR-006's "all routes under `/_test`" for hypothetical future non-`GET` routes; see finding F-3.
 
 **Alternatives considered**: method-agnostic prefixes (lets an action invocation through a public path); detecting
 actions by `next-action` only (misses progressive-enhancement posts); a public list supplied by the Next app (splits
@@ -102,27 +118,52 @@ closed designation. #154 preserves the exception category rather than inventing 
 
 ### D3. Request classification and denial outcomes
 
-**Decision**: A protected request is a **document entry** when it is `GET`/`HEAD` and carries neither `rsc` nor
-`next-action`; every other protected request is an **application request**. Outcomes after successful tenant
-resolution:
+**Decision**: Classification uses Fetch Metadata, never Flight headers (which the proxy cannot see). Define the
+request's **navigation status**:
 
-| Session outcome              | Document entry                                                | Application request (RSC, prefetch, Server Action, other methods) |
-| ---------------------------- | ------------------------------------------------------------- | ----------------------------------------------------------------- |
-| No usable session            | 307 to same-origin `/auth/login`                              | 401, empty body                                                   |
-| Tenant mismatch              | Host forbidden document (HTTP 403, accessible forbidden page) | 403, empty body                                                   |
-| Session state undeterminable | 503, empty body                                               | 503, empty body                                                   |
-| Usable, matching session     | Pass through                                                  | Pass through                                                      |
+- `sec-fetch-mode` present → navigation iff it equals `navigate`;
+- else `sec-fetch-dest` present → navigation iff it equals `document`;
+- else (no Fetch Metadata) → **unknown**.
 
-Tenant failure precedes all of these and uses the host's existing 404/500 tenant-failure response. All
-proxy-generated responses carry `Cache-Control: private, no-store` and no session or correlation cookie.
+A protected request is a **document entry** only when it is `GET`/`HEAD`, carries no `next-action`, and its navigation
+status is navigation. Every other protected request — RSC soft navigations, prefetches, `router.refresh()`,
+subresources such as `/favicon.ico` and `/_next/image`, Server Action calls, other methods, **and every request whose
+navigation status is unknown** — is an **application request**. Outcomes after successful tenant resolution:
+
+| Session outcome              | Document entry                                                | Application request |
+| ---------------------------- | ------------------------------------------------------------- | ------------------- |
+| No usable session            | 307 to `/auth/login` on the request's own origin              | 401, empty body     |
+| Tenant mismatch              | Host forbidden document (HTTP 403, accessible forbidden page) | 403, empty body     |
+| Session state undeterminable | 503, empty body                                               | 503, empty body     |
+| Usable, matching session     | Pass through                                                  | Pass through        |
+
+Tenant failure precedes all of these and uses the host's existing 404/500 tenant-failure response. All responses the
+gate returns or rewrites carry `Cache-Control: private, no-store` and no session or correlation cookie. Login
+initiation is therefore reachable from the gate only through a 307 answered to a classified navigation; no fetch,
+prefetch, refresh, or subresource request can be redirected into `/auth/login`, create an OIDC transaction, or
+overwrite the `oidc-correlation` cookie through the gate (see also D13 for the login handler itself).
 
 **Rationale**: FR-004 requires automatic tenant login for page entry; FR-025/V-016 forbid automatic OIDC for Server
-Actions; an RSC soft navigation that receives a non-Flight 401 makes the client router hard-navigate, which re-enters as
-a document and reaches login (installed `fetch-server-response.js`). A route handler `GET` is indistinguishable from a
-page entry and receives the same 307, which satisfies AC2 (no protected content or effect). 401 for application
-requests is the status #157 will extend with recovery content; #154 adds no recovery content. 503 keeps
-undeterminable state distinct from absence, mismatch, and success (FR-021) and matches the existing `StartupNotReady`
-mapping.
+Actions. Redirecting a fetch to `/auth/login` would make `fetch` follow it, prepare an OIDC transaction in Redis,
+overwrite the correlation cookie of any login in progress, and then fail CORS at the provider; a `Link` prefetch on a
+public page (for example `/login-unavailable` → `/`) would start login as a side effect. A non-Flight 401 to an RSC
+request makes the client router hard-navigate (installed `fetch-server-response.js`), and that document navigation
+then reaches login, so soft navigation and refresh still end at sign-in. Prefetch failures are ignored by the router.
+A route handler `GET` navigated to directly receives the same 307 as a page, which satisfies AC2.
+
+Unknown navigation status is classified as an application request because it is the fail-safe choice: it never starts
+login and never exposes content. Its only cost is that a client without Fetch Metadata receives 401 instead of
+automatic login. Every supported browser sends Fetch Metadata to HTTPS and loopback origins, and a non-loopback plain
+HTTP origin cannot hold the `Secure` session cookie anyway, so no supported configuration loses automatic login. 401 is
+the status #157 will extend with recovery content; 503 keeps undeterminable state distinct (FR-021) and matches
+`StartupNotReady`.
+
+**Alternatives considered**: the `rsc` header (stripped before the proxy — installed `adapter.js`); `Accept: text/html`
+(sent by subresource and some fetch requests, not authoritative); treating unknown status as a document (lets a
+metadata-less request trigger login, contrary to the requirement that login never start from a non-navigation);
+setting `skipProxyUrlNormalize` to see Flight headers — rejected because it is a global change to URL normalization and
+header stripping for every request, which Next documents as keeping RSC and HTML handling aligned, and it would change
+the pathname semantics the designation relies on.
 
 ### D4. Forbidden document through a protected internal page
 
@@ -144,23 +185,29 @@ duplicates the forbidden presentation outside the app layout.
 are passed through without proxy tenant resolution; each owns its tenant resolution. `/login-unavailable` gains request
 tenant resolution through the existing `requireTenantConfig`.
 
+Request tenant resolution (alias, then that alias's configuration) is one private step in `next/` shared by the gate
+and `readSessionRequest`, so both resolve the tenant identically.
+
 **Rationale**: FR-020 and FR-008. Pre-resolving tenant in the proxy for public resources would replace the
 diagnostic's accepted JSON failure body (`tenantFailureJson`) with the HTML failure. `/login-unavailable` was the only
 public resource that bypassed tenant resolution.
 
 ### D6. Renewal from deliberate requests only
 
-**Decision**: When the session is usable, the proxy renews it through `SessionService.refreshForTenant` with the
-tenant's `effectiveSessionPolicy` only for (a) a document entry whose `sec-fetch-mode` is `navigate`
-(`deliberate-page-request`) and (b) a POST carrying `next-action` (`deliberate-form-submission`). Every other protected
-request uses `readForTenant` and never renews. After a qualifying renewal the proxy re-issues the existing host-only
-`pathable-session` cookie with `Max-Age` equal to the remaining idle budget.
+**Decision**: When the session is usable, the gate renews it through `SessionService.refreshForTenant` with the
+tenant's `effectiveSessionPolicy` only for (a) a document entry (`deliberate-page-request`) and (b) a POST carrying
+`next-action` (`deliberate-form-submission`). Every other protected request uses `readForTenant` and never renews.
+After a qualifying renewal the gate re-issues the host-only `pathable-session` cookie through the existing
+`setSessionCookie`, with `Max-Age` from the same remaining-idle calculation the callback uses (extracted into
+`next/cookies.ts`). The gate obtains the branded `SessionReference` for that call from a new public re-export of the
+existing `decodeSessionReference` in `session.ts`; `SessionService` itself is unchanged.
 
-**Rationale**: FR-016/V-008 need renewal at the application boundary. These two sources are unambiguous deliberate
-requests under PREETS-SESSION-009 AC1 and are never background traffic, so AC3 cannot be violated. Prefetches, RSC
-soft navigations, `router.refresh()`, and requests from non-browser clients do not renew. Without cookie re-issue the
-browser would discard a renewed session at its original deadline. Complete qualifying-activity classification (soft
-navigation, input activity, polling) belongs to #155 (S3 owns PREETS-SESSION-009).
+**Rationale**: FR-016/V-008 need renewal at the application boundary. A classified navigation and a protected action
+submission are unambiguous deliberate requests under PREETS-SESSION-009 AC1 and never background traffic, so AC3 cannot
+be violated. Prefetches, RSC soft navigations, `router.refresh()`, subresources, and metadata-less requests do not
+renew. Without cookie re-issue the browser would discard a renewed session at its original deadline. Returning the
+reference from `refreshForTenant` was rejected because `UsableSession` flows to page rendering; the reference must not.
+Complete qualifying-activity classification (soft navigation, input activity, polling) belongs to #155.
 
 ### D7. No cacheable protected response
 
@@ -175,14 +222,16 @@ contract to this plan rather than silently adding per-resource configuration.
 
 **Decision**: A client island, `RestoredPageGuard`, is rendered once from the root layout. On `pageshow` with
 `persisted` it reloads the document; on `popstate` it calls `router.refresh()`. Together with D7 and D3 every history
-traversal reaches the proxy, which starts tenant sign-in when no valid session exists.
+traversal reaches the gate, which starts tenant sign-in when no valid session exists.
 
 **Rationale**: FR-023/FR-024. Back-forward cache and the App Router's client cache can restore a protected page without
-a server request. The browser events exist only on the client (Principle IV justification). The refresh's RSC request
-receives 401 without a session and the client router hard-navigates into login (D3). Verification point: if
-`router.refresh()` does not hard-navigate on 401 in the installed router, use `window.location.reload()` on `popstate`;
-the choice is private. The guard runs on public pages too; reloading a restored public page is harmless. #157's
-running-tab modal remains the owner of in-tab expiration presentation (FR-025).
+a server request. The browser events exist only on the client (Principle IV justification). A `location.reload()` is a
+navigation (`sec-fetch-mode: navigate`) and receives the 307 directly. `router.refresh()` issues an RSC fetch whose Fetch
+Metadata is not a navigation, so without a session the gate answers 401 (D3), and the installed router treats a
+non-Flight, non-OK response by hard-navigating to the URL; that navigation receives the 307. Verification point: if the
+installed router does not hard-navigate after a 401 on refresh, use `window.location.reload()` on `popstate`; the choice
+is private. The guard runs on public pages too; reloading a restored public page is harmless. #157's running-tab modal
+remains the owner of in-tab expiration presentation (FR-025).
 
 ### D9. Callback success navigates to the application entry
 
@@ -220,30 +269,51 @@ here. Success-path feature evidence is gated on #158 (plan increment 5).
 
 **Rationale**: FR-012 and the maintainer's direction ("we will cross that bridge when we come to 158").
 
+### D13. Login preparation refuses explicit non-navigations
+
+**Decision**: `createLoginHandler` answers 401 with `Cache-Control: private, no-store`, no transaction, and no cookie
+when the request's navigation status (D3) is an explicit non-navigation. Navigations and metadata-less requests keep
+the existing behavior.
+
+**Rationale**: The gate never redirects a non-navigation into login (D3), but `/auth/login` is itself public. A fetch,
+prefetch, or cross-site subresource request to it would otherwise prepare a Redis transaction and overwrite the
+correlation cookie of a login in progress. Metadata-less direct requests are explicit login requests (and the existing
+raw-HTTP BDD sends `sec-fetch-dest: document`), so they are not refused. The navigation predicate is shared with the
+gate as one private helper in `next/`.
+
 ## Findings
 
-### F-1. Framework build assets and "any other asset remains protected" (blocks final asset designation only)
+### F-1. Public assets loaded by unauthenticated pages (blocks final asset designation only)
 
 1. **Source**: spec FR-006 and User Story 4 scenario 3; verification V-003/V-004; PREETS-SESSION-001 AC2 on
    `origin/main` `43215557`.
 2. **Ambiguity**: Assets "needed to display unauthenticated pages" and containing no protected information may be
-   public; "any other asset remains protected". Next.js build output under `/_next/static/` is content-hashed and shared
-   across routes. Chunks used only by protected pages (for example the protected Server Action consumer) contain
-   application code and fixed copy but no user, tenant, session, or secret data. Strictly, those chunks are "other
-   assets" and must be protected, but the framework provides no supported per-request way to know whether a chunk is
-   needed by a public page.
-3. **Impact**: Determines the proxy matcher, whether build assets pass through the gate, and the V-004 assessment
+   public; "any other asset remains protected". Three asset groups are affected:
+   - Next.js build output under `/_next/static/` is content-hashed and shared across routes. Chunks used only by
+     protected pages (for example the protected Server Action consumer) contain application code and fixed copy but no
+     user, tenant, session, or secret data. Strictly they are "other assets", but the framework provides no supported
+     per-request way to know whether a chunk is needed by a public page.
+   - `/favicon.ico` and other metadata routes (`icon`, `apple-icon`, `manifest`, `robots`, `sitemap`): none exists today
+     (no `public/` directory or icon file), yet browsers request `/favicon.ico` on every page, including public ones.
+     Under D3 an unauthenticated request receives 401 (never a login redirect), which is safe but leaves a public page's
+     browser-requested asset protected.
+   - `/_next/image`: matched and protected; no current page uses it, but a future public page might.
+3. **Impact**: Determines the proxy matcher, whether these assets pass through the gate, and the V-004 assessment
    scope. No public module contract changes under any proposal.
-4. **Decision required**: Whether framework build output that carries no protected information may be designated as
-   one public asset class, or whether protected-page-only build assets must require a session.
-5. **Proposals**: (A) Designate `/_next/static/**` as the public build-asset class, require that protected data is
-   only ever server-rendered and never enters client bundles, and assess every built asset for protected information
-   under V-004. (B) Gate build assets per route by deriving an allowlist of public-route chunks from Next build
-   manifests at startup; couples to undocumented internals and still exposes shared chunks. (C) Remove page-specific
-   client assets from protected pages; not achievable while FR-005 requires a browser consumer.
+4. **Decision required**: Whether framework build output and browser/metadata assets that carry no protected
+   information may be designated as public asset classes, and which ones.
+5. **Proposals**: (A) Designate `/_next/static/**` as the public build-asset class (protected data only ever
+   server-rendered, never in client bundles), keep `/favicon.ico`, metadata routes, and `/_next/image` protected until a
+   public page actually needs one, then designate that specific asset with a V-004 assessment. (B) As A, but also
+   designate `/favicon.ico` and metadata routes now as public `GET`/`HEAD` paths, assessed under V-004 when they exist.
+   (C) Gate build assets per route from Next build manifests at startup; couples to undocumented internals and still
+   exposes shared chunks. (D) Remove page-specific client assets from protected pages; not achievable while FR-005
+   requires a browser consumer.
 
 Until decided, increment 2 keeps today's behavior for `/_next/static/**` (already publicly served because the current
-proxy does not match it), so no regression is introduced; V-004 and the final asset designation remain open.
+proxy does not match it) and keeps `/favicon.ico`, metadata routes, and `/_next/image` protected (401 without a
+session, never a login redirect). V-004's assessment scope is every asset a public page loads, including any of these
+that the decision makes public; V-004 and the final asset designation remain open.
 
 ### F-2. Prepared-record and outage evidence versus the BDD policy (non-blocking; planned resolution A)
 
@@ -270,7 +340,8 @@ proxy does not match it), so no regression is introduced; V-004 and the final as
 2. **Ambiguity**: A method-agnostic `/_test` exemption would admit a Server Action invocation posted to a `/_test` path
    (D2). Every current `/_test` route is `GET`.
 3. **Impact**: Only a hypothetical future non-`GET` `/_test` route is affected; no current resource changes
-   reachability.
+   reachability. Until acknowledged, the planned `POST /_test/... → 401` observation is module evidence only and is not
+   asserted in requirement-tagged BDD.
 4. **Decision required**: Confirm that the exemption covers `GET`/`HEAD` requests under `/_test`, with any future
    non-`GET` `/_test` route requiring an explicit, reviewed designation.
 5. **Proposals**: (A, planned) `GET`/`HEAD` only. (B) All methods except requests detected as Server Action invocations

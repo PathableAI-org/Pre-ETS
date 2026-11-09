@@ -12,8 +12,10 @@ Add one default protection gate to `@pathableai/pre-ets-frontend-services`, `cre
 Next app's `src/proxy.ts` for every path except framework build assets. The gate admits a closed set of designated
 public `GET`/`HEAD` resources without session state; every other page, route handler, and Server Action request —
 including resources added later — must present a usable session bound to the independently resolved request tenant.
-Otherwise tenant failure keeps its 404/500, a missing session sends document entries to tenant login (307) and
-application requests 401, a tenant mismatch yields HTTP 403 (an accessible forbidden page for documents), and
+Otherwise tenant failure keeps its 404/500, a missing session sends classified navigations (Fetch Metadata
+`sec-fetch-mode: navigate`, or `sec-fetch-dest: document`) to tenant login (307) and every other request — RSC fetches,
+prefetches, refreshes, subresources, Server Actions, and requests without Fetch Metadata — 401, so login is never
+started by a non-navigation, a tenant mismatch yields HTTP 403 (an accessible forbidden page for documents), and
 undeterminable session state yields 503. Deliberate navigations and protected Server Action submissions renew the
 session and re-issue its cookie. A small client guard makes history traversal revalidate with the server. The callback's
 confirmed branch now navigates to `/`; its freshness confirmation keeps the fail-closed default owned by #158.
@@ -71,7 +73,7 @@ _GATE: Passed before Phase 0 research and re-checked after Phase 1 design. No vi
 | III. Tenant isolation                         | Request tenant resolved independently per request; mismatch must fail closed; host-only cookies.                                                                                     | Pass. The gate resolves tenant from Host before any session read, admits only `readForTenant`/`refreshForTenant` matches, maps mismatch to 403 everywhere, never substitutes the session tenant, and preserves 404/500 tenant failures. Rejection paths are first-class evidence.                                                                            |
 | IV. Accessible, server-rendered UI            | UI changes use installed `@pathableai/react`; SSR default; client components justified.                                                                                              | Pass. Pages stay server-rendered. Client code: the existing action consumer (action state) and `RestoredPageGuard` (browser history events only, renders nothing). The forbidden page and consumer keep library components; keyboard/focus is verified in the composed experience (V-018). Implementation reads the installed pathable-react guidance first. |
 | V. Meaningful behavioral tests                | Evidence names claims and separates module, framework, application, and manual observations.                                                                                         | Pass. Module evidence in [contracts/modules.md](contracts/modules.md) is claim-based; [quickstart.md](quickstart.md) maps every V-claim without duplicating module observations; no telemetry tests; the temporary undesignated-resource probe is never committed.                                                                                           |
-| VI. Simplicity and verifiable quality         | Every new abstraction needs a current consumer and owner.                                                                                                                            | Pass. One public function and one interface with one consumer; one extracted feature entry (three consumers); one client guard (one consumer); no services, Layers, packages, dependencies, or re-exports without consumers.                                                                                                                                 |
+| VI. Simplicity and verifiable quality         | Every new abstraction needs a current consumer and owner.                                                                                                                            | Pass. One public function and one interface with one consumer; one re-export of an existing session function with one consumer; one extracted feature entry (three consumers); one client guard (one consumer); no services, Layers, packages, dependencies, or re-exports without consumers.                                                                |
 
 Architecture constraints: frontend/backend separation unchanged; frontend-services keeps the shared `ManagedRuntime`,
 reused in-process by the Node proxy; `packages/frontend` imports no Effect; Fallow zones unchanged (`fallow guard` run
@@ -87,7 +89,7 @@ specs/162-protect-entry-points/
 ├── verification.md      # approved verification plan (unchanged)
 ├── checklists/          # specification checklist (unchanged)
 ├── plan.md              # this file
-├── research.md          # facts, decisions D1–D12, findings F-1–F-3
+├── research.md          # facts, decisions D1–D13, findings F-1–F-3
 ├── contracts/
 │   └── modules.md       # module decisions, public contracts, contract evidence
 └── quickstart.md        # implementation-aware execution of verification.md
@@ -102,14 +104,18 @@ matrix are public-contract semantics and live in [contracts/modules.md](contract
 packages/frontend-services/
 ├── src/
 │   ├── index.ts                    # + createProtectionProxy, type ProtectionResponses
+│   ├── session.ts                  # + re-export of existing decodeSessionReference
 │   ├── next.ts                     # + re-export from next/protection.ts
 │   └── next/
 │       ├── protection.ts           # NEW private child: designation, classification, outcome program
-│       ├── cookies.ts              # + session-cookie re-issue for renewal
+│       ├── request.ts              # NEW private child: resolveRequestTenant, navigationStatus
+│       ├── session.ts              # readSessionRequest uses resolveRequestTenant
+│       ├── login.ts                # refuses explicit non-navigations (401, nothing prepared)
+│       ├── cookies.ts              # + remainingIdleSeconds (extracted); existing setSessionCookie reused
 │       └── callback.ts             # confirmed branch → 303 Location: /
 └── tests/
     ├── unit/protection.test.ts     # NEW: examples + Fast-Check property via src/next.ts
-    ├── unit/authentication-entry*.test.ts   # 204 → 303 assertions
+    ├── unit/authentication-entry*.test.ts   # 204 → 303; login non-navigation refusal
     └── integration/protection-redis.test.ts # NEW: real SessionService on owned-prefix Redis
 
 packages/frontend/
@@ -144,8 +150,11 @@ feature entry because it gains a consumer outside `app/auth`. `(app)/page.tsx`, 
 
 Decisions per responsibility are tabulated in [contracts/modules.md](contracts/modules.md#module-architecture-decisions).
 In short: **extend** `frontend-services/src/next.ts` with the protection gate (private child
-`next/protection.ts`); **preserve** `SessionService`, `TenantConfigService`, `readSessionRequest`, and the runtime;
-**extend behavior** of `createCallbackHandler` (success navigation) without signature change; **extract** the auth
+`next/protection.ts`); **add** private `next/request.ts` so the gate and `readSessionRequest` share one request-tenant step and the gate and
+login handler share one navigation predicate; **preserve** `SessionService`, `TenantConfigService`, the
+`readSessionRequest` contract, and the runtime; **extend** the `session.ts` entry with a re-export of the existing
+`decodeSessionReference` so the gate can reuse `setSessionCookie`; **extend behavior** of `createCallbackHandler`
+(success navigation) and `createLoginHandler` (refuse non-navigations) without signature change; **extract** the auth
 response presentation to `features/access-responses.ts` because the proxy becomes a consumer outside `app/auth`;
 **add** `features/history-protection.ts` for the only browser-side concern; **extend** the reference consumer,
 `/login-unavailable`, and the forbidden page; **add** the internal `/access-denied` page as the forbidden rewrite target.
@@ -167,6 +176,10 @@ Layer is warranted: the gate is a per-request composition of existing services w
   are translated into responses; defects reject and never pass through.
 - The public designation is a closed set owned privately by the gate; #157 adds its recovery path there.
 - `createCallbackHandler` keeps its signature; the confirmed branch changes 204 → 303 `/`.
+- `createLoginHandler` keeps its signature; an explicit non-navigation gets 401 and prepares nothing.
+- `session.ts` re-exports `decodeSessionReference` (one consumer: the gate); `SessionService` is unchanged.
+- Request classification uses Fetch Metadata, because Next strips Flight headers (`rsc`, prefetch headers) from the
+  proxy request; `skipProxyUrlNormalize` is rejected as a global change (research D3).
 - `proxy.ts` matcher literal `"/((?!_next/static/|_next/webpack-hmr|__nextjs).*)"`; build-asset exclusion is
   provisional under F-1.
 - Frontend feature entries: `access-responses` (moved, behavior unchanged), `history-protection`
@@ -178,7 +191,9 @@ Claim-based evidence is tabulated per module in [contracts/modules.md](contracts
 
 - **Durable, public-interface (frontend-services Vitest through `src/next.ts`)**: a Fast-Check property that a request
   passes without a usable session iff it is in the public designation (generated pathnames, methods, and header
-  subsets, with named examples for designated paths and near-misses); table-driven outcome-matrix examples; tenant-first
+  subsets, with named examples for designated paths, near-misses, and percent-encoded spellings); table-driven outcome-matrix examples including Fetch Metadata combinations (navigate, cors, no-cors image for
+  `/favicon.ico` and `/_next/image`, absent) that prove only navigations can receive the login redirect; login handler
+  examples that non-navigations prepare nothing; tenant-first
   ordering and 404/500 preservation in host and static semantics; renewal activity/policy selection and cookie
   re-issue with a fixed `Clock`; no session read for public requests; rejection on defect. Revised callback adapter
   scenarios for 303.
@@ -194,14 +209,19 @@ Claim-based evidence is tabulated per module in [contracts/modules.md](contracts
 ### Phase 4 — Implementation architecture
 
 **Gate program** (`next/protection.ts`): a pure classifier produces `public | { entry: "document" | "application";
-renewal: QualifyingSessionActivity | undefined }`. For protected requests an `Effect.fn("protectRequest")` program
-yields `TenantConfigService`, resolves `getAlias(host)` and `getConfigFromAlias(alias)`, then calls
+renewal: QualifyingSessionActivity | undefined }` from method, pathname, `next-action`, and `navigationStatus(headers)`
+(`sec-fetch-mode`, then `sec-fetch-dest`; absent metadata is unknown and classified as application). For protected
+requests an `Effect.fn("protectRequest")` program runs the shared `resolveRequestTenant(host)` step (the same one
+`readSessionRequest` now uses), then calls
 `SessionService.refreshForTenant({ activity, policy: effectiveSessionPolicy(config), reference, tenantAlias })` for
 qualifying renewal or `readForTenant({ reference, tenantAlias })` otherwise. `Effect.matchEffect` maps the typed
 failures (`TenantFailure` → `responses.tenantFailure(tenantFailureStatus(f))`, `SessionServiceUnavailable` → 503,
 `SessionTenantMismatch` → document `forbiddenDocument` / application 403) and successes (`NoUsableSession` → 307 or
-401; `UsableSession` → `NextResponse.next` with `PRIVATE_NO_STORE` and, after renewal, the re-issued cookie computed
-from `Clock.currentTimeMillis`). The program runs through the existing `toNext`, which maps `StartupNotReady` to 503.
+401, `Location` = `new URL("/auth/login", request.nextUrl)`; `UsableSession` → `NextResponse.next` with
+`PRIVATE_NO_STORE` and, after renewal, `setSessionCookie(response, request, reference, remainingIdleSeconds(deadline,
+now))` where `reference` comes from `decodeSessionReference` on the request cookie and `now` from
+`Clock.currentTimeMillis`). The gate sets `PRIVATE_NO_STORE` on host-factory responses (forbidden rewrite, tenant
+failure) as well. The program runs through the existing `toNext`, which maps `StartupNotReady` to 503.
 Branching is on `_tag`, as `next/session.ts` does, because chunk duplication varies class identity.
 
 **Runtime and resources**: Node proxy runs in-process (installed `next-server.js`), reads the runtime published by
@@ -227,14 +247,14 @@ directory are not touched.
 
 **Implementation increments** (each a reviewable implementation branch or commit series; gates in bold):
 
-| # | Increment                      | Content                                                                                                                                                                          | Evidence completed                                                                                                                                                                       | Gate                                                    |
-| - | ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
-| 1 | Protection contract            | `next/protection.ts`, `next.ts`/`index.ts` exports, cookie re-issue helper; unit, property, and real-Redis integration suites                                                    | Module evidence for the gate                                                                                                                                                             | None                                                    |
-| 2 | Application default protection | `proxy.ts` + matcher, `/access-denied`, `access-responses` extraction, `/login-unavailable` tenant resolution, forbidden link, consumer denial, BDD revisions/additions, docs    | V-001, V-002 (probe), V-003, V-005, V-006 (non-success), V-009 (application-level), V-011, V-012 (fabricated references), V-013 (direct), V-016, V-017, V-018 (sign-in error, forbidden) | None. **Final asset designation and V-004 wait on F-1** |
-| 3 | Fresh entry and history        | `RestoredPageGuard` and its probe; running-app fresh-entry verification with fabricated and removed references (renewal mechanics ship in increment 1)                           | V-014 (fresh-entry part), V-015 mechanism (no viewed-under-session precondition)                                                                                                         | None                                                    |
-| 4 | Callback success navigation    | 303 to `/` in the confirmed branch; adapter scenarios revised                                                                                                                    | Module evidence only                                                                                                                                                                     | None for implementation                                 |
-| 5 | Success-path feature evidence  | Real-login Cucumber scenarios and manual gated steps: login A→B, joining, renewal on A/expiry on B, mismatch with a real cookie, history step 7b, confirmed-vs-unconfirmed V-006 | V-007, V-008, V-014 (joining), V-015 (step 7b), V-006 (distinction), V-009/V-010 with real cookies, SESSION-005 AC1                                                                      | **#158 B6 freshness confirmation functioning**          |
-| — | Recovery composition           | Recovery content and its public path; Server Action 401 recovery; running-tab modal                                                                                              | SESSION-004 AC2 composition                                                                                                                                                              | **#157** (separate feature; SESSION-004 shipping gate)  |
+| # | Increment                      | Content                                                                                                                                                                                                                                                                | Evidence completed                                                                                                                                                                       | Gate                                                    |
+| - | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| 1 | Protection contract            | `next/protection.ts`, `next/request.ts` (and `readSessionRequest` moved onto it), login non-navigation refusal, `remainingIdleSeconds` extraction, `decodeSessionReference` re-export, `next.ts`/`index.ts` exports; unit, property, and real-Redis integration suites | Module evidence for the gate                                                                                                                                                             | None                                                    |
+| 2 | Application default protection | `proxy.ts` + matcher, `/access-denied`, `access-responses` extraction, `/login-unavailable` tenant resolution, forbidden link, consumer denial, BDD revisions/additions, docs                                                                                          | V-001, V-002 (probe), V-003, V-005, V-006 (non-success), V-009 (application-level), V-011, V-012 (fabricated references), V-013 (direct), V-016, V-017, V-018 (sign-in error, forbidden) | None. **Final asset designation and V-004 wait on F-1** |
+| 3 | Fresh entry and history        | `RestoredPageGuard` and its probe; running-app fresh-entry verification with fabricated and removed references (renewal mechanics ship in increment 1)                                                                                                                 | V-014 (fresh-entry part), V-015 mechanism (no viewed-under-session precondition)                                                                                                         | None                                                    |
+| 4 | Callback success navigation    | 303 to `/` in the confirmed branch; adapter scenarios revised                                                                                                                                                                                                          | Module evidence only                                                                                                                                                                     | None for implementation                                 |
+| 5 | Success-path feature evidence  | Real-login Cucumber scenarios and manual gated steps: login A→B, joining, renewal on A/expiry on B, mismatch with a real cookie, history step 7b, confirmed-vs-unconfirmed V-006                                                                                       | V-007, V-008, V-014 (joining), V-015 (step 7b), V-006 (distinction), V-009/V-010 with real cookies, SESSION-005 AC1                                                                      | **#158 B6 freshness confirmation functioning**          |
+| — | Recovery composition           | Recovery content and its public path; Server Action 401 recovery; running-tab modal                                                                                                                                                                                    | SESSION-004 AC2 composition                                                                                                                                                              | **#157** (separate feature; SESSION-004 shipping gate)  |
 
 Increments 1–4 may merge with `@partial` BDD and an evidence record that reports increment-5 claims as incomplete.
 The S1 shipping gates (#157 recovery, #158 verified freshness) remain as the specification states.
