@@ -99,6 +99,6 @@ Feature: Default entry-point protection
     Given production tenant sites for Springfield and Shelbyville
     And host resolution uses base hostname "localhost"
     And the visitor's session reference is "well-formed unknown"
-    When the visitor opens "/" at "springfield.localhost:3000" in a browser, enters it again in that page, and opens it in another page
+    When the visitor opens "/" at "springfield.localhost:3000" in a browser, refreshes a page showing it, and opens it in another page
     Then each browser entry reaches the "springfield" tenant provider without protected content
     And each browser entry's authorization request asks for fresh authentication

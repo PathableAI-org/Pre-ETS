@@ -184,7 +184,7 @@ Then(
 )
 
 When(
-  "the visitor opens {string} at {string} in a browser, enters it again in that page, and opens it in another page",
+  "the visitor opens {string} at {string} in a browser, refreshes a page showing it, and opens it in another page",
   async function(this: AppWorld, entryPath: string, host: string) {
     await startSite(this)
     const owned = await applicationBrowser(this.port, [host])
@@ -195,20 +195,29 @@ When(
       }
       const entry = `http://${host}${entryPath}`
       this.protectedDocuments = []
+      let observing = true
       context.on("response", (response) => {
         const url = new URL(response.url())
-        if (url.host === host && response.request().resourceType() === "document" && response.status() === 200) {
+        const document = response.request().resourceType() === "document"
+        if (observing && url.host === host && document && response.status() === 200) {
           this.protectedDocuments.push(url.pathname)
         }
       })
       const first = await context.newPage()
       await first.goto(entry)
       const opened = first.url()
-      await first.goto(entry)
-      const reentered = first.url()
+      // A tab can show the entry only after an earlier view; without a usable session the application never renders
+      // one, so the harness stands in for that earlier view and the browser's own reload is the observed entry.
+      const refreshed = await context.newPage()
+      observing = false
+      await refreshed.route(entry, (route) => route.fulfill({ body: "<p>Earlier view</p>", contentType: "text/html" }))
+      await refreshed.goto(entry)
+      await refreshed.unrouteAll()
+      observing = true
+      await refreshed.reload()
       const another = await context.newPage()
       await another.goto(entry)
-      this.browserEntries = [opened, reentered, another.url()]
+      this.browserEntries = [opened, refreshed.url(), another.url()]
     } finally {
       await owned.close()
     }

@@ -38,7 +38,7 @@ Feature: Public authentication and diagnostic resources
     Given production tenant sites for Springfield and Shelbyville
     And host resolution uses base hostname "example.test"
     When a visitor sends "POST" to "/_test/tenant-config" at "springfield.example.test" as an "application" request
-    Then the response status is not 401
+    Then the response is not an authentication, authorization, or server failure
     And the response does not delegate to login
 
   Scenario: An absent path under the public test prefix is not found without starting login

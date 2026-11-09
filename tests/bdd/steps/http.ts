@@ -62,9 +62,10 @@ When("a visitor invokes the protected reference action at {string}", async funct
 Then("the response status is {int}", function(this: AppWorld, status: number) {
   assert.equal(this.response?.status, status)
 })
-Then("the response status is not {int}", function(this: AppWorld, status: number) {
+Then("the response is not an authentication, authorization, or server failure", function(this: AppWorld) {
   assert.ok(this.response)
-  assert.notEqual(this.response.status, status)
+  const { status } = this.response
+  assert.ok(status !== 401 && status !== 403 && status < 500, `unexpected status ${String(status)}`)
 })
 Then("the earlier callback status is {int}", function(this: AppWorld, status: number) {
   assert.equal(this.earlierResponse?.status, status)
