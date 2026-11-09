@@ -164,6 +164,52 @@ describe("authentication Route Handlers [PREETS-SESSION-003, PREETS-SESSION-013]
     }
   )
 
+  it.each(["cors", "no-cors", "same-origin"])(
+    "refuses a %s login request with 401 and prepares nothing",
+    async (mode) => {
+      const prepare = vi.fn(() => Effect.die("prepare must remain unused for a non-navigation"))
+      routeRuntime({ complete: () => Effect.die("complete must remain unused"), prepare })
+
+      const response = await login(
+        new NextRequest("https://alpha.example.test/auth/login", {
+          headers: {
+            cookie: `oidc-correlation=${"D".repeat(43)}`,
+            host: "alpha.example.test",
+            "sec-fetch-dest": "empty",
+            "sec-fetch-mode": mode
+          }
+        })
+      )
+
+      expect(response.status).toBe(401)
+      expect(response.headers.get("cache-control")).toBe("private, no-store")
+      expect(response.headers.get("location")).toBeNull()
+      expect(response.headers.getSetCookie()).toEqual([])
+      expect(await response.text()).toBe("")
+      expect(prepare).not.toHaveBeenCalled()
+    }
+  )
+
+  it("prepares login for an explicit navigation", async () => {
+    const destination =
+      "https://provider.test/authorize?state=s&redirect_uri=https%3A%2F%2Falpha.example.test%2Fauth%2Fcallback"
+    const prepare = vi.fn(() =>
+      Effect.succeed({ correlation: "A".repeat(43), destination, expiresAt: Date.now() + 600_000 })
+    )
+    routeRuntime({ complete: () => Effect.die("complete must remain unused"), prepare })
+
+    const response = await login(
+      new NextRequest("https://alpha.example.test/auth/login", {
+        headers: { host: "alpha.example.test", "sec-fetch-dest": "document", "sec-fetch-mode": "navigate" }
+      })
+    )
+
+    expect(response.status).toBe(307)
+    expect(response.headers.get("location")).toBe(destination)
+    expect(cookiesNamed(response, "oidc-correlation")).toHaveLength(1)
+    expect(prepare).toHaveBeenCalledTimes(1)
+  })
+
   it("treats a trusted handoff without freshness confirmation as the safe return, clearing correlation without a session cookie", async () => {
     const complete = vi.fn((_input: {
       readonly correlation?: string | undefined

@@ -34,6 +34,10 @@ export const requestCookieOptions = (input: {
 const requestCookie = (request: NextRequest, path: string, maxAge: number) =>
   requestCookieOptions({ host: request.headers.get("host") ?? "", maxAge, path, protocol: request.nextUrl.protocol })
 
+/** Whole seconds until the idle deadline, never negative: the session cookie's `Max-Age`. */
+export const remainingIdleSeconds = (idleDeadlineEpochMilliseconds: number, nowEpochMilliseconds: number): number =>
+  Math.max(0, Math.floor((idleDeadlineEpochMilliseconds - nowEpochMilliseconds) / 1_000))
+
 /** Writes the opaque session reference as the sole host-only session cookie. */
 export const setSessionCookie = (
   response: NextResponse,

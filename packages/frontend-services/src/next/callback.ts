@@ -4,7 +4,7 @@ import { type NextRequest, NextResponse } from "next/server"
 import { AuthenticationService, type CallbackExpectedFailure, type TrustedIdentity } from "../authentication.js"
 import { SessionService, SessionServiceUnavailable } from "../session.js"
 import { effectiveSessionPolicy, TenantConfigService } from "../tenant.js"
-import { clearCorrelation, CORRELATION_COOKIE, setSessionCookie } from "./cookies.js"
+import { clearCorrelation, CORRELATION_COOKIE, remainingIdleSeconds, setSessionCookie } from "./cookies.js"
 import { CallbackFreshness } from "./freshness.js"
 import { PRIVATE_NO_STORE, toNext } from "./handler.js"
 import { type TenantFailureResponse, tenantFailureStatus } from "./tenant-failure.js"
@@ -47,7 +47,7 @@ const establishSession = Effect.fn("establishSession")(function*(
     tenantAlias: identity.tenantAlias
   })
   const now = yield* Clock.currentTimeMillis
-  const maxAgeSeconds = Math.max(0, Math.floor((established.session.idleDeadlineEpochMilliseconds - now) / 1_000))
+  const maxAgeSeconds = remainingIdleSeconds(established.session.idleDeadlineEpochMilliseconds, now)
   const response = new NextResponse(null, {
     headers: { "cache-control": PRIVATE_NO_STORE },
     status: 204
