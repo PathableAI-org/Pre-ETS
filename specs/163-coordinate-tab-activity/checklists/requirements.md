@@ -54,8 +54,8 @@
   requirements and B5 decision require them; they are observable obligations, not design choices. No module
   structure, public type, or browser mechanism is selected.
 - Authority finding 1 (real sessions gated on #158) is an open execution gate: live browser evidence stays incomplete
-  until #158 functions. Findings 2 (provider logout) and 3 (logged-out presentation) are open product questions that
-  do not block the stakeholder contract but need a maintainer decision before planning fixes the logout outcome.
-  Finding 4 (requirement pinning) is resolved.
+  until #158 functions. Finding 2 (provider logout) is an open product question that does not block the stakeholder
+  contract. Finding 3 (logged-out presentation) was resolved by the maintainer on 2026-11-09 with proposal A, now
+  FR-023, SC-011, and V-017. Finding 4 (requirement pinning) is resolved.
 - `verification.md` records planned evidence only. No runtime, provider, store, browser, accessibility, or operational
   procedure was executed during specification.

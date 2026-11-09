@@ -82,8 +82,8 @@ protected access and stops showing protected information.
 continues protected use after logout exposes participant information.
 
 **Independent Test**: Sign in, open three sharing tabs, and log out from one. Confirm that within 2 seconds every other
-running sharing tab conceals protected content, and that actual protected page requests and protected operations
-from every tab are denied afterward.
+running sharing tab conceals protected content and shows the signed-out notice, that no tab starts sign-in on its
+own, and that actual protected page requests and protected operations from every tab are denied afterward.
 
 **Acceptance Scenarios**:
 
@@ -97,6 +97,9 @@ from every tab are denied afterward.
    operation, **Then** it is denied and no protected content or effect results.
 5. **Given** the session was logged out, **When** any tab that shared it later communicates qualifying activity,
    **Then** the logged-out session is not revived.
+6. **Given** the session was logged out, **When** the logging-out tab or any other running sharing tab conceals its
+   protected content, **Then** it shows an accessible signed-out notice with an explicit Log in action that enters the
+   tenant's fresh-entry flow when activated, and authentication does not start automatically.
 
 ---
 
@@ -256,6 +259,10 @@ confirm concealment and denial on resume.
 - **FR-022**: Logout, denial, concealment, and coordination outcomes MUST NOT reveal protected content, session
   references, tokens, or storage internals, and coordination MUST NOT carry protected information between sessions,
   tenants, or browser contexts.
+- **FR-023**: After logout, the logging-out tab and every other sharing tab that conceals protected content MUST show a
+  signed-out notice that is announced to assistive technology, explains that the user is signed out, and offers an
+  explicit Log in action, keyboard-operable with visible focus, that enters the tenant's fresh-entry flow. No tab may
+  start authentication automatically after logout.
 
 ### Key Entities
 
@@ -295,6 +302,8 @@ confirm concealment and denial on resume.
 - **SC-009**: Every exercised resume across renewal restores content without the expired state; every exercised resume
   across logout conceals within the B5 bounds and permits no protected use.
 - **SC-010**: A keyboard-only user can reach and activate logout with visible focus and perceive its outcome.
+- **SC-011**: After every exercised logout, each sharing tab shows the signed-out notice, assistive technology announces
+  it, its Log in action reaches tenant sign-in only when activated, and no tab starts authentication on its own.
 
 ## Assumptions
 
@@ -329,11 +338,11 @@ was merged by PR #360. Current `origin/main` authority was inspected at `0011661
 
 ### Accepted requirement coverage
 
-| Requirement                                                                                                                                                   | Acceptance criteria in this slice                         | Feature disposition                                                                                                                                                                                                                                                                          |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [PREETS-SESSION-009](https://github.com/PathableAI-org/Pre-ETS/blob/00116612c13c85457439a24937f615be72f8ad1b/docs/requirements/session/PREETS-SESSION-009.md) | AC1–4                                                     | Specified in full (FR-003–FR-010), including the B5 60-second communication windows. Live renewal evidence is **incomplete** until real sessions can be established (Authority finding 1).                                                                                                   |
-| [PREETS-SESSION-010](https://github.com/PathableAI-org/Pre-ETS/blob/00116612c13c85457439a24937f615be72f8ad1b/docs/requirements/session/PREETS-SESSION-010.md) | AC1–3, AC5, AC6 (in part)                                 | AC1–3 (FR-001, FR-002, FR-011, FR-012) and AC5 (FR-013–FR-015) specified with the B5 2-second bound and resume rule (FR-017–FR-020). AC6 specified for activity and logout (FR-016). Live multi-tab evidence is **incomplete** until real sessions can be established (Authority finding 1). |
-| PREETS-SESSION-010                                                                                                                                            | AC4; AC6 warning, continuation, and expiration conditions | **Deferred** to [#156](https://github.com/PathableAI-org/Pre-ETS/issues/156) (warning, Continue) and [#157](https://github.com/PathableAI-org/Pre-ETS/issues/157) (expiration), as the issue and delivery plan assign. Not specified here.                                                   |
+| Requirement                                                                                                                                                   | Acceptance criteria in this slice                         | Feature disposition                                                                                                                                                                                                                                                                                  |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [PREETS-SESSION-009](https://github.com/PathableAI-org/Pre-ETS/blob/00116612c13c85457439a24937f615be72f8ad1b/docs/requirements/session/PREETS-SESSION-009.md) | AC1–4                                                     | Specified in full (FR-003–FR-010), including the B5 60-second communication windows. Live renewal evidence is **incomplete** until real sessions can be established (Authority finding 1).                                                                                                           |
+| [PREETS-SESSION-010](https://github.com/PathableAI-org/Pre-ETS/blob/00116612c13c85457439a24937f615be72f8ad1b/docs/requirements/session/PREETS-SESSION-010.md) | AC1–3, AC5, AC6 (in part)                                 | AC1–3 (FR-001, FR-002, FR-011, FR-012) and AC5 (FR-013–FR-015, FR-023) specified with the B5 2-second bound and resume rule (FR-017–FR-020). AC6 specified for activity and logout (FR-016). Live multi-tab evidence is **incomplete** until real sessions can be established (Authority finding 1). |
+| PREETS-SESSION-010                                                                                                                                            | AC4; AC6 warning, continuation, and expiration conditions | **Deferred** to [#156](https://github.com/PathableAI-org/Pre-ETS/issues/156) (warning, Continue) and [#157](https://github.com/PathableAI-org/Pre-ETS/issues/157) (expiration), as the issue and delivery plan assign. Not specified here.                                                           |
 
 Related constraints, not coverage claims: [PREETS-SESSION-004](https://github.com/PathableAI-org/Pre-ETS/blob/00116612c13c85457439a24937f615be72f8ad1b/docs/requirements/session/PREETS-SESSION-004.md)
 (fresh entry on back/forward restoration), [PREETS-SESSION-008](https://github.com/PathableAI-org/Pre-ETS/blob/00116612c13c85457439a24937f615be72f8ad1b/docs/requirements/session/PREETS-SESSION-008.md)
@@ -407,18 +416,18 @@ seconds of a shared logout; sessions for other tenants, browser contexts, and la
    - _Decision required_: Whether provider logout is required, and if so in which requirement.
    - _Proposals_: (A) S3 ends the application session only, as the requirements state (assumed by this
      specification). (B) Add provider logout through the requirements workflow as a separate decision.
-3. **Presentation in tabs after logout (open; does not block this specification).**
+3. **Presentation in tabs after logout (resolved by maintainer decision on 2026-11-09).**
    - _Source_: PREETS-SESSION-010 AC5; B5 ("Logout and expiration conceal protected content within that bound");
-     issue #155 assigns expired-state presentation to #157 but assigns no logged-out presentation.
+     issue #155 assigns expired-state presentation to #157 but assigns no logged-out presentation. Maintainer decision
+     on 2026-11-09, recorded during plan review in PR #362.
    - _Ambiguity_: Beyond concealment and denial, what the logging-out tab and other sharing tabs present after logout,
-     and whether they offer an explicit Login action or start fresh entry.
-   - _Impact_: Planning needs a target outcome for the logout action and for other tabs; this specification fixes only
-     concealment, denial, accessibility, and timing (FR-013–FR-015).
-   - _Decision required_: The signed-out outcome shown in the initiating tab and in other sharing tabs.
-   - _Proposals_: (A) Every tab shows an accessible signed-out notice with an explicit Login action that uses S1's
-     fresh-entry boundary, without starting authentication automatically. (B) The initiating tab shows the notice and
-     other tabs follow fresh entry on their next protected request. (C) Defer the presentation to #157 to align with
-     the expiration modal.
+     and whether they offer an explicit Log in action or start fresh entry. None remaining.
+   - _Impact_: The signed-out outcome is specified in US3 scenario 6, FR-023, and SC-011.
+   - _Decision required_: None.
+   - _Proposals_: (A) Every sharing tab, including the one that logged out, shows an accessible signed-out notice with an
+     explicit Log in action through S1's fresh-entry boundary, and authentication never starts automatically
+     (**chosen**). (B) The initiating tab shows the notice and other tabs follow fresh entry on their next protected
+     request (not chosen). (C) Defer the presentation to #157 (not chosen).
 4. **Stale approval and pinning prose (resolved).**
    - _Source_: Issue #155 pins requirements at `cddbb741e73af8b79cdc699101c08770ddb56096`, before the B5 refinements;
      the [delivery README](https://github.com/PathableAI-org/Pre-ETS/blob/00116612c13c85457439a24937f615be72f8ad1b/docs/delivery/README.md)
