@@ -1,11 +1,12 @@
-import { createProtectionProxy } from "@pathableai/pre-ets-frontend-services"
-import { type NextProxy, NextResponse } from "next/server"
+import type { NextProxy } from "next/server"
 
-import { tenantFailureResponse } from "./features/access-responses.ts"
+import { createProtectionProxy } from "@pathableai/pre-ets-frontend-services"
+
+import { forbiddenDocumentResponse, tenantFailureResponse } from "./features/access-responses.ts"
 
 /** Every matched request passes the default protection gate before any page, route handler, or Server Action. */
 export const proxy: NextProxy = createProtectionProxy({
-  forbiddenDocument: (request) => Promise.resolve(NextResponse.rewrite(new URL("/access-denied", request.url))),
+  forbiddenDocument: forbiddenDocumentResponse,
   tenantFailure: tenantFailureResponse
 })
 

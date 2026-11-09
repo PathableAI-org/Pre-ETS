@@ -26,9 +26,6 @@ Feature: Default entry-point protection
       | /                     | absent              |
       | /                     | malformed           |
       | /                     | well-formed unknown |
-      | /access-denied        | absent              |
-      | /access-denied        | malformed           |
-      | /access-denied        | well-formed unknown |
       | /an-undesignated-path | absent              |
       | /an-undesignated-path | malformed           |
       | /an-undesignated-path | well-formed unknown |

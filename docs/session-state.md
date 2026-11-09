@@ -68,14 +68,20 @@ The gate resolves the request tenant first, then reads the session for that tena
 response it returns carries `Cache-Control: private, no-store`; its denials have empty
 bodies and set no cookie.
 
-| Outcome (in order)                | Document entry                                   | Application request |
-| --------------------------------- | ------------------------------------------------ | ------------------- |
-| Runtime not started               | 503                                              | 503                 |
-| Tenant failure                    | Tenant 404 page or 500                           | Same                |
-| Session state undeterminable      | 503                                              | 503                 |
-| No usable session                 | 307 to same-origin `/auth/login`                 | 401                 |
-| Session for another tenant        | 403 forbidden page (rewrite to `/access-denied`) | 403                 |
-| Usable session for request tenant | Passes through                                   | Passes through      |
+| Outcome (in order)                | Document entry                           | Application request |
+| --------------------------------- | ---------------------------------------- | ------------------- |
+| Runtime not started               | 503                                      | 503                 |
+| Tenant failure                    | Tenant 404 page or 500                   | Same                |
+| Session state undeterminable      | 503                                      | 503                 |
+| No usable session                 | 307 to same-origin `/auth/login`         | 401                 |
+| Session for another tenant        | 403 forbidden page rendered by the proxy | 403                 |
+| Usable session for request tenant | Passes through                           | Passes through      |
+
+The forbidden page is the proxy response itself, not a rewrite: the Next app renders the
+same `ForbiddenNotice` that `forbidden()` shows, with status 403 and
+`content-type: text/html; charset=utf-8`. Next normalizes loopback hosts to `localhost`, so a
+rewrite would become an external proxy when Next binds `127.0.0.1`
+([#356](https://github.com/PathableAI-org/Pre-ETS/issues/356)).
 
 A defect rejects the proxy promise (Next answers 500); nothing passes through on failure.
 A document entry renews a usable session as `deliberate-page-request`, and a `POST` with
@@ -89,7 +95,7 @@ retrying. The root layout renders a history guard that reloads a page restored f
 back-forward cache and refreshes the route on `popstate`, so history traversal reaches the
 gate.
 
-Inventory: protected pages `/` and `/access-denied`; protected Server Action
+Inventory: protected page `/`; protected Server Action
 `runReferenceOperation`; no protected Route Handler; public resources as designated above.
 
 Known gaps: `/_next/static/**` is publicly served and `/favicon.ico`, metadata routes, and

@@ -136,10 +136,10 @@ V-016, V-017).
 
 ### 3b. Proxy wiring and presentations
 
-- [x] T024 [US1] Rewrite packages/frontend/tests/unit/proxy.test.ts first: `config.matcher` equals `["/((?!_next/static/|_next/webpack-hmr|__nextjs).*)"]`; path-to-regexp examples — `/`, an absent path, `/favicon.ico`, `/_next/image`, `/_test/x` matched, `/_next/static/x` unmatched; a mocked `createProtectionProxy` captures `forbiddenDocument` and shows it returns a rewrite to `/access-denied` on the request's origin (contracts/modules.md "src/proxy.ts" evidence)
-- [x] T025 [US1] Replace packages/frontend/src/proxy.ts with `export const proxy: NextProxy = createProtectionProxy({ forbiddenDocument: (request) => Promise.resolve(NextResponse.rewrite(new URL("/access-denied", request.url))), tenantFailure: tenantFailureResponse })` and `export const config = { matcher: ["/((?!_next/static/|_next/webpack-hmr|__nextjs).*)"] }`, importing from `@pathableai/pre-ets-frontend-services` and `@/features/access-responses` only; T024 passes (depends on T018, T022, T024)
-- [x] T026 [P] [US3] Create packages/frontend/src/app/access-denied/page.tsx: `export const dynamic = "force-dynamic"` and `export default function AccessDeniedPage(): never { forbidden() }`; protected by default, no public designation (contracts/modules.md "routes"; research D4)
-- [x] T027 [P] [US3] Add one keyboard-reachable `@pathableai/react`-conformant link to `/` with a meaningful name to packages/frontend/src/app/forbidden.tsx; heading and explanation unchanged (FR-018, FR-026; contracts/modules.md "forbidden.tsx")
+- [x] T024 [US1] (forbidden-document example superseded 2026-11-09 by T065, #356) Rewrite packages/frontend/tests/unit/proxy.test.ts first: `config.matcher` equals `["/((?!_next/static/|_next/webpack-hmr|__nextjs).*)"]`; path-to-regexp examples — `/`, an absent path, `/favicon.ico`, `/_next/image`, `/_test/x` matched, `/_next/static/x` unmatched; a mocked `createProtectionProxy` captures `forbiddenDocument` and shows it returns a rewrite to `/access-denied` on the request's origin (contracts/modules.md "src/proxy.ts" evidence)
+- [x] T025 [US1] (forbidden rewrite superseded 2026-11-09 by T066, #356) Replace packages/frontend/src/proxy.ts with `export const proxy: NextProxy = createProtectionProxy({ forbiddenDocument: (request) => Promise.resolve(NextResponse.rewrite(new URL("/access-denied", request.url))), tenantFailure: tenantFailureResponse })` and `export const config = { matcher: ["/((?!_next/static/|_next/webpack-hmr|__nextjs).*)"] }`, importing from `@pathableai/pre-ets-frontend-services` and `@/features/access-responses` only; T024 passes (depends on T018, T022, T024)
+- [x] T026 [P] [US3] (page removed 2026-11-09 by T066, research D4) Create packages/frontend/src/app/access-denied/page.tsx: `export const dynamic = "force-dynamic"` and `export default function AccessDeniedPage(): never { forbidden() }`; protected by default, no public designation (contracts/modules.md "routes"; research D4)
+- [x] T027 [P] [US3] (presentation moved into `ForbiddenNotice` 2026-11-09 by T066) Add one keyboard-reachable `@pathableai/react`-conformant link to `/` with a meaningful name to packages/frontend/src/app/forbidden.tsx; heading and explanation unchanged (FR-018, FR-026; contracts/modules.md "forbidden.tsx")
 - [x] T028 [P] [US1] In packages/frontend/src/features/session-reference/reference-operation.tsx wrap `action(previousState, formData)` in a client function that converts a rejected invocation (gate 401/403/503 or transport failure) into the existing `Denied` state with a generic "operation was not performed" message in the existing `role="status"` region; no retry; exports of packages/frontend/src/features/session-reference.ts unchanged (FR-005, FR-026; research D10)
 - [x] T029 [P] [US4] Make packages/frontend/src/app/login-unavailable/page.tsx await `requireTenantConfig()` from `src/app/(app)/tenant-context.ts` before rendering so tenant failure keeps 404/500 (FR-008, FR-020; research D5)
 - [x] T030 [US1] Run `pnpm --filter @pathableai/pre-ets-frontend typecheck`, `lint`, `test:unit`, `build`, and `exec fallow dead-code` / `exec fallow health --complexity`; confirm `next.config.ts` still enables `experimental.authInterrupts` and its `/` header is unchanged
@@ -288,15 +288,15 @@ these tasks change BDD only where a removed resource would leave an existing row
 
 ### 9b. Forbidden document without a rewrite (research D4, #356)
 
-- [ ] T065 Revise packages/frontend/tests/unit/proxy.test.ts first: the captured `forbiddenDocument` returns status
+- [x] T065 Revise packages/frontend/tests/unit/proxy.test.ts first: the captured `forbiddenDocument` returns status
       403, `content-type: text/html; charset=utf-8`, `cache-control: private, no-store`, a body with the forbidden heading
       and a link to `/`, no `x-middleware-rewrite`, and no `Location`; drop the `/access-denied` matcher example
-- [ ] T066 Add `ForbiddenNotice` and `forbiddenDocumentResponse` to packages/frontend/src/features/access-responses.ts
+- [x] T066 Add `ForbiddenNotice` and `forbiddenDocumentResponse` to packages/frontend/src/features/access-responses.ts
       (implemented in `access-responses/presentation.tsx`, rendered like the tenant 404); make packages/frontend/src/app/forbidden.tsx
       render `ForbiddenNotice`; pass `forbiddenDocument: forbiddenDocumentResponse` from packages/frontend/src/proxy.ts;
       delete packages/frontend/src/app/access-denied/page.tsx; update the `ProtectionResponses` doc comment and the
       mismatch example path in packages/frontend-services
-- [ ] T067 Remove `/access-denied` from docs/session-state.md and from the existing rows of
+- [x] T067 Remove `/access-denied` from docs/session-state.md and from the existing rows of
       tests/bdd/requirements/default-entry-protection.feature (the page no longer exists); run frontend `typecheck`, `lint`,
       `test:unit`, `build`, and `fallow dead-code`
 
@@ -390,7 +390,7 @@ T029 packages/frontend/src/app/login-unavailable/page.tsx
 | Login non-navigation refusal                                 | T008, T010         | T007                                        | Module evidence             |
 | `readSessionRequest` shared tenant step                      | T009               | existing reference-session-enforcement test | Reused evidence             |
 | Callback 303 / default freshness denies                      | T043               | T042                                        | Module evidence             |
-| Matcher, forbidden rewrite                                   | T025               | T024                                        | Framework evidence          |
+| Matcher, forbidden document (rewrite until T066)             | T025, T066         | T024, T065                                  | Framework evidence          |
 | Access-responses move                                        | T022               | existing tests, T032                        | Reused evidence             |
 | V-001, V-012 (fabricated), V-013 direct, V-016               | T025, T028         | T034–T036, T054 steps 2, 8                  | Planned                     |
 | V-002                                                        | T025               | T031 probe                                  | Planned                     |

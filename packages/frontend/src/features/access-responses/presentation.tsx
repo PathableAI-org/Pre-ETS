@@ -1,3 +1,5 @@
+import type { ReactElement } from "react"
+
 import { PRIVATE_NO_STORE, type TenantFailureResponse } from "@pathableai/pre-ets-frontend-services"
 import { Alert, Container, Heading, Link, Page, Stack, Text } from "@pathableai/react"
 import { NextResponse } from "next/server"
@@ -48,3 +50,36 @@ export const tenantFailureResponse: TenantFailureResponse = async (status) =>
     },
     status
   })
+
+/** Heading, explanation, and a keyboard-reachable link to `/`; rendered by the proxy document and `forbidden.tsx`. */
+export function ForbiddenNotice(): ReactElement {
+  return (
+    <Page>
+      <Container>
+        <Stack gap="md">
+          <Heading level={1}>Access denied</Heading>
+          <Text>This request is not allowed to continue.</Text>
+          <Text>
+            <Link href="/">Go to the application entry</Link>
+          </Text>
+        </Stack>
+      </Container>
+    </Page>
+  )
+}
+
+/** Host-rendered 403 document for `ProtectionResponses.forbiddenDocument`; `private, no-store`. */
+export const forbiddenDocumentResponse = async (): Promise<NextResponse> =>
+  new NextResponse(
+    await renderToReadableStream(
+      <html lang="en">
+        <body>
+          <ForbiddenNotice />
+        </body>
+      </html>
+    ),
+    {
+      headers: { "cache-control": PRIVATE_NO_STORE, "content-type": "text/html; charset=utf-8" },
+      status: 403
+    }
+  )

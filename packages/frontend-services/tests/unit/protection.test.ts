@@ -446,9 +446,9 @@ describe("createProtectionProxy outcomes [PREETS-SESSION-001, PREETS-SESSION-005
   it("forbids a tenant mismatch: the host forbidden document for a navigation, an empty 403 otherwise", async () => {
     install(sessionDouble(() => Effect.fail(new SessionTenantMismatch({}))))
 
-    const document = await protect(request("/access-denied", { cookie: reference, headers: navigation }))
+    const document = await protect(request("/a/protected/page", { cookie: reference, headers: navigation }))
     expect(document.status).toBe(403)
-    expect(document.headers.get("x-forbidden-for")).toBe("/access-denied")
+    expect(document.headers.get("x-forbidden-for")).toBe("/a/protected/page")
     expect(document.headers.get("cache-control")).toBe("private, no-store")
     expect(document.headers.get("location")).toBeNull()
     expect(document.headers.getSetCookie()).toEqual([])

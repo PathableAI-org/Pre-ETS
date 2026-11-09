@@ -39,8 +39,7 @@ describe("proxy [PREETS-SESSION-001]", () => {
     "/favicon.ico",
     "/_next/image",
     "/_test/x",
-    "/auth/login",
-    "/access-denied"
+    "/auth/login"
   ])("routes %s through the gate", (pathname) => {
     expect(matches(pathname)).toBe(true)
   })
@@ -56,13 +55,19 @@ describe("proxy [PREETS-SESSION-001]", () => {
     expect(gate.responses?.tenantFailure).toBe(tenantFailureResponse)
   })
 
-  it("rewrites a forbidden document to the protected access-denied page on the request's origin", async () => {
+  it("renders the forbidden document as a private 403 page in the proxy response, without a rewrite", async () => {
     const forbiddenDocument = gate.responses?.forbiddenDocument
     if (forbiddenDocument === undefined) throw new Error("proxy did not create the gate")
 
     const response = await forbiddenDocument(new NextRequest("https://springfield.example.test/some/page?x=1"))
 
-    expect(response.headers.get("x-middleware-rewrite")).toBe("https://springfield.example.test/access-denied")
+    expect(response.status).toBe(403)
+    expect(response.headers.get("content-type")).toBe("text/html; charset=utf-8")
+    expect(response.headers.get("cache-control")).toBe("private, no-store")
+    expect(response.headers.get("x-middleware-rewrite")).toBeNull()
     expect(response.headers.get("location")).toBeNull()
+    const body = await response.text()
+    expect(body).toMatch(/<h1[^>]*>Access denied<\/h1>/)
+    expect(body).toMatch(/<a[^>]*href="\/"[^>]*>Go to the application entry<\/a>/)
   })
 })

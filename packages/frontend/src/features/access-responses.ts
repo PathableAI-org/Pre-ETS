@@ -1,1 +1,6 @@
-export { authenticationReturnBody, tenantFailureResponse } from "./access-responses/presentation.tsx"
+export {
+  authenticationReturnBody,
+  forbiddenDocumentResponse,
+  ForbiddenNotice,
+  tenantFailureResponse
+} from "./access-responses/presentation.tsx"

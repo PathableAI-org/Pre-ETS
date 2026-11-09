@@ -18,9 +18,9 @@ import { type TenantFailureResponse, tenantFailureStatus } from "./tenant-failur
 /** Responses the Next host presents for protection outcomes it owns. */
 export interface ProtectionResponses {
   /**
-   * A tenant mismatch on a document entry. The response MUST carry HTTP 403 semantics and no protected content.
-   * The Next app rewrites to `/access-denied`. The gate sets `Cache-Control: private, no-store` on the returned
-   * response, and `/access-denied` is dynamic, so the rendered 403 is never cacheable.
+   * A tenant mismatch on a document entry. The response MUST carry HTTP 403 and the accessible forbidden
+   * presentation, and no protected content. The Next app renders it as the response body (no rewrite; research D4).
+   * The gate sets `Cache-Control: private, no-store` on the returned response, so it is never cacheable.
    */
   readonly forbiddenDocument: (request: NextRequest) => Promise<NextResponse>
   /** The host's existing tenant-failure presentation (404 missing page, 500). */
