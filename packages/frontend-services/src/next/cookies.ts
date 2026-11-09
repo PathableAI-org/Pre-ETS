@@ -3,9 +3,9 @@ import type { NextRequest, NextResponse } from "next/server"
 import type { SessionReference } from "../session.js"
 
 import { isLoopbackHostname, parseRequestHost } from "../request-host.js"
-import { SESSION_COOKIE } from "./session.js"
 
 export const CORRELATION_COOKIE = "oidc-correlation"
+export const SESSION_COOKIE = "pathable-session"
 
 /** Host-only, HttpOnly, SameSite=Lax: the attributes every application cookie shares. */
 export const cookieOptions = (input: { readonly maxAge: number; readonly path: string; readonly secure: boolean }) => ({
@@ -52,5 +52,11 @@ export const setSessionCookie = (
 /** Expires the correlation cookie. */
 export const clearCorrelation = (response: NextResponse, request: NextRequest): NextResponse => {
   response.cookies.set(CORRELATION_COOKIE, "", requestCookie(request, "/auth/callback", 0))
+  return response
+}
+
+/** Expires the session cookie with the attributes it was issued with. */
+export const clearSessionCookie = (response: NextResponse, request: NextRequest): NextResponse => {
+  response.cookies.set(SESSION_COOKIE, "", requestCookie(request, "/", 0))
   return response
 }

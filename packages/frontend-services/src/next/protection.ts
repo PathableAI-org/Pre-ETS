@@ -9,10 +9,9 @@ import {
   type UsableSession
 } from "../session.js"
 import { effectiveSessionPolicy } from "../tenant.js"
-import { remainingIdleSeconds, setSessionCookie } from "./cookies.js"
+import { remainingIdleSeconds, SESSION_COOKIE, setSessionCookie } from "./cookies.js"
 import { PRIVATE_NO_STORE, toNext } from "./handler.js"
 import { navigationStatus, resolveRequestTenant } from "./request.js"
-import { SESSION_COOKIE } from "./session.js"
 import { type TenantFailureResponse, tenantFailureStatus } from "./tenant-failure.js"
 
 /** Responses the Next host presents for protection outcomes it owns. */

@@ -1,0 +1,214 @@
+import { NodeRedis } from "@effect/platform-node"
+import { Effect, Layer, ManagedRuntime, Result, Schema } from "effect"
+import { NextRequest } from "next/server"
+import { randomUUID } from "node:crypto"
+import { setTimeout as sleep } from "node:timers/promises"
+import { afterEach, describe, expect, it, vi } from "vitest"
+
+import { createLogoutHandler, createSessionActivityHandler, createSessionStatusHandler } from "../../src/next.ts"
+import { SessionService } from "../../src/session.ts"
+import { TenantAlias, type TenantConfig, TenantConfigService } from "../../src/tenant.ts"
+import { SessionRedis, sessionWorld } from "../helpers/session.ts"
+
+const runtime = vi.hoisted(() => ({ runPromise: vi.fn() }))
+vi.mock("../../src/runtime.ts", () => ({ Runtime: runtime }))
+
+const springfield = Schema.decodeSync(TenantAlias)("springfield")
+const tenantConfig: TenantConfig = {
+  displayName: "Springfield",
+  idleTimeoutMinutes: 30,
+  oidc: { clientAuth: "public", clientId: "springfield-web", issuer: "https://provider.test" },
+  warningLeadMinutes: 5
+}
+const springfieldTenant = Layer.succeed(TenantConfigService, {
+  getAlias: () => Result.succeed(springfield),
+  getConfigFromAlias: () => Effect.succeed(tenantConfig),
+  getConfigFromHost: () => Effect.die("getConfigFromHost must remain unused")
+})
+
+const activity = createSessionActivityHandler()
+const status = createSessionStatusHandler()
+const logout = createLogoutHandler()
+
+interface Snapshot {
+  readonly coordinationTag: string
+  readonly idleDeadlineEpochMilliseconds: number
+}
+
+const ORIGIN = "http://springfield.localhost"
+
+const statusRequest = (reference: string) =>
+  new NextRequest(`${ORIGIN}/session/status`, {
+    headers: { cookie: `pathable-session=${reference}`, host: "springfield.localhost", "sec-fetch-site": "same-origin" }
+  })
+
+const post = (path: string, reference: string, body: unknown) =>
+  new NextRequest(`${ORIGIN}${path}`, {
+    body: JSON.stringify(body),
+    headers: {
+      "content-type": "application/json",
+      cookie: `pathable-session=${reference}`,
+      host: "springfield.localhost",
+      "sec-fetch-site": "same-origin"
+    },
+    method: "POST"
+  })
+
+type World = ManagedRuntime.ManagedRuntime<SessionRedis | SessionService | TenantConfigService, unknown>
+
+const withWorld = async (scenario: (world: World) => Promise<void>) => {
+  const world: World = ManagedRuntime.make(Layer.mergeAll(sessionWorld, springfieldTenant))
+  runtime.runPromise.mockImplementation((program: Effect.Effect<unknown, unknown, SessionService>) =>
+    world.runPromise(program)
+  )
+  try {
+    await scenario(world)
+  } finally {
+    await world.dispose()
+  }
+}
+
+const establish = (world: World) =>
+  world.runPromise(
+    SessionService.use((sessions) =>
+      sessions.establish({
+        identity: { issuer: "https://provider.test/", subject: "subject-coordination" },
+        policy: { idleTimeoutMinutes: 30, warningLeadMinutes: 5 },
+        tenantAlias: springfield
+      })
+    )
+  )
+
+const storedDeadlines = (world: World) =>
+  world.runPromise(
+    SessionRedis.use((redis) =>
+      redis.records.pipe(
+        Effect.map((records) =>
+          [...records.values()].map((record) =>
+            (JSON.parse(record.payload) as { readonly idleDeadlineEpochMilliseconds: number })
+              .idleDeadlineEpochMilliseconds
+          )
+        )
+      )
+    )
+  )
+
+const readSnapshot = async (reference: string) => {
+  const response = await status(statusRequest(reference))
+  expect(response.status).toBe(200)
+  return (await response.json()) as Snapshot
+}
+
+afterEach(() => {
+  vi.clearAllMocks()
+})
+
+describe("coordination handlers over the real session store [PREETS-SESSION-009, PREETS-SESSION-010]", () => {
+  it("renews on activity and answers with the stored renewed deadline", () =>
+    withWorld(async (world) => {
+      const established = await establish(world)
+      const before = await readSnapshot(established.reference)
+      await sleep(20)
+
+      const response = await activity(
+        post("/session/activity", established.reference, {
+          activity: "text-entry",
+          coordinationTag: before.coordinationTag
+        })
+      )
+
+      expect(response.status).toBe(200)
+      const renewed = (await response.json()) as Snapshot
+      expect(renewed.idleDeadlineEpochMilliseconds).toBeGreaterThan(before.idleDeadlineEpochMilliseconds)
+      expect(await storedDeadlines(world)).toEqual([renewed.idleDeadlineEpochMilliseconds])
+      expect(response.headers.getSetCookie().join()).toContain(`pathable-session=${established.reference}`)
+    }))
+
+  it("never moves the stored deadline on status reads", () =>
+    withWorld(async (world) => {
+      const established = await establish(world)
+      const [stored] = await storedDeadlines(world)
+
+      const first = await readSnapshot(established.reference)
+      await sleep(20)
+      const second = await readSnapshot(established.reference)
+
+      expect(first.idleDeadlineEpochMilliseconds).toBe(stored)
+      expect(second.idleDeadlineEpochMilliseconds).toBe(stored)
+      expect(await storedDeadlines(world)).toEqual([stored])
+    }))
+
+  it("does not revive a session through activity after logout", () =>
+    withWorld(async (world) => {
+      const established = await establish(world)
+      const { coordinationTag } = await readSnapshot(established.reference)
+
+      const ended = await logout(post("/auth/logout", established.reference, { coordinationTag }))
+
+      expect(ended.status).toBe(204)
+      expect(ended.headers.getSetCookie().join()).toMatch(/pathable-session=;.*Max-Age=0/)
+      expect(await storedDeadlines(world)).toEqual([])
+      const late = await activity(
+        post("/session/activity", established.reference, { activity: "keyboard-interaction", coordinationTag })
+      )
+      expect(late.status).toBe(401)
+      expect((await status(statusRequest(established.reference))).status).toBe(401)
+      expect(await storedDeadlines(world)).toEqual([])
+    }))
+
+  it("does not revive an expired session through activity", () =>
+    withWorld(async (world) => {
+      const established = await establish(world)
+      const { coordinationTag } = await readSnapshot(established.reference)
+      await world.runPromise(
+        SessionRedis.use((redis) =>
+          redis.rewriteAll((payload) => JSON.stringify({ ...JSON.parse(payload), idleDeadlineEpochMilliseconds: 1 }))
+        )
+      )
+
+      const late = await activity(
+        post("/session/activity", established.reference, { activity: "text-entry", coordinationTag })
+      )
+
+      expect(late.status).toBe(401)
+      expect(await storedDeadlines(world)).toEqual([])
+    }))
+
+  it("answers 503 with the cookie untouched when the store client is disconnected", async () => {
+    const redis = NodeRedis.layer({
+      disableOfflineQueue: true,
+      socket: { reconnectStrategy: () => false, socketTimeout: 1_000 },
+      url: process.env.REDIS_URL ?? "redis://127.0.0.1:6379"
+    })
+    const world = ManagedRuntime.make(
+      SessionService.layer({ keyPrefix: `test:session:${randomUUID()}` }).pipe(
+        Layer.provideMerge(redis),
+        Layer.merge(springfieldTenant)
+      )
+    )
+    runtime.runPromise.mockImplementation((program: Effect.Effect<unknown, unknown, SessionService>) =>
+      world.runPromise(program)
+    )
+    try {
+      await world.runPromise(NodeRedis.NodeRedis.use((node) =>
+        Effect.sync(() => {
+          node.client.destroy()
+        })
+      ))
+      const reference = "R".repeat(43)
+      const tag = "unused-because-the-store-answers-first"
+
+      for (
+        const response of [
+          await status(statusRequest(reference)),
+          await logout(post("/auth/logout", reference, { coordinationTag: tag }))
+        ]
+      ) {
+        expect(response.status).toBe(503)
+        expect(response.headers.getSetCookie()).toEqual([])
+      }
+    } finally {
+      await world.dispose()
+    }
+  })
+})

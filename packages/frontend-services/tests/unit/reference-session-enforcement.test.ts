@@ -135,6 +135,34 @@ describe("readSessionRequest [PREETS-SESSION-005, PREETS-TENANT-003]", () => {
     expect(resolved.session).toBe(usableSession)
   })
 
+  it("attaches a coordination snapshot to a usable session without its reference or identity", async () => {
+    install(
+      sessionDouble(() => Effect.succeed(usableSession)),
+      tenantDouble(() => Result.succeed(alias))
+    )
+
+    const before = Date.now()
+    const resolved = await readSessionRequest({ host: "springfield.example.test", reference: "opaque-reference" })
+    const after = Date.now()
+
+    expect(resolved.coordination).toBeDefined()
+    const { coordinationTag, serverTimeEpochMilliseconds, ...policy } = resolved.coordination ?? {
+      coordinationTag: "",
+      serverTimeEpochMilliseconds: Number.NaN
+    }
+    expect(coordinationTag).toMatch(/^[\w-]{43}$/)
+    expect(serverTimeEpochMilliseconds).toBeGreaterThanOrEqual(before)
+    expect(serverTimeEpochMilliseconds).toBeLessThanOrEqual(after)
+    expect(policy).toStrictEqual({
+      idleDeadlineEpochMilliseconds: usableSession.idleDeadlineEpochMilliseconds,
+      warningLeadMinutes: usableSession.warningLeadMinutes
+    })
+    const diagnostic = publicDiagnostic(resolved.coordination)
+    expect(diagnostic).not.toContain("opaque-reference")
+    expect(diagnostic).not.toContain("subject-1")
+    expect(diagnostic).not.toContain("https://provider.test/")
+  })
+
   it("loads the selected configuration before reading the tenant-bound session", async () => {
     let readCalled = false
     install(
@@ -196,6 +224,7 @@ describe("readSessionRequest [PREETS-SESSION-005, PREETS-TENANT-003]", () => {
 
     expect(resolved.session).toBe(noUsableSession)
     expect(resolved.session).toStrictEqual({ _tag: "NoUsableSession" })
+    expect(resolved.coordination).toBeUndefined()
     expect(publicDiagnostic(resolved.session)).not.toContain("subject-1")
     expect(publicDiagnostic(resolved.session)).not.toContain("springfield")
   })
