@@ -8,7 +8,7 @@ import {
   SignatureReview,
   VisitLog
 } from "../../../features/onsite.ts"
-import { requireTenantConfig } from "../../tenant-context"
+import { requireTenantConfig } from "../../tenant-context.ts"
 
 export const dynamic = "force-dynamic"
 
