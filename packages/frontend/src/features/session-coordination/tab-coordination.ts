@@ -35,6 +35,7 @@ export interface TabViewState {
 type TimerName = "confirm" | "flush" | "logout-watch" | "near-deadline" | "retry"
 
 const CONFIRMATION_RETRY_MILLISECONDS = 5_000
+/** Watch reads start on a fixed one-second cadence and each gives up after one second, keeping FR-015's 2-second bound. */
 const LOGOUT_WATCH_INTERVAL_MILLISECONDS = 1_000
 const LOGOUT_WATCH_LIMIT_MILLISECONDS = 10_000
 const ACTIVITY_EVENTS = ["beforeinput", "click", "focusin", "keydown", "pointerdown"] as const
@@ -56,7 +57,12 @@ const listenAll = (listeners: readonly Listener[]) => {
  * never ends a tab on a hint alone, and fails closed when the server cannot confirm.
  */
 export class TabCoordination {
+  /** Aborts reads still in flight when the controller is torn down. */
+  readonly #cancel = new AbortController()
   #channel: TabChannel | undefined
+  /** What each message for this tab's own session does (data-model "Channel messages"). */
+  /** A form whose held submission was confirmed; its replay passes the guard once (R15). */
+  #confirmedReplay: HTMLFormElement | undefined
   readonly #content: () => HTMLElement | null
   #deadline = Number.NEGATIVE_INFINITY
   #gesture = false
@@ -64,13 +70,13 @@ export class TabCoordination {
   readonly #initial: SessionCoordinationSnapshot
   readonly #notify: (state: TabViewState) => void
   #pendingActivity: InPageSessionActivity | undefined
-  /** What each message for this tab's own session does (data-model "Channel messages"). */
   readonly #receivers: Readonly<Record<TabMessage["type"], (message: TabMessage) => void>> = {
     "logged-out": () => {
       this.#end(false)
     },
+    // A failed request may have lost the response after the server ended the session: keep watching and confirm.
     "logout-failed": () => {
-      this.#stopTimer("logout-watch")
+      this.#guard(this.confirm())
     },
     "logout-started": () => {
       this.#watchLogout(Date.now() + LOGOUT_WATCH_LIMIT_MILLISECONDS)
@@ -109,9 +115,10 @@ export class TabCoordination {
   }
 
   /** Reads the session without renewing it and acts on the answer. Never throws. */
-  async confirm(): Promise<void> {
+  async confirm(timeout?: number): Promise<void> {
     if (this.#view === "ended") return
-    this.#applyStatus(await readSessionStatus())
+    const outcome = await readSessionStatus(this.#cancel.signal, timeout)
+    if (this.#live()) this.#applyStatus(outcome)
   }
 
   /** Logout is sent at once with `keepalive` and never enters the activity window (FR-009, research D8). */
@@ -123,6 +130,7 @@ export class TabCoordination {
     if (outcome === "failed") {
       this.#post("logout-failed")
       this.#setView("logout-failed")
+      this.#guard(this.confirm())
       return
     }
     recordEnded(this.#tag)
@@ -130,27 +138,30 @@ export class TabCoordination {
     this.#end(true)
   }
 
-  /** Communicates classified activity from `element`'s subtree; gestures are tracked at document capture (R7). */
-  observe(element: HTMLElement): () => void {
-    const classify = (event: Event) => {
-      const activity = classifySessionActivity(event, { gestureInCurrentTask: this.#gesture })
-      if (activity !== undefined) this.#activity(activity)
-    }
-    return listenAll(ACTIVITY_EVENTS.map((type) => [element, type, classify, true]))
-  }
-
-  /** Subscribes first, replays missed logouts and session changes, and only then trusts the snapshot (research D14). */
+  /**
+   * Subscribes first, replays missed logouts and session changes, and only then trusts the snapshot (research D14).
+   * Classified activity is observed within the protected content; gestures are tracked at document capture (R7).
+   */
   start(): () => void {
     this.#channel = openTabChannel((message) => {
       this.#receive(message)
     })
     const stopListening = this.#listen()
+    this.#notify({ endedHere: false, view: this.#view })
     if (!this.#replayRecords()) this.#adoptSnapshot(this.#initial, true)
     return () => {
       stopListening()
+      this.#cancel.abort()
       this.#channel?.close()
+      this.#channel = undefined
       this.#clearTimers()
     }
+  }
+
+  /** A newer server-rendered snapshot of this session (a route refresh) counts as a confirmation of it. */
+  update(snapshot: SessionCoordinationSnapshot): void {
+    if (!this.#live() || this.#view === "ended") return
+    this.#applyStatus({ _tag: "Usable", snapshot })
   }
 
   #activity(activity: InPageSessionActivity) {
@@ -165,13 +176,16 @@ export class TabCoordination {
     }))
   }
 
-  /** Adopts a snapshot of this tab's session when its store observation is later than the held one (research D6). */
-  #adoptSnapshot(snapshot: SessionCoordinationSnapshot, broadcast: boolean) {
+  /**
+   * Adopts a snapshot of this tab's session when its store observation is later than the held one (research D6).
+   * Answers whether it was adopted.
+   */
+  #adoptSnapshot(snapshot: SessionCoordinationSnapshot, broadcast: boolean): boolean {
     if (snapshot.coordinationTag !== this.#tag) {
       this.#endConfirmed()
-      return
+      return false
     }
-    if (!adoptSnapshot(this.#held, snapshot)) return
+    if (!adoptSnapshot(this.#held, snapshot)) return false
     this.#held = snapshot
     this.#deadline = Date.now() + snapshot.idleDeadlineEpochMilliseconds - snapshot.serverTimeEpochMilliseconds
     this.#schedule("confirm", this.#deadline, () => {
@@ -189,6 +203,7 @@ export class TabCoordination {
         warningLeadMinutes: snapshot.warningLeadMinutes
       })
     }
+    return true
   }
 
   #applyStatus(outcome: SessionOutcome) {
@@ -203,8 +218,7 @@ export class TabCoordination {
         })
         return
       case "Usable":
-        this.#adoptSnapshot(outcome.snapshot, true)
-        if (this.#view === "concealed" && outcome.snapshot.coordinationTag === this.#tag) this.#setView("active")
+        if (this.#adoptSnapshot(outcome.snapshot, true) && this.#view === "concealed") this.#setView("active")
     }
   }
 
@@ -220,14 +234,17 @@ export class TabCoordination {
 
   /** Holds a submission whose hint names another session, confirms, and replays it if this session is current (R15). */
   async #confirmThenReplay(form: HTMLFormElement, submitter: HTMLElement | null) {
-    const outcome = await readSessionStatus()
+    const outcome = await readSessionStatus(this.#cancel.signal)
+    if (!this.#live()) return
     this.#applyStatus(outcome)
     if (outcome._tag !== "Usable" || outcome.snapshot.coordinationTag !== this.#tag) return
     writeCurrentHint(this.#tag)
+    this.#confirmedReplay = form
     form.requestSubmit(submitter)
   }
 
   #decide(activity: InPageSessionActivity) {
+    if (!this.#live()) return
     const decision = decideActivityCommunication(readWindowRecord(), {
       coordinationTag: this.#tag,
       deadline: this.#deadline,
@@ -245,7 +262,7 @@ export class TabCoordination {
   }
 
   #end(endedHere: boolean) {
-    if (this.#view === "ended") return
+    if (this.#view === "ended" || !this.#live()) return
     this.#clearTimers()
     this.#pendingActivity = undefined
     this.#view = "ended"
@@ -264,6 +281,7 @@ export class TabCoordination {
     const activity = this.#pendingActivity
     if (lock === undefined || activity === undefined || this.#view === "ended") return
     this.#guard(lock(() => {
+      if (!this.#live()) return
       const decision = flushActivityCommunication(readWindowRecord(), { coordinationTag: this.#tag, now: Date.now() })
       if (decision._tag === "Reschedule") this.#scheduleFlush(decision.sendAt)
       if (decision._tag !== "Send") return
@@ -279,7 +297,7 @@ export class TabCoordination {
     const activity = this.#pendingActivity
     if (lock === undefined || activity === undefined) return
     this.#guard(lock(() => {
-      if (readWindowRecord()?.pendingSince === undefined) return
+      if (!this.#live() || readWindowRecord()?.pendingSince === undefined) return
       this.#decide(activity)
     }))
   }
@@ -302,6 +320,11 @@ export class TabCoordination {
         this.#gesture = false
       }, 0)
     }
+    const content = this.#content()
+    const classify = (event: Event) => {
+      const activity = classifySessionActivity(event, { gestureInCurrentTask: this.#gesture })
+      if (activity !== undefined) this.#activity(activity)
+    }
     return listenAll([
       [document, "visibilitychange", resume, false],
       [document, "resume", resume, false],
@@ -314,8 +337,14 @@ export class TabCoordination {
       [window, "storage", (event) => {
         this.#storage(event as StorageEvent)
       }, false],
+      ...ACTIVITY_EVENTS.flatMap((type): Listener[] => content === null ? [] : [[content, type, classify, true]]),
       ...GESTURE_EVENTS.map((type): Listener => [document, type, gesture, true])
     ])
+  }
+
+  /** False once torn down: late completions and queued lock work then change nothing. */
+  #live() {
+    return !this.#cancel.signal.aborted
   }
 
   /** Conceals before the page enters the back/forward cache; `RestoredPageGuard` reloads it on restore. */
@@ -369,6 +398,7 @@ export class TabCoordination {
 
   #schedule(name: TimerName, at: number, task: () => void) {
     this.#stopTimer(name)
+    if (!this.#live()) return
     this.#timers.set(name, setTimeout(task, Math.max(0, at - Date.now())))
   }
 
@@ -381,6 +411,7 @@ export class TabCoordination {
   #send(activity: InPageSessionActivity) {
     this.#guard(
       sendActivity(activity, this.#tag).then((outcome) => {
+        if (!this.#live()) return
         if (outcome._tag === "Usable") this.#adoptSnapshot(outcome.snapshot, true)
         if (outcome._tag === "Ended") this.#endConfirmed()
       })
@@ -388,7 +419,7 @@ export class TabCoordination {
   }
 
   #setView(view: Exclude<TabView, "ended">) {
-    if (this.#view === "ended") return
+    if (this.#view === "ended" || !this.#live()) return
     this.#view = view
     this.#notify({ endedHere: false, view })
   }
@@ -409,20 +440,24 @@ export class TabCoordination {
     const form = event.target
     const content = this.#content()
     if (!(form instanceof HTMLFormElement) || !content?.contains(form)) return
+    if (this.#confirmedReplay === form) {
+      this.#confirmedReplay = undefined
+      return
+    }
     if ((readCurrentHint() ?? this.#tag) === this.#tag) return
     event.preventDefault()
     this.#guard(this.#confirmThenReplay(form, event.submitter))
   }
 
-  /** After another tab starts logout, confirm each second until the outcome arrives, at most 10 s (R11). */
-  #watchLogout(until: number) {
-    if (this.#view === "ended" || Date.now() >= until) return
-    this.#schedule("logout-watch", Date.now() + LOGOUT_WATCH_INTERVAL_MILLISECONDS, () => {
-      this.#guard(
-        this.confirm().then(() => {
-          this.#watchLogout(until)
-        })
-      )
+  /**
+   * After another tab starts logout, start a confirmation each second until the outcome arrives, at most 10 s (R11).
+   * Ticks do not wait for earlier reads, so a slow read cannot push the next one past the concealment bound.
+   */
+  #watchLogout(until: number, at = Date.now() + LOGOUT_WATCH_INTERVAL_MILLISECONDS) {
+    if (this.#view === "ended" || at > until) return
+    this.#schedule("logout-watch", at, () => {
+      this.#watchLogout(until, at + LOGOUT_WATCH_INTERVAL_MILLISECONDS)
+      this.#guard(this.confirm(LOGOUT_WATCH_INTERVAL_MILLISECONDS))
     })
   }
 }

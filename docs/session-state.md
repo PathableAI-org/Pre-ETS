@@ -172,13 +172,16 @@ hidden first, and the history guard reloads it on restore. Server Action forms c
 they settle, so other tabs learn of the gate's renewal.
 
 Every protected page has a Log out button. Logout announces `logout-started`, then is sent at once
-with `keepalive`. Other tabs confirm each second until they see the outcome (at most 10 seconds),
-so they conceal even if the initiating tab closes. On 204, 401, or 409 the tab records its tag as
+with `keepalive`. Other tabs start a confirmation each second, without waiting for earlier reads,
+until they see the outcome (at most 10 seconds). Each watch read gives up after one second, so a
+tab conceals within two seconds even if the initiating tab closes. A `logout-failed` broadcast does
+not stop the watch, because the response may have been lost after the session ended; the tabs
+confirm at once instead. On 204, 401, or 409 the tab records its tag as
 ended, broadcasts, and every sharing tab unmounts protected content and shows a signed-out notice
 with a Log in link to `/`.
 Authentication never starts on its own. The same notice stands in for expiration until
 [#157](https://github.com/PathableAI-org/Pre-ETS/issues/157). If logout fails (403, 503, network),
-the tab hides content and offers Log out again. Logout ends the application session only; see
+the tab hides content, confirms its session, and offers Log out again. Logout ends the application session only; see
 [authentication](./authentication.md#application-logout). Coordination and logout need JavaScript;
 without it the gate and idle expiry still enforce access. Live multi-tab behavior is not yet
 observable in the running application until [#158](https://github.com/PathableAI-org/Pre-ETS/issues/158).

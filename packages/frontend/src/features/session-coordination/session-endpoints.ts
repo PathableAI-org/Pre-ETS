@@ -57,9 +57,15 @@ const postJson = (body: LogoutRequestBody | SessionActivityRequestBody): Request
   method: "POST"
 })
 
-/** Reads the session without renewing it; no answer within 1.5 seconds is undetermined (research D7). */
-export const readSessionStatus = (): Promise<SessionOutcome> =>
-  call("/session/status", { signal: AbortSignal.timeout(CONFIRMATION_TIMEOUT_MILLISECONDS) }).then(
+/**
+ * Reads the session without renewing it; no answer within `timeout` (1.5 seconds by default, research D7) or an
+ * aborted read is undetermined.
+ */
+export const readSessionStatus = (
+  cancel: AbortSignal,
+  timeout = CONFIRMATION_TIMEOUT_MILLISECONDS
+): Promise<SessionOutcome> =>
+  call("/session/status", { signal: AbortSignal.any([cancel, AbortSignal.timeout(timeout)]) }).then(
     outcomeOf,
     () => undetermined
   )

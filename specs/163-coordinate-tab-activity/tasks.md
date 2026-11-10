@@ -229,3 +229,10 @@ These do not change any acceptance criterion or HTTP outcome. Each needs reviewe
    research D8 names only logout). No `logged-out` broadcast is sent for it.
 9. **The fixture Server Action sets no receipt cookie.** It reports admission only, which the contract permits.
 10. **Frontend devDependency `@fast-check/vitest` 0.5.0** for the B5-W property. It was already in the lockfile.
+11. **Logout-watch reads use a one-second timeout and a fixed cadence** (review of #364). R11 says other tabs confirm
+    each second; with D7's 1.5-second read timeout and a delay counted from each response, a slow read could push
+    concealment past FR-015's two seconds. Watch reads start every second regardless of earlier reads, and each gives
+    up (undetermined, so concealed) after one second. Other confirmations keep D7's 1.5 seconds.
+12. **`logout-failed` does not cancel other tabs' watches** (review of #364). A failed request may have lost the
+    response after the store ended the session, so receiving tabs, and the initiating tab, confirm at once and keep
+    watching.

@@ -1,9 +1,12 @@
 @partial
 @preets-session-009
 Feature: Cross-tab activity coordination
-  This slice establishes that an in-page activity communication sent without a usable
-  session, including one whose record has expired or been removed, is refused and does not
-  restore access to a protected page. It does not establish renewal of a real session by
+  This slice establishes that an in-page activity communication sent with an absent,
+  malformed, or never-stored session reference is refused and does not restore access to a
+  protected page. It does not establish refusal for a stored record that has expired or been
+  removed; that evidence is the real-Redis coordination integration tests in
+  frontend-services ("does not revive an expired session through activity" and "does not
+  revive a session through activity after logout"). It also does not establish renewal of a real session by
   qualifying activity, the 60-second communication windows, exclusion of pointer movement and
   programmatic focus, multi-tab synchronization, logout, or session isolation: each needs a
   real session, which cannot be established until freshness confirmation exists (#158).

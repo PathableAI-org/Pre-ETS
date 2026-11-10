@@ -3,15 +3,31 @@
 import type { SessionCoordinationSnapshot } from "@pathableai/pre-ets-frontend-services"
 
 import { Alert, Inline, Text } from "@pathableai/react"
-import { type ReactNode, useCallback, useEffect, useRef, useState } from "react"
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react"
 
 import { SessionConfirmationProvider } from "../../providers/session-confirmation.tsx"
 import { LogoutControl } from "./logout-control.tsx"
 import { ENDED_DOCUMENT_STYLE, mountScriptSource, PROTECTED_CONTENT_ATTRIBUTE } from "./mount-script.ts"
 import { SignedOutNotice } from "./signed-out-notice.tsx"
-import { TabCoordination, type TabViewState } from "./tab-coordination.ts"
+import { TabCoordination, type TabView, type TabViewState } from "./tab-coordination.ts"
 
 const initialState: TabViewState = { endedHere: false, view: "active" }
+
+const logoutFailedAlert = (
+  <Alert heading="Logout was not completed" role="alert" status="error">
+    <Text>Protected content is hidden. Try Log out again.</Text>
+  </Alert>
+)
+
+/** How each running view presents the header and content; `ended` unmounts both. */
+const VIEW_PRESENTATION: Readonly<
+  Record<Exclude<TabView, "ended">, { readonly alert: ReactNode; readonly busy: boolean; readonly concealed: boolean }>
+> = {
+  active: { alert: null, busy: false, concealed: false },
+  concealed: { alert: null, busy: false, concealed: true },
+  "logging-out": { alert: null, busy: true, concealed: false },
+  "logout-failed": { alert: logoutFailedAlert, busy: false, concealed: true }
+}
 
 /**
  * Renders the header with Log out, then the protected content. Temporary concealment hides the content from view,
@@ -28,30 +44,38 @@ export function SessionCoordinator({
   const controller = useRef<TabCoordination | undefined>(undefined)
   const content = useRef<HTMLDivElement>(null)
 
+  const latest = useRef(snapshot)
+  const tag = snapshot.coordinationTag
+
+  // Runs before the controller effect, so a controller for a new session starts from the latest snapshot.
   useEffect(() => {
-    const coordination = new TabCoordination(snapshot, setState, () => content.current)
+    latest.current = snapshot
+    controller.current?.update(snapshot)
+  }, [snapshot])
+
+  // One controller per session: a route refresh of the same session updates it instead of replacing it.
+  useEffect(() => {
+    const coordination = new TabCoordination(latest.current, setState, () => content.current)
     controller.current = coordination
     const stop = coordination.start()
-    const element = content.current
-    const stopObserving = element === null ? undefined : coordination.observe(element)
     return () => {
-      stopObserving?.()
       stop()
       controller.current = undefined
     }
-  }, [snapshot])
+  }, [tag])
 
-  const confirm = useCallback(async () => {
-    await controller.current?.confirm()
-  }, [])
-  const logout = useCallback(() => {
-    void controller.current?.logout()
-  }, [])
+  const actions = useMemo(() => ({
+    confirm: async () => {
+      await controller.current?.confirm()
+    },
+    logout: () => {
+      void controller.current?.logout()
+    }
+  }), [])
 
-  const concealed = state.view === "concealed" || state.view === "logout-failed"
   const protectedContent = { [PROTECTED_CONTENT_ATTRIBUTE]: "" }
   return (
-    <SessionConfirmationProvider confirm={confirm} coordinationTag={snapshot.coordinationTag}>
+    <SessionConfirmationProvider confirm={actions.confirm} coordinationTag={snapshot.coordinationTag}>
       <style>{ENDED_DOCUMENT_STYLE}</style>
       {/* Runs when the document is parsed, before hydration (research D14); React does not execute it on the client. */}
       <script dangerouslySetInnerHTML={{ __html: mountScriptSource(snapshot) }} />
@@ -61,16 +85,17 @@ export function SessionCoordinator({
       {state.view === "ended" ? null : (
         <>
           <Inline as="header" justify="end">
-            <LogoutControl busy={state.view === "logging-out"} onLogout={logout} />
+            <LogoutControl busy={VIEW_PRESENTATION[state.view].busy} onLogout={actions.logout} />
           </Inline>
-          {state.view === "logout-failed" ?
-            (
-              <Alert heading="Logout was not completed" role="alert" status="error">
-                <Text>Protected content is hidden. Try Log out again.</Text>
-              </Alert>
-            ) :
-            null}
-          <div hidden={concealed} inert={concealed} ref={content} {...protectedContent}>{children}</div>
+          {VIEW_PRESENTATION[state.view].alert}
+          <div
+            hidden={VIEW_PRESENTATION[state.view].concealed}
+            inert={VIEW_PRESENTATION[state.view].concealed}
+            ref={content}
+            {...protectedContent}
+          >
+            {children}
+          </div>
         </>
       )}
     </SessionConfirmationProvider>
