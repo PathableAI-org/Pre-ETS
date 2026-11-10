@@ -43,7 +43,9 @@ reason rather than guessing.
 5. Run each verifier query from `contracts/telemetry.md` through the Grafana MCP server, filtered by
    `service.version` and the run's time range. Compare the result with the expected observation and the expected
    negative observation for each claim.
-6. Inspect the exported attributes and log fields for the touched spans against the forbidden data classes.
+6. Inspect every touched signal against the forbidden data classes: span attributes, log fields, and metric
+   labels. Confirm each metric's labels match the contract's metrics-cardinality list and include no session,
+   trace, user, or request identifier or timestamp; report any other label as forbidden data.
 7. Clean up: stop owned instances, delete owned keys, remove temporary files. Leave the shared observability stack
    running unless this session started it.
 
