@@ -112,29 +112,35 @@ criteria promise. Steps never open Redis; the authoritative deadline is read thr
 `context.request` (research D12). Browser time uses `context.clock`; tabs are pages in one context; independent
 contexts and tenants use separate `BrowserContext`s and `*.localhost` hosts.
 
-Only the two ungated scenarios are committed before #158 (increments 3–4). The nightly run discovers every
+Only the ungated no-session scenarios are committed before #158 (increments 3–4). BDD steps cannot create a usable
+session before #158 and may not open session stores, so positive renewal is evidenced only by §3's prepared-record
+procedure and the integration suites until then. The nightly run discovers every
 requirements feature, and `@partial` neither skips scenarios nor permits pending steps, so the gated scenarios below
 stay planned here and are added to the feature file in increment 5.
 
-| Scenario (tag)                                                                                                                                 | Claims       | Gate |
-| ---------------------------------------------------------------------------------------------------------------------------------------------- | ------------ | ---- |
-| Deliberate navigation renews; prefetch-shaped and subresource requests do not (009)                                                            | V-005        | none |
-| Activity after logout or expiry leaves access unavailable (009)                                                                                | V-009 (HTTP) | none |
-| Two tabs share one session and deadline; a new tab joins without login (010)                                                                   | V-001, V-002 | #158 |
-| Typing in one tab keeps the other tab usable past its former deadline (010)                                                                    | V-003        | #158 |
-| Each qualifying kind renews; pointer movement and programmatic focus do not (009)                                                              | V-006, V-007 | #158 |
-| First interaction sends at once; repeats coalesce into one send; near-deadline sends at once, across tabs (009)                                | V-008        | #158 |
-| Keyboard logout in one tab conceals and denies in every tab (010)                                                                              | V-010, V-011 | #158 |
-| Every tab shows the signed-out notice; sign-in starts only from Log in (010)                                                                   | V-017        | #158 |
-| Activity and logout leave another tenant, another context, and a later session unchanged (010)                                                 | V-012, V-016 | #158 |
-| A stale tab's queued activity and form submission after logout and re-login do not renew or affect the new session (010)                       | V-012        | #158 |
-| A logout response delayed until another tab completes a new login leaves the new session usable (010)                                          | V-012        | #158 |
-| A logout whose tab closes before the response still conceals every other tab within 2 seconds (010)                                            | V-011        | #158 |
-| An activity or document-entry response for an earlier session delayed past a new login leaves the new session's cookie and access intact (010) | V-012        | #158 |
-| A stale document parsed after a new login does not end tabs of the new session (010)                                                           | V-003, V-012 | #158 |
-| A stale document parsed after a new login cannot renew or act on the new session by submitting a form (010)                                    | V-012        | #158 |
-| A logout the server completed whose response was lost still conceals every sharing tab within 2 seconds (010)                                  | V-011        | #158 |
-| A tab opened before logout but hydrated after it shows no protected content (010)                                                              | V-011, V-017 | #158 |
+| Scenario (tag)                                                                                                                                 | Claims              | Gate |
+| ---------------------------------------------------------------------------------------------------------------------------------------------- | ------------------- | ---- |
+| Deliberate navigation renews; prefetch-shaped and subresource requests do not (009)                                                            | V-005               | #158 |
+| Activity and logout requests without a usable session are denied with 401 and never start login (009, 010)                                     | V-009 (HTTP), V-010 | none |
+| Activity after logout or expiry leaves access unavailable (009)                                                                                | V-009               | #158 |
+| Two tabs share one session and deadline; a new tab joins without login (010)                                                                   | V-001, V-002        | #158 |
+| Typing in one tab keeps the other tab usable past its former deadline (010)                                                                    | V-003               | #158 |
+| Each qualifying kind renews; pointer movement and programmatic focus do not (009)                                                              | V-006, V-007        | #158 |
+| First interaction sends at once; repeats coalesce into one send; near-deadline sends at once, across tabs (009)                                | V-008               | #158 |
+| Keyboard logout in one tab conceals and denies in every tab (010)                                                                              | V-010, V-011        | #158 |
+| Every tab shows the signed-out notice; sign-in starts only from Log in (010)                                                                   | V-017               | #158 |
+| Activity and logout leave another tenant, another context, and a later session unchanged (010)                                                 | V-012, V-016        | #158 |
+| A stale tab's queued activity and form submission after logout and re-login do not renew or affect the new session (010)                       | V-012               | #158 |
+| A logout response delayed until another tab completes a new login leaves the new session usable (010)                                          | V-012               | #158 |
+| A logout whose tab closes before the response still conceals every other tab within 2 seconds (010)                                            | V-011               | #158 |
+| An activity or document-entry response for an earlier session delayed past a new login leaves the new session's cookie and access intact (010) | V-012               | #158 |
+| A stale document parsed after a new login does not end tabs of the new session (010)                                                           | V-003, V-012        | #158 |
+| A stale document parsed after a new login cannot renew or act on the new session by submitting a form (010)                                    | V-012               | #158 |
+| A logout the server completed whose response was lost still conceals every sharing tab within 2 seconds (010)                                  | V-011               | #158 |
+| A logout whose response fails after the delete applied (503) still conceals every sharing tab (010)                                            | V-011               | #158 |
+| A keepalive logout delayed past its `notAfter` is refused and leaves the session and tabs usable (010)                                         | V-011, V-015        | #158 |
+| A logout after a new tab's inline script ran but while its bundle is delayed hides content within 2 seconds (010)                              | V-011               | #158 |
+| A tab opened before logout but hydrated after it shows no protected content (010)                                                              | V-011, V-017        | #158 |
 
 Non-BDD Playwright browser evidence (retained under `tests/bdd/support` helpers, run by the same harness) covers the
 timing bounds and lifecycle cases that Gherkin would obscure: V-004 (in a running tab, read the held deadline and
@@ -192,6 +198,8 @@ values, tags, references, tokens, or store contents.
   subscription; exposure is bounded by hydration time (research D14).
 - Pre-script paint on visibility resume is outside application control; bfcache restoration is concealed at `pagehide`
   (research D9).
+- With `localStorage` or Web Locks unavailable, two interactions in different tabs within channel latency can each
+  send once (research D5); the window is otherwise kept.
 - Snapshot ordering uses the stored record's revision; `observedAt` (Redis `TIME`) is diagnostic only (research D6).
 - The session cookie no longer has `Max-Age`; it lasts for the browser session and may outlive its record, which then
   grants nothing (research D15).

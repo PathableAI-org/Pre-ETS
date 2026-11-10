@@ -276,7 +276,8 @@ R17).
 
 **Mount script** (`session-coordination/mount-script.ts`, rendered by `SessionCoordinator`'s server-rendered markup
 as an inline `<script>` before the protected content): replays the ended record and hides content before paint, or
-broadcasts `renewed` and writes the current-session record (research D14).
+broadcasts `renewed` and writes the current-session record, then listens for a logout of its tag until the
+coordinator takes over (research D14, R23).
 
 **Browser coordinator** (`session-coordination/coordinator.tsx`, client): a reducer over the states in
 [data-model.md](data-model.md#tab-coordination-states). On hydration it subscribes to the channel and `storage`
@@ -294,11 +295,12 @@ broadcast) passes `adoptSnapshot` (higher revision wins, even with an earlier de
 `signed-out-notice.tsx` renders `Alert` + `Heading` + `Text` + `Link href="/"`; the coordinator renders the provider
 from `providers/session-confirmation.tsx` with `confirm` bound to the status read and the current `coordinationTag`.
 Logout writes the ended record before broadcasting; a network failure or timeout keeps the initiator and the other
-tabs confirming, and only a definitive 403 or 503 broadcasts `logout-failed` (research D8, R18). A held submission is
+tabs confirming until the attempt's `notAfter` plus 2 seconds; the handler refuses an attempt received after `notAfter`
+with 408; a 503 is ambiguous; only a definitive 403 or a confirmed-usable status after `notAfter` broadcasts
+`logout-failed` (research D8, R18, R21, R22). A held submission is
 replayed once with an in-memory pass, so unavailable storage cannot loop it (R19). `tab-channel.ts` wraps
-`BroadcastChannel`, `localStorage` (try/catch, treating failure as an absent record), and `navigator.locks`; where
-`navigator.locks` is unavailable, the tab sends immediately rather than coalescing (fail toward renewal of a valid
-session, never toward early expiry). `session-endpoints.ts` narrows JSON and maps statuses to coordinator events.
+`BroadcastChannel`, `localStorage` (try/catch), and `navigator.locks`; where storage or locks are unavailable, the
+window for the tab's tag is kept in memory and communication times are shared on the channel (research D5, R24). `session-endpoints.ts` narrows JSON and maps statuses to coordinator events.
 
 **Runtime and resources**: handlers run in-process on the runtime published by `startProductionRuntime`; before
 startup completes they answer 503 through `toNext`. No new resources.
@@ -319,7 +321,7 @@ logout). `specs/` outside this directory are not touched. The delivery plan is n
 | - | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- | ---------------------------------------------- |
 | 1 | Coordination server contract    | `next/coordination.ts`, `next/coordination-snapshot.ts`, gate `NON_RENEWING_PATHS` and no renewal cookie writes, callback cookie without `Max-Age`, record `revision` (v2) and store `TIME` on `UsableSession`, gate stops renewing actions, `authorizeSessionAction`, `ResolvedSessionRequest.coordination`, exports; unit, property, composed gate-plus-handler, and real-Redis integration suites | Module evidence for the adapters                                                            | None                                           |
 | 2 | Browser coordination policy     | `activity-classification.ts`, `activity-window.ts`, `tab-channel.ts`, `session-endpoints.ts`, coordinator, logout control, signed-out notice, shared provider; frontend unit suite                                                                                                                                                                                                                   | Module evidence for classifier and window                                                   | None                                           |
-| 3 | Application composition         | Route files, `(app)/layout.tsx`, fixture feature, pages, and action, `session-reference` tag and confirmation, docs, BDD feature (`@partial`) with **only executable ungated scenarios**, and support helpers                                                                                                                                                                                        | V-005 (HTTP part), V-009 (HTTP denial part)                                                 | None                                           |
+| 3 | Application composition         | Route files, `(app)/layout.tsx`, fixture feature, pages, and action, `session-reference` tag and confirmation, docs, BDD feature (`@partial`) with **only the executable no-session denial scenarios**, and support helpers                                                                                                                                                                          | V-009 (no-session denial); V-005 HTTP part is quickstart §3, not BDD                        | None                                           |
 | 4 | Ungated running-app evidence    | Quickstart §3 with prepared records; V-015 store-outage rows that need no login (status and logout handler mapping through the running app with a prepared record)                                                                                                                                                                                                                                   | V-005 HTTP, V-009 HTTP, V-015 server part                                                   | None                                           |
 | 5 | Live multi-tab feature evidence | Real-login BDD scenarios (added to the feature file only now), browser lifecycle and timing evidence, manual steps 3–10                                                                                                                                                                                                                                                                              | V-001–V-004, V-006–V-008, V-009 browser part, V-010–V-014, V-015 browser part, V-016, V-017 | **#158 B6 freshness confirmation functioning** |
 

@@ -36,28 +36,33 @@ Facts were read on 2026-11-09 from the specification branch `163-coordinate-tab-
 
 The first plan review found these defects. Each is corrected in the decision named; none changes the specification.
 
-| ID  | Defect found                                                                                                                                    | Correction                                                                                                                                                                                                        |
-| --- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| R1  | Snapshot construction in the handler module created the cycle `next/session.ts → next/coordination.ts → next/cookies.ts → next/session.ts`.     | Tag and snapshot move to a dependency-leaf child, `next/coordination-snapshot.ts`, used by both the read and the handlers (contracts).                                                                            |
-| R2  | A stale tab's Server Action carries the later session's cookie, and the gate renews it from `next-action` alone.                                | Submit guard against the shared current-session record, plus a tag field that protected actions check before any effect (D2).                                                                                     |
-| R3  | A new tab can miss a logout broadcast sent before its coordinator subscribes and keep stale content visible.                                    | Replayable ended-session record, subscribe-then-replay mount, and pre-hydration concealment (D14).                                                                                                                |
-| R4  | Committing gated real-login scenarios before #158 would fail nightly BDD; `@partial` does not skip scenarios.                                   | Increments 1–4 commit only executable ungated scenarios; gated journeys stay planned prose until increment 5 (plan, quickstart).                                                                                  |
-| R5  | The gate renews a `POST` with `next-action`, or a navigation `GET`, to the new endpoints before the handler runs.                               | The gate treats the three endpoint paths as protected, never-renewing application requests regardless of request shape, with composed evidence (D1).                                                              |
-| R6  | Ordering snapshots by deadline magnitude drops a newer refresh that shortened the timeout (S2 policy refresh).                                  | Snapshots are ordered by server read time, not deadline (D6).                                                                                                                                                     |
-| R7  | Gesture tracking on the content wrapper misses Tab from the header or body into protected content.                                              | Gestures are observed at document capture; only targets inside protected content qualify (D4).                                                                                                                    |
-| R8  | A stale flush timer could send a newer window's pending activity early.                                                                         | The flush re-checks the session tag and the current window's due time under the lock and reschedules otherwise (D5).                                                                                              |
-| R9  | Hydration-only propagation of a document-entry renewal can exceed the 2-second bound.                                                           | A small inline script broadcasts the server snapshot when the document is parsed, before hydration (D6, D14).                                                                                                     |
-| R10 | A logout response delayed past a fresh login in another tab would clear the later session's cookie with `Max-Age=0`.                            | Logout responses never touch the cookie; the record removal is authoritative, and a dead reference grants nothing (D8).                                                                                           |
-| R11 | If the initiating tab closes or crashes after the server ended the session but before broadcasting, other tabs had no trigger to conceal.       | Logout announces `logout-started` first; every other tab confirms each second until it sees the outcome; the request uses `keepalive` (D8).                                                                       |
-| R12 | A delayed renewal response (activity handler or gate) for an earlier session re-issues its cookie and overwrites a later session's cookie.      | Only session establishment writes `pathable-session`, without `Max-Age`; renewals and logout never set it (D15).                                                                                                  |
-| R13 | A snapshot stamped with server time after a read can carry older state than a renewal that completed meanwhile.                                 | Snapshots carry `observedAtEpochMilliseconds`, the Redis `TIME` returned atomically by the store transition that produced them; ordering uses it, conversion uses `serverTimeEpochMilliseconds` (D6).             |
-| R14 | A stale document can overwrite the current-session record, and a mismatch was treated as proof the tab's session ended.                         | The current-session record is a hint: a mismatch triggers confirmation, never `Ended`; only server-confirmed outcomes end a tab (D2, D9).                                                                         |
-| R15 | The submit guard dropped legitimate submissions while a tab was visibly confirming.                                                             | Submissions proceed in `Active` and `Confirming` with a matching hint; a mismatch holds the submission, confirms, and replays it with `requestSubmit` when the tab's session is confirmed current (D2).           |
-| R16 | Redis `TIME` values can tie, so strict ordering by `observedAt` can drop a changed deadline or policy.                                          | The session record gains a `revision` counter, incremented on every write; tabs adopt a snapshot only when its revision is higher. `observedAt` is kept alongside for diagnostics (D6; user decision 2026-11-10). |
-| R17 | A stale document can rewrite the hint to its own tag and then submit; the gate would renew the later session before the action rejects the tag. | The gate no longer renews Server Actions. A protected action calls `authorizeSessionAction`, which checks the tag and then renews (D2).                                                                           |
-| R18 | A network failure on logout does not show that logout failed, but `logout-failed` stopped the other tabs' confirmation watch.                   | `logout-failed` is sent only for a definitive 403 or 503; on network failure or timeout the initiator and the watching tabs keep confirming (D8).                                                                 |
-| R19 | With storage unavailable, a held submission is confirmed and replayed, then held again in a loop.                                               | A confirmed replay carries a one-shot in-memory pass for that form and submitter; the confirmed tag is also kept in memory as the hint when storage fails (D2).                                                   |
-| R20 | A stale tab could overwrite the current session's single activity-window record.                                                                | Window records are keyed by tag (`preets-session-activity:v1:<tag>`); a tab writes only its own tag's record (D3, D5).                                                                                            |
+| ID  | Defect found                                                                                                                                    | Correction                                                                                                                                                                                                                            |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| R1  | Snapshot construction in the handler module created the cycle `next/session.ts → next/coordination.ts → next/cookies.ts → next/session.ts`.     | Tag and snapshot move to a dependency-leaf child, `next/coordination-snapshot.ts`, used by both the read and the handlers (contracts).                                                                                                |
+| R2  | A stale tab's Server Action carries the later session's cookie, and the gate renews it from `next-action` alone.                                | Submit guard against the shared current-session record, plus a tag field that protected actions check before any effect (D2).                                                                                                         |
+| R3  | A new tab can miss a logout broadcast sent before its coordinator subscribes and keep stale content visible.                                    | Replayable ended-session record, subscribe-then-replay mount, and pre-hydration concealment (D14).                                                                                                                                    |
+| R4  | Committing gated real-login scenarios before #158 would fail nightly BDD; `@partial` does not skip scenarios.                                   | Increments 1–4 commit only executable ungated scenarios; gated journeys stay planned prose until increment 5 (plan, quickstart).                                                                                                      |
+| R5  | The gate renews a `POST` with `next-action`, or a navigation `GET`, to the new endpoints before the handler runs.                               | The gate treats the three endpoint paths as protected, never-renewing application requests regardless of request shape, with composed evidence (D1).                                                                                  |
+| R6  | Ordering snapshots by deadline magnitude drops a newer refresh that shortened the timeout (S2 policy refresh).                                  | Snapshots are ordered by server read time, not deadline (D6).                                                                                                                                                                         |
+| R7  | Gesture tracking on the content wrapper misses Tab from the header or body into protected content.                                              | Gestures are observed at document capture; only targets inside protected content qualify (D4).                                                                                                                                        |
+| R8  | A stale flush timer could send a newer window's pending activity early.                                                                         | The flush re-checks the session tag and the current window's due time under the lock and reschedules otherwise (D5).                                                                                                                  |
+| R9  | Hydration-only propagation of a document-entry renewal can exceed the 2-second bound.                                                           | A small inline script broadcasts the server snapshot when the document is parsed, before hydration (D6, D14).                                                                                                                         |
+| R10 | A logout response delayed past a fresh login in another tab would clear the later session's cookie with `Max-Age=0`.                            | Logout responses never touch the cookie; the record removal is authoritative, and a dead reference grants nothing (D8).                                                                                                               |
+| R11 | If the initiating tab closes or crashes after the server ended the session but before broadcasting, other tabs had no trigger to conceal.       | Logout announces `logout-started` first; every other tab confirms each second until it sees the outcome; the request uses `keepalive` (D8).                                                                                           |
+| R12 | A delayed renewal response (activity handler or gate) for an earlier session re-issues its cookie and overwrites a later session's cookie.      | Only session establishment writes `pathable-session`, without `Max-Age`; renewals and logout never set it (D15).                                                                                                                      |
+| R13 | A snapshot stamped with server time after a read can carry older state than a renewal that completed meanwhile.                                 | Snapshots carry `observedAtEpochMilliseconds`, the Redis `TIME` returned atomically by the store transition that produced them; ordering uses it, conversion uses `serverTimeEpochMilliseconds` (D6).                                 |
+| R14 | A stale document can overwrite the current-session record, and a mismatch was treated as proof the tab's session ended.                         | The current-session record is a hint: a mismatch triggers confirmation, never `Ended`; only server-confirmed outcomes end a tab (D2, D9).                                                                                             |
+| R15 | The submit guard dropped legitimate submissions while a tab was visibly confirming.                                                             | Submissions proceed in `Active` and `Confirming` with a matching hint; a mismatch holds the submission, confirms, and replays it with `requestSubmit` when the tab's session is confirmed current (D2).                               |
+| R16 | Redis `TIME` values can tie, so strict ordering by `observedAt` can drop a changed deadline or policy.                                          | The session record gains a `revision` counter, incremented on every write; tabs adopt a snapshot only when its revision is higher. `observedAt` is kept alongside for diagnostics (D6; user decision 2026-11-10).                     |
+| R17 | A stale document can rewrite the hint to its own tag and then submit; the gate would renew the later session before the action rejects the tag. | The gate no longer renews Server Actions. A protected action calls `authorizeSessionAction`, which checks the tag and then renews (D2).                                                                                               |
+| R18 | A network failure on logout does not show that logout failed, but `logout-failed` stopped the other tabs' confirmation watch.                   | `logout-failed` is sent only for a definitive 403 or 503; on network failure or timeout the initiator and the watching tabs keep confirming (D8).                                                                                     |
+| R19 | With storage unavailable, a held submission is confirmed and replayed, then held again in a loop.                                               | A confirmed replay carries a one-shot in-memory pass for that form and submitter; the confirmed tag is also kept in memory as the hint when storage fails (D2).                                                                       |
+| R20 | A stale tab could overwrite the current session's single activity-window record.                                                                | Window records are keyed by tag (`preets-session-activity:v1:<tag>`); a tab writes only its own tag's record (D3, D5).                                                                                                                |
+| R21 | A keepalive logout reaching the server after the 10-second watch could end the session unseen by stopped watchers.                              | The logout body carries `notAfter` (server clock + 10 s, from the tab's server offset); the handler refuses a later arrival with 408 and no store write. Watches run until `notAfter` + 2 s, so no invalidation can follow them (D8). |
+| R22 | A 503 can follow a delete that applied (S2 covers `DEL` applying before its reply fails), so it does not prove logout failed.                   | 503 is ambiguous like a network failure; `logout-failed` is broadcast only after `notAfter` has passed and status confirms the session still usable (D8).                                                                             |
+| R23 | A logout after the inline script ran but before hydration had no listener to conceal content.                                                   | The inline script also subscribes to the channel and `storage` until the coordinator takes over; a `logged-out` for its tag sets `data-session-ended` at once (D14).                                                                  |
+| R24 | Without storage or locks, every interaction was sent immediately, breaking FR-007 coalescing.                                                   | Fallback keeps the window in memory per tab and shares communication times over the channel; only a near-simultaneous cross-tab race can duplicate a send, recorded as a limitation (D5).                                             |
+| R25 | The ungated positive-renewal BDD scenario needs a usable session, which BDD cannot create before #158.                                          | Ungated BDD keeps only no-session denial scenarios; prepared-record renewal stays in quickstart §3 and integration tests (quickstart §4).                                                                                             |
 
 ## Current implementation facts
 
@@ -269,6 +274,14 @@ communication (including a near-deadline one) starts a new window, and no intera
 A pure function lets Fast-Check state the B5-W invariants directly (D5 evidence in
 [contracts/modules.md](contracts/modules.md)).
 
+**Storage or locks unavailable (R24)**: when `localStorage` or `navigator.locks` is unavailable, each tab keeps the
+window record for its own tag in memory, and every send broadcasts `communicated { at }` on the channel. Receiving tabs
+update their in-memory `lastCommunicatedAt`, so the window stays shared across running tabs, and each tab flushes only
+its own pending activity. Within one tab, the window is exact. Across tabs, two interactions within channel delivery
+latency (milliseconds) can each send once. That duplicate is a renewal of a valid session, never a missed one, and is
+recorded in [quickstart.md](quickstart.md#limitations). Without `BroadcastChannel` as well, only the per-tab window
+applies.
+
 **Limitation**: Browsers throttle timers in hidden tabs. The tab where interaction occurs is visible, so its timer is
 not throttled; a pending record whose only running tabs are hidden may be sent late. This is recorded in
 [quickstart.md](quickstart.md#limitations).
@@ -329,13 +342,18 @@ broadcast already knows, and otherwise expiration is the remaining cause.
   page (FR-013). Activation sends `POST /auth/logout` with `{ coordinationTag }` immediately, never through the
   activity window (FR-009).
 - **Before the request (R11)**: the tab broadcasts `logout-started` for its tag and sends the request with
-  `keepalive: true`, so it completes even if the tab closes. Every other tab with that tag then confirms through
-  `GET /session/status` once per second until it receives `logged-out` or `logout-failed`, or until 10 seconds pass with
-  the session still usable. A 401 or a different tag ends the tab. If the initiator dies after the server ended the
-  session, each surviving tab therefore conceals within about one second of the server ending it, inside the 2-second
-  bound. The initiator broadcasts `logout-failed` only on a definitive 403 or 503 response. A network failure or
-  timeout is ambiguous, since the server may have removed the record and then lost the response. In that case the
-  initiator does not broadcast; it confirms with status itself, and the other tabs keep watching (R18).
+  `keepalive: true`, so it completes even if the tab closes. The body carries `notAfter`, the server-clock time 10
+  seconds ahead (computed from the tab's server offset, D6); the handler answers 408 with no store write when it
+  receives the request later than that (R21). `logout-started` carries the same `notAfter`. Every other tab with that
+  tag then confirms through `GET /session/status` once per second until it receives `logged-out` or `logout-failed`, or
+  until `notAfter` plus 2 seconds has passed with the session still usable; after that no invalidation from this
+  attempt can happen. A 401 or a different tag ends the tab. If the initiator dies after the server ended the session,
+  each surviving tab therefore conceals within about one second of the server ending it, inside the 2-second bound.
+  The initiator broadcasts `logout-failed` only for a definitive 403, or after `notAfter` has passed and its own status
+  confirmation shows the session still usable. A network failure, timeout, or 503 is ambiguous, since the server may
+  have removed the record and then lost or failed the reply (S2 covers `DEL` applying before its reply fails). In that
+  case the initiator does not broadcast; it confirms with status itself, and the other tabs keep watching (R18,
+  R22).
 - **No cookie change (R10)**: the logout response sets no cookie. If it is delayed until another tab has completed a
   fresh login, an unconditional `Max-Age=0` would delete the later session's cookie. The removed record is the
   authority; the old reference left in the cookie names nothing and grants nothing, and the next login overwrites it.
@@ -343,11 +361,12 @@ broadcast already knows, and otherwise expiration is the remaining cause.
   then broadcasts `logged-out` for its tag, and shows the signed-out notice (D14). Every other running tab with that tag shows the same notice on receipt (FR-015, B5-S).
 - **401** or **409**: the tab's session is no longer in force in this browser. The tab records its tag as ended,
   shows the signed-out notice, and broadcasts. It does not state that it ended a session (FR-021).
-- **Network failure or timeout (R18)**: outcome unknown. The tab conceals protected content and confirms with status
+- **Network failure, timeout, 503, or 408 (R18, R22)**: outcome unknown (408 means the server refused a late attempt,
+  so it is known not to have invalidated, but the tab still confirms rather than assuming). The tab conceals protected content and confirms with status
   until it gets an answer. A 401 or a different tag means the session ended: the tab records the tag as ended,
   broadcasts `logged-out`, and shows the notice. A usable same-tag answer means logout did not complete; the tab then
   behaves as below.
-- **403/503 (or confirmed still usable)**: logout did not complete. The tab conceals protected content, announces that logout could
+- **403, or confirmed still usable after `notAfter`**: logout did not complete. The tab conceals protected content, announces that logout could
   not be completed, keeps the Log out control available to retry, and does not broadcast (FR-021).
 - **Signed-out notice (FR-023, SC-011, V-017; maintainer decision A, 2026-11-09)**: every tab — the initiating tab
   and each other sharing tab — shows an accessible signed-out notice (`Alert` with a heading and a polite live region)
@@ -445,6 +464,9 @@ bundle; JSON of the snapshot without identity or reference) that runs when parse
    then hides the protected content wrapper (`html[data-session-ended] [data-protected-content] { display: none }`)
    before it is painted.
 2. Otherwise broadcast `renewed` with the snapshot (D6) and write the tag to `preets-session-current:v1`.
+3. Subscribe to the channel and the `storage` event (R23). Until the coordinator takes over, a `logged-out` message for
+   this tag, or the tag appearing in the ended record, sets `data-session-ended` at once, so content is hidden within
+   the 2-second bound even while the client bundle is delayed. The coordinator closes this listener after it subscribes.
 
 When the coordinator hydrates, it subscribes to the channel and `storage` events first. It then replays the ended and
 current records, so a logout that happened between the server render and subscription is applied. If the tag ended,
@@ -454,8 +476,8 @@ before it broadcasts, so a tab that subscribes late still sees it.
 **Rationale**: a server-rendered snapshot can predate a logout in another tab by the time the page is parsed. The
 ended record makes that logout replayable, and the inline script applies it before the content is painted.
 
-**Limitation**: a logout that completes after the inline script ran and before the coordinator subscribed is applied
-at subscription, so its exposure is bounded by hydration time. Once subscribed, B5-S applies.
+**Limitation**: a page that has not parsed its protected layout yet shows nothing protected. Once the inline script
+runs, B5-S applies through its listener and then through the coordinator.
 
 ### D15. Only establishment writes the session cookie (R12)
 
