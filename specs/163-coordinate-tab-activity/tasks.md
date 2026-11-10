@@ -156,7 +156,8 @@ Blocks every story: the snapshot, tag, and three endpoints are what every tab co
 
 ## Phase 9: Evidence and completion
 
-- [x] T028 Increment 4: execute quickstart §3 against a production build with a transient, uncommitted scratchpad
+- [ ] T028 Increment 4 (**stale: re-run pending** — the recorded run used the superseded protocol; see quickstart
+      "Execution results"): execute quickstart §3 against a production build with a transient, uncommitted scratchpad
       preparer importing only the built public `SessionService`, owned prefixes, and cleanup; execute the V-015
       server rows (status and logout with the store unavailable). Record results under quickstart "Execution
       results" without cookie values, tags, or references.

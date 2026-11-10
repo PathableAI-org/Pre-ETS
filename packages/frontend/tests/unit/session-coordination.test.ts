@@ -353,13 +353,14 @@ describe("applyCommunication (research D5, R32, R36) [PREETS-SESSION-009]", () =
       for (const at of interactions) {
         expect(communications.some((sentAt) => sentAt >= at && sentAt - at <= WINDOW)).toBe(true)
       }
-      // A send is justified by an interaction no communication this tab knew of by then had covered.
+      // A send is justified by an interaction no communication this tab knew of by then had covered. An interaction in
+      // the same millisecond as one of this tab's sends follows it, so that send does not cover it.
       for (const sentAt of sends) {
-        const known = [
-          ...sends.filter((other) => other < sentAt),
-          ...received.filter(([at, delay]) => at + delay < sentAt).map(([at]) => at)
-        ]
-        const uncovered = interactions.some((at) => at <= sentAt && known.every((other) => other < at))
+        const ownEarlier = sends.filter((other) => other < sentAt)
+        const receivedEarlier = received.filter(([at, delay]) => at + delay < sentAt).map(([at]) => at)
+        const uncovered = interactions.some((at) =>
+          at <= sentAt && ownEarlier.every((other) => other <= at) && receivedEarlier.every((other) => other < at)
+        )
         expect(uncovered).toBe(true)
       }
     }

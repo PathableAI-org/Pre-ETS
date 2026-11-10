@@ -730,8 +730,10 @@ export class TabCoordination {
     else this.#guard(lock(task))
   }
 
+  /** Storage that stops accepting writes moves this tab to the in-memory fallback, keeping the record (R24). */
   #writeWindow(record: ActivityWindowRecord) {
-    if (this.#sharedWindow) writeWindowRecord(this.#tag, record)
-    else this.#memoryWindow = record
+    if (this.#sharedWindow && writeWindowRecord(this.#tag, record)) return
+    this.#sharedWindow = false
+    this.#memoryWindow = record
   }
 }

@@ -193,11 +193,12 @@ const pruneWindowRecords = (keep: ReadonlySet<string>) => {
   }
 }
 
-/** Writes only this session's record, under the cross-tab window lock. */
-export const writeWindowRecord = (coordinationTag: string, record: ActivityWindowRecord): void => {
+/** Writes only this session's record, under the cross-tab window lock. Answers whether it was stored. */
+export const writeWindowRecord = (coordinationTag: string, record: ActivityWindowRecord): boolean => {
   const key = `${RECORD_PREFIX}${coordinationTag}`
-  if (!writeJson(key, record)) return
+  if (!writeJson(key, record)) return false
   pruneWindowRecords(new Set([`${RECORD_PREFIX}${readCurrentHint() ?? coordinationTag}`, key]))
+  return true
 }
 
 /** The current-session hint: the tag of the most recently mounted protected document. A hint, never proof (R14). */
