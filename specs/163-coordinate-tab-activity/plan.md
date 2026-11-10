@@ -277,8 +277,8 @@ R17).
 **Browser coordinator** (`session-coordination/coordinator.tsx`, client): a reducer over the states in
 [data-model.md](data-model.md#tab-coordination-states). On mount (after hydration) it subscribes to the channel and
 `storage` events, replays the ended record, then adopts the snapshot, writes the current-session hint, and broadcasts
-the page-load renewal (research D14). There is no inline pre-hydration script; the resulting gaps G1 and G2 are
-acknowledged below. Document-level capture listeners observe
+the page-load renewal (research D14). There is no inline pre-hydration script; the resulting gaps G1 (logout while a tab is
+loading) and G2 (renewal by page load) are acknowledged below. Document-level capture listeners observe
 `keydown` and `pointerdown` for the "gesture in the current task" flag (cleared by `setTimeout(0)`), and capture
 listeners for `click`, `beforeinput`, `keydown`, `pointerdown`, and `focusin` classify only targets inside the
 protected content wrapper. A document-level capture `submit` listener applies the submit guard (research D2).
@@ -341,17 +341,22 @@ request alone. Gated claims are reported incomplete until #158 functions, never 
 
 ## Authority findings and open decisions
 
-| Spec finding                           | Plan disposition                                                                                                                                                                                                                                                                                                                    |
-| -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1. Real-session execution gate         | Planned with proposal A, S1's precedent: increments 1–4 now, increment 5 after #158 ([research F-1](research.md#f-1-real-session-execution-gate-spec-authority-finding-1-planned-resolution-a-as-s1)). Needs maintainer acceptance at the plan gate.                                                                                |
-| 2. Identity-provider session on logout | **Flagged.** Planned as application-session logout only; provider logout would enter through the requirements workflow ([research F-2](research.md#f-2-identity-provider-session-on-logout-spec-authority-finding-2-flagged-application-session-only)).                                                                             |
-| 3. Presentation in tabs after logout   | **Resolved in the specification** (US3 scenario 6, FR-023, SC-011, V-017; maintainer decision A of 2026-11-09). Designed in research D8: every tab unmounts protected content and shows an accessible signed-out notice with a Log in link to `/`, which enters S1's fresh-entry flow; nothing starts authentication automatically. |
+| Spec finding                               | Plan disposition                                                                                                                                                                                                                                                                                                                    |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1. Real-session execution gate             | Planned with proposal A, S1's precedent: increments 1–4 now, increment 5 after #158 ([research F-1](research.md#f-1-real-session-execution-gate-spec-authority-finding-1-planned-resolution-a-as-s1)). Needs maintainer acceptance at the plan gate.                                                                                |
+| 2. Identity-provider session on logout     | **Flagged.** Planned as application-session logout only; provider logout would enter through the requirements workflow ([research F-2](research.md#f-2-identity-provider-session-on-logout-spec-authority-finding-2-flagged-application-session-only)).                                                                             |
+| 3. Presentation in tabs after logout       | **Resolved in the specification** (US3 scenario 6, FR-023, SC-011, V-017; maintainer decision A of 2026-11-09). Designed in research D8: every tab unmounts protected content and shows an accessible signed-out notice with a Log in link to `/`, which enters S1's fresh-entry flow; nothing starts authentication automatically. |
+| 5. Acknowledged gaps in the 2-second bound | **Resolved in the specification** (spec Acknowledged limitations G1 and G2; maintainer decision of 2026-11-10). No pre-hydration inline script is built (research D6, D14).                                                                                                                                                         |
 
-**Acknowledged gaps (user decision 2026-11-10)**: no pre-hydration inline script is built. G1: a tab that loads while
-another tab logs out can briefly show protected content until its coordinator mounts and replays the ended record; the
-server still denies its requests. G2: the page-load renewal reaches other tabs only after hydration, so the B5
-2-second synchronization bound may be missed on slow devices ([research D6, D14](research.md#d14-mounting-a-protected-document-subscribe-replay-then-trust)).
-The affected specification claims are reported to the specification owner to record.
+**Acknowledged gaps** ([spec Acknowledged limitations](spec.md#acknowledged-limitations), Authority finding 5;
+maintainer decision of 2026-11-10): no pre-hydration inline script is built.
+
+- **G1 — logout while a tab is loading**: a tab still loading when another tab logs out may briefly show protected
+  content until its coordinator mounts and replays the ended record; the server denies every protected request from
+  it throughout ([research D14](research.md#d14-mounting-a-protected-document-subscribe-replay-then-trust)).
+- **G2 — renewal by page load**: a document-entry renewal reaches other sharing tabs only after the new page's
+  coordinator mounts, so the 2-second bound can be missed; renewals from in-page activity and form submissions still
+  meet it (research D6).
 
 Non-blocking findings F-4 (logout when a later session is in force) and F-5 (JavaScript required for coordination and
 logout) are recorded in [research.md](research.md#findings). The user decided on 2026-11-10 that unit tests may import the

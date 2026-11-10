@@ -191,10 +191,11 @@ values, tags, references, tokens, or store contents.
 
 - Every gated row is **incomplete** until #158's freshness confirmation functions.
 - Coalesced sends whose only running tabs are hidden can be delayed by browser timer throttling (research D5).
-- **Acknowledged gap G1** (user decision 2026-11-10): a tab that loads while another tab logs out can show protected
+- **Acknowledged gap G1 — logout while a tab is loading** (spec Acknowledged limitations; maintainer decision
+  2026-11-10): a tab that loads while another tab logs out can show protected
   content until its coordinator mounts and replays the ended record; the server denies its requests throughout
   (research D14).
-- **Acknowledged gap G2** (user decision 2026-11-10): a document-entry renewal reaches other tabs only after the new
+- **Acknowledged gap G2 — renewal by page load** (spec Acknowledged limitations; maintainer decision 2026-11-10): a document-entry renewal reaches other tabs only after the new
   document hydrates, so the 2-second synchronization bound may be missed on slow devices (research D6).
 - Pre-script paint on visibility resume is outside application control; bfcache restoration is concealed at `pagehide`
   (research D9).

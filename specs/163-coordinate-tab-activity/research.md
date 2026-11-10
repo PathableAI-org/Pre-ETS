@@ -318,7 +318,8 @@ comparable. Server-relative conversion removes browser/server clock skew and sti
 time. A Server Action's renewal is invisible to client code, so its consumer must ask; the only current consumer is
 `ReferenceOperation`, and the fixture form follows the same rule.
 
-**Acknowledged gap G2 (user decision 2026-11-10)**: a document-entry renewal reaches other tabs only after the new
+**Acknowledged gap G2 — renewal by page load** (spec Acknowledged limitations, Authority finding 5; maintainer
+decision 2026-11-10): a document-entry renewal reaches other tabs only after the new
 document hydrates and its coordinator mounts. On a slow device or with delayed script bundles, the B5 2-second
 synchronization bound for that renewal may be missed. Other tabs still confirm with the server before acting on their
 own deadline (D7), so the gap cannot cause early expiration; it can leave another tab holding the older deadline and
@@ -474,7 +475,8 @@ A logout writes the ended record before it broadcasts, so a tab that subscribes 
 **Rationale**: a server-rendered snapshot can predate a logout in another tab by the time the page loads. The ended
 record makes that logout replayable once the coordinator runs.
 
-**Acknowledged gap G1 (user decision 2026-11-10)**: a tab that loads while another tab logs out can show protected
+**Acknowledged gap G1 — logout while a tab is loading** (spec Acknowledged limitations, Authority finding 5;
+maintainer decision 2026-11-10): a tab that loads while another tab logs out can show protected
 content from the time the browser paints the server-rendered page until its coordinator mounts and replays the ended
 record. That window depends on hydration time and may exceed the 2-second concealment bound. The server still denies
 every protected request from that tab, because the session record is gone (S2) and the gate refuses it (S1); no
