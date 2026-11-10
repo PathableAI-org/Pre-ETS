@@ -156,7 +156,7 @@ const read = (runtime: SessionRuntime, reference: string): Promise<NoUsableSessi
     return yield* service.read({ reference })
   }))
 
-const invalidate = (runtime: SessionRuntime, reference: string): Promise<NoUsableSession> =>
+const invalidate = (runtime: SessionRuntime, reference: string) =>
   runtime.runPromise(Effect.gen(function*() {
     const service = yield* SessionService
     return yield* service.invalidate({ reference })
@@ -316,7 +316,7 @@ describe("SessionService dedicated Redis outage", () => {
       await pauseStore(store)
       needsRestart = true
 
-      const operations = [
+      const operations: readonly Promise<Result.Result<unknown, unknown>>[] = [
         readResult(clients[0], sessions[0].reference),
         refreshResult(clients[1], sessions[1].reference),
         invalidateResult(clients[2], sessions[2].reference)

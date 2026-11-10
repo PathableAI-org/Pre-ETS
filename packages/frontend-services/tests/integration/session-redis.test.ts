@@ -380,7 +380,12 @@ describe("SessionService with independently scoped NodeRedis clients [PREETS-SES
         const invalidationResult = yield* service.invalidate({ reference: forInvalidation.reference }).pipe(
           Effect.result
         )
-        return [readResult, refreshResult, invalidationResult] as const
+        const all: readonly Result.Result<unknown, SessionServiceUnavailable | SessionTenantMismatch>[] = [
+          readResult,
+          refreshResult,
+          invalidationResult
+        ]
+        return all
       }))
       for (const result of results) {
         expect(Result.isFailure(result)).toBe(true)

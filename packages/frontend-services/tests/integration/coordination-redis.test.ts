@@ -1,5 +1,5 @@
 import { NodeRedis } from "@effect/platform-node"
-import { Effect, Layer, ManagedRuntime, Result, Schema } from "effect"
+import { Deferred, Effect, Layer, ManagedRuntime, Result, Schema } from "effect"
 import { NextRequest, NextResponse } from "next/server"
 import { randomUUID } from "node:crypto"
 import { setTimeout as sleep } from "node:timers/promises"
@@ -248,7 +248,8 @@ describe("coordination handlers over the real session store [PREETS-SESSION-009,
     withWorld(async (world) => {
       const established = await establish(world)
       const { coordinationTag } = await readSnapshot(established.reference)
-      await world.runPromise(SessionRedis.use((redis) => redis.injectNext("DEL", { _tag: "FailAfterApply" })))
+      // The handler's read is the first script evaluation; the cutoff delete is the second.
+      await world.runPromise(SessionRedis.use((redis) => redis.injectNext("EVALSHA", { _tag: "FailAfterApply" }, 1)))
 
       const response = await logout(
         post("/auth/logout", established.reference, { coordinationTag, notAfter: Date.now() + 10_000 })
@@ -257,6 +258,44 @@ describe("coordination handlers over the real session store [PREETS-SESSION-009,
       expect(response.status).toBe(503)
       expect(await storedDeadlines(world)).toEqual([])
       expect((await status(statusRequest(established.reference))).status).toBe(401)
+    }))
+
+  it("deletes only while Redis TIME is at or before the cutoff", () =>
+    withWorld(async (world) => {
+      const late = await establish(world)
+      const invalidate = (reference: string, notAfterEpochMilliseconds: number) =>
+        world.runPromise(
+          SessionService.use((sessions) => sessions.invalidate({ notAfterEpochMilliseconds, reference }))
+        )
+
+      expect(await invalidate(late.reference, Date.now() - 1_000)).toStrictEqual({ _tag: "InvalidationExpired" })
+      expect(await storedDeadlines(world)).toHaveLength(1)
+      expect(await invalidate(late.reference, Date.now() + 10_000)).toStrictEqual({ _tag: "NoUsableSession" })
+      expect(await storedDeadlines(world)).toEqual([])
+    }))
+
+  it("refuses with 408 and keeps the record when an admitted logout reaches the delete after its cutoff", () =>
+    withWorld(async (world) => {
+      const established = await establish(world)
+      const { coordinationTag } = await readSnapshot(established.reference)
+      const started = Effect.runSync(Deferred.make<undefined>())
+      const release = Effect.runSync(Deferred.make<undefined>())
+      await world.runPromise(
+        SessionRedis.use((redis) => redis.injectNext("EVALSHA", { _tag: "Hold", release, started }, 1))
+      )
+
+      const pending = logout(
+        post("/auth/logout", established.reference, { coordinationTag, notAfter: Date.now() + 300 })
+      )
+      await Effect.runPromise(Deferred.await(started))
+      await sleep(600)
+      Effect.runSync(Deferred.succeed(release, undefined))
+      const response = await pending
+
+      expect(response.status).toBe(408)
+      expect(response.headers.getSetCookie()).toEqual([])
+      expect(await storedDeadlines(world)).toHaveLength(1)
+      expect((await status(statusRequest(established.reference))).status).toBe(200)
     }))
 
   it("does not revive an expired session through activity", () =>

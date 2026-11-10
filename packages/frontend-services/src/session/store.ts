@@ -10,7 +10,7 @@ type CreateOutcome =
   | { readonly _tag: "Created"; readonly observedAtEpochMilliseconds: number }
   | { readonly _tag: "Exists" }
 
-type InvalidateOutcome = "missing" | "removed"
+type InvalidateOutcome = "expired" | "missing" | "removed"
 
 /** `observedAtEpochMilliseconds` is the Redis `TIME` read inside the atomic transition that returned the payload. */
 type ReadOutcome =
@@ -197,6 +197,25 @@ redis.call("SET", key, replacement, "PX", new_deadline - received_at)
 return {"renewed", replacement, observed_at()}
 `
 
+/**
+ * Deletes the record only while Redis `TIME` is at or before the cutoff, in one atomic step, so an attempt admitted
+ * before the cutoff cannot delete after it (research D8, R27). Times are compared in whole microseconds.
+ */
+const cutoffInvalidationLua = `
+local cutoff_ms = tonumber(ARGV[1])
+if cutoff_ms == nil then return "rejected" end
+local now = redis.call("TIME")
+local now_us = tonumber(now[1]) * 1000000 + tonumber(now[2])
+if now_us > math.floor(cutoff_ms * 1000) then return "expired" end
+if redis.call("DEL", KEYS[1]) == 1 then return "removed" end
+return "missing"
+`
+
+const cutoffInvalidation = Redis.script(
+  (key: string, cutoffMilliseconds: string) => [key, cutoffMilliseconds],
+  { lua: cutoffInvalidationLua, numberOfKeys: 1 }
+).withReturnType<unknown>()
+
 interface TransitionInput {
   readonly activity: string
   readonly idleTimeoutMilliseconds: number
@@ -264,11 +283,16 @@ const makeCreate = (redis: Redis.Redis["Service"], prefix: string) =>
   })
 
 const makeInvalidate = (redis: Redis.Redis["Service"], prefix: string) =>
-  Effect.fnUntraced(function*(address: SessionStoreAddress) {
-    const reply = yield* redis.send("DEL", keyFor(prefix, address.reference)).pipe(
+  Effect.fnUntraced(function*(address: SessionStoreAddress, cutoffMilliseconds?: number) {
+    const key = keyFor(prefix, address.reference)
+    if (cutoffMilliseconds === undefined) {
+      const reply = yield* redis.send("DEL", key).pipe(Effect.mapError(unavailable))
+      return yield* expectedReply(reply, [[0, "missing"], [1, "removed"]])
+    }
+    const reply = yield* redis.eval(cutoffInvalidation)(key, String(cutoffMilliseconds)).pipe(
       Effect.mapError(unavailable)
     )
-    return yield* expectedReply(reply, [[0, "missing"], [1, "removed"]])
+    return yield* expectedReply(reply, [["expired", "expired"], ["missing", "missing"], ["removed", "removed"]])
   })
 
 const makeTransition = (redis: Redis.Redis["Service"], prefix: string) =>
@@ -324,7 +348,8 @@ export class SessionStore extends Context.Service<SessionStore, {
     ttlMilliseconds: number
   ) => Effect.Effect<CreateOutcome, SessionStoreUnavailable>
   readonly invalidate: (
-    address: SessionStoreAddress
+    address: SessionStoreAddress,
+    cutoffMilliseconds?: number
   ) => Effect.Effect<InvalidateOutcome, SessionStoreUnavailable>
   readonly read: (
     input: { readonly receivedAt: number; readonly reference: string }

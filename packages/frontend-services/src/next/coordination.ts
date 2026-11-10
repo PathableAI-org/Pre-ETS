@@ -153,7 +153,12 @@ const logout = Effect.fn("logout")(function*(request: NextRequest) {
   const current = yield* currentSession(request)
   if (Option.isNone(current)) return emptyResponse(401)
   yield* requireTag(current.value.reference, body.coordinationTag)
-  yield* (yield* SessionService).invalidate({ reference: current.value.reference })
+  // The store enforces the cutoff atomically with the delete, so an admitted attempt cannot delete later (R27).
+  const outcome = yield* (yield* SessionService).invalidate({
+    notAfterEpochMilliseconds: body.notAfter,
+    reference: current.value.reference
+  })
+  if (outcome._tag === "InvalidationExpired") return yield* new LateLogoutAttempt({})
   return emptyResponse(204)
 }, respondToFailures)
 

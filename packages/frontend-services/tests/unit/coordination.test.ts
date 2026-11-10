@@ -12,6 +12,7 @@ import {
   type InPageSessionActivity
 } from "../../src/next.ts"
 import {
+  type InvalidationExpired,
   type NoUsableSession,
   type RefreshSessionForTenantInput,
   SessionService,
@@ -63,7 +64,7 @@ type SessionOutcome = Effect.Effect<NoUsableSession | UsableSession, SessionServ
 let recorded: Recorded = { invalidations: [], refreshes: [] }
 
 interface Doubles {
-  readonly invalidate?: Effect.Effect<NoUsableSession, SessionServiceUnavailable>
+  readonly invalidate?: Effect.Effect<InvalidationExpired | NoUsableSession, SessionServiceUnavailable>
   readonly session?: () => SessionOutcome
   readonly tenant?: Result.Result<TenantAlias, TenantFailure>
 }
@@ -349,6 +350,14 @@ describe("status and logout outcomes [PREETS-SESSION-010]", () => {
 
     await expectEmpty(await logout(post("/auth/logout", logoutBody(tag, Date.now() - 1))), 408)
     expect(recorded.invalidations).toEqual([])
+  })
+
+  it("answers 408 when the store reports the cutoff passed before the delete", async () => {
+    const tag = await tagFor(defaultReference)
+    install({ invalidate: Effect.succeed({ _tag: "InvalidationExpired" }) })
+
+    await expectEmpty(await logout(post("/auth/logout", logoutBody(tag))), 408)
+    expect(recorded.invalidations).toEqual([defaultReference])
   })
 
   it("answers 401 and invalidates nothing when there is no usable session", async () => {

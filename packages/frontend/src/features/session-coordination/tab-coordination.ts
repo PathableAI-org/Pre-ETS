@@ -10,15 +10,16 @@ import {
 import { readSessionStatus, sendActivity, sendLogout, type SessionOutcome } from "./session-endpoints.ts"
 import { adoptSnapshot } from "./snapshot-order.ts"
 import {
+  addPendingLogout,
   CURRENT_KEY,
   ENDED_KEY,
   openTabChannel,
+  pendingLogouts,
   readCurrentHint,
   readEndedTags,
-  readLogoutInProgress,
   readWindowRecord,
   recordEnded,
-  recordLogoutInProgress,
+  removePendingLogout,
   storageAvailable,
   type TabChannel,
   type TabMessage,
@@ -52,8 +53,11 @@ const CONFIRMATION_RETRY_MILLISECONDS = 5_000
 const LOGOUT_WATCH_INTERVAL_MILLISECONDS = 1_000
 /** A logout attempt is refused by the server after `notAfter`, this far ahead on the server clock (R21). */
 const LOGOUT_ATTEMPT_MILLISECONDS = 10_000
-/** Watches outlast `notAfter` by this much, so no invalidation from the attempt can follow them (R21). */
-const LOGOUT_WATCH_GRACE_MILLISECONDS = 2_000
+/**
+ * Watches outlast `notAfter` by this much: the confirmation interval plus up to 1 s of application/Redis clock
+ * difference, so no invalidation from the attempt can commit after them (R21, R27).
+ */
+const LOGOUT_WATCH_GRACE_MILLISECONDS = 3_000
 const ACTIVITY_EVENTS = ["beforeinput", "click", "focusin", "keydown", "pointerdown"] as const
 const GESTURE_EVENTS = ["keydown", "pointerdown"] as const
 
@@ -73,6 +77,8 @@ const listenAll = (listeners: readonly Listener[]) => {
  * never ends a tab on a hint alone, and fails closed when the server cannot confirm.
  */
 export class TabCoordination {
+  /** Unresolved logout attempts of this tag, by attempt, with the local time their watch ends (R26). */
+  readonly #attempts = new Map<string, number>()
   /** Aborts reads still in flight when the controller is torn down. */
   readonly #cancel = new AbortController()
   #channel: TabChannel | undefined
@@ -88,13 +94,13 @@ export class TabCoordination {
   /** The confirmed tag when storage could not hold it; used as this tab's hint (R19). */
   #hintOverride: string | undefined
   readonly #initial: SessionCoordinationSnapshot
-  /** This tab's logout attempt's `notAfter` on the local clock; a usable answer after it means logout failed (R22). */
-  #logoutNotAfter = Number.POSITIVE_INFINITY
   /** This tab's logout had no definitive answer; confirmation decides its outcome (R18). */
   #logoutUnresolved = false
   /** The window for this tab's tag when storage or locks are unavailable (R24). */
   #memoryWindow: ActivityWindowRecord | undefined
   readonly #notify: (state: TabViewState) => void
+  /** This tab's own latest logout attempt (R26). */
+  #ownAttempt: string | undefined
   #pendingActivity: InPageSessionActivity | undefined
   /** What each message for this tab's own session does (data-model "Channel messages"). */
   readonly #receivers: Readonly<Record<TabMessage["type"], (message: TabMessage) => void>> = {
@@ -106,13 +112,15 @@ export class TabCoordination {
     "logged-out": () => {
       this.#end(false)
     },
-    // Sent only for a definitive 403 or 503, so logout did not happen (R18).
-    "logout-failed": () => {
-      this.#stopTimer("logout-watch")
+    // One attempt failed definitively; watching continues while another attempt of this tag is unresolved (R26).
+    "logout-failed": (message) => {
+      if (message.type !== "logout-failed") return
+      this.#attempts.delete(message.attemptId)
+      this.#watchLogout()
     },
     "logout-started": (message) => {
       if (message.type !== "logout-started") return
-      this.#watchLogout(message.notAfter - this.#serverOffset + LOGOUT_WATCH_GRACE_MILLISECONDS)
+      this.#trackAttempt(message.attemptId, message.notAfter)
     },
     pending: (message) => {
       if (message.type !== "pending") return
@@ -138,6 +146,8 @@ export class TabCoordination {
   #sharedWindow = false
   readonly #tag: string
   readonly #timers = new Map<TimerName, ReturnType<typeof setTimeout>>()
+  /** The local cutoff of this tab's unresolved logout attempt; infinite when none is unresolved (R22). */
+  #unresolvedCutoff = Number.POSITIVE_INFINITY
 
   #view: TabView = "active"
 
@@ -164,11 +174,11 @@ export class TabCoordination {
   async logout(): Promise<void> {
     if (this.#view === "ended" || this.#view === "logging-out") return
     this.#setView("logging-out")
+    const attemptId = crypto.randomUUID()
     const notAfter = Date.now() + this.#serverOffset + LOGOUT_ATTEMPT_MILLISECONDS
-    this.#logoutNotAfter = notAfter - this.#serverOffset
-    const watchUntil = this.#logoutNotAfter + LOGOUT_WATCH_GRACE_MILLISECONDS
-    recordLogoutInProgress(this.#tag, watchUntil)
-    this.#channel?.post({ coordinationTag: this.#tag, notAfter, type: "logout-started" })
+    this.#ownAttempt = attemptId
+    addPendingLogout({ attemptId, coordinationTag: this.#tag, notAfter })
+    this.#channel?.post({ attemptId, coordinationTag: this.#tag, notAfter, type: "logout-started" })
     const outcome = await sendLogout(this.#tag, notAfter)
     if (outcome === "refused") {
       this.#logoutRefused()
@@ -176,8 +186,9 @@ export class TabCoordination {
     } else if (outcome === "unknown") {
       // The server may have ended the session and lost or failed the reply: conceal; confirmation decides (R18, R22).
       this.#logoutUnresolved = true
+      this.#unresolvedCutoff = notAfter - this.#serverOffset
       this.#conceal()
-      this.#watchLogout(watchUntil)
+      this.#trackAttempt(attemptId, notAfter)
       this.#guard(this.confirm())
     } else {
       this.#logoutEnded()
@@ -197,11 +208,12 @@ export class TabCoordination {
     this.#sharedWindow = windowLock() !== undefined && storageAvailable()
     const stopListening = this.#listen()
     this.#publish()
+    this.#serverOffset = this.#initial.serverTimeEpochMilliseconds - Date.now()
+    this.#replayPendingLogouts()
     if (!this.#replayEnded()) {
       this.#adoptSnapshot(this.#initial, true)
       if (!writeCurrentHint(this.#tag)) this.#hintOverride = this.#tag
       this.#channel.post({ coordinationTag: this.#tag, type: "session-current" })
-      this.#replayLogoutInProgress()
     }
     return () => {
       stopListening()
@@ -234,11 +246,12 @@ export class TabCoordination {
       this.#endConfirmed()
       return false
     }
+    // Every server snapshot refreshes the offset, adopted or not, so a logout's `notAfter` follows the current clocks.
+    // A relayed `renewed` message carries a local deadline and no server clock.
+    if (broadcast) this.#serverOffset = snapshot.serverTimeEpochMilliseconds - Date.now()
     if (!adoptSnapshot(this.#held, snapshot)) return false
     this.#held = snapshot
     this.#deadline = Date.now() + snapshot.idleDeadlineEpochMilliseconds - snapshot.serverTimeEpochMilliseconds
-    // Only a server snapshot carries the server clock; a relayed `renewed` message carries a local deadline.
-    if (broadcast) this.#serverOffset = snapshot.serverTimeEpochMilliseconds - Date.now()
     this.#publish()
     this.#schedule("confirm", this.#deadline, () => {
       this.#guard(this.confirm())
@@ -267,8 +280,7 @@ export class TabCoordination {
   #applyStatus(outcome: SessionOutcome, startedAt: number) {
     switch (outcome._tag) {
       case "Ended":
-        if (this.#logoutUnresolved) this.#logoutEnded()
-        else this.#endConfirmed()
+        this.#endConfirmed()
         return
       case "Undetermined":
         this.#conceal()
@@ -277,8 +289,8 @@ export class TabCoordination {
         })
         return
       case "Usable":
-        // Before `notAfter` the attempt may still arrive, so a usable answer does not yet mean logout failed (R22).
-        if (this.#logoutUnresolved && Date.now() > this.#logoutNotAfter) this.#logoutRefused()
+        // Only a read started after the cutoff shows the attempt failed; an earlier read may predate the delete (R22).
+        if (startedAt > this.#unresolvedCutoff) this.#logoutRefused()
         if (this.#adoptSnapshot(outcome.snapshot, true) || startedAt >= this.#concealedSince) this.#reveal()
     }
   }
@@ -337,8 +349,15 @@ export class TabCoordination {
     this.#notify({ concealed: true, endedHere, view: "ended" })
   }
 
-  /** The server answered 401 or a different session: record it so tabs that missed it can replay it. */
+  /**
+   * The server answered 401 or a different session: record it so tabs that missed it can replay it. While this tab's
+   * own logout is unresolved, that answer is its outcome (R18).
+   */
   #endConfirmed() {
+    if (this.#logoutUnresolved) {
+      this.#logoutEnded()
+      return
+    }
     recordEnded(this.#tag)
     this.#end(false)
   }
@@ -424,6 +443,8 @@ export class TabCoordination {
   /** Logout ended the session (204, 401, 409, or a confirmed end after an unknown outcome): every tab ends. */
   #logoutEnded() {
     this.#logoutUnresolved = false
+    this.#unresolvedCutoff = Number.POSITIVE_INFINITY
+    if (this.#ownAttempt !== undefined) removePendingLogout(this.#ownAttempt)
     recordEnded(this.#tag)
     this.#post("logged-out")
     this.#end(true)
@@ -432,8 +453,14 @@ export class TabCoordination {
   /** Logout did not complete (403, or confirmed still usable after `notAfter`): conceal and offer Log out again. */
   #logoutRefused() {
     this.#logoutUnresolved = false
-    this.#stopTimer("logout-watch")
-    this.#post("logout-failed")
+    this.#unresolvedCutoff = Number.POSITIVE_INFINITY
+    const own = this.#ownAttempt
+    if (own !== undefined) {
+      removePendingLogout(own)
+      this.#attempts.delete(own)
+      this.#channel?.post({ attemptId: own, coordinationTag: this.#tag, type: "logout-failed" })
+    }
+    this.#watchLogout()
     this.#setView("logout-failed")
   }
 
@@ -442,7 +469,7 @@ export class TabCoordination {
     if (event.persisted) this.#conceal()
   }
 
-  #post(type: "logged-out" | "logout-failed") {
+  #post(type: "logged-out") {
     this.#channel?.post({ coordinationTag: this.#tag, type })
   }
 
@@ -479,17 +506,19 @@ export class TabCoordination {
     return true
   }
 
-  /** A logout in progress for this tag resumes the confirmation watch; the record alone never ends the tab. */
-  #replayLogoutInProgress() {
-    const logoutUntil = readLogoutInProgress(this.#tag)
-    if (logoutUntil !== undefined && !this.#timers.has("logout-watch")) this.#watchLogout(logoutUntil)
+  /** Unexpired pending logout attempts of this tag start the watch; the record alone never ends the tab (R28). */
+  #replayPendingLogouts() {
+    const expiredBefore = Date.now() + this.#serverOffset - LOGOUT_WATCH_GRACE_MILLISECONDS
+    for (const attempt of pendingLogouts(this.#tag, expiredBefore)) {
+      this.#trackAttempt(attempt.attemptId, attempt.notAfter)
+    }
   }
 
   /** B5-R: replay records first; past the local deadline conceal at once; either way confirm (research D9). */
   #resume() {
     if (this.#view === "ended" || document.visibilityState !== "visible") return
     if (this.#replayEnded()) return
-    this.#replayLogoutInProgress()
+    this.#replayPendingLogouts()
     const hint = readCurrentHint()
     // A hint naming another session conceals temporarily and confirms; it never ends the tab (R14).
     if (hint !== undefined && hint !== this.#tag) this.#conceal()
@@ -570,14 +599,24 @@ export class TabCoordination {
     this.#guard(this.#confirmThenReplay(form, event.submitter))
   }
 
+  /** Watches an attempt of this tag until its server-clock `notAfter` plus the grace, on this tab's clock (R26). */
+  #trackAttempt(attemptId: string, notAfter: number) {
+    this.#attempts.set(attemptId, notAfter - this.#serverOffset + LOGOUT_WATCH_GRACE_MILLISECONDS)
+    if (!this.#timers.has("logout-watch")) this.#watchLogout()
+  }
+
   /**
-   * After a logout starts, start a confirmation each second until the outcome arrives or `notAfter` plus 2 s (R11, R21).
+   * While any attempt of this tag is unresolved and before its watch ends, start a confirmation each second (R11, R26).
    * Ticks do not wait for earlier reads, so a slow read cannot push the next one past the concealment bound.
    */
-  #watchLogout(until: number, at = Date.now() + LOGOUT_WATCH_INTERVAL_MILLISECONDS) {
-    if (this.#view === "ended" || at > until) return
+  #watchLogout(at = Date.now() + LOGOUT_WATCH_INTERVAL_MILLISECONDS) {
+    for (const [attemptId, until] of this.#attempts) if (until < at) this.#attempts.delete(attemptId)
+    if (this.#view === "ended" || this.#attempts.size === 0) {
+      this.#stopTimer("logout-watch")
+      return
+    }
     this.#schedule("logout-watch", at, () => {
-      this.#watchLogout(until, at + LOGOUT_WATCH_INTERVAL_MILLISECONDS)
+      this.#watchLogout(at + LOGOUT_WATCH_INTERVAL_MILLISECONDS)
       this.#guard(this.confirm(LOGOUT_WATCH_INTERVAL_MILLISECONDS))
     })
   }
