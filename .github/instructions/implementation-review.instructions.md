@@ -31,9 +31,13 @@ Review the implementation against the approved specification and engineering pla
   data class from the
   [verification telemetry conventions](../../docs/observability.md#verification-telemetry-conventions), and durable
   tests that assert telemetry output.
-- Check that the pull request names its slice from `plan.md` and summarizes a verification report for that slice's
-  claims, as described in [the verification harness](../../docs/engineering/verification-harness.md). Flag a slice
-  well over 15 hand-written files without a stated reason.
+- For a delivery-issue implementation slice, check that the pull request names its slice from `plan.md` and
+  summarizes a verification report for that slice's claims, as described in
+  [the verification harness](../../docs/engineering/verification-harness.md). Flag a slice well over 15 hand-written
+  files without a stated reason. A single pull request that the
+  [Git workflow](../../docs/engineering/git-workflow.md#implementation-slices) exempts from the stack, such as a
+  dependency update or a fix inside an approved contract, needs no slice or verification report; check that it
+  says why the stack does not apply.
 - A planned `quickstart.md` procedure is not defective because it has not yet been executed. On an implementation
   review, identify evidence the pull request claims but does not show.
 - Do not treat a Copilot suggestion as approval to change an accepted requirement, delivery slice, or public contract.
