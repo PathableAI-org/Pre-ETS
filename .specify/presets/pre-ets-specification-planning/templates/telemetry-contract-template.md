@@ -23,9 +23,14 @@ Every claim in `verification.md` whose evidence channel is server or browser tel
 
 ## Signals
 
-| ID    | Signal                | Name                                       | Emitted by                        | Attributes or fields and data class                         | Correlation                                 | Verifier query                                   | Expected negative observation                       |
-| ----- | --------------------- | ------------------------------------------ | --------------------------------- | ----------------------------------------------------------- | ------------------------------------------- | ------------------------------------------------ | --------------------------------------------------- |
-| T-001 | [Span / log / metric] | [`Service.operation`, log message, metric] | [Owning public module or adapter] | [`preets.<area>.<name>`: meaning, type, allowed data class] | [trace context, `session.id`, tenant alias] | [TraceQL, LogQL, or PromQL with revision filter] | [What the verifier sees when the claim is violated] |
+| ID    | Signal       | Name                                 | Emitted by                        | Attributes or fields and data class                                | Correlation                                                  | Verifier query                          | Expected negative observation                       |
+| ----- | ------------ | ------------------------------------ | --------------------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------ | --------------------------------------- | --------------------------------------------------- |
+| T-001 | [Span / log] | [`Service.operation` or log message] | [Owning public module or adapter] | [`preets.<area>.<name>`: meaning, type, allowed data class]        | [trace context, `session.id`, `preets.tenant.alias`]         | [TraceQL or LogQL with revision filter] | [What the verifier sees when the claim is violated] |
+| T-002 | [Metric]     | [metric name]                        | [Owning public module or adapter] | [Enumerated low-cardinality attributes: meaning, closed value set] | [`service.version`, environment, enumerated attributes only] | [PromQL with revision filter]           | [What the verifier sees when the claim is violated] |
+
+Spans and correlated logs may correlate by trace context, `session.id`, and `preets.tenant.alias`. Metrics never
+carry session, trace, user, or request identifiers or timestamps; they correlate only by `service.version`,
+environment, and the low-cardinality attributes listed under [Metrics cardinality](#metrics-cardinality).
 
 ### Outcome values
 
