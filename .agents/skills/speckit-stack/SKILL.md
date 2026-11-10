@@ -94,8 +94,9 @@ implementation slice, also require that the latest verification report passes
 assigned to the slice is usable, every full claim is `established`, every other result matches a limitation already
 approved in `verification.md` or `plan.md`, and there is no `violated` result or forbidden telemetry finding. The
 report must cover the pushed SHA, or only evidence-only commits may follow its verified SHA:
-`git diff --name-only <verified-SHA>..<pushed-SHA>` lists only the feature's `quickstart.md`. Any other change after
-the verified SHA needs a new verification request. Before more intermediate pushes, return it to draft with
+`git diff <verified-SHA>..<pushed-SHA>` touches only the feature's `quickstart.md` execution results, and the pull
+request body names the verified SHA. Any other change after the verified SHA, including a change to `quickstart.md`
+steps, needs a new verification request. Before more intermediate pushes, return it to draft with
 `gh pr ready --undo`. Classify Copilot findings as accepted, rejected with a reason, or waiting on a human. Do not
 apply them automatically.
 

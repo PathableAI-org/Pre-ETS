@@ -50,9 +50,10 @@ A result that needs a limitation not already approved in `verification.md` or `p
 owning phase; stop and report it rather than naming a new limitation in the pull request.
 
 Record the final report in `quickstart.md` as an evidence-only commit. Before pushing it, confirm that
-`git diff --name-only <verified-SHA>..HEAD` lists only the feature's `quickstart.md`; such a commit needs no new
-verification. Any other change after the verified SHA, including application code, instrumentation, tests, or run
-instructions, needs a new verification request.
+`git diff <verified-SHA>..HEAD` touches only the feature's `quickstart.md` execution results; such a commit needs no
+new verification. Name the verified SHA in the pull request body. Any other change after the verified SHA, including
+application code, instrumentation, tests, run instructions, or `quickstart.md` steps, needs a new verification
+request.
 
 After the final report is recorded, stop. Do not create the next slice's branch, start its tasks, or mark the
 pull request ready unless the user asks.
