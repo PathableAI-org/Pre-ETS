@@ -168,7 +168,8 @@ that implements it.
 - Times are epoch milliseconds with a `_ms` suffix. Durations are milliseconds
   with a `_duration_ms` suffix.
 - Correlation uses W3C trace context, `service.version` set to the revision
-  under verification, `session.id` set to the session's opaque telemetry ID
+  under verification, `service.instance.id` set to the verification run's
+  UUID, `session.id` set to the session's opaque telemetry ID
   (never its cookie reference), and `preets.tenant.alias`.
 
 ### Data classes

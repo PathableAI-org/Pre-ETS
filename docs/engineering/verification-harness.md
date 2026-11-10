@@ -92,7 +92,12 @@ The verification session owns its environment:
 - Its own ports for application instances, and its own key prefix in shared stores. Use a
   `preets:verify:<run-uuid>:` prefix for Redis and delete the owned keys when finished.
 - The shared local observability stack from [Observability](../observability.md#local-grafana--otlp), with OTEL
-  enabled. Set `OTEL_SERVICE_VERSION` to the requested SHA so every query can filter by revision.
+  enabled. Generate a run UUID for each verification run, including retries. Set `OTEL_SERVICE_VERSION` to the
+  requested SHA, and add `service.version=<SHA>,service.instance.id=<run-uuid>` to `OTEL_RESOURCE_ATTRIBUTES`,
+  keeping any existing entries. The global Node SDK that exports HTTP, Redis, and runtime signals reads only
+  `OTEL_RESOURCE_ATTRIBUTES`, so both settings are needed for every signal to carry the revision and run. Every
+  query filters by both `service.version` and `service.instance.id`, so another verifier, a retry, or a developer
+  process at the same revision cannot establish or violate a claim for this run.
 - Synthetic tenants and fixtures from the repository. No real client records or credentials.
 
 For browser journeys, Playwright adds a W3C `traceparent` header that the verifier generates for each step. Server
