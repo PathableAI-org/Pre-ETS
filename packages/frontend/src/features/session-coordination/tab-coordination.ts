@@ -290,6 +290,7 @@ export class TabCoordination {
     this.#clearTimers()
     this.#pendingActivity = undefined
     this.#view = "ended"
+    this.#hideContent(true)
     this.#notify({ concealed: true, endedHere, view: "ended" })
   }
 
@@ -331,6 +332,14 @@ export class TabCoordination {
     work.catch(() => {
       this.#conceal()
     })
+  }
+
+  /** Sets `hidden` and `inert` on the protected content at once, before React commits the same state. */
+  #hideContent(hidden: boolean) {
+    const content = this.#content()
+    if (content === null) return
+    content.hidden = hidden
+    content.inert = hidden
   }
 
   #listen() {
@@ -383,11 +392,7 @@ export class TabCoordination {
   /** Applies `hidden` and `inert` synchronously, then lets React render the same state. */
   #publish() {
     const concealed = this.#concealed || this.#view === "logout-failed"
-    const content = this.#content()
-    if (content !== null) {
-      content.hidden = concealed
-      content.inert = concealed
-    }
+    this.#hideContent(concealed)
     this.#notify({ concealed, endedHere: false, view: this.#view })
   }
 
@@ -438,7 +443,14 @@ export class TabCoordination {
   #schedule(name: TimerName, at: number, task: () => void) {
     this.#stopTimer(name)
     if (!this.#live()) return
-    this.#timers.set(name, setTimeout(task, Math.max(0, at - Date.now())))
+    // A fired timer leaves the table first, so the table names only pending timers.
+    this.#timers.set(
+      name,
+      setTimeout(() => {
+        this.#timers.delete(name)
+        task()
+      }, Math.max(0, at - Date.now()))
+    )
   }
 
   #scheduleFlush(at: number) {
