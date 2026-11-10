@@ -7,6 +7,7 @@ import {
   decideActivityCommunication,
   flushActivityCommunication
 } from "./activity-window.ts"
+import { calibrateClockOffset, type ClockOffset, type ClockSample } from "./clock-offset.ts"
 import { readSessionStatus, sendActivity, sendLogout, type SessionOutcome } from "./session-endpoints.ts"
 import { adoptSnapshot } from "./snapshot-order.ts"
 import {
@@ -70,6 +71,37 @@ const listenAll = (listeners: readonly Listener[]) => {
   }
 }
 
+/** The page navigation's own request timing describes the first server-rendered snapshot of this document only. */
+let navigationTimingUsed = false
+
+/**
+ * The server-rendered snapshot's estimate: from Navigation Timing for the document's first coordinator. Otherwise its
+ * timing is unknown: the estimate assumes receipt at mount and has an unbounded round trip, so the first timed
+ * response replaces it (R29).
+ */
+const initialOffset = (snapshot: SessionCoordinationSnapshot): ClockOffset => {
+  const serverTime = snapshot.serverTimeEpochMilliseconds
+  const [entry] = typeof performance === "undefined" ? [] : performance.getEntriesByType("navigation")
+  if (navigationTimingUsed || !(entry instanceof PerformanceNavigationTiming)) {
+    return { offset: serverTime - Date.now(), roundTrip: Number.POSITIVE_INFINITY }
+  }
+  navigationTimingUsed = true
+  const origin = performance.timeOrigin
+  return calibrateClockOffset(undefined, {
+    receivedAt: origin + entry.responseStart,
+    sentAt: origin + entry.requestStart,
+    serverTime
+  })
+}
+
+const responseSample = (
+  outcome: { readonly receivedAt: number; readonly sentAt: number; readonly snapshot: SessionCoordinationSnapshot }
+): ClockSample => ({
+  receivedAt: outcome.receivedAt,
+  sentAt: outcome.sentAt,
+  serverTime: outcome.snapshot.serverTimeEpochMilliseconds
+})
+
 /**
  * One tab's participation in its session: B5-W activity communication, cross-tab synchronization ordered by store
  * observation, confirmation before acting on the local deadline, replay of missed logouts, the Server Action submit
@@ -82,6 +114,9 @@ export class TabCoordination {
   /** Aborts reads still in flight when the controller is torn down. */
   readonly #cancel = new AbortController()
   #channel: TabChannel | undefined
+  /** Server clock minus this tab's clock, from the latest server snapshot (research D6). */
+  /** Server clock minus this tab's clock, calibrated from request timing (research D6, R29). */
+  #clock: ClockOffset | undefined
   #concealed = false
   /** When concealment began; a confirmation started later may reveal the content. */
   #concealedSince = Number.POSITIVE_INFINITY
@@ -131,17 +166,16 @@ export class TabCoordination {
       if (message.type !== "renewed") return
       this.#adoptSnapshot({
         coordinationTag: message.coordinationTag,
-        idleDeadlineEpochMilliseconds: message.localDeadline,
+        idleDeadlineEpochMilliseconds: message.idleDeadlineEpochMilliseconds,
         observedAtEpochMilliseconds: message.observedAtEpochMilliseconds,
         revision: message.revision,
-        serverTimeEpochMilliseconds: Date.now(),
+        // A relayed deadline is already on the server clock; the relaying tab's server time is not needed.
+        serverTimeEpochMilliseconds: Number.NaN,
         warningLeadMinutes: message.warningLeadMinutes
       }, false)
     },
     "session-current": () => undefined
   }
-  /** Server clock minus this tab's clock, from the latest server snapshot (research D6). */
-  #serverOffset = 0
   /** Whether the activity window is shared through storage under a Web Lock; otherwise it is kept in memory (R24). */
   #sharedWindow = false
   readonly #tag: string
@@ -150,6 +184,10 @@ export class TabCoordination {
   #unresolvedCutoff = Number.POSITIVE_INFINITY
 
   #view: TabView = "active"
+
+  get #serverOffset() {
+    return this.#clock?.offset ?? 0
+  }
 
   constructor(
     snapshot: SessionCoordinationSnapshot,
@@ -208,7 +246,7 @@ export class TabCoordination {
     this.#sharedWindow = windowLock() !== undefined && storageAvailable()
     const stopListening = this.#listen()
     this.#publish()
-    this.#serverOffset = this.#initial.serverTimeEpochMilliseconds - Date.now()
+    this.#clock = initialOffset(this.#initial)
     this.#replayPendingLogouts()
     if (!this.#replayEnded()) {
       this.#adoptSnapshot(this.#initial, true)
@@ -227,7 +265,8 @@ export class TabCoordination {
   /** A newer server-rendered snapshot of this session (a route refresh) counts as a confirmation of it. */
   update(snapshot: SessionCoordinationSnapshot): void {
     if (!this.#live() || this.#view === "ended") return
-    this.#applyStatus({ _tag: "Usable", snapshot }, Number.NEGATIVE_INFINITY)
+    // Its request timing is unknown, so it does not recalibrate the clock; a newer revision reveals content.
+    if (this.#adoptSnapshot(snapshot, true)) this.#reveal()
   }
 
   #activity(activity: InPageSessionActivity) {
@@ -246,23 +285,13 @@ export class TabCoordination {
       this.#endConfirmed()
       return false
     }
-    // Every server snapshot refreshes the offset, adopted or not, so a logout's `notAfter` follows the current clocks.
-    // A relayed `renewed` message carries a local deadline and no server clock.
-    if (broadcast) this.#serverOffset = snapshot.serverTimeEpochMilliseconds - Date.now()
     if (!adoptSnapshot(this.#held, snapshot)) return false
     this.#held = snapshot
-    this.#deadline = Date.now() + snapshot.idleDeadlineEpochMilliseconds - snapshot.serverTimeEpochMilliseconds
-    this.#publish()
-    this.#schedule("confirm", this.#deadline, () => {
-      this.#guard(this.confirm())
-    })
-    this.#schedule("near-deadline", this.#deadline - ACTIVITY_WINDOW_MILLISECONDS + 1, () => {
-      this.#flushNearDeadline()
-    })
+    this.#applyDeadline()
     if (broadcast) {
       this.#channel?.post({
         coordinationTag: this.#tag,
-        localDeadline: this.#deadline,
+        idleDeadlineEpochMilliseconds: snapshot.idleDeadlineEpochMilliseconds,
         observedAtEpochMilliseconds: snapshot.observedAtEpochMilliseconds,
         revision: snapshot.revision,
         type: "renewed",
@@ -270,6 +299,22 @@ export class TabCoordination {
       })
     }
     return true
+  }
+
+  /**
+   * Converts the held server-clock deadline with the current offset and schedules confirmation and the near-deadline
+   * flush; snapshot age never extends it (R29).
+   */
+  #applyDeadline() {
+    if (this.#held === undefined) return
+    this.#deadline = this.#held.idleDeadlineEpochMilliseconds - this.#serverOffset
+    this.#publish()
+    this.#schedule("confirm", this.#deadline, () => {
+      this.#guard(this.confirm())
+    })
+    this.#schedule("near-deadline", this.#deadline - ACTIVITY_WINDOW_MILLISECONDS + 1, () => {
+      this.#flushNearDeadline()
+    })
   }
 
   /**
@@ -289,10 +334,19 @@ export class TabCoordination {
         })
         return
       case "Usable":
+        this.#calibrate(responseSample(outcome))
         // Only a read started after the cutoff shows the attempt failed; an earlier read may predate the delete (R22).
         if (startedAt > this.#unresolvedCutoff) this.#logoutRefused()
         if (this.#adoptSnapshot(outcome.snapshot, true) || startedAt >= this.#concealedSince) this.#reveal()
     }
+  }
+
+  /** Any response may recalibrate the offset, including an equal revision; a changed offset reconverts the deadline. */
+  #calibrate(sample: ClockSample) {
+    const next = calibrateClockOffset(this.#clock, sample)
+    if (next === this.#clock) return
+    this.#clock = next
+    this.#applyDeadline()
   }
 
   #clearTimers() {
@@ -559,7 +613,10 @@ export class TabCoordination {
     this.#guard(
       sendActivity(activity, this.#tag).then((outcome) => {
         if (!this.#live()) return
-        if (outcome._tag === "Usable") this.#adoptSnapshot(outcome.snapshot, true)
+        if (outcome._tag === "Usable") {
+          this.#calibrate(responseSample(outcome))
+          this.#adoptSnapshot(outcome.snapshot, true)
+        }
         if (outcome._tag === "Ended") this.#endConfirmed()
       })
     )

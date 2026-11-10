@@ -16,7 +16,13 @@ export type LogoutOutcome = "ended" | "not-in-force" | "refused" | "unknown"
 export type SessionOutcome =
   | { readonly _tag: "Ended" }
   | { readonly _tag: "Undetermined" }
-  | { readonly _tag: "Usable"; readonly snapshot: SessionCoordinationSnapshot }
+  | {
+    readonly _tag: "Usable"
+    /** Local times the response arrived and the request left, for clock calibration. */
+    readonly receivedAt: number
+    readonly sentAt: number
+    readonly snapshot: SessionCoordinationSnapshot
+  }
 
 const CONFIRMATION_TIMEOUT_MILLISECONDS = 1_500
 const LOGOUT_TIMEOUT_MILLISECONDS = 10_000
@@ -51,11 +57,17 @@ const asSnapshot = (value: unknown): SessionCoordinationSnapshot | undefined => 
   }
 }
 
-const outcomeOf = async (response: Response): Promise<SessionOutcome> => {
+const outcomeOf = async (response: Response, sentAt: number, receivedAt: number): Promise<SessionOutcome> => {
   if (response.status === 401 || response.status === 409) return ended
   if (!response.ok) return undetermined
   const snapshot = asSnapshot(await response.json().catch(() => undefined))
-  return snapshot === undefined ? undetermined : { _tag: "Usable", snapshot }
+  return snapshot === undefined ? undetermined : { _tag: "Usable", receivedAt, sentAt, snapshot }
+}
+
+/** Times the request so the tab can calibrate its clock offset from the response (research D6, R29). */
+const timed = (path: string, init: RequestInit): Promise<SessionOutcome> => {
+  const sentAt = Date.now()
+  return call(path, init).then((response) => outcomeOf(response, sentAt, Date.now()), () => undetermined)
 }
 
 const call = (path: string, init: RequestInit) =>
@@ -75,13 +87,10 @@ export const readSessionStatus = (
   cancel: AbortSignal,
   timeout = CONFIRMATION_TIMEOUT_MILLISECONDS
 ): Promise<SessionOutcome> =>
-  call("/session/status", { signal: AbortSignal.any([cancel, AbortSignal.timeout(timeout)]) }).then(
-    outcomeOf,
-    () => undetermined
-  )
+  timed("/session/status", { signal: AbortSignal.any([cancel, AbortSignal.timeout(timeout)]) })
 
 export const sendActivity = (activity: InPageSessionActivity, coordinationTag: string): Promise<SessionOutcome> =>
-  call("/session/activity", postJson({ activity, coordinationTag })).then(outcomeOf, () => undetermined)
+  timed("/session/activity", postJson({ activity, coordinationTag }))
 
 /** `keepalive` completes the request even if this tab closes right after starting it (research D8, R11). */
 export const sendLogout = async (coordinationTag: string, notAfter: number): Promise<LogoutOutcome> => {

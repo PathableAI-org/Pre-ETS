@@ -7,6 +7,7 @@ import {
   decideActivityCommunication,
   flushActivityCommunication
 } from "../../src/features/session-coordination/activity-window.ts"
+import { calibrateClockOffset } from "../../src/features/session-coordination/clock-offset.ts"
 import { adoptSnapshot } from "../../src/features/session-coordination/snapshot-order.ts"
 
 const WINDOW = 60_000
@@ -240,5 +241,53 @@ describe("adoptSnapshot (research D6) [PREETS-SESSION-010]", () => {
 
   it("adopts the first snapshot", () => {
     expect(adoptSnapshot(undefined, snapshot(1, 1))).toBe(true)
+  })
+})
+
+describe("calibrateClockOffset (research D6, R29) [PREETS-SESSION-010]", () => {
+  const SERVER_AHEAD = 7_000
+  const deadline = 2_000_000
+  const sample = (sentAt: number, receivedAt: number, builtAt: number) => ({
+    receivedAt,
+    sentAt,
+    serverTime: builtAt + SERVER_AHEAD
+  })
+
+  it("converts a response delayed by 20 s to the prompt local deadline, within half the round trip", () => {
+    const prompt = calibrateClockOffset(undefined, sample(1_000, 1_100, 1_050))
+    const delayed = calibrateClockOffset(undefined, sample(1_000, 21_100, 1_050))
+
+    expect(Math.abs((deadline - delayed.offset) - (deadline - prompt.offset))).toBeLessThanOrEqual(
+      delayed.roundTrip / 2
+    )
+    expect(deadline - prompt.offset).toBeCloseTo(deadline - SERVER_AHEAD, -2)
+  })
+
+  it("recalibrates from an equal-revision response with a smaller round trip", () => {
+    const held = calibrateClockOffset(undefined, sample(1_000, 3_000, 2_900))
+    const tighter = calibrateClockOffset(held, sample(5_000, 5_040, 5_020))
+
+    expect(tighter).not.toBe(held)
+    expect(tighter.offset).toBe(SERVER_AHEAD)
+    expect(calibrateClockOffset(tighter, sample(9_000, 9_500, 9_250))).toBe(tighter)
+  })
+
+  it("replaces a stale estimate whose interval no longer overlaps, as after a local clock step", () => {
+    const held = calibrateClockOffset(undefined, sample(1_000, 1_020, 1_010))
+    const stepped = calibrateClockOffset(held, { receivedAt: 2_100, sentAt: 2_000, serverTime: 2_050 + 60_000 })
+
+    expect(stepped.offset).toBe(60_000)
+  })
+
+  it("converts one broadcast server-clock deadline to the same instant in two tabs with skewed clocks", () => {
+    const skew = 4_321
+    const tabA = calibrateClockOffset(undefined, sample(1_000, 1_040, 1_020))
+    const tabB = calibrateClockOffset(undefined, {
+      receivedAt: 1_040 + skew,
+      sentAt: 1_000 + skew,
+      serverTime: 1_020 + SERVER_AHEAD
+    })
+
+    expect((deadline - tabB.offset) - (deadline - tabA.offset)).toBe(skew)
   })
 })

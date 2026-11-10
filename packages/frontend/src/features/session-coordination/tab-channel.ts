@@ -51,7 +51,8 @@ export type TabMessage =
   }
   | {
     readonly coordinationTag: string
-    readonly localDeadline: number
+    /** On the server clock; each receiving tab converts it with its own offset (R29). */
+    readonly idleDeadlineEpochMilliseconds: number
     readonly observedAtEpochMilliseconds: number
     readonly revision: number
     readonly type: "renewed"
@@ -78,12 +79,12 @@ const pendingMessage = (data: UnknownRecord, coordinationTag: string): TabMessag
     undefined
 
 const renewedMessage = (data: UnknownRecord, coordinationTag: string): TabMessage | undefined => {
-  const { localDeadline, observedAtEpochMilliseconds, revision, warningLeadMinutes } = data
-  const times = [localDeadline, observedAtEpochMilliseconds, revision, warningLeadMinutes]
+  const { idleDeadlineEpochMilliseconds, observedAtEpochMilliseconds, revision, warningLeadMinutes } = data
+  const times = [idleDeadlineEpochMilliseconds, observedAtEpochMilliseconds, revision, warningLeadMinutes]
   if (!times.every(isTime)) return undefined
   return {
     coordinationTag,
-    localDeadline: Number(localDeadline),
+    idleDeadlineEpochMilliseconds: Number(idleDeadlineEpochMilliseconds),
     observedAtEpochMilliseconds: Number(observedAtEpochMilliseconds),
     revision: Number(revision),
     type: "renewed",

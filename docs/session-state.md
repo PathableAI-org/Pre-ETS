@@ -141,8 +141,13 @@ schema version 2, establishment writes revision 1, and every store write (a qual
 policy adoption) increments it in the same atomic transition. Reads and excluded refreshes return it
 unchanged. A version-1 record reads as revision 0 and is rewritten as version 2 on its next write.
 Tabs order snapshots by `revision` alone. `observedAtEpochMilliseconds`, the Redis `TIME` read in
-that transition, is diagnostic only. `UsableSession` carries both. `serverTimeEpochMilliseconds`
-only converts the deadline to the tab's clock. The **coordination tag** is `base64url(SHA-256("preets:session-coordination:v1\0" +
+that transition, is diagnostic only. `UsableSession` carries both. Tabs hold
+the deadline on the server clock and convert it with a per-tab clock offset estimated from request
+timing: the server time is placed at the local midpoint of the request's round trip (Navigation
+Timing for the server-rendered snapshot). The estimate from the response with the smallest round
+trip is kept, and a response whose interval no longer overlaps it replaces it, as after a local
+clock step. Snapshot age and hydration time never extend the deadline. Broadcast deadlines stay on
+the server clock. The **coordination tag** is `base64url(SHA-256("preets:session-coordination:v1\0" +
 reference))`: one-way, distinct from the store-key digest, and not a credential. Activity and
 logout carry the tag the tab observed, so a stale tab cannot renew or end a later session.
 Protected Server Action forms submit it in a hidden `coordinationTag` field. `runReferenceOperation`

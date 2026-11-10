@@ -230,6 +230,21 @@ The plan was amended again after review of #364 (user decisions of 2026-11-10). 
   on every send; receivers update their in-memory window.
 - **R25**: the BDD feature keeps only no-session denial scenarios (unchanged).
 
+## Amended-plan rework (plan `b7533fe` and `04392e8`, R26–R29)
+
+- **R26/R28**: each logout attempt has an `attemptId` in `logout-started`, `logout-failed`, and the
+  `preets-session-logout-pending:v1` record. Tabs watch while any attempt of their tag is unresolved, until its
+  `notAfter` + 3 s, and replay unexpired attempts on mount (before the ended record) and resume.
+- **R27**: `SessionService.invalidate` takes an optional `notAfterEpochMilliseconds`; a store script deletes only while
+  Redis `TIME` is at or before it, else `InvalidationExpired` → 408. Real-Redis evidence covers both sides of the
+  cutoff, a logout admitted before the cutoff that reaches the delete after it (held through the test Redis fault
+  helper, which gained a skip count), and a 503 after an applied delete.
+- **R29**: deadlines are held on the server clock and converted with a per-tab offset from request timing
+  (`clock-offset.ts`, private, with examples in the unit suite). Every timed response may recalibrate, including equal
+  revisions; `renewed` carries the server-clock deadline.
+- Review of #364: a usable status ends an ambiguous attempt as failed only if its read started after the cutoff, and
+  the protected layout keys the coordinator by session tag.
+
 ## Implementation deviations from the plan (for plan review)
 
 These do not change any acceptance criterion or HTTP outcome. Each needs reviewer confirmation at the plan gate.
@@ -273,11 +288,15 @@ These do not change any acceptance criterion or HTTP outcome. Each needs reviewe
 13. **Concealment is a flag beside the view, not a `concealed` view** (review of #364). A logout in progress keeps its
     busy state while an undetermined confirmation hides the content (FR-021). The controller sets `hidden` and `inert`
     on the DOM synchronously (FR-017) and reveals on a usable answer whose read started after concealment began.
-14. **A logout-in-progress record** (`preets-session-logout:v1`, tag and watch end) lets a tab that mounts or resumes
-    after `logout-started` replay the confirmation watch (review of #364). It triggers confirmation only.
+14. **Superseded by R28.** The planned `preets-session-logout-pending:v1` record replaces the earlier single-entry
+    logout record.
 15. **A "refused" logout includes 4xx statuses other than 401, 408, and 409** (for example 400 or 415), which are
     definitive answers that the session was not ended. Every 5xx, not only 503, is ambiguous. The logout request times
     out after 10 seconds, matching `notAfter`.
 16. **`logout-failed` after `notAfter` is broadcast.** Research D8's bullet for "confirmed still usable after
     `notAfter`" says the tab does not broadcast, while the data-model, contract, and D8's first bullet say it
     broadcasts `logout-failed`. The implementation broadcasts, so watching tabs stop.
+17. **Clock estimator details (R29).** Navigation Timing describes only the document's first coordinator; a coordinator
+    mounted later (a new session tag) starts from receipt time with an unbounded round trip, so the first timed response
+    replaces it. A sample whose uncertainty interval does not overlap the held estimate also replaces it, so a local
+    clock step cannot leave a stale offset. A route-refresh snapshot has no request timing and does not recalibrate.
