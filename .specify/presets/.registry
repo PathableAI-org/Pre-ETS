@@ -26,9 +26,9 @@
       "installed_at": "2026-09-13T10:31:05.420597+00:00"
     },
     "pre-ets-specification-planning": {
-      "version": "1.0.1",
+      "version": "1.1.0",
       "source": "local",
-      "manifest_hash": "sha256:1b06a7a62e4e01f33b13559d4d4207d454fd42e8bee60d2cfe8589bcc123fbbc",
+      "manifest_hash": "sha256:a3a3a179af4295e702e3908cca8da8fdcac134348bdfaf386c2533b0630fe459",
       "enabled": true,
       "priority": 5,
       "registered_commands": {

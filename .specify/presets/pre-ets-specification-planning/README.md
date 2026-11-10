@@ -10,12 +10,17 @@ It establishes this flow:
 2. Accepted requirements on `origin/main`, the reviewed delivery plan, and the issue
    remain read-only authorities.
 3. Specification produces an implementation-independent `spec.md` and
-   `verification.md`.
+   `verification.md`. Each claim names the observation that distinguishes it and
+   its evidence channel.
 4. Planning proceeds through module architecture, public contracts and type
-   signatures, contract evidence, then private implementation architecture.
-5. Task generation consumes both feature verification and module contracts.
-6. Each phase is reviewed on its own pull request, as described in
-   `docs/engineering/git-workflow.md`.
+   signatures, contract evidence, private implementation architecture, feature
+   verification integration, the verification telemetry contract in
+   `contracts/telemetry.md`, then implementation slices.
+5. Task generation consumes feature verification, module contracts, and the
+   telemetry contract, grouped by slice with a verification handoff per slice.
+6. Specification, plan, and each implementation slice are reviewed on their own
+   pull requests, as described in `docs/engineering/git-workflow.md` and
+   `docs/engineering/verification-harness.md`.
 
 The preset composes with upstream commands through `wrap` and with upstream document
 templates through `append`. Upstream command and template improvements therefore remain

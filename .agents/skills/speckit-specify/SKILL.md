@@ -32,7 +32,8 @@ runtime; preset composition requires PyYAML that may not exist in the system Pyt
    approval or reconstructing scope from a feature branch.
 4. Read the requirement Verification Plan and Observability sections, applicable
    approved architecture, `docs/requirements/README.md`, `docs/delivery/README.md`,
-   `docs/engineering/testing/README.md`, and the project constitution.
+   `docs/engineering/testing/README.md`, `docs/engineering/verification-harness.md`, and
+   the project constitution.
 5. Confirm that the issue represents one authorized delivery slice with sufficiently
    clear behavior, scope, dependencies, and feasible evidence. Code and historical
    Spec Kit artifacts are context, not product-contract authorities.
@@ -76,6 +77,13 @@ approved feature contract. Verification design is implementation-independent and
 
 - map each claim to its authoritative requirement criterion or delivery-issue scope;
 - identify observable outcomes and meaningful possible violations;
+- state, for each claim, the observation a verifier must make to distinguish it from its
+  violation, as a fact about the running product rather than a span, attribute, or module;
+- choose an evidence channel able to make each observation, from server telemetry,
+  browser telemetry, browser interaction, assistive technology, module test, or
+  requirements BDD, as defined in `docs/engineering/verification-harness.md`;
+- complete the harness observations section, including facts that must never be emitted
+  as telemetry and how they are verified instead;
 - select automated behavioral evidence, including requirements-backed BDD only where
   the accepted `origin/main` requirements support the assertions;
 - include a non-empty, agent-executable manual feature procedure for every feature;
@@ -93,7 +101,8 @@ tools. Do not claim tool availability or successful execution during specificati
 ## Pre-ETS readiness gate
 
 Extend the specification checklist to confirm that authority and scope are traceable,
-`verification.md` is complete, manual feature verification is executable, planned and
+`verification.md` is complete, every claim has an observation and an evidence channel,
+manual feature verification is executable, planned and
 executed evidence are distinguished, and no architectural decisions leaked into the
 contract. The feature is ready for clarification or planning only when both `spec.md`
 and `verification.md` pass this gate. Report both paths in the completion summary.

@@ -13,9 +13,15 @@ verification limits. This plan may refine evidence for the slice but may not cre
 
 ## Claims and traceability
 
-| ID    | Claim to establish                         | Authoritative source                         | Meaningful violation        | Required observation                  |
-| ----- | ------------------------------------------ | -------------------------------------------- | --------------------------- | ------------------------------------- |
-| V-001 | [Implementation-independent feature claim] | [Requirement ID and criterion / issue scope] | [Observable counterexample] | [Outcome an observer can distinguish] |
+| ID    | Claim to establish                         | Authoritative source                         | Meaningful violation        | Required observation                                                     | Evidence channel      |
+| ----- | ------------------------------------------ | -------------------------------------------- | --------------------------- | ------------------------------------------------------------------------ | --------------------- |
+| V-001 | [Implementation-independent feature claim] | [Requirement ID and criterion / issue scope] | [Observable counterexample] | [Fact a verifier must learn to distinguish the claim from its violation] | [Channel or channels] |
+
+State each required observation as a fact about the running product, such as "the authoritative deadline before
+and after Continue", never as a span, attribute, or module name. Choose each evidence channel from the
+[verification harness](../../docs/engineering/verification-harness.md#telemetry-follows-verification): server
+telemetry, browser telemetry, browser interaction, assistive technology, module test, or requirements BDD. Pick a
+channel that can actually observe the fact. The engineering plan designs the telemetry for every telemetry channel.
 
 ## Automated behavioral evidence
 
@@ -52,11 +58,19 @@ repeat the automated scenarios.]
 
 - [Revision, environment, inputs/actions, safe observation, result, and limitation]
 
+## Harness observations
+
+[List the claims whose required observation uses server or browser telemetry, and what a verifier must be able to
+learn from the running product for each. Name facts that must never be emitted, such as session references or
+personal data, and the channel that verifies them instead. Do not name spans, attributes, or modules; the
+engineering plan designs them in `contracts/telemetry.md`.]
+
 ## Operational observability verification
 
 [For applicable requirement obligations, describe manual inspection or a temporary probe against real logs,
 traces, metrics, or operational behavior. State "No operational observability claim in this slice" only when the
-authoritative sources establish none. Do not plan durable tests of telemetry output or exporter wiring.]
+authoritative sources establish none. Harness observations above are not operational obligations. Do not plan
+durable tests of telemetry output or exporter wiring.]
 
 ## Environment and data controls
 
@@ -77,6 +91,7 @@ limitations. Planned procedures are not executed evidence.]
 ## Readiness review
 
 - [ ] Every feature claim maps to an authoritative source.
+- [ ] Every claim states the observation that distinguishes it and an evidence channel able to make it.
 - [ ] Successful, failure, rejection, security/privacy, accessibility, and operational outcomes are covered where applicable.
 - [ ] The manual feature procedure is non-empty, executable by an agent, and adds a distinct observation.
 - [ ] Environmental prerequisites, evidence retention, cleanup, and limitations are explicit.

@@ -31,6 +31,10 @@ materially ambiguous or conflict with an authority, stop the affected design and
 the five-part blocking finding. Resolve ordinary technical choices in the plan. Do not
 send product questions back merely because multiple sound implementations exist.
 
+Read `docs/engineering/verification-harness.md`, the verification telemetry conventions in
+`docs/observability.md`, and the implementation-slice rules in
+`docs/engineering/git-workflow.md` before designing telemetry or slices.
+
 Before designing Effect code, read `docs/engineering/effect-guidance.md`, the affected
 workspace `AGENTS.md`, the available Effect v4 `LLMS.md` and only its relevant linked
 material. Verify every proposed external API against the owning workspace's installed
@@ -39,7 +43,9 @@ declarations; local source may be ahead of the product pin.
 ## Required design order
 
 The wrapped research phase may establish the current implementation and dependency
-facts. After that, design in this explicit order and keep the phases reviewable:
+facts. After that, design in this explicit order and keep the phases reviewable. Phases 1–5
+decide architecture and evidence; phases 6 and 7 decide the telemetry that verification needs
+and how implementation is split for review:
 
 ### 1. Module architecture
 
@@ -102,8 +108,33 @@ manual procedures, expected observations, cleanup, retained records, and limitat
 Distinguish module evidence from feature evidence and avoid duplicate observations that
 make the same claim at several layers.
 
+### 6. Verification telemetry contract
+
+Run
+`uv run --with pyyaml==6.0.3 -- .specify/scripts/bash/resolve-template.sh telemetry-contract-template --json`
+and use the returned content to create or update `contracts/telemetry.md`. For every claim whose
+evidence channel in `verification.md` is server or browser telemetry, design the span, log, or
+metric that exposes the required observation: its name, emitting public module or adapter,
+attributes with data classes, correlation, the verifier's query, and what the verifier sees when
+the claim is violated. Prefer annotating existing `Effect.fn` spans. Never emit a forbidden data
+class; record how such a fact is verified instead. If browser telemetry does not exist yet, plan
+the observation through browser interaction and record the gap. Do not design durable tests over
+telemetry output. Instrumentation designed here is product code delivered with the slice that
+implements the observed behavior.
+
+### 7. Implementation slices
+
+Divide implementation into slices in `plan.md`. Each slice is one stacked pull request carrying
+one reviewable decision, with about 15 hand-written files at most; lockfiles and generated output
+are listed separately. Each slice is vertical: it passes typecheck, lint, `pnpm check:unused`,
+and `pnpm check:health` on its own, and each public contract lands with its first consumer and its
+evidence. Assign every module contract, telemetry row, and claim ID to a slice, and order slices
+so each builds on merged or lower-stack work. When no coherent stopping point exists near the
+size limit, state why. The final slice that satisfies the issue's completion evidence is the only
+one that may close the issue.
+
 Complete the appended sections in `plan.md`; link rather than duplicate
-`contracts/modules.md` and `verification.md`. Generate `data-model.md` and external
+`contracts/modules.md`, `contracts/telemetry.md`, and `verification.md`. Generate `data-model.md` and external
 interface contracts only when the feature actually needs them.
 
 
@@ -267,8 +298,10 @@ Command ends after Phase 1 design. Report branch, IMPL_PLAN path, and generated 
 
 ## Pre-ETS completion rule
 
-Do not report planning complete until the five design phases are explicit,
-`contracts/modules.md` covers every affected public module, proposed external APIs were
+Do not report planning complete until the seven design phases are explicit,
+`contracts/modules.md` covers every affected public module, `contracts/telemetry.md` covers every
+telemetry-channel observation without forbidden data, every contract, telemetry row, and claim is
+assigned to an implementation slice, proposed external APIs were
 checked against installed declarations, module evidence is claim-based, and
 `quickstart.md` operationalizes the approved feature verification plan. No unresolved
 product decision may be hidden as an implementation assumption. Follow
