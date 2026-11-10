@@ -1,8 +1,10 @@
 # Observability (OpenTelemetry traces, metrics, and logs)
 
 Instrumentation for the **Next.js Node server**
-(`@pathableai/pre-ets-frontend`). Browser/RUM and `packages/backend`
-instrumentation are out of scope.
+(`@pathableai/pre-ets-frontend`). Browser tracing and `packages/backend`
+instrumentation do not exist yet. Browser tracing is planned so the
+[verification harness](engineering/verification-harness.md) can observe browser
+behavior. Until it lands, browser facts are verified through browser interaction.
 
 **Runtime + export**: `instrumentation.ts` starts one process runtime. OTEL is
 all-or-nothing: `OTEL_SDK_DISABLED=true` installs no SDK, exporters, automatic
@@ -136,6 +138,57 @@ Client spans record the redacted URL in `url.full`; server spans record the
 redacted query in `url.query`. Other parameter names and values remain, so do
 not place secrets in URLs. Confirm redaction and required attributes with a
 manual Tempo sample review.
+
+## Verification telemetry conventions
+
+A feature's `contracts/telemetry.md` designs the telemetry its verification
+needs (see the [verification harness](engineering/verification-harness.md)).
+These conventions apply to every telemetry contract and to the instrumentation
+that implements it.
+
+### Signals
+
+- **Spans** carry facts about one operation and its causal place in a request or
+  journey. Prefer annotating the existing `Effect.fn` span, named
+  `Service.operation`, over adding a new span.
+- **Logs** record a discrete decision that a verifier searches for by message,
+  such as a rejected configuration. Use a fixed message per decision and put
+  the varying facts in structured annotations.
+- **Metrics** record rates and distributions across many requests, such as
+  renewal outcomes per minute. Metric attributes stay low-cardinality: no
+  session, trace, user, or request identifiers, and no timestamps.
+
+### Names and values
+
+- Custom attributes use `preets.<area>.<name>` in snake case, for example
+  `preets.session.deadline_ms`. Standard OpenTelemetry semantic-convention keys
+  keep their own names.
+- Every span named in a telemetry contract sets `preets.outcome` to a value from
+  a closed set that the contract defines, such as `renewed` or `rejected_late`.
+- Times are epoch milliseconds with a `_ms` suffix. Durations are milliseconds
+  with a `_duration_ms` suffix.
+- Correlation uses W3C trace context, `service.version` set to the revision
+  under verification, `session.id` set to the session's opaque telemetry ID
+  (never its cookie reference), and `preets.tenant.alias`.
+
+### Data classes
+
+| Allowed                                         | Forbidden                                                                       |
+| ----------------------------------------------- | ------------------------------------------------------------------------------- |
+| Outcomes and decisions from closed sets         | Credentials, API keys, and header values such as Authorization or Cookie        |
+| Non-secret policy and configuration values      | Session references and other cookie values                                      |
+| Deadlines, timestamps, durations, and counts    | Access, ID, and refresh tokens                                                  |
+| Opaque identifiers generated only for telemetry | OIDC authorization codes, state, nonce, and PKCE verifiers                      |
+| Tenant alias and route templates                | Personal data, including names, email addresses, and identity-provider subjects |
+| Revision and environment names                  | PHI, client record content, and free text from users or the page                |
+
+When a verifier needs a forbidden fact, the telemetry contract records how the
+fact is verified instead, for example through a module test or an opaque
+correlation identifier. A forbidden value found in exported telemetry is a
+verification failure for the slice that emitted it.
+
+Durable tests do not assert any of these signals. The verification agent and
+manual inspection observe them.
 
 ## Local Grafana / OTLP
 

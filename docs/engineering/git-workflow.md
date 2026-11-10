@@ -3,7 +3,8 @@
 This guide tells humans and agents how to branch, review, and merge Spec Kit work on a delivery issue.
 A pull request should carry one decision a reviewer can accept without also settling an unrelated decision.
 Line count is not the measure. A long specification can be easier to review than a short change that mixes
-product scope, architecture, and implementation.
+product scope, architecture, and implementation. Implementation also has a size limit, described under
+[Implementation slices](#implementation-slices), because a reviewer cannot hold a large implementation diff at once.
 
 Accepted requirements and approved delivery plans stay authoritative. Spec Kit must not silently change them.
 [Testing as evidence](testing/README.md) stays the authority for choosing and judging evidence. This guide owns
@@ -14,20 +15,38 @@ the `gh stack` extension. Do not add another stack manager or a custom Git orche
 
 ## When to open a stack
 
-A substantial feature for one delivery issue uses three pull requests:
+A substantial feature for one delivery issue uses a specification pull request, an engineering-plan pull request,
+and one or more implementation-slice pull requests:
 
-| Pull request     | Reviewer                        | Typical artifacts                                          | Approval means                                                           |
-| ---------------- | ------------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------ |
-| Specification    | Stakeholder or product reviewer | `spec.md`, `verification.md`, specification checklist      | Expectations and verification obligations are defined                    |
-| Engineering plan | Architect or technical reviewer | `plan.md`, `contracts/modules.md`, supporting design notes | The proposed architecture and contracts are a fit for that specification |
-| Implementation   | Engineer or quality reviewer    | Code, tests, integration, evidence                         | The result matches the approved specification and plan                   |
+| Pull request         | Reviewer                        | Typical artifacts                                                                                     | Approval means                                                           |
+| -------------------- | ------------------------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Specification        | Stakeholder or product reviewer | `spec.md`, `verification.md`, specification checklist                                                 | Expectations, observations, and verification obligations are defined     |
+| Engineering plan     | Architect or technical reviewer | `plan.md`, `contracts/modules.md`, `contracts/telemetry.md`, `quickstart.md`, supporting design notes | The architecture, telemetry, and slices are a fit for that specification |
+| Implementation slice | Engineer or quality reviewer    | Code, instrumentation, tests, evidence for one planned slice                                          | The slice matches the approved specification and plan                    |
 
-The specification pull request does not introduce module structure or public types. The plan does not redefine
-acceptance criteria. Implementation may use more than one pull request when each increment is its own reviewable
-decision. Tasks belong on the implementation branch, after the plan is approved, and are not a fourth gate.
+The specification pull request does not introduce module structure, public types, or telemetry names. The plan does
+not redefine acceptance criteria. Tasks belong on the first implementation branch, after the plan is approved, and
+are not a separate gate. [The verification harness](verification-harness.md) describes how telemetry is planned and
+how each slice is verified.
 
-Use one pull request when the change is not that three-part decision. Say which gates are combined, or why a stack
-does not apply:
+### Implementation slices
+
+The engineering plan divides implementation into slices. Each slice is one pull request in the stack:
+
+- **One decision.** A reviewer can accept the slice without also accepting a later one.
+- **About 15 changed files at most.** Count hand-written files. Lockfile changes and generated output are listed
+  separately. When no coherent stopping point exists below that size, the plan and the pull request body say why.
+  Do not split a single decision across pull requests only to meet the number.
+- **Vertical.** Each slice passes CI, `pnpm check:unused`, and `pnpm check:health` on its own. A public contract
+  lands with its first consumer and its evidence, not ahead of them.
+- **Verified.** A slice is marked ready for review only after the verification agent has reported on its claims, as
+  described in [the verification harness](verification-harness.md#gate-and-escalation).
+
+If implementation shows that the planned slices cannot meet these rules, change the plan's slices through the
+[corrections](#corrections) path rather than letting one slice grow.
+
+Use one pull request when the change is not that specification, plan, and implementation decision. Say which gates
+are combined, or why a stack does not apply:
 
 - Requirements and delivery-plan changes use their own workflows and land on `main` directly.
 - Dependency updates, generated Spec Kit upgrades, and fixes that stay inside an approved contract use one pull request.
@@ -43,9 +62,11 @@ main
   └── 156-distributed-sessions
         └── 156-distributed-sessions-plan
               └── 156-distributed-sessions-impl
+                    └── 156-distributed-sessions-impl-<slice>
 ```
 
-Add a further implementation slice as `{number}-{slug}-impl-<slice>`. While the predecessor pull request is open,
+The first implementation slice uses `{number}-{slug}-impl`. Add each further slice as `{number}-{slug}-impl-<slice>`,
+using the slice ID from `plan.md`. While the predecessor pull request is open,
 create the next branch with `gh stack add` from that branch. After the predecessor has merged, its remote branch
 is deleted and that completed stack cannot be extended. Create the next branch from updated `origin/main`, keep
 the same Spec Kit number and `specs/{number}-{slug}/` directory, and start a new stack with `gh stack init`. Do
@@ -119,7 +140,8 @@ its completion evidence satisfies that issue. None of these pull requests closes
 
 Human review is the approval. Copilot advice is input to that review.
 
-Keep a pull request in draft until that phase has passed its local checks and is ready for one review. The
+Keep a pull request in draft until that phase has passed its local checks and is ready for one review. An
+implementation slice also needs a verification report first. The
 organization requests a Copilot review on every push to a non-draft pull request, including stacked layers, and
 skips drafts. Mark a pull request draft again before a series of intermediate pushes, then mark it ready once.
 Use the repository's Balanced review effort. Do not request a fresh review for a push that does not change a decision.
@@ -127,8 +149,8 @@ Use the repository's Balanced review effort. Do not request a fresh review for a
 Path-scoped instructions in `.github/instructions/` set the review lens:
 
 - Specification files: the delivery issue, accepted requirements, and delivery scope. Module design is out of scope.
-- Plan and contract files: boundaries, public contracts, Effect shape, and evidence. Acceptance criteria stay as approved.
-- Implementation files: conformance, tests, security, and unapproved contract drift.
+- Plan and contract files: boundaries, public contracts, Effect shape, telemetry contract, slices, and evidence. Acceptance criteria stay as approved.
+- Implementation files: conformance, tests, security, telemetry data classes, and unapproved contract drift.
 
 Respond to each Copilot finding as accepted, rejected with a reason, or waiting on a human decision. Do not apply
 findings automatically.
@@ -165,7 +187,8 @@ Change the earliest phase that owns the decision.
 | ---------------------------------------------------- | ----------------------------------------------------------- |
 | Algorithm or private implementation                  | Implementation                                              |
 | Public signature, error contract, or module boundary | Engineering plan                                            |
-| Acceptance or feature verification                   | Specification                                               |
+| Telemetry contract row or implementation slice       | Engineering plan                                            |
+| Acceptance, observation, or evidence channel         | Specification                                               |
 | Delivery-slice scope                                 | Delivery-planning workflow. Stop the affected feature work. |
 | Accepted requirement                                 | Requirements workflow. Stop the affected feature work.      |
 
@@ -205,15 +228,15 @@ That includes a later correction whose pull request is for that same feature. Ev
 is a historic artifact. Leave it unchanged when later code, requirements, or documentation move on. Do not revise
 an old `plan.md`, `spec.md`, contract, research note, task list, or quickstart so it matches the current system.
 
-| Artifact                                                          | Treatment                                                                                                      |
-| ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `spec.md`, `verification.md`                                      | Keep. Historical feature contract for that slice, subordinate to accepted requirements and the delivery issue. |
-| `plan.md`, `contracts/modules.md`, `research.md`, `data-model.md` | Keep. Historical architecture decision. Implementation must not silently rewrite it.                           |
-| `quickstart.md`                                                   | Keep. The plan records the execution mapping. Implementation adds results, conditions, and limitations.        |
-| `checklists/requirements.md`                                      | Keep with the specification pull request.                                                                      |
-| `tasks.md`                                                        | Create on the implementation branch. Leave it as history after merge. It is not an ongoing backlog.            |
-| Critique transcripts                                              | Do not commit new transcripts. The review thread is the record. Transcripts already on `main` stay.            |
-| Temporary probes and raw tool output                              | Do not commit. Summarize meaningful evidence with its conditions and limits.                                   |
+| Artifact                                                    | Treatment                                                                                                      |
+| ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `spec.md`, `verification.md`                                | Keep. Historical feature contract for that slice, subordinate to accepted requirements and the delivery issue. |
+| `plan.md`, `contracts/*.md`, `research.md`, `data-model.md` | Keep. Historical architecture decision. Implementation must not silently rewrite it.                           |
+| `quickstart.md`                                             | Keep. The plan records the execution mapping. Implementation adds results, conditions, and limitations.        |
+| `checklists/requirements.md`                                | Keep with the specification pull request.                                                                      |
+| `tasks.md`                                                  | Create on the first implementation branch. Leave it as history after merge. It is not an ongoing backlog.      |
+| Critique transcripts                                        | Do not commit new transcripts. The review thread is the record. Transcripts already on `main` stay.            |
+| Temporary probes and raw tool output                        | Do not commit. Summarize meaningful evidence with its conditions and limits.                                   |
 
 ## Commands agents may use
 

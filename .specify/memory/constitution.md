@@ -1,3 +1,23 @@
+<!--
+Sync Impact Report
+Version change: 1.2.0 → 1.3.0 (MINOR: materially expanded verification and observability guidance)
+Reason: Implementation pull requests grew too large to review, and runtime behavior was verified without
+telemetry designed for it. Verification now drives the telemetry the product emits, and a verification
+agent reports on each implementation slice.
+Modified principles:
+- I. Evidence-Grounded Specification: verification.md also states the distinguishing observation and its
+  evidence channel.
+- V. Meaningful Behavioral Tests: instrumentation designed in an approved telemetry contract is committed
+  product code; forbidden telemetry data is named; durable telemetry assertions remain prohibited.
+Modified sections: Development Workflow and Review steps 3–5 (seven planning phases, slice-grouped tasks,
+per-slice verification).
+Affected artifacts: docs/engineering/verification-harness.md (new), docs/engineering/git-workflow.md,
+docs/engineering/testing/README.md, docs/observability.md, AGENTS.md, .github review instructions and
+implementation PR template.
+Follow-up: Spec Kit preset templates, commands, and skills (verification channels, telemetry contract,
+implementation slices, verifier skill) are updated in a separate pull request.
+-->
+
 # Pre-ETS Constitution
 
 ## Core Principles
@@ -16,8 +36,9 @@ consistent across specification, verification, plan, tasks, and implementation.
 Specifications MUST describe stakeholder-observable behavior and constraints without choosing
 module boundaries, libraries, dependency injection, internal algorithms, files, or runtime
 composition. Each specification MUST include a sibling `verification.md` that maps authorized
-claims to meaningful violations and planned automated, manual, and operational evidence. Planned
-procedures MUST NOT be described as executed evidence.
+claims to meaningful violations, the observation that distinguishes them, the evidence channel for
+that observation, and planned automated, manual, and operational evidence. Planned procedures MUST
+NOT be described as executed evidence.
 
 Material uncertainty affecting behavior, data ownership, or access MUST be resolved before dependent
 work. A blocking finding MUST identify: (1) the authoritative source; (2) the ambiguity or conflict;
@@ -118,11 +139,18 @@ use public-interface examples, useful properties, real integration evidence, exi
 manual/transient probes at the smallest meaningful boundary. Manual module evidence is conditional;
 manual feature verification is standard.
 
-Observability MUST be verified by inspecting real logs or exported OpenTelemetry data manually or
-with temporary probes. Durable tests MUST NOT assert log text, spans, attributes, telemetry payloads,
-or exporter wiring. Temporary probes and instrumentation MUST include cleanup and MUST NOT be
-committed. Retained evidence MUST identify the revision, environment, safe inputs/actions,
-observation, result, and limitations without credentials, PHI, or other sensitive values.
+Runtime telemetry is part of the verification harness. When feature verification needs a runtime
+fact, the plan MUST design the span, log, or metric that exposes it in a telemetry contract, and that
+instrumentation is committed product code. Telemetry MUST NOT carry credentials, cookies, session
+references, tokens, OIDC codes, state, or nonces, PHI, personal data, or raw subject identifiers; a
+fact that cannot be emitted safely MUST be verified another way. Ad-hoc probes and instrumentation
+outside an approved telemetry contract MUST include cleanup and MUST NOT be committed.
+
+Telemetry evidence MUST come from inspecting real logs, traces, or metrics manually, through a
+verification agent, or with temporary probes. Durable tests MUST NOT assert log text, spans,
+attributes, telemetry payloads, or exporter wiring. Retained evidence MUST identify the revision,
+environment, safe inputs/actions, observation, result, and limitations without credentials, PHI, or
+other sensitive values.
 
 The project's reference is
 [Playwright E2E Testing Best Practices](https://app.notion.com/p/3bb7cbd04b6d81729a42e209d82aad1a).
@@ -187,15 +215,20 @@ implementation and verification status MUST be established from repository evide
    five-part format instead of guessing or editing an authority.
 2. Specify the stakeholder-observable workflow, scope, acceptance criteria, and feature verification.
    Complete `spec.md` and `verification.md` together before planning dependent behavior.
-3. Plan in five reviewable phases: module architecture, public module contracts in
-   `contracts/modules.md`, module-contract evidence, private implementation architecture, and
-   feature-verification integration in `quickstart.md`. Record a Constitution Check for each
+3. Plan in seven reviewable phases: module architecture, public module contracts in
+   `contracts/modules.md`, module-contract evidence, private implementation architecture,
+   feature-verification integration in `quickstart.md`, the verification telemetry contract in
+   `contracts/telemetry.md`, and implementation slices. Record a Constitution Check for each
    applicable principle and explain any non-applicable principle.
-4. Derive implementation tasks from the approved verification and module contracts. Sequence public
-   contracts and their evidence before dependent private implementation, and include manual,
-   transient, operational, and cleanup tasks required by the plan.
-5. Implement focused changes and validate their behavior. For UI, review the installed PathAble
-   guidance and report library gaps upstream as required by Principle IV.
+4. Derive implementation tasks from the approved verification, module contracts, and telemetry
+   contract, grouped by implementation slice. Sequence public contracts and their evidence before
+   dependent private implementation, and include instrumentation, manual, transient, operational,
+   verification-handoff, and cleanup tasks required by the plan.
+5. Implement each slice as its own reviewable pull request and validate its behavior. A slice is
+   ready for review only after a verification agent has reported on its claims from the running
+   application, as described in
+   [the verification harness](../../docs/engineering/verification-harness.md). For UI, review the
+   installed PathAble guidance and report library gaps upstream as required by Principle IV.
 6. Before committing, run `pnpm typecheck`, `pnpm build`, `pnpm lint`, `pnpm format:check`,
    `pnpm check:unused`, and `pnpm check:health`, plus feature-specific checks. Apply lint fixes
    before formatting when fixes are needed, then verify both pass. Preserve the root pre-commit
@@ -231,4 +264,4 @@ amended date while preserving the original ratification date.
 Plans and pull requests MUST be reviewed against the applicable principles. Any required follow-up
 synchronization MUST be recorded; this constitution workflow modifies only this file.
 
-**Version**: 1.2.0 | **Ratified**: 2026-09-13 | **Last Amended**: 2026-10-23
+**Version**: 1.3.0 | **Ratified**: 2026-09-13 | **Last Amended**: 2026-11-10

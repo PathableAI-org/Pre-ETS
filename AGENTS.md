@@ -68,12 +68,17 @@ Before designing or changing tests, read [Testing as evidence](docs/engineering/
 For property tests, also read [Property-based testing](docs/engineering/testing/property-based-testing.md).
 Choose evidence for a named expectation and the boundary responsible for it; do not add tests solely for coverage.
 
-Verify observability manually or with temporary agent probes, inspecting real logs
-and exported OTel data. When the local Grafana stack is running, use the Grafana
-MCP server in [docs/observability.md](docs/observability.md) to inspect exported
-frontend traces. An empty Loki or Prometheus result is not application evidence.
-Do not retain durable tests of log output, spans, attributes,
-telemetry payloads, or exporter behavior. Keep durable tests focused on application outcomes.
+Runtime telemetry is part of the verification harness. When a feature claim needs a
+runtime fact, the plan's `contracts/telemetry.md` puts it in a span, log, or metric that
+follows the [verification telemetry conventions](docs/observability.md#verification-telemetry-conventions),
+and a verification agent inspects real exported data for each implementation slice. Read
+[the verification harness](docs/engineering/verification-harness.md) before planning, implementing,
+or verifying a feature. Otherwise verify observability manually or with temporary agent probes.
+When the local Grafana stack is running, use the Grafana MCP server in
+[docs/observability.md](docs/observability.md) to inspect exported frontend traces. An empty Loki or
+Prometheus result is not application evidence. Never emit a forbidden data class. Do not retain
+durable tests of log output, spans, attributes, telemetry payloads, or exporter behavior. Keep
+durable tests focused on application outcomes.
 
 Before authoring or reviewing requirements BDD, step definitions, or supporting helpers, read
 [Requirements-backed BDD](docs/engineering/testing/requirements-bdd.md). Inspect the referenced requirements

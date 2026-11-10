@@ -146,14 +146,19 @@ isolate dependencies, but a simulated adapter does not establish the real adapte
 
 ## Preserve useful knowledge
 
-### Verify observability manually
+### Observe telemetry, do not test it
 
-Observability is verified through manual checks or temporary agent probes against
-real application logs and exported OTel data. Record the exercised revision,
-environment, requests, observations, and limits. Do not retain durable tests of log
-messages, spans, attributes, telemetry payload secrecy, or exporter wiring, including
-tests using in-memory loggers/tracers. The temporary probes and their transcripts
-do not become a permanent test suite.
+Runtime telemetry is evidence of application behavior. When a feature claim needs a
+runtime fact, the plan's telemetry contract puts it in a span, log, or metric, and a
+verification agent inspects the exported data for each implementation slice. See
+[the verification harness](../verification-harness.md).
+
+Telemetry is observed through that verification agent, manual checks, or temporary
+agent probes against real application logs and exported OTel data. Record the
+exercised revision, environment, requests, observations, and limits. Do not retain
+durable tests of log messages, spans, attributes, telemetry payload secrecy, or
+exporter wiring, including tests using in-memory loggers/tracers. The probes,
+verification reports, and their transcripts do not become a permanent test suite.
 
 Keep durable tests for application outcomes such as configuration rejection,
 returned values, HTTP failure mapping, and tenant isolation. Supplying a logger to

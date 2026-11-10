@@ -8,12 +8,24 @@ including its public contracts and evidence. Unapproved contract or acceptance c
 - Specification pull request:
 - Engineering-plan pull request:
 - Delivery issue:
+- Implementation slice from `plan.md` (ID and position in the stack):
 
 ## Decision
 
 - Behavior implemented:
 - Contracts preserved or intentionally deferred:
 - Evidence produced, with conditions and limitations:
+- Hand-written files changed, and the reason if well over 15:
+
+## Verification report
+
+Summarize the latest verification report for this slice's revision. Do not paste raw query output.
+
+| Claim ID | Result | Revision | Evidence (trace IDs or query) | Limits |
+| -------- | ------ | -------- | ----------------------------- | ------ |
+|          |        |          |                               |        |
+
+Forbidden telemetry data observed: none / describe
 
 Use `Closes #<issue>` only when this pull request satisfies the issue's completion evidence. Otherwise use
 `Contributes to #<issue>`.
@@ -24,6 +36,7 @@ Use `Closes #<issue>` only when this pull request satisfies the issue's completi
 - [ ] Manual or operational evidence, including what was not run
 - [ ] Temporary probes and generated output are absent
 - [ ] `tasks.md` and `quickstart.md` agree with the evidence actually collected
+- [ ] Instrumentation matches `contracts/telemetry.md`, and no durable test asserts telemetry
 
 ## Review notes
 

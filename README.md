@@ -518,10 +518,13 @@ Run Spec Kit from the repository root. Set `SPECIFY_INIT_DIR` to this checkout's
 root when invoking its scripts from another working directory. A delivery-issue
 feature follows the [Git and pull request workflow](docs/engineering/git-workflow.md):
 specify and clarify on one pull request, review the engineering plan on the next,
-and implement on a following pull request. Use `speckit-stack` to keep those
-pull requests stacked. Start with `speckit-specify` using exactly one authorized
-delivery issue. Specification produces `spec.md` and `verification.md`; planning
-produces `contracts/modules.md` and a planned `quickstart.md`. The constitution
+and implement in one or more planned slices on the following pull requests. Use
+`speckit-stack` to keep those pull requests stacked. Start with `speckit-specify`
+using exactly one authorized delivery issue. Specification produces `spec.md` and
+`verification.md`; planning produces `contracts/modules.md`, `contracts/telemetry.md`,
+implementation slices, and a planned `quickstart.md`. A verification agent checks
+each slice against the running application, as described in the
+[verification harness](docs/engineering/verification-harness.md). The constitution
 defines the required behavioral verification; installing the BDD extension does
 not make Gherkin mandatory for every change.
 
