@@ -150,7 +150,9 @@ warning lead that the coordinator's header exposes as non-protected attributes, 
 `data-session-warning-lead`, and assert they match the renewal response within 2 seconds; repeated after changing the
 tenant's effective policy while the session is valid, for a document-entry renewal (measured from the coordinator mount, not the response,
 because of gap G2; with delayed bundles the elapsed time is recorded, not asserted), and for a refresh that shortens the timeout, where the running tab must adopt the higher revision
-with the earlier deadline; resume behavior is evidenced separately under V-013), V-013 and V-014 (a
+with the earlier deadline; and with a server-rendered snapshot whose page is delayed 20 seconds before mount, where
+both tabs must hold the same local deadline within the round-trip uncertainty; resume behavior is evidenced
+separately under V-013), V-013 and V-014 (a
 synthetic `visibilitychange` dispatched by `page.evaluate` is **not** acceptable; change visibility by bringing another
 page to the front with `page.bringToFront()`, freeze and resume with the CDP `Page.setWebLifecycleState` command, and
 exercise the back/forward cache with a navigation and `page.goBack()`; confirm the exact mechanisms against Playwright

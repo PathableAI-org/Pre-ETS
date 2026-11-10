@@ -66,6 +66,7 @@ The first plan review found these defects. Each is corrected in the decision nam
 | R26 | `logout-failed` named only the session, so one attempt's failure stopped watches for a later pending attempt.                                   | Each attempt has an `attemptId`; tabs keep watching while any attempt of their tag is unresolved and unexpired (D8).                                                                                                                  |
 | R27 | Checking `notAfter` on receipt did not bound when the delete commits; an admitted request could delete after watchers stopped.                  | The cutoff is enforced inside the store's invalidation script against Redis `TIME`, atomically with the delete; watches run until `notAfter` + 3 s (D8).                                                                              |
 | R28 | A tab mounting or resuming during an interrupted logout never started a watch.                                                                  | Pending attempts are kept in `preets-session-logout-pending:v1`; mount and resume replay unexpired attempts of the tab's tag and start the watch (D8, D14).                                                                           |
+| R29 | Converting with `localNow + (deadline - serverTime)` at receipt adds delivery and rendering delay, and equal revisions could not correct it.    | Tabs hold deadlines on the server clock and convert through a per-tab clock offset estimated from request timing; any response, including an equal revision, can recalibrate the offset (D6).                                         |
 
 ## Current implementation facts
 
@@ -293,9 +294,17 @@ not throttled; a pending record whose only running tabs are hidden may be sent l
 
 **Decision**: Every server snapshot carries `idleDeadlineEpochMilliseconds`, `observedAtEpochMilliseconds`,
 `serverTimeEpochMilliseconds`,
-`warningLeadMinutes`, and `coordinationTag`. A tab converts the deadline to local time as
-`localNow + (deadline - serverTime)` when it receives a snapshot and broadcasts the converted deadline with the
-policy. Renewal sources propagate as follows:
+`warningLeadMinutes`, and `coordinationTag`.
+
+**Clock conversion (R29)**: a tab holds the deadline on the server clock and converts it with a per-tab clock offset,
+`localDeadline = idleDeadlineEpochMilliseconds - offset`. It estimates `offset = serverTime - localMidpoint`, where
+`localMidpoint` is the local time halfway between sending the request and receiving its response; for the
+server-rendered snapshot it uses the Navigation Timing entry (`requestStart` to `responseStart`, relative to
+`performance.timeOrigin`). Snapshot age, delivery, and hydration time therefore do not enter the deadline; only half
+the round trip remains as uncertainty. The tab keeps the estimate from the response with the smallest round trip and
+updates it from every response, including one whose revision is equal to the held one, so calibration never needs a
+newer revision. Broadcasts carry the deadline on the server clock, and each receiving tab converts it with its own
+offset. Renewal sources propagate as follows:
 
 | Renewal source                                                | How other tabs learn within 2 seconds                                                                                          |
 | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |

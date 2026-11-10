@@ -288,7 +288,9 @@ Classified activity enters `decideActivityCommunication` on the tab's own tag re
 `/session/activity`, `Coalesce` broadcasts `pending` and schedules the flush, which runs
 `flushActivityCommunication` under the lock and reschedules a stale timer. Every snapshot (activity 200, status 200,
 broadcast) passes `adoptSnapshot` (higher revision wins, even with an earlier deadline; equal revisions ignored), is broadcast as
-`renewed` when newly adopted, and reschedules the single confirmation timer at the local deadline. Listeners for `visibilitychange`, `resume`, and `pagehide` implement research D9; confirmation uses
+`renewed` when newly adopted, and reschedules the single confirmation timer at the local deadline. Deadlines are held on the server clock and
+converted with a per-tab offset estimated from request timing (Navigation Timing for the server render) and
+recalibrated from every response (research D6, R29). Listeners for `visibilitychange`, `resume`, and `pagehide` implement research D9; confirmation uses
 `AbortSignal.timeout(1500)`. Logout bypasses the window. `logout-control.tsx` renders the header `Button`;
 `signed-out-notice.tsx` renders `Alert` + `Heading` + `Text` + `Link href="/"`; the coordinator renders the provider
 from `providers/session-confirmation.tsx` with `confirm` bound to the status read and the current `coordinationTag`.
