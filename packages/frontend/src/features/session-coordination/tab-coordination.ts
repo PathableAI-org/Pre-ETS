@@ -153,7 +153,8 @@ export class TabCoordination {
   /** What each message for this tab's own session does (data-model "Channel messages"). */
   readonly #receivers: Readonly<Record<TabMessage["type"], (message: TabMessage) => void>> = {
     communicated: (message) => {
-      if (message.type !== "communicated") return
+      // Only fallback tabs keep the window in memory; a shared tab's window lives in storage (R24).
+      if (message.type !== "communicated" || this.#sharedWindow) return
       // It covers pending activity at or before it; later activity keeps its 60-second bound (R32, R36).
       const record = applyCommunication(this.#memoryWindow ?? EMPTY_WINDOW, message.at)
       this.#memoryWindow = record
@@ -168,7 +169,7 @@ export class TabCoordination {
     "logout-failed": (message) => {
       if (message.type !== "logout-failed") return
       this.#attempts.delete(message.attemptId)
-      this.#watchLogout()
+      this.#stopWatchIfIdle()
     },
     "logout-started": (message) => {
       if (message.type !== "logout-started") return
@@ -555,7 +556,7 @@ export class TabCoordination {
       this.#attempts.delete(own)
       this.#channel?.post({ attemptId: own, coordinationTag: this.#tag, type: "logout-failed" })
     }
-    this.#watchLogout()
+    this.#stopWatchIfIdle()
     this.#setView("logout-failed")
   }
 
@@ -619,7 +620,7 @@ export class TabCoordination {
       this.#attempts.delete(attemptId)
       removePendingLogout(this.#tag, attemptId)
     }
-    this.#watchLogout()
+    this.#stopWatchIfIdle()
   }
 
   /** B5-R: replay records first; past the local deadline conceal at once; either way confirm (research D9). */
@@ -686,6 +687,11 @@ export class TabCoordination {
     const existing = this.#timers.get(name)
     if (existing !== undefined) clearTimeout(existing)
     this.#timers.delete(name)
+  }
+
+  /** Stops the watch once no attempt remains; a pending tick is kept so the fixed cadence holds (R11, FR-015). */
+  #stopWatchIfIdle() {
+    if (this.#view === "ended" || this.#attempts.size === 0) this.#stopTimer("logout-watch")
   }
 
   #storage(event: StorageEvent) {
