@@ -245,6 +245,18 @@ The plan was amended again after review of #364 (user decisions of 2026-11-10). 
 - Review of #364: a usable status ends an ambiguous attempt as failed only if its read started after the cutoff, and
   the protected layout keys the coordinator by session tag.
 
+## Amended-plan rework (plan `17fce4e`, R30–R32)
+
+- **R30**: one `localStorage` key per logout attempt, `preets-session-logout-pending:v1:<tag>:<attemptId>` →
+  `{ notAfter }`; each writer touches only its own key.
+- **R31**: an attempt resolves only by `logged-out`, its own `logout-failed`, a 401 or different tag, or a usable status
+  whose Redis `observedAtEpochMilliseconds` is later than `notAfter`; the `notAfter` + 3 s timer is gone. The same rule
+  decides that this tab's own ambiguous attempt failed. Keys of resolved attempts are deleted, including on end.
+- **R32**: in the no-storage fallback, a received `communicated { at }` clears this tab's pending activity at or before
+  `at`; newer activity stays queued.
+- The plan now covers former deviations 15–17 (refusal classification, `logout-failed` broadcast with `attemptId`,
+  clock-estimator details), so they are removed below.
+
 ## Implementation deviations from the plan (for plan review)
 
 These do not change any acceptance criterion or HTTP outcome. Each needs reviewer confirmation at the plan gate.
@@ -290,13 +302,3 @@ These do not change any acceptance criterion or HTTP outcome. Each needs reviewe
     on the DOM synchronously (FR-017) and reveals on a usable answer whose read started after concealment began.
 14. **Superseded by R28.** The planned `preets-session-logout-pending:v1` record replaces the earlier single-entry
     logout record.
-15. **A "refused" logout includes 4xx statuses other than 401, 408, and 409** (for example 400 or 415), which are
-    definitive answers that the session was not ended. Every 5xx, not only 503, is ambiguous. The logout request times
-    out after 10 seconds, matching `notAfter`.
-16. **`logout-failed` after `notAfter` is broadcast.** Research D8's bullet for "confirmed still usable after
-    `notAfter`" says the tab does not broadcast, while the data-model, contract, and D8's first bullet say it
-    broadcasts `logout-failed`. The implementation broadcasts, so watching tabs stop.
-17. **Clock estimator details (R29).** Navigation Timing describes only the document's first coordinator; a coordinator
-    mounted later (a new session tag) starts from receipt time with an unbounded round trip, so the first timed response
-    replaces it. A sample whose uncertainty interval does not overlap the held estimate also replaces it, so a local
-    clock step cannot leave a stale offset. A route-refresh snapshot has no request timing and does not recalibrate.

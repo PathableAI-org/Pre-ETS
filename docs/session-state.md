@@ -163,7 +163,8 @@ B5 windows across tabs through one `localStorage` record per session tag
 (`preets-session-activity:v1:<tag>`) under a Web Lock, so a stale tab writes only its own session's
 record. Records for tags other than the tab's and the current hint's are pruned to the four most
 recently touched. Without `localStorage` or Web Locks, each tab keeps its window in memory and
-announces each send on the channel (`communicated`), so other tabs share it. A window-end flush sends only when that window is
+announces each send on the channel (`communicated`), so other tabs share it and drop pending activity
+that send already covered. A window-end flush sends only when that window is
 due, so a stale timer reschedules. Tabs share renewed deadlines, coalesced activity, and logout on
 `BroadcastChannel("preets-session-coordination")`, ignoring other tags, and adopt a snapshot only
 when its revision is higher than the one they hold; equal revisions are ignored. Two more records support replay:
@@ -194,24 +195,26 @@ confirmation (1.5 seconds) hides content and retries. A page entering the back-f
 hidden first, and the history guard reloads it on restore. Server Action forms confirm after
 they settle, so other tabs learn of the gate's renewal.
 
-Every protected page has a Log out button. Logout announces `logout-started`, then is sent at once
-with `keepalive`. Both carry `notAfter`, the server-clock time 10 seconds ahead; the handler refuses
-an attempt received later with 408 and no store operation. Other tabs start a confirmation each
-second, without waiting for earlier reads, until they see the outcome or `notAfter` plus 2 seconds
-has passed. The initiating tab also records the logout in
-progress in `localStorage`, so a tab that mounts or resumes during that time replays the watch;
-the record only triggers confirmation and never ends a tab by itself. Each watch read gives up after one second, so a
+Every protected page has a Log out button. Each attempt gets an `attemptId` and is written to its
+own `localStorage` key (`preets-session-logout-pending:v1:<tag>:<attemptId>` → `{ notAfter }`), then
+announced as `logout-started` and sent at once with `keepalive`. `notAfter` is the server-clock time
+10 seconds ahead: the handler refuses an attempt received later with 408, and the store deletes
+the record only while Redis `TIME` is at or before it. Other tabs, and tabs that mount or resume
+while the key exists, start a confirmation each second, without waiting for earlier reads, until
+the attempt resolves: `logged-out`, its own `logout-failed`, a 401 or different tag, or a usable
+status whose Redis `observedAtEpochMilliseconds` is later than `notAfter`, after which the attempt
+can no longer delete. A stored attempt never ends a tab by itself. Each watch read gives up after one second, so a
 tab conceals within two seconds even if the initiating tab closes. On 204, 401, or 409 the tab
 records its tag as ended, broadcasts, and every sharing tab unmounts protected content and shows a
 signed-out notice with a Log in link to `/`. A network failure, timeout, 408, or 5xx is ambiguous,
 because the server may have ended the session and lost or failed the reply (a 503 can follow an
 applied delete): the initiating tab hides content and confirms, the other tabs keep watching, and
-the status answer decides. A 401 or a different tag ends every tab as above; a usable answer after
-`notAfter` means logout did not complete.
+the status answer decides. A 401 or a different tag ends every tab as above; a usable status
+observed after `notAfter` means logout did not complete.
 Authentication never starts on its own. The same notice stands in for expiration until
 [#157](https://github.com/PathableAI-org/Pre-ETS/issues/157). If logout fails (a definitive 403 or
-other refusal, or a usable answer after `notAfter`), the tab broadcasts `logout-failed`, which stops
-the other tabs' watch, hides content, and offers Log out again. Logout ends the application session only; see
+other refusal, or a usable status observed after `notAfter`), the tab broadcasts `logout-failed` with
+its `attemptId`, which resolves that attempt in the other tabs, hides content, and offers Log out again. Logout ends the application session only; see
 [authentication](./authentication.md#application-logout). Coordination and logout need JavaScript;
 without it the gate and idle expiry still enforce access. Live multi-tab behavior is not yet
 observable in the running application until [#158](https://github.com/PathableAI-org/Pre-ETS/issues/158).

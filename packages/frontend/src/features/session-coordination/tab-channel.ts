@@ -8,7 +8,7 @@ const CHANNEL = "preets-session-coordination"
 export const CURRENT_KEY = "preets-session-current:v1"
 export const ENDED_KEY = "preets-session-ended:v1"
 const RECORD_PREFIX = "preets-session-activity:v1:"
-const PENDING_LOGOUT_KEY = "preets-session-logout-pending:v1"
+const PENDING_LOGOUT_PREFIX = "preets-session-logout-pending:v1:"
 const LOCK = "preets-session-activity"
 const ENDED_TAGS_KEPT = 8
 /** Window records kept for tags other than this tab's and the current hint's. */
@@ -219,40 +219,42 @@ export const recordEnded = (coordinationTag: string): void => {
   writeJson(ENDED_KEY, { coordinationTags: [coordinationTag, ...others].slice(0, ENDED_TAGS_KEPT) })
 }
 
-/** One logout attempt: `notAfter` is its server-clock cutoff (research D8, R26, R28). */
+/** One unresolved logout attempt of a tag; `notAfter` is its server-clock cutoff (research D8, R26, R30). */
 export interface PendingLogout {
   readonly attemptId: string
-  readonly coordinationTag: string
   readonly notAfter: number
 }
 
-const isPendingLogout = (value: unknown): value is PendingLogout =>
-  isRecord(value) && typeof value.attemptId === "string" && typeof value.coordinationTag === "string" &&
-  isTime(value.notAfter)
+/** One key per attempt, so concurrent writers never overwrite one another (R30). */
+const pendingLogoutPrefix = (coordinationTag: string) => `${PENDING_LOGOUT_PREFIX}${coordinationTag}:`
 
-const readPendingLogouts = (): readonly PendingLogout[] => {
-  const value = readJson(PENDING_LOGOUT_KEY)
-  return Array.isArray(value) ? value.filter(isPendingLogout) : []
+/** Unresolved attempts of a tag. An attempt triggers confirmation only; it never ends a tab by itself (R28). */
+export const pendingLogouts = (coordinationTag: string): readonly PendingLogout[] => {
+  const prefix = pendingLogoutPrefix(coordinationTag)
+  try {
+    return Object.keys(localStorage).flatMap((key) => {
+      const value = key.startsWith(prefix) ? readJson(key) : undefined
+      return isRecord(value) && isTime(value.notAfter) ?
+        [{ attemptId: key.slice(prefix.length), notAfter: value.notAfter }] :
+        []
+    })
+  } catch {
+    return []
+  }
 }
 
-/**
- * Unexpired logout attempts for a tag. `expiredBefore` is a server-clock time: attempts whose cutoff precedes it are
- * pruned. A pending attempt triggers confirmation only; it never ends a tab by itself.
- */
-export const pendingLogouts = (coordinationTag: string, expiredBefore: number): readonly PendingLogout[] => {
-  const live = readPendingLogouts().filter((entry) => entry.notAfter >= expiredBefore)
-  writeJson(PENDING_LOGOUT_KEY, live)
-  return live.filter((entry) => entry.coordinationTag === coordinationTag)
+/** Written before the logout request is sent, so a tab that mounts or resumes meanwhile can watch it. */
+export const addPendingLogout = (coordinationTag: string, attempt: PendingLogout): void => {
+  writeJson(`${pendingLogoutPrefix(coordinationTag)}${attempt.attemptId}`, { notAfter: attempt.notAfter })
 }
 
-/** Written before the logout request is sent, so a tab that mounts or resumes meanwhile can watch it (R28). */
-export const addPendingLogout = (entry: PendingLogout): void => {
-  writeJson(PENDING_LOGOUT_KEY, [...readPendingLogouts(), entry])
-}
-
-/** Removed when the attempt's outcome is known. */
-export const removePendingLogout = (attemptId: string): void => {
-  writeJson(PENDING_LOGOUT_KEY, readPendingLogouts().filter((entry) => entry.attemptId !== attemptId))
+/** Deleted when the attempt resolves. */
+export const removePendingLogout = (coordinationTag: string, attemptId: string): void => {
+  try {
+    localStorage.removeItem(`${pendingLogoutPrefix(coordinationTag)}${attemptId}`)
+  } catch {
+    // Storage is advisory.
+  }
 }
 
 /** Whether `localStorage` can be written and read back; otherwise windows are kept in memory (R24). */
