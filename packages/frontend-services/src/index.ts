@@ -1,4 +1,7 @@
 export {
+  type AuthorizedSessionAction,
+  authorizeSessionAction,
+  type AuthorizeSessionActionInput,
   type CallbackResponses,
   createCallbackHandler,
   createLoginHandler,

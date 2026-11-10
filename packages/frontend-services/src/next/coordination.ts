@@ -3,15 +3,17 @@ import { type NextRequest, NextResponse } from "next/server"
 
 import {
   decodeSessionReference,
+  type NoUsableSession,
   SessionService,
   type SessionServiceUnavailable,
-  type SessionTenantMismatch
+  type SessionTenantMismatch,
+  type UsableSession
 } from "../session.js"
-import { effectiveSessionPolicy, type TenantFailure } from "../tenant.js"
+import { effectiveSessionPolicy, type TenantAlias, type TenantFailure } from "../tenant.js"
 import { coordinationSnapshot, isCoordinationTagOf, type SessionCoordinationSnapshot } from "./coordination-snapshot.js"
 import { PRIVATE_NO_STORE, toNext } from "./handler.js"
 import { resolveRequestTenant } from "./request.js"
-import { SESSION_COOKIE } from "./session.js"
+import { runSessionRequest, SESSION_COOKIE } from "./session.js"
 import { tenantFailureStatus } from "./tenant-failure.js"
 
 /** In-page qualifying kinds a tab may communicate. Deliberate requests renew at the gate; `continue-session` is #156's. */
@@ -149,6 +151,45 @@ const logout = Effect.fn("logout")(function*(request: NextRequest) {
   yield* (yield* SessionService).invalidate({ reference: current.value.reference })
   return emptyResponse(204)
 }, respondToFailures)
+
+export type AuthorizedSessionAction =
+  | NoUsableSession
+  | { readonly _tag: "Authorized"; readonly session: UsableSession; readonly tenantAlias: TenantAlias }
+  | { readonly _tag: "SessionChanged" }
+
+export interface AuthorizeSessionActionInput {
+  /** The tag the submitting document observed, from its hidden form field. */
+  readonly coordinationTag: string | undefined
+  readonly host: string
+  readonly reference?: string | undefined
+}
+
+const sessionChanged: AuthorizedSessionAction = { _tag: "SessionChanged" }
+
+const authorizeAction = Effect.fn("authorizeSessionAction")(function*(input: AuthorizeSessionActionInput) {
+  const tenant = yield* resolveRequestTenant(input.host)
+  const reference = decodeSessionReference(input.reference)
+  if (Option.isNone(reference)) return { _tag: "NoUsableSession" } satisfies AuthorizedSessionAction
+  const claimed = input.coordinationTag
+  if (claimed === undefined || !isCoordinationTagOf(reference.value, claimed)) return sessionChanged
+  const session = yield* (yield* SessionService).refreshForTenant({
+    activity: "deliberate-form-submission",
+    policy: effectiveSessionPolicy(tenant.config),
+    reference: reference.value,
+    tenantAlias: tenant.alias
+  })
+  if (session._tag === "NoUsableSession") return session
+  return { _tag: "Authorized", session, tenantAlias: tenant.alias } satisfies AuthorizedSessionAction
+})
+
+/**
+ * Resolves the tenant, compares the submitted tag with the cookie's tag, and only on a match renews as
+ * `deliberate-form-submission` with the tenant's effective policy. A missing or mismatched tag is `SessionChanged`
+ * with no store write. Tenant failure renders the tenant page, a tenant mismatch calls `forbidden()`, and an
+ * unavailable store throws, as `readSessionRequest` does (research D2, R17).
+ */
+export const authorizeSessionAction = (input: AuthorizeSessionActionInput): Promise<AuthorizedSessionAction> =>
+  runSessionRequest(authorizeAction(input))
 
 /** `POST /session/activity`: renews the tab's session for one in-page qualifying activity. */
 export const createSessionActivityHandler = (): (request: NextRequest) => Promise<NextResponse> =>

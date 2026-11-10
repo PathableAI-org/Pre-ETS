@@ -132,13 +132,13 @@ const simulate = (
     deadline = now + idle
   }
   const decide = (now: number) => {
-    const decision = decideActivityCommunication(record, { coordinationTag: TAG, deadline, now })
+    const decision = decideActivityCommunication(record, { deadline, now })
     record = decision.record
     if (decision._tag === "SendNow") send(now)
     else timers.push({ at: decision.sendAt, kind: "flush" }, { at: deadline - WINDOW + 1, kind: "near-deadline" })
   }
   const flush = (now: number) => {
-    const decision = flushActivityCommunication(record, { coordinationTag: TAG, now })
+    const decision = flushActivityCommunication(record, { now })
     if (decision._tag === "Reschedule") timers.push({ at: decision.sendAt, kind: "flush" })
     if (decision._tag !== "Send") return
     record = decision.record
@@ -208,42 +208,34 @@ describe("decideActivityCommunication (research D5, B5-W) [PREETS-SESSION-009]",
       })
     }
   )
-
-  it.prop([
-    fc.string(),
-    fc.option(fc.integer(), { nil: undefined }),
-    fc.option(fc.integer(), { nil: undefined }),
-    fc.integer({ max: 10_000_000, min: 0 }),
-    fc.integer({ max: 10_000_000, min: 0 })
-  ])(
-    "decides with another session's record as if there were none",
-    (foreignTag, lastCommunicatedAt, pendingSince, now, deadlineOffset) => {
-      fc.pre(foreignTag !== TAG)
-      const input = { coordinationTag: TAG, deadline: now + deadlineOffset, now }
-
-      expect(decideActivityCommunication({ coordinationTag: foreignTag, lastCommunicatedAt, pendingSince }, input))
-        .toStrictEqual(decideActivityCommunication(undefined, input))
-    }
-  )
 })
 
-const snapshot = (observedAtEpochMilliseconds: number, idleDeadlineEpochMilliseconds: number) => ({
+const snapshot = (revision: number, idleDeadlineEpochMilliseconds: number, observedAtEpochMilliseconds = 1_000) => ({
   coordinationTag: TAG,
   idleDeadlineEpochMilliseconds,
   observedAtEpochMilliseconds,
+  revision,
   serverTimeEpochMilliseconds: observedAtEpochMilliseconds + 5,
   warningLeadMinutes: 2
 })
 
 describe("adoptSnapshot (research D6) [PREETS-SESSION-010]", () => {
-  it("adopts a later observation even when a policy refresh shortened the deadline", () => {
-    expect(adoptSnapshot(snapshot(1_000, 1_800_000), snapshot(2_000, 300_000))).toBe(true)
+  it("adopts a higher revision even when a policy refresh shortened the deadline", () => {
+    expect(adoptSnapshot(snapshot(1, 1_800_000), snapshot(2, 300_000))).toBe(true)
   })
 
-  it("rejects an earlier observation that arrives late, whatever its deadline or server time", () => {
-    const held = snapshot(2_000.5, 300_000)
-    expect(adoptSnapshot(held, { ...snapshot(2_000.25, 1_800_000), serverTimeEpochMilliseconds: 9_999 })).toBe(false)
-    expect(adoptSnapshot(held, snapshot(2_000.5, 1_800_000))).toBe(false)
+  it("rejects a lower revision that arrives late, whatever its deadline or timestamps", () => {
+    const held = snapshot(3, 300_000, 2_000)
+    expect(adoptSnapshot(held, { ...snapshot(2, 1_800_000, 9_000), serverTimeEpochMilliseconds: 9_999 })).toBe(false)
+  })
+
+  it("ignores an equal revision, even with a later observation time", () => {
+    expect(adoptSnapshot(snapshot(3, 300_000, 2_000), snapshot(3, 1_800_000, 2_000))).toBe(false)
+    expect(adoptSnapshot(snapshot(3, 300_000, 2_000), snapshot(3, 1_800_000, 2_001))).toBe(false)
+  })
+
+  it("never adopts another session's snapshot", () => {
+    expect(adoptSnapshot(snapshot(1, 1), { ...snapshot(9, 1), coordinationTag: "other-session" })).toBe(false)
   })
 
   it("adopts the first snapshot", () => {

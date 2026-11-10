@@ -34,9 +34,13 @@ export type TabView = "active" | "ended" | "logging-out" | "logout-failed"
 export interface TabViewState {
   /** Protected content is hidden and inert (temporary concealment, or a failed logout). */
   readonly concealed: boolean
+  /** The held local deadline, exposed on the header as non-protected evidence (V-004). */
+  readonly deadline?: number | undefined
   /** The session ended by this tab's own logout, so this tab moves focus to the notice. */
   readonly endedHere: boolean
   readonly view: TabView
+  /** The held warning lead, exposed beside the deadline. */
+  readonly warningLeadMinutes?: number | undefined
 }
 
 type TimerName = "confirm" | "flush" | "logout-watch" | "near-deadline" | "retry"
@@ -70,13 +74,17 @@ export class TabCoordination {
   #concealed = false
   /** When concealment began; a confirmation started later may reveal the content. */
   #concealedSince = Number.POSITIVE_INFINITY
-  /** A form whose held submission was confirmed; its replay passes the guard once (R15). */
-  #confirmedReplay: HTMLFormElement | undefined
+  /** The held submission that was confirmed; its replay passes the guard once (R15, R19). */
+  #confirmedReplay: undefined | { readonly form: HTMLFormElement; readonly submitter: HTMLElement | null }
   readonly #content: () => HTMLElement | null
   #deadline = Number.NEGATIVE_INFINITY
   #gesture = false
   #held: SessionCoordinationSnapshot | undefined
+  /** The confirmed tag when storage could not hold it; used as this tab's hint (R19). */
+  #hintOverride: string | undefined
   readonly #initial: SessionCoordinationSnapshot
+  /** This tab's logout had no definitive answer; confirmation decides its outcome (R18). */
+  #logoutUnresolved = false
   readonly #notify: (state: TabViewState) => void
   #pendingActivity: InPageSessionActivity | undefined
   /** What each message for this tab's own session does (data-model "Channel messages"). */
@@ -84,9 +92,9 @@ export class TabCoordination {
     "logged-out": () => {
       this.#end(false)
     },
-    // A failed request may have lost the response after the server ended the session: keep watching and confirm.
+    // Sent only for a definitive 403 or 503, so logout did not happen (R18).
     "logout-failed": () => {
-      this.#guard(this.confirm())
+      this.#stopTimer("logout-watch")
     },
     "logout-started": () => {
       this.#watchLogout(Date.now() + LOGOUT_WATCH_LIMIT_MILLISECONDS)
@@ -102,6 +110,7 @@ export class TabCoordination {
         coordinationTag: message.coordinationTag,
         idleDeadlineEpochMilliseconds: message.localDeadline,
         observedAtEpochMilliseconds: message.observedAtEpochMilliseconds,
+        revision: message.revision,
         serverTimeEpochMilliseconds: Date.now(),
         warningLeadMinutes: message.warningLeadMinutes
       }, false)
@@ -139,15 +148,18 @@ export class TabCoordination {
     recordLogoutInProgress(this.#tag, Date.now() + LOGOUT_WATCH_LIMIT_MILLISECONDS)
     this.#post("logout-started")
     const outcome = await sendLogout(this.#tag)
-    if (outcome === "failed") {
-      this.#post("logout-failed")
-      this.#setView("logout-failed")
+    if (outcome === "refused") {
+      this.#logoutRefused()
       this.#guard(this.confirm())
-      return
+    } else if (outcome === "unknown") {
+      // The server may have ended the session and lost the response: conceal and let confirmation decide (R18).
+      this.#logoutUnresolved = true
+      this.#conceal()
+      this.#watchLogout(Date.now() + LOGOUT_WATCH_LIMIT_MILLISECONDS)
+      this.#guard(this.confirm())
+    } else {
+      this.#logoutEnded()
     }
-    recordEnded(this.#tag)
-    this.#post("logged-out")
-    this.#end(true)
   }
 
   /**
@@ -200,6 +212,7 @@ export class TabCoordination {
     if (!adoptSnapshot(this.#held, snapshot)) return false
     this.#held = snapshot
     this.#deadline = Date.now() + snapshot.idleDeadlineEpochMilliseconds - snapshot.serverTimeEpochMilliseconds
+    this.#publish()
     this.#schedule("confirm", this.#deadline, () => {
       this.#guard(this.confirm())
     })
@@ -211,6 +224,7 @@ export class TabCoordination {
         coordinationTag: this.#tag,
         localDeadline: this.#deadline,
         observedAtEpochMilliseconds: snapshot.observedAtEpochMilliseconds,
+        revision: snapshot.revision,
         type: "renewed",
         warningLeadMinutes: snapshot.warningLeadMinutes
       })
@@ -226,7 +240,8 @@ export class TabCoordination {
   #applyStatus(outcome: SessionOutcome, startedAt: number) {
     switch (outcome._tag) {
       case "Ended":
-        this.#endConfirmed()
+        if (this.#logoutUnresolved) this.#logoutEnded()
+        else this.#endConfirmed()
         return
       case "Undetermined":
         this.#conceal()
@@ -235,6 +250,7 @@ export class TabCoordination {
         })
         return
       case "Usable":
+        if (this.#logoutUnresolved && outcome.snapshot.coordinationTag === this.#tag) this.#logoutRefused()
         if (this.#adoptSnapshot(outcome.snapshot, true) || startedAt >= this.#concealedSince) this.#reveal()
     }
   }
@@ -262,19 +278,18 @@ export class TabCoordination {
     if (!this.#live()) return
     this.#applyStatus(outcome, startedAt)
     if (outcome._tag !== "Usable" || outcome.snapshot.coordinationTag !== this.#tag) return
-    writeCurrentHint(this.#tag)
-    this.#confirmedReplay = form
+    if (!writeCurrentHint(this.#tag)) this.#hintOverride = this.#tag
+    this.#confirmedReplay = { form, submitter }
     form.requestSubmit(submitter)
   }
 
   #decide(activity: InPageSessionActivity) {
     if (!this.#live()) return
-    const decision = decideActivityCommunication(readWindowRecord(), {
-      coordinationTag: this.#tag,
+    const decision = decideActivityCommunication(readWindowRecord(this.#tag), {
       deadline: this.#deadline,
       now: Date.now()
     })
-    writeWindowRecord(decision.record)
+    writeWindowRecord(this.#tag, decision.record)
     if (decision._tag === "SendNow") {
       this.#pendingActivity = undefined
       this.#send(activity)
@@ -307,10 +322,10 @@ export class TabCoordination {
     if (lock === undefined || activity === undefined || this.#view === "ended") return
     this.#guard(lock(() => {
       if (!this.#live()) return
-      const decision = flushActivityCommunication(readWindowRecord(), { coordinationTag: this.#tag, now: Date.now() })
+      const decision = flushActivityCommunication(readWindowRecord(this.#tag), { now: Date.now() })
       if (decision._tag === "Reschedule") this.#scheduleFlush(decision.sendAt)
       if (decision._tag !== "Send") return
-      writeWindowRecord(decision.record)
+      writeWindowRecord(this.#tag, decision.record)
       this.#pendingActivity = undefined
       this.#send(activity)
     }))
@@ -322,7 +337,7 @@ export class TabCoordination {
     const activity = this.#pendingActivity
     if (lock === undefined || activity === undefined) return
     this.#guard(lock(() => {
-      if (!this.#live() || readWindowRecord()?.pendingSince === undefined) return
+      if (!this.#live() || readWindowRecord(this.#tag)?.pendingSince === undefined) return
       this.#decide(activity)
     }))
   }
@@ -380,6 +395,22 @@ export class TabCoordination {
     return !this.#cancel.signal.aborted
   }
 
+  /** Logout ended the session (204, 401, 409, or a confirmed end after an unknown outcome): every tab ends. */
+  #logoutEnded() {
+    this.#logoutUnresolved = false
+    recordEnded(this.#tag)
+    this.#post("logged-out")
+    this.#end(true)
+  }
+
+  /** Logout did not complete (403, 503, or confirmed still usable): conceal and offer Log out again. */
+  #logoutRefused() {
+    this.#logoutUnresolved = false
+    this.#stopTimer("logout-watch")
+    this.#post("logout-failed")
+    this.#setView("logout-failed")
+  }
+
   /** Conceals before the page enters the back/forward cache; `RestoredPageGuard` reloads it on restore. */
   #pageHide(event: PageTransitionEvent) {
     if (event.persisted) this.#conceal()
@@ -393,7 +424,13 @@ export class TabCoordination {
   #publish() {
     const concealed = this.#concealed || this.#view === "logout-failed"
     this.#hideContent(concealed)
-    this.#notify({ concealed, endedHere: false, view: this.#view })
+    this.#notify({
+      concealed,
+      deadline: this.#held === undefined ? undefined : this.#deadline,
+      endedHere: false,
+      view: this.#view,
+      warningLeadMinutes: this.#held?.warningLeadMinutes
+    })
   }
 
   #receive(message: TabMessage) {
@@ -483,7 +520,9 @@ export class TabCoordination {
 
   #storage(event: StorageEvent) {
     if (event.key === ENDED_KEY && readEndedTags().includes(this.#tag)) this.#end(false)
-    if (event.key === CURRENT_KEY && readCurrentHint() !== this.#tag) this.#guard(this.confirm())
+    if (event.key !== CURRENT_KEY) return
+    this.#hintOverride = undefined
+    if (readCurrentHint() !== this.#tag) this.#guard(this.confirm())
   }
 
   /** Server Action submit guard (research D2, R2, R15): a hint naming another session holds the submission. */
@@ -491,11 +530,12 @@ export class TabCoordination {
     const form = event.target
     const content = this.#content()
     if (!(form instanceof HTMLFormElement) || !content?.contains(form)) return
-    if (this.#confirmedReplay === form) {
+    const replay = this.#confirmedReplay
+    if (replay?.form === form && replay.submitter === event.submitter) {
       this.#confirmedReplay = undefined
       return
     }
-    if ((readCurrentHint() ?? this.#tag) === this.#tag) return
+    if ((this.#hintOverride ?? readCurrentHint() ?? this.#tag) === this.#tag) return
     event.preventDefault()
     this.#guard(this.#confirmThenReplay(form, event.submitter))
   }

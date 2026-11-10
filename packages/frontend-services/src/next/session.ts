@@ -17,6 +17,8 @@ import { tenantFailurePage } from "./tenant-failure.js"
 
 export const SESSION_COOKIE = "pathable-session"
 
+export type ReadSessionFailure = SessionServiceUnavailable | SessionTenantMismatch | TenantFailure
+
 export interface ReadSessionRequestInput {
   readonly host: string
   readonly reference?: string | undefined
@@ -28,8 +30,6 @@ export interface ResolvedSessionRequest {
   readonly session: NoUsableSession | UsableSession
   readonly tenantAlias: TenantAlias
 }
-
-type ReadSessionFailure = SessionServiceUnavailable | SessionTenantMismatch | TenantFailure
 
 const readSession = Effect.fn("readSessionRequest")(function*(
   input: ReadSessionRequestInput
@@ -60,8 +60,14 @@ const rejectSessionRequest = (failure: ReadSessionFailure): never => {
   }
 }
 
-export const readSessionRequest = async (input: ReadSessionRequestInput): Promise<ResolvedSessionRequest> => {
-  const outcome = await Runtime.runPromise(readSession(input).pipe(Effect.result))
+/** Runs a session request on the shared runtime and maps its failures as a protected page or action expects. */
+export const runSessionRequest = async <A>(
+  effect: Effect.Effect<A, ReadSessionFailure, SessionService | TenantConfigService>
+): Promise<A> => {
+  const outcome = await Runtime.runPromise(effect.pipe(Effect.result))
   if (Result.isSuccess(outcome)) return outcome.success
   return rejectSessionRequest(outcome.failure)
 }
+
+export const readSessionRequest = (input: ReadSessionRequestInput): Promise<ResolvedSessionRequest> =>
+  runSessionRequest(readSession(input))

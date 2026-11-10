@@ -27,6 +27,7 @@ const usableSession: UsableSession = {
   identity,
   idleDeadlineEpochMilliseconds: 1_800_000_000_000,
   observedAtEpochMilliseconds: 1_799_999_999_000,
+  revision: 3,
   tenantAlias: alias,
   warningLeadMinutes: 5
 }
@@ -157,6 +158,7 @@ describe("readSessionRequest [PREETS-SESSION-005, PREETS-TENANT-003]", () => {
     expect(policy).toStrictEqual({
       idleDeadlineEpochMilliseconds: usableSession.idleDeadlineEpochMilliseconds,
       observedAtEpochMilliseconds: usableSession.observedAtEpochMilliseconds,
+      revision: usableSession.revision,
       warningLeadMinutes: usableSession.warningLeadMinutes
     })
     const diagnostic = publicDiagnostic(resolved.coordination)

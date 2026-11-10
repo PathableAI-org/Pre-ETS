@@ -11,7 +11,8 @@ import {
   encodeStoredSession,
   makeSessionReference,
   makeTelemetryId,
-  type SessionReference
+  type SessionReference,
+  storedRevision
 } from "./session/codec.js"
 import { SessionStore } from "./session/store.js"
 
@@ -84,9 +85,11 @@ export interface UsableSession {
   readonly idleDeadlineEpochMilliseconds: number
   /**
    * Redis `TIME` read inside the atomic store transition that returned this state, in milliseconds with microsecond
-   * fraction; orders observations of one record.
+   * fraction. Diagnostic only; never the ordering key.
    */
   readonly observedAtEpochMilliseconds: number
+  /** Stored record revision: 1 at establishment, plus 1 on every store write; orders states of one record (D6). */
+  readonly revision: number
   readonly tenantAlias: TenantAlias
   readonly warningLeadMinutes: number
 }
@@ -119,12 +122,13 @@ const toUsableSession = (
     readonly tenantAlias: TenantAlias
     readonly warningLeadMinutes: number
   },
-  observedAtEpochMilliseconds: number
+  observation: { readonly observedAtEpochMilliseconds: number; readonly revision: number }
 ): UsableSession => ({
   _tag: "UsableSession",
   identity: { issuer: record.issuer, subject: record.subject },
   idleDeadlineEpochMilliseconds: record.idleDeadlineEpochMilliseconds,
-  observedAtEpochMilliseconds,
+  observedAtEpochMilliseconds: observation.observedAtEpochMilliseconds,
+  revision: observation.revision,
   tenantAlias: record.tenantAlias,
   warningLeadMinutes: record.warningLeadMinutes
 })
@@ -142,7 +146,10 @@ const exposeIfStillUsable = Effect.fnUntraced(function*(
   const record = yield* serviceUnavailable(decodeStoredSession(outcome.payload))
   if (record.idleDeadlineEpochMilliseconds <= (yield* Clock.currentTimeMillis)) return noUsableSession
   yield* Effect.annotateCurrentSpan("session.id", record.telemetryId)
-  return toUsableSession(record, outcome.observedAtEpochMilliseconds)
+  return toUsableSession(record, {
+    observedAtEpochMilliseconds: outcome.observedAtEpochMilliseconds,
+    revision: storedRevision(record)
+  })
 })
 
 const refreshRequest = (
@@ -195,10 +202,11 @@ export class SessionService extends Context.Service<SessionService, {
               const payload = yield* serviceUnavailable(encodeStoredSession({
                 idleDeadlineEpochMilliseconds,
                 issuer: input.identity.issuer,
+                revision: 1,
                 subject: input.identity.subject,
                 telemetryId,
                 tenantAlias: input.tenantAlias,
-                version: 1,
+                version: 2,
                 warningLeadMinutes: input.policy.warningLeadMinutes
               }))
               const ttlMilliseconds = idleDeadlineEpochMilliseconds - now
@@ -207,13 +215,16 @@ export class SessionService extends Context.Service<SessionService, {
               yield* Effect.annotateCurrentSpan("session.id", telemetryId)
               return {
                 reference,
-                session: toUsableSession({
-                  idleDeadlineEpochMilliseconds,
-                  issuer: input.identity.issuer,
-                  subject: input.identity.subject,
-                  tenantAlias: input.tenantAlias,
-                  warningLeadMinutes: input.policy.warningLeadMinutes
-                }, outcome.observedAtEpochMilliseconds)
+                session: toUsableSession(
+                  {
+                    idleDeadlineEpochMilliseconds,
+                    issuer: input.identity.issuer,
+                    subject: input.identity.subject,
+                    tenantAlias: input.tenantAlias,
+                    warningLeadMinutes: input.policy.warningLeadMinutes
+                  },
+                  { observedAtEpochMilliseconds: outcome.observedAtEpochMilliseconds, revision: 1 }
+                )
               }
             })
 

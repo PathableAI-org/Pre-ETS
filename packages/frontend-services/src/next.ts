@@ -6,6 +6,9 @@ export { type CallbackResponses, createCallbackHandler } from "./next/callback.j
 export { requestCookieOptions } from "./next/cookies.js"
 export { type SessionCoordinationSnapshot } from "./next/coordination-snapshot.js"
 export {
+  type AuthorizedSessionAction,
+  authorizeSessionAction,
+  type AuthorizeSessionActionInput,
   createLogoutHandler,
   createSessionActivityHandler,
   createSessionStatusHandler,

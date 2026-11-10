@@ -41,6 +41,7 @@ const usableSession: UsableSession = {
   identity: { issuer: "https://provider.test/", subject: "subject-1" },
   idleDeadlineEpochMilliseconds: NOW + 1_234_567,
   observedAtEpochMilliseconds: 1_799_999_999_000,
+  revision: 3,
   tenantAlias: alias,
   warningLeadMinutes: 4
 }
@@ -516,18 +517,21 @@ describe("createProtectionProxy renewal [PREETS-SESSION-005]", () => {
     expect(passedThrough(response)).toBe(true)
   })
 
-  it("renews a protected Server Action submission as a deliberate form submission", async () => {
-    install(sessionDouble(() => Effect.succeed(usableSession)))
+  it.prop([pathname, anyMethod, headerSubset], { numRuns: 300 })(
+    "never renews a Server Action at the gate; the action renews after its tag check",
+    async (path, method, headers) => {
+      install(sessionDouble(() => Effect.succeed(usableSession)))
 
-    const response = await protect(
-      request("/", { cookie: reference, headers: { ...rscFetch, "next-action": "abc" }, method: "POST" })
-    )
+      const response = await protect(
+        request(path, { cookie: reference, headers: { ...headers, "next-action": "abc" }, method })
+      )
 
-    expect(recorded.reads).toEqual([])
-    expect(recorded.refreshes.map((input) => input.activity)).toEqual(["deliberate-form-submission"])
-    expect(recorded.refreshes[0]?.policy).toEqual(effectiveSessionPolicy(tenantConfig))
-    expect(response.headers.getSetCookie()).toEqual([])
-  })
+      expect(recorded.refreshes).toEqual([])
+      expect(recorded.reads).toEqual([{ reference, tenantAlias: alias }])
+      expect(passedThrough(response)).toBe(true)
+      expect(response.headers.getSetCookie()).toEqual([])
+    }
+  )
 
   it.prop([fc.constantFrom("/session/activity", "/session/status", "/auth/logout"), anyMethod, headerSubset], {
     numRuns: 300

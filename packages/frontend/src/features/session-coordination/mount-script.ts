@@ -23,6 +23,7 @@ export const mountScriptSource = (snapshot: SessionCoordinationSnapshot): string
     + `try{localStorage.setItem(d.current,JSON.stringify({coordinationTag:t}))}catch(_){}`
     + `try{var c=new BroadcastChannel(d.channel);c.postMessage({type:"renewed",coordinationTag:t,`
     + `localDeadline:Date.now()+s.idleDeadlineEpochMilliseconds-s.serverTimeEpochMilliseconds,`
-    + `observedAtEpochMilliseconds:s.observedAtEpochMilliseconds,warningLeadMinutes:s.warningLeadMinutes});`
+    + `observedAtEpochMilliseconds:s.observedAtEpochMilliseconds,revision:s.revision,`
+    + `warningLeadMinutes:s.warningLeadMinutes});`
     + `c.postMessage({type:"session-current",coordinationTag:t});c.close()}catch(_){}})(${data})`
 }

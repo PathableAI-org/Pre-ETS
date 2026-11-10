@@ -67,7 +67,8 @@ const isPublic = (method: string, pathname: string, headers: Headers) =>
 
 /**
  * Only a `GET`/`HEAD` navigation without an action is a document entry; anything else, including a request without
- * Fetch Metadata, is an application request and never starts login. Only deliberate requests renew.
+ * Fetch Metadata, is an application request and never starts login. Only document entries renew at the gate: a
+ * Server Action renews inside `authorizeSessionAction`, after its tag check (research D2, R17).
  */
 const classify = (request: NextRequest): ProtectedRequest | undefined => {
   const { method } = request
@@ -77,7 +78,7 @@ const classify = (request: NextRequest): ProtectedRequest | undefined => {
   const action = request.headers.has("next-action")
   const document = PUBLIC_METHODS.has(method) && !action && navigationStatus(request.headers) === "navigation"
   if (document) return { entry: "document", renewal: "deliberate-page-request" }
-  return { entry: "application", renewal: method === "POST" && action ? "deliberate-form-submission" : undefined }
+  return { entry: "application", renewal: undefined }
 }
 
 const denial = (status: 401 | 403 | 503) =>

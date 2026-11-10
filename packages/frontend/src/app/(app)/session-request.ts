@@ -1,4 +1,4 @@
-import { readSessionRequest, SESSION_COOKIE } from "@pathableai/pre-ets-frontend-services"
+import { authorizeSessionAction, readSessionRequest, SESSION_COOKIE } from "@pathableai/pre-ets-frontend-services"
 import { cookies, headers } from "next/headers"
 
 import { COORDINATION_TAG_FIELD } from "../../providers/coordination-tag-field.ts"
@@ -11,12 +11,15 @@ export const readRequestSession = async () => {
 }
 
 /**
- * Whether a protected Server Action may take effect: a usable session whose coordination tag equals the tag the form
- * submitted. A stale tab carries a later session's cookie, so a mismatch is refused with no effect (research D2).
+ * Whether a protected Server Action may take effect. The gate does not renew actions; `authorizeSessionAction`
+ * compares the submitted tag with the cookie's and renews only on a match. A stale tab carries a later session's
+ * cookie, so a missing or mismatched tag is refused with no renewal and no effect (research D2, R17).
  */
 export const admitSubmission = async (formData: FormData) => {
-  const resolved = await readRequestSession()
+  const host = (await headers()).get("host") ?? ""
+  const reference = (await cookies()).get(SESSION_COOKIE)?.value
   const submitted = formData.get(COORDINATION_TAG_FIELD)
-  const expected = resolved.coordination?.coordinationTag
-  return expected !== undefined && submitted === expected
+  const coordinationTag = typeof submitted === "string" ? submitted : undefined
+  const authorized = await authorizeSessionAction({ coordinationTag, host, reference })
+  return authorized._tag === "Authorized"
 }

@@ -105,6 +105,7 @@ describe("SessionService establishment [PREETS-SESSION-003, PREETS-SESSION-008]"
           _tag: "UsableSession",
           identity: { issuer: "https://provider.test/", subject: "subject-1" },
           idleDeadlineEpochMilliseconds: BASE_TIME + 30 * 60_000,
+          revision: 1,
           tenantAlias: alias,
           warningLeadMinutes: 5
         })
@@ -133,6 +134,7 @@ describe("SessionService establishment [PREETS-SESSION-003, PREETS-SESSION-008]"
           _tag: "UsableSession",
           identity: { issuer: "https://provider.test/", subject: "subject-1" },
           idleDeadlineEpochMilliseconds: BASE_TIME + 7 * 60_000,
+          revision: 1,
           tenantAlias: alias,
           warningLeadMinutes: 3
         })
@@ -171,7 +173,7 @@ describe("SessionService invalidation [PREETS-SESSION-013]", () => {
             yield* redis.rewriteAll(() => "not-json")
           }
           if (state === "unknown-version") {
-            yield* redis.rewriteAll((payload) => JSON.stringify({ ...JSON.parse(payload), version: 2 }))
+            yield* redis.rewriteAll((payload) => JSON.stringify({ ...JSON.parse(payload), version: 3 }))
           }
 
           const result = yield* service.invalidate({ reference: established.reference })
@@ -346,7 +348,7 @@ describe("SessionService read outcomes [PREETS-SESSION-008]", () => {
         yield* TestClock.setTime(BASE_TIME)
         const service = yield* SessionService
         const { reference } = yield* establish(service, 30, 5)
-        yield* redis.rewriteAll((payload) => JSON.stringify({ ...JSON.parse(payload), version: 2 }))
+        yield* redis.rewriteAll((payload) => JSON.stringify({ ...JSON.parse(payload), version: 3 }))
         const result = yield* service.read({ reference }).pipe(Effect.result)
         expect(Result.isFailure(result)).toBe(true)
         if (Result.isFailure(result)) {
@@ -615,6 +617,7 @@ describe("SessionService.refreshForTenant renewal [PREETS-SESSION-008, PREETS-SE
             _tag: "UsableSession",
             identity: established.session.identity,
             idleDeadlineEpochMilliseconds: receivedAt + 12 * 60_000,
+            revision: 2,
             tenantAlias: alias,
             warningLeadMinutes: 4
           })
@@ -1015,7 +1018,7 @@ describe("SessionService storage failures", () => {
   it.effect.each(
     [
       ["not-json", () => "not-json"],
-      ["version", (payload: string) => JSON.stringify({ ...JSON.parse(payload), version: 2 })],
+      ["version", (payload: string) => JSON.stringify({ ...JSON.parse(payload), version: 3 })],
       ["missing-subject", (payload: string) => {
         const record = JSON.parse(payload) as Record<string, unknown>
         delete record.subject

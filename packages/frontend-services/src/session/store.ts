@@ -122,6 +122,7 @@ end
 local allowed = {
   idleDeadlineEpochMilliseconds = true,
   issuer = true,
+  revision = true,
   subject = true,
   telemetryId = true,
   tenantAlias = true,
@@ -136,8 +137,10 @@ local function valid(record)
     if allowed[field] ~= true then return false end
     count = count + 1
   end
-  if count ~= 7 then return false end
-  return record.version == 1
+  -- Version 1 has seven fields; version 2 adds a positive integral revision (research D6, R16).
+  local versioned = (record.version == 1 and count == 7)
+    or (record.version == 2 and count == 8 and integral(record.revision) and record.revision > 0)
+  return versioned
     and nonempty(record.issuer)
     and nonempty(record.subject)
     and is_uuid(record.telemetryId)
@@ -175,13 +178,15 @@ if activity ~= "qualifying" or not integral(timeout_ms) or timeout_ms <= 0 or no
 end
 
 local new_deadline = received_at + timeout_ms
+-- Every write increments the revision; a version-1 record counts as revision 0 and is rewritten as version 2.
 local encoded_ok, replacement = pcall(cjson.encode, {
   idleDeadlineEpochMilliseconds = new_deadline,
   issuer = decoded.issuer,
+  revision = (decoded.revision or 0) + 1,
   subject = decoded.subject,
   telemetryId = decoded.telemetryId,
   tenantAlias = decoded.tenantAlias,
-  version = 1,
+  version = 2,
   warningLeadMinutes = warning
 })
 if not encoded_ok or type(replacement) ~= "string" or new_deadline <= received_at then

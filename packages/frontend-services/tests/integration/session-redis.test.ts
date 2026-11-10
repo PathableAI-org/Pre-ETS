@@ -781,23 +781,49 @@ describe("SessionService renewal, expiration, and invalidation on real Redis [PR
   })
 })
 
-describe("SessionService store observation order on real Redis [PREETS-SESSION-010]", () => {
-  it("reports non-decreasing observation times across interleaved clients in commit order", async () => {
+const refreshExcluded = (runtime: ManagedRuntime.ManagedRuntime<SessionService, unknown>, reference: string) =>
+  runtime.runPromise(
+    Effect.gen(function*() {
+      const service = yield* SessionService
+      return yield* service.refreshForTenant({ activity: "automatic-polling", reference, tenantAlias: alias })
+    })
+  )
+
+const revisionOf = (session: NoUsableSession | UsableSession) => {
+  expect(session._tag).toBe("UsableSession")
+  return session._tag === "UsableSession" ? session.revision : Number.NaN
+}
+
+describe("SessionService record revision on real Redis [PREETS-SESSION-010]", () => {
+  it("increments by exactly one on every write and is unchanged by reads and excluded refreshes", async () => {
     await withClients(async (runtimeA, runtimeB) => {
       const established = await establish(runtimeA, 30, 5)
-      const observed: number[] = [established.session.observedAtEpochMilliseconds]
-      const record = (session: NoUsableSession | UsableSession) => {
-        expect(session._tag).toBe("UsableSession")
-        if (session._tag === "UsableSession") observed.push(session.observedAtEpochMilliseconds)
-      }
+      expect(established.session.revision).toBe(1)
+      let expected = 1
       for (let step = 0; step < 6; step += 1) {
         const runtime = step % 2 === 0 ? runtimeA : runtimeB
-        record(await read(runtime, established.reference))
-        await delay(2)
-        record(await refreshAt(runtime, established.reference, Date.now(), changedPolicy))
+        const other = step % 2 === 0 ? runtimeB : runtimeA
+        expect(revisionOf(await read(runtime, established.reference))).toBe(expected)
+        expect(revisionOf(await refreshExcluded(other, established.reference))).toBe(expected)
+        const policy = step === 3 ? { idleTimeoutMinutes: 5, warningLeadMinutes: 0 } : changedPolicy
+        expected += 1
+        expect(revisionOf(await refreshAt(runtime, established.reference, Date.now(), policy))).toBe(expected)
+        expect(revisionOf(await read(other, established.reference))).toBe(expected)
       }
-      expect(observed).toEqual([...observed].sort((left, right) => left - right))
-      expect(observed.at(-1)).toBeGreaterThan(observed[0] ?? Number.POSITIVE_INFINITY)
+    })
+  })
+
+  it("reads a version-1 record as revision 0 and rewrites it as version 2 on its next write", async () => {
+    await withClients(async (runtimeA, runtimeB, prefix) => {
+      const established = await establish(runtimeA, 30, 5)
+      await corruptSinglePayload(prefix, (payload) => {
+        const { revision: _revision, ...record } = JSON.parse(payload) as Record<string, unknown>
+        return JSON.stringify({ ...record, version: 1 })
+      })
+      expect(revisionOf(await read(runtimeB, established.reference))).toBe(0)
+      expect(revisionOf(await refreshAt(runtimeB, established.reference, Date.now(), changedPolicy))).toBe(1)
+      const stored = await corruptSinglePayload(prefix, (payload) => payload)
+      expect(JSON.parse(stored.payload)).toMatchObject({ revision: 1, version: 2 })
     })
   })
 })

@@ -7,11 +7,10 @@ export interface SessionCoordinationSnapshot {
   /** One-way, domain-separated digest of the session reference. Not a credential. */
   readonly coordinationTag: string
   readonly idleDeadlineEpochMilliseconds: number
-  /**
-   * Redis `TIME` of the atomic store transition that produced this state, in milliseconds with microsecond fraction;
-   * the only ordering key (research D6).
-   */
+  /** Redis `TIME` of the atomic store transition that produced this state; diagnostic only, never ordering. */
   readonly observedAtEpochMilliseconds: number
+  /** Stored record revision; tabs adopt only a higher revision (research D6). */
+  readonly revision: number
   /** Application clock when the response was built; used only to convert the deadline to the tab's clock. */
   readonly serverTimeEpochMilliseconds: number
   readonly warningLeadMinutes: number
@@ -39,6 +38,7 @@ export const coordinationSnapshot = (
   coordinationTag: coordinationTagFor(reference),
   idleDeadlineEpochMilliseconds: session.idleDeadlineEpochMilliseconds,
   observedAtEpochMilliseconds: session.observedAtEpochMilliseconds,
+  revision: session.revision,
   serverTimeEpochMilliseconds,
   warningLeadMinutes: session.warningLeadMinutes
 })

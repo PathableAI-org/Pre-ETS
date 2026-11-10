@@ -5,6 +5,7 @@ import { createHash } from "node:crypto"
 import { afterEach, beforeEach, describe, expect, vi } from "vitest"
 
 import {
+  authorizeSessionAction,
   createLogoutHandler,
   createSessionActivityHandler,
   createSessionStatusHandler,
@@ -45,6 +46,7 @@ const usableSession: UsableSession = {
   identity: { issuer: "https://provider.test/", subject: "subject-1" },
   idleDeadlineEpochMilliseconds: NOW + 1_234_567,
   observedAtEpochMilliseconds: 1_799_999_999_000,
+  revision: 3,
   tenantAlias: alias,
   warningLeadMinutes: 4
 }
@@ -252,6 +254,7 @@ describe("activity handler outcomes [PREETS-SESSION-009]", () => {
       coordinationTag: tag,
       idleDeadlineEpochMilliseconds: usableSession.idleDeadlineEpochMilliseconds,
       observedAtEpochMilliseconds: usableSession.observedAtEpochMilliseconds,
+      revision: usableSession.revision,
       serverTimeEpochMilliseconds: NOW,
       warningLeadMinutes: 4
     })
@@ -319,6 +322,7 @@ describe("status and logout outcomes [PREETS-SESSION-010]", () => {
       coordinationTag: tag,
       idleDeadlineEpochMilliseconds: usableSession.idleDeadlineEpochMilliseconds,
       observedAtEpochMilliseconds: usableSession.observedAtEpochMilliseconds,
+      revision: usableSession.revision,
       serverTimeEpochMilliseconds: NOW,
       warningLeadMinutes: 4
     })
@@ -371,5 +375,60 @@ describe("failure mapping for every handler [PREETS-SESSION-010]", () => {
     await expectEmpty(await status(statusRequest()), expected)
     await expectEmpty(await logout(post("/auth/logout", logoutBody(tag))), expected)
     expect(recorded.invalidations).toEqual([])
+  })
+})
+
+describe("authorizeSessionAction [PREETS-SESSION-005, PREETS-SESSION-010]", () => {
+  const authorize = (reference: string, coordinationTag: string | undefined) =>
+    authorizeSessionAction({ coordinationTag, host: "springfield.example.test", reference })
+
+  it.prop([reference, reference, fc.option(fc.string(), { nil: undefined }), fc.integer({ max: 2, min: 0 })], {
+    numRuns: 200
+  })(
+    "renews iff the submitted tag is the cookie's tag, and only after the check",
+    async (cookieReference, otherReference, arbitrary, choice) => {
+      const own = await tagFor(cookieReference)
+      const claimed = [own, await tagFor(otherReference), arbitrary][choice]
+      install()
+
+      const result = await authorize(cookieReference, claimed)
+
+      if (claimed === own) {
+        expect(result).toStrictEqual({ _tag: "Authorized", session: usableSession, tenantAlias: alias })
+        expect(recorded.refreshes).toStrictEqual([{
+          activity: "deliberate-form-submission",
+          policy: effectiveSessionPolicy(tenantConfig),
+          reference: cookieReference,
+          tenantAlias: alias
+        }])
+      } else {
+        expect(result).toStrictEqual({ _tag: "SessionChanged" })
+        expect(recorded.refreshes).toStrictEqual([])
+      }
+    }
+  )
+
+  it("answers NoUsableSession without renewing when there is no reference", async () => {
+    const tag = await tagFor(defaultReference)
+    install()
+
+    expect(await authorizeSessionAction({ coordinationTag: tag, host: "springfield.example.test" })).toStrictEqual(
+      noUsableSession
+    )
+    expect(recorded.refreshes).toStrictEqual([])
+  })
+
+  it("answers NoUsableSession when the matching session cannot be renewed", async () => {
+    const tag = await tagFor(defaultReference)
+    install({ session: () => Effect.succeed(noUsableSession) })
+
+    expect(await authorize(defaultReference, tag)).toStrictEqual(noUsableSession)
+  })
+
+  it("throws when the store is unavailable", async () => {
+    const tag = await tagFor(defaultReference)
+    install({ session: () => Effect.fail(new SessionServiceUnavailable({})) })
+
+    await expect(authorize(defaultReference, tag)).rejects.toBeInstanceOf(SessionServiceUnavailable)
   })
 })

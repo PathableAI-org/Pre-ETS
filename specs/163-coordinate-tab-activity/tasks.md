@@ -194,14 +194,33 @@ browser-session cookie written only at establishment; no cookie on activity or l
 `flushActivityCommunication`; the inline mount script with the current and ended records; the Server Action submit
 guard with tag-checked actions; and the `logout-started` watch with `keepalive` logout.
 
+## Amended-plan rework (plan `b948d17`, R16–R20)
+
+The plan was amended again after review of #364 (user decisions of 2026-11-10). The implementation follows it:
+
+- **R16**: the stored record is schema version 2 with `revision` (1 at establishment, plus 1 on every store write;
+  a version-1 record reads as 0 and is rewritten on its next write). `UsableSession` and the snapshot carry it, and
+  `adoptSnapshot` adopts only a higher revision for the same tag. `observedAtEpochMilliseconds` is diagnostic.
+  Evidence: `session-redis.test.ts` (interleaved reads, excluded refreshes, qualifying refreshes, and a policy change
+  across two clients; version-1 migration), `coordination-redis.test.ts`, and the frontend `adoptSnapshot` examples.
+- **R17**: the gate no longer renews Server Actions (property in `protection.test.ts`, replacing S1's action-renewal
+  example). `authorizeSessionAction` checks the tag and only then renews as `deliberate-form-submission` (Fast-Check
+  property with a recording `SessionService` in `coordination.test.ts`; real-Redis stale and missing tags leave the
+  revision and deadline unchanged). Both protected actions call it.
+- **R18**: logout distinguishes a definitive refusal (403, 503, or another error status) from an ambiguous network
+  failure or 10-second timeout. Only a refusal, or a usable answer after an ambiguous outcome, broadcasts
+  `logout-failed`, which stops the other tabs' watch.
+- **R19**: a confirmed replay passes the guard once for that form and submitter; when storage cannot hold the hint,
+  the confirmed tag is kept in memory.
+- **R20**: activity-window records are keyed by tag (`preets-session-activity:v1:<tag>`); others are pruned to four.
+- **V-004 support**: the header carries `data-session-deadline` and `data-session-warning-lead`.
+
 ## Implementation deviations from the plan (for plan review)
 
 These do not change any acceptance criterion or HTTP outcome. Each needs reviewer confirmation at the plan gate.
 
-1. **`observedAtEpochMilliseconds` keeps microsecond precision** (a fractional millisecond). With whole milliseconds,
-   a status read and a concurrent renewal tied in the integration run, so "adopt only if later" could drop the
-   renewal. Redis `TIME` microseconds remove the tie. Establishment reads `TIME` just before its `SET NX`, not in a
-   `MULTI`, which orders it before every later transition of the record.
+1. **Superseded by R16.** `observedAtEpochMilliseconds` keeps the microsecond fraction it had when it was the
+   ordering key, but ordering now uses `revision`, so the field is diagnostic only.
 2. **Withdrawn after review of #364.** `ResolvedSessionRequest.coordination` was first made optional because the
    required field broke existing constructions. It is now required as planned (`SessionCoordinationSnapshot |
    undefined`), and the frontend test doubles that construct it were updated. `UsableSession.observedAt…` is required,
@@ -234,11 +253,13 @@ These do not change any acceptance criterion or HTTP outcome. Each needs reviewe
     each second; with D7's 1.5-second read timeout and a delay counted from each response, a slow read could push
     concealment past FR-015's two seconds. Watch reads start every second regardless of earlier reads, and each gives
     up (undetermined, so concealed) after one second. Other confirmations keep D7's 1.5 seconds.
-12. **`logout-failed` does not cancel other tabs' watches** (review of #364). A failed request may have lost the
-    response after the store ended the session, so receiving tabs, and the initiating tab, confirm at once and keep
-    watching.
+12. **Superseded by R18.** `logout-failed` is now sent only for a definitive refusal, so receivers stop their watch as
+    the plan says; an ambiguous outcome sends nothing and keeps every tab confirming.
 13. **Concealment is a flag beside the view, not a `concealed` view** (review of #364). A logout in progress keeps its
     busy state while an undetermined confirmation hides the content (FR-021). The controller sets `hidden` and `inert`
     on the DOM synchronously (FR-017) and reveals on a usable answer whose read started after concealment began.
 14. **A logout-in-progress record** (`preets-session-logout:v1`, tag and watch end) lets a tab that mounts or resumes
     after `logout-started` replay the confirmation watch (review of #364). It triggers confirmation only.
+15. **A "refused" logout includes error statuses other than 403 and 503** (for example 400, 415, or 500). They are
+    definitive answers that the session was not ended, unlike a lost response. The logout request times out after 10
+    seconds, matching the watch limit.

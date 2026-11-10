@@ -5,7 +5,11 @@ import type {
   SessionCoordinationSnapshot
 } from "@pathableai/pre-ets-frontend-services"
 
-export type LogoutOutcome = "ended" | "failed" | "not-in-force"
+/**
+ * `refused` is a definitive 403 or 503 (or another error status): logout did not happen. `unknown` is a network
+ * failure or timeout: the server may have ended the session and lost the response (research D8, R18).
+ */
+export type LogoutOutcome = "ended" | "not-in-force" | "refused" | "unknown"
 
 /** What the server says about this tab's session. `Ended` covers 401 and a different session in force (409). */
 export type SessionOutcome =
@@ -14,6 +18,7 @@ export type SessionOutcome =
   | { readonly _tag: "Usable"; readonly snapshot: SessionCoordinationSnapshot }
 
 const CONFIRMATION_TIMEOUT_MILLISECONDS = 1_500
+const LOGOUT_TIMEOUT_MILLISECONDS = 10_000
 
 const ended: SessionOutcome = { _tag: "Ended" }
 const undetermined: SessionOutcome = { _tag: "Undetermined" }
@@ -28,6 +33,7 @@ const asSnapshot = (value: unknown): SessionCoordinationSnapshot | undefined => 
   const timing = [
     "idleDeadlineEpochMilliseconds",
     "observedAtEpochMilliseconds",
+    "revision",
     "serverTimeEpochMilliseconds",
     "warningLeadMinutes"
   ]
@@ -36,6 +42,7 @@ const asSnapshot = (value: unknown): SessionCoordinationSnapshot | undefined => 
     coordinationTag: value.coordinationTag,
     idleDeadlineEpochMilliseconds: Number(value.idleDeadlineEpochMilliseconds),
     observedAtEpochMilliseconds: Number(value.observedAtEpochMilliseconds),
+    revision: Number(value.revision),
     serverTimeEpochMilliseconds: Number(value.serverTimeEpochMilliseconds),
     warningLeadMinutes: Number(value.warningLeadMinutes)
   }
@@ -75,10 +82,13 @@ export const sendActivity = (activity: InPageSessionActivity, coordinationTag: s
 
 /** `keepalive` completes the request even if this tab closes right after starting it (research D8, R11). */
 export const sendLogout = async (coordinationTag: string): Promise<LogoutOutcome> => {
-  const response = await call("/auth/logout", { ...postJson({ coordinationTag }), keepalive: true }).catch(() =>
-    undefined
-  )
-  if (response?.status === 204) return "ended"
-  if (response?.status === 401 || response?.status === 409) return "not-in-force"
-  return "failed"
+  const response = await call("/auth/logout", {
+    ...postJson({ coordinationTag }),
+    keepalive: true,
+    signal: AbortSignal.timeout(LOGOUT_TIMEOUT_MILLISECONDS)
+  }).catch(() => undefined)
+  if (response === undefined) return "unknown"
+  if (response.status === 204) return "ended"
+  if (response.status === 401 || response.status === 409) return "not-in-force"
+  return "refused"
 }

@@ -6,6 +6,7 @@ import { setTimeout as sleep } from "node:timers/promises"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import {
+  authorizeSessionAction,
   createLogoutHandler,
   createProtectionProxy,
   createSessionActivityHandler,
@@ -43,6 +44,7 @@ interface Snapshot {
   readonly coordinationTag: string
   readonly idleDeadlineEpochMilliseconds: number
   readonly observedAtEpochMilliseconds: number
+  readonly revision: number
 }
 
 const ORIGIN = "http://springfield.localhost"
@@ -131,11 +133,11 @@ describe("coordination handlers over the real session store [PREETS-SESSION-009,
       const renewed = (await response.json()) as Snapshot
       expect(renewed.idleDeadlineEpochMilliseconds).toBeGreaterThan(before.idleDeadlineEpochMilliseconds)
       expect(await storedDeadlines(world)).toEqual([renewed.idleDeadlineEpochMilliseconds])
-      expect(renewed.observedAtEpochMilliseconds).toBeGreaterThanOrEqual(before.observedAtEpochMilliseconds)
+      expect(renewed.revision).toBe(before.revision + 1)
       expect(response.headers.getSetCookie()).toEqual([])
     }))
 
-  it("orders overlapping status and activity snapshots by store observation, not arrival", () =>
+  it("orders overlapping status and activity snapshots by record revision, not arrival", () =>
     withWorld(async (world) => {
       const established = await establish(world)
       const { coordinationTag } = await readSnapshot(established.reference)
@@ -147,9 +149,8 @@ describe("coordination handlers over the real session store [PREETS-SESSION-009,
       ])
 
       const snapshots = [(await statusResponse.json()) as Snapshot, (await activityResponse.json()) as Snapshot]
-      const latest = snapshots.reduce((held, next) =>
-        next.observedAtEpochMilliseconds > held.observedAtEpochMilliseconds ? next : held
-      )
+      const latest = snapshots.reduce((held, next) => next.revision > held.revision ? next : held)
+      expect(latest.revision).toBe(2)
       expect(await storedDeadlines(world)).toEqual([latest.idleDeadlineEpochMilliseconds])
     }))
 
@@ -185,6 +186,28 @@ describe("coordination handlers over the real session store [PREETS-SESSION-009,
         expect((await handler(incoming)).status).toBe(expected)
         expect(await storedDeadlines(world)).toEqual([stored])
       }
+    }))
+
+  it("authorizes a protected action only for the matching tag, renewing after the check", () =>
+    withWorld(async (world) => {
+      const established = await establish(world)
+      const before = await readSnapshot(established.reference)
+      await sleep(20)
+      const authorize = (coordinationTag: string | undefined) =>
+        authorizeSessionAction({ coordinationTag, host: "springfield.localhost", reference: established.reference })
+
+      for (const stale of ["stale-session-tag", undefined]) {
+        expect(await authorize(stale)).toStrictEqual({ _tag: "SessionChanged" })
+        const unchanged = await readSnapshot(established.reference)
+        expect(unchanged.revision).toBe(before.revision)
+        expect(unchanged.idleDeadlineEpochMilliseconds).toBe(before.idleDeadlineEpochMilliseconds)
+      }
+
+      const authorized = await authorize(before.coordinationTag)
+      expect(authorized._tag).toBe("Authorized")
+      const after = await readSnapshot(established.reference)
+      expect(after.revision).toBe(before.revision + 1)
+      expect(after.idleDeadlineEpochMilliseconds).toBeGreaterThan(before.idleDeadlineEpochMilliseconds)
     }))
 
   it("never moves the stored deadline on status reads", () =>

@@ -84,16 +84,18 @@ rewrite would become an external proxy when Next binds `127.0.0.1`
 ([#356](https://github.com/PathableAI-org/Pre-ETS/issues/356)).
 
 A defect rejects the proxy promise (Next answers 500); nothing passes through on failure.
-A document entry renews a usable session as `deliberate-page-request`, and a `POST` with
-`next-action` as `deliberate-form-submission`, through `refreshForTenant` with the tenant's
-effective policy. Every other request only reads, and so does every request to the three
-coordination endpoints below, whatever its shape. The gate never creates a session and sets no
+A document entry renews a usable session as `deliberate-page-request` through `refreshForTenant`
+with the tenant's effective policy. Every other request only reads at the gate, including every
+Server Action and every request to the three coordination endpoints below, whatever its shape. A
+protected Server Action renews inside `authorizeSessionAction`, after its tag check, as
+`deliberate-form-submission`. The gate never creates a session and sets no
 cookie: only establishment writes `pathable-session`, as a browser-session cookie without
 `Max-Age` ([#155](https://github.com/PathableAI-org/Pre-ETS/issues/155)). A response written later
 could arrive after another tab's login and overwrite that session's cookie. The record's TTL is the
 idle authority, and a cookie outliving its record names nothing.
 
-`/`, the protected `(app)` layout, and `runReferenceOperation` keep their own `readSessionRequest` check. The reference
+`/` and the protected `(app)` layout keep their own `readSessionRequest` check; `runReferenceOperation` and
+`recordFixtureOperation` call `authorizeSessionAction`. The reference
 consumer shows a rejected action invocation as "The operation was not performed." without
 retrying. The root layout renders a history guard that reloads a page restored from the
 back-forward cache and refreshes the route on `popstate`, so history traversal reaches the
@@ -133,26 +135,32 @@ equal to the request origin. The in-page kinds are `intentional-control-activati
 `user-driven-meaningful-input-focus`; deliberate requests renew at the gate.
 
 The **snapshot** is `{ coordinationTag, idleDeadlineEpochMilliseconds, observedAtEpochMilliseconds,
-serverTimeEpochMilliseconds, warningLeadMinutes }`, also returned by `readSessionRequest` as
-`coordination` for a usable session. `observedAtEpochMilliseconds` is the Redis `TIME` (milliseconds
-with a microsecond fraction) read inside the atomic store transition that produced the state, so it
-orders observations of one record; `UsableSession` carries it too. `serverTimeEpochMilliseconds`
+revision, serverTimeEpochMilliseconds, warningLeadMinutes }`, also returned by `readSessionRequest` as
+`coordination` for a usable session. `revision` is the stored record's revision: the record is
+schema version 2, establishment writes revision 1, and every store write (a qualifying refresh or a
+policy adoption) increments it in the same atomic transition. Reads and excluded refreshes return it
+unchanged. A version-1 record reads as revision 0 and is rewritten as version 2 on its next write.
+Tabs order snapshots by `revision` alone. `observedAtEpochMilliseconds`, the Redis `TIME` read in
+that transition, is diagnostic only. `UsableSession` carries both. `serverTimeEpochMilliseconds`
 only converts the deadline to the tab's clock. The **coordination tag** is `base64url(SHA-256("preets:session-coordination:v1\0" +
 reference))`: one-way, distinct from the store-key digest, and not a credential. Activity and
 logout carry the tag the tab observed, so a stale tab cannot renew or end a later session.
-Protected Server Action forms submit it in a hidden `coordinationTag` field, and
-`runReferenceOperation` and `recordFixtureOperation` refuse a missing or different tag with no
-effect.
+Protected Server Action forms submit it in a hidden `coordinationTag` field. `runReferenceOperation`
+and `recordFixtureOperation` call `authorizeSessionAction({ coordinationTag, host, reference })`,
+which compares the tag with the cookie's tag and only then renews. A missing or different tag
+answers `SessionChanged` with no store write, and the action is refused with no effect.
 
 The protected `(app)` layout renders the `session-coordination` client feature around every
 protected page. It counts only trusted activity on meaningful inputs: control activation, text
 entry, non-modifier keys, touch, and focus in the same task as a key or pointer press. It
 ignores pointer movement, scrolling, and programmatic focus. In-page activity follows the 60-second
-B5 windows across tabs through one `localStorage` record (`preets-session-activity:v1`) under a
-Web Lock; without Web Locks a tab sends at once. A window-end flush sends only when that window is
+B5 windows across tabs through one `localStorage` record per session tag
+(`preets-session-activity:v1:<tag>`) under a Web Lock, so a stale tab writes only its own session's
+record. Records for tags other than the tab's and the current hint's are pruned to the four most
+recently touched. Without Web Locks a tab sends at once. A window-end flush sends only when that window is
 due, so a stale timer reschedules. Tabs share renewed deadlines, coalesced activity, and logout on
 `BroadcastChannel("preets-session-coordination")`, ignoring other tags, and adopt a snapshot only
-when its store observation is later than the one they hold. Two more records support replay:
+when its revision is higher than the one they hold; equal revisions are ignored. Two more records support replay:
 `preets-session-current:v1`, the tag of the most recently mounted protected document, and
 `preets-session-ended:v1`, the last eight tags the server confirmed ended. Messages and records hold
 only tags, times, the warning lead, and an activity kind.
@@ -163,7 +171,10 @@ current-session hint and broadcasts the server snapshot, so a document-entry ren
 tabs. On hydration the coordinator subscribes first, replays both records, and only then adopts the
 snapshot. A hint naming another session never ends a tab. It makes the tab confirm, and on resume
 it also hides content until confirmed. A Server Action submitted while the hint names another
-session is held, confirmed, and replayed only if this tab's session is still current.
+session is held, confirmed, and replayed once, with an in-memory pass for that form and submitter,
+only if this tab's session is still current. When storage cannot hold the hint, the confirmed tag
+is kept in memory as this tab's hint. The coordinator's header carries `data-session-deadline` (the
+held local deadline) and `data-session-warning-lead` for evidence; they hold no protected content.
 
 A tab confirms with `GET /session/status` before acting on its local deadline and on resume. Past
 its deadline on resume it first hides content, setting `hidden` and `inert` on the DOM at once
@@ -179,14 +190,16 @@ with `keepalive`. Other tabs start a confirmation each second, without waiting f
 until they see the outcome (at most 10 seconds). The initiating tab also records the logout in
 progress in `localStorage`, so a tab that mounts or resumes during that time replays the watch;
 the record only triggers confirmation and never ends a tab by itself. Each watch read gives up after one second, so a
-tab conceals within two seconds even if the initiating tab closes. A `logout-failed` broadcast does
-not stop the watch, because the response may have been lost after the session ended; the tabs
-confirm at once instead. On 204, 401, or 409 the tab records its tag as
-ended, broadcasts, and every sharing tab unmounts protected content and shows a signed-out notice
-with a Log in link to `/`.
+tab conceals within two seconds even if the initiating tab closes. On 204, 401, or 409 the tab
+records its tag as ended, broadcasts, and every sharing tab unmounts protected content and shows a
+signed-out notice with a Log in link to `/`. A network failure or timeout (10 seconds) is
+ambiguous, because the server may have ended the session and lost the response: the initiating tab
+hides content and confirms, the other tabs keep watching, and the status answer decides. A 401 or
+a different tag ends every tab as above; a usable answer means logout did not complete.
 Authentication never starts on its own. The same notice stands in for expiration until
-[#157](https://github.com/PathableAI-org/Pre-ETS/issues/157). If logout fails (403, 503, network),
-the tab hides content, confirms its session, and offers Log out again. Logout ends the application session only; see
+[#157](https://github.com/PathableAI-org/Pre-ETS/issues/157). If logout fails (a definitive 403 or
+503, or a usable answer after an ambiguous outcome), the tab broadcasts `logout-failed`, which stops
+the other tabs' watch, hides content, and offers Log out again. Logout ends the application session only; see
 [authentication](./authentication.md#application-logout). Coordination and logout need JavaScript;
 without it the gate and idle expiry still enforce access. Live multi-tab behavior is not yet
 observable in the running application until [#158](https://github.com/PathableAI-org/Pre-ETS/issues/158).

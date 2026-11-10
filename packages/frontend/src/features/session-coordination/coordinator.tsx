@@ -83,7 +83,12 @@ export function SessionCoordinator({
       </div>
       {state.view === "ended" ? null : (
         <>
-          <Inline as="header" justify="end">
+          <Inline
+            as="header"
+            data-session-deadline={state.deadline}
+            data-session-warning-lead={state.warningLeadMinutes}
+            justify="end"
+          >
             <LogoutControl busy={VIEW_PRESENTATION[state.view].busy} onLogout={actions.logout} />
           </Inline>
           {VIEW_PRESENTATION[state.view].alert}

@@ -7,10 +7,12 @@ import { IN_PAGE_ACTIVITIES } from "./activity-classification.ts"
 export const CHANNEL = "preets-session-coordination"
 export const CURRENT_KEY = "preets-session-current:v1"
 export const ENDED_KEY = "preets-session-ended:v1"
-const RECORD_KEY = "preets-session-activity:v1"
+const RECORD_PREFIX = "preets-session-activity:v1:"
 const LOGOUT_KEY = "preets-session-logout:v1"
 const LOCK = "preets-session-activity"
 const ENDED_TAGS_KEPT = 8
+/** Window records kept for tags other than this tab's and the current hint's. */
+const OTHER_WINDOW_RECORDS_KEPT = 4
 
 export interface TabChannel {
   readonly close: () => void
@@ -32,6 +34,7 @@ export type TabMessage =
     readonly coordinationTag: string
     readonly localDeadline: number
     readonly observedAtEpochMilliseconds: number
+    readonly revision: number
     readonly type: "renewed"
     readonly warningLeadMinutes: number
   }
@@ -56,9 +59,17 @@ const pendingMessage = (data: UnknownRecord, coordinationTag: string): TabMessag
     undefined
 
 const renewedMessage = (data: UnknownRecord, coordinationTag: string): TabMessage | undefined => {
-  const { localDeadline, observedAtEpochMilliseconds, warningLeadMinutes } = data
-  if (!isTime(localDeadline) || !isTime(observedAtEpochMilliseconds) || !isTime(warningLeadMinutes)) return undefined
-  return { coordinationTag, localDeadline, observedAtEpochMilliseconds, type: "renewed", warningLeadMinutes }
+  const { localDeadline, observedAtEpochMilliseconds, revision, warningLeadMinutes } = data
+  const times = [localDeadline, observedAtEpochMilliseconds, revision, warningLeadMinutes]
+  if (!times.every(isTime)) return undefined
+  return {
+    coordinationTag,
+    localDeadline: Number(localDeadline),
+    observedAtEpochMilliseconds: Number(observedAtEpochMilliseconds),
+    revision: Number(revision),
+    type: "renewed",
+    warningLeadMinutes: Number(warningLeadMinutes)
+  }
 }
 
 const signalMessage = (data: UnknownRecord, coordinationTag: string): TabMessage | undefined =>
@@ -101,26 +112,52 @@ const readJson = (key: string): unknown => {
   }
 }
 
-/** Unavailable storage leaves each tab deciding alone; it never delays a communication or claims a session. */
-const writeJson = (key: string, value: unknown): void => {
+/**
+ * Unavailable storage leaves each tab deciding alone; it never delays a communication or claims a session. Answers
+ * whether the value was stored.
+ */
+const writeJson = (key: string, value: unknown): boolean => {
   try {
     localStorage.setItem(key, JSON.stringify(value))
+    return true
   } catch {
     // Storage is advisory; the server stays the authority.
+    return false
   }
 }
 
-/** The shared B5-W record. */
-export const readWindowRecord = (): ActivityWindowRecord | undefined => {
-  const value = readJson(RECORD_KEY)
-  if (!isRecord(value) || typeof value.coordinationTag !== "string") return undefined
+const parseWindowRecord = (value: unknown): ActivityWindowRecord | undefined => {
+  if (!isRecord(value)) return undefined
   const { lastCommunicatedAt, pendingSince } = value
   if (!isOptionalTime(lastCommunicatedAt) || !isOptionalTime(pendingSince)) return undefined
-  return { coordinationTag: value.coordinationTag, lastCommunicatedAt, pendingSince }
+  return { lastCommunicatedAt, pendingSince }
 }
 
-export const writeWindowRecord = (record: ActivityWindowRecord): void => {
-  writeJson(RECORD_KEY, record)
+/** This session's B5-W record; another session's record is never read (R20). */
+export const readWindowRecord = (coordinationTag: string): ActivityWindowRecord | undefined =>
+  parseWindowRecord(readJson(`${RECORD_PREFIX}${coordinationTag}`))
+
+const lastTouched = (record: ActivityWindowRecord | undefined) =>
+  Math.max(record?.lastCommunicatedAt ?? 0, record?.pendingSince ?? 0)
+
+/** Keeps this tab's and the hint's records and the most recently touched others, at most four of them. */
+const pruneWindowRecords = (keep: ReadonlySet<string>) => {
+  try {
+    const others = Object.keys(localStorage)
+      .filter((key) => key.startsWith(RECORD_PREFIX) && !keep.has(key))
+      .map((key) => ({ key, touched: lastTouched(parseWindowRecord(readJson(key))) }))
+      .sort((left, right) => right.touched - left.touched)
+    for (const { key } of others.slice(OTHER_WINDOW_RECORDS_KEPT)) localStorage.removeItem(key)
+  } catch {
+    // Storage is advisory.
+  }
+}
+
+/** Writes only this session's record, under the cross-tab window lock. */
+export const writeWindowRecord = (coordinationTag: string, record: ActivityWindowRecord): void => {
+  const key = `${RECORD_PREFIX}${coordinationTag}`
+  if (!writeJson(key, record)) return
+  pruneWindowRecords(new Set([`${RECORD_PREFIX}${readCurrentHint() ?? coordinationTag}`, key]))
 }
 
 /** The current-session hint: the tag of the most recently mounted protected document. A hint, never proof (R14). */
@@ -129,9 +166,8 @@ export const readCurrentHint = (): string | undefined => {
   return isRecord(value) && typeof value.coordinationTag === "string" ? value.coordinationTag : undefined
 }
 
-export const writeCurrentHint = (coordinationTag: string): void => {
-  writeJson(CURRENT_KEY, { coordinationTag })
-}
+/** Answers whether the hint was stored; a tab that cannot store it keeps the confirmed tag in memory (R19). */
+export const writeCurrentHint = (coordinationTag: string): boolean => writeJson(CURRENT_KEY, { coordinationTag })
 
 /** Tags of sessions confirmed ended, newest first, so a tab that missed the broadcast can replay it (R3). */
 export const readEndedTags = (): readonly string[] => {
