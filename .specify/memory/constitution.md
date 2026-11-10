@@ -7,10 +7,13 @@ agent reports on each implementation slice.
 Modified principles:
 - I. Evidence-Grounded Specification: verification.md also states the distinguishing observation and its
   evidence channel.
-- V. Meaningful Behavioral Tests: instrumentation designed in an approved telemetry contract is committed
-  product code; forbidden telemetry data is named; durable telemetry assertions remain prohibited.
+- V. Meaningful Behavioral Tests: claims whose approved evidence channel is server or browser telemetry
+  get a telemetry contract, and its instrumentation is committed product code; facts observed through other
+  channels need no committed telemetry; forbidden telemetry data is named; durable telemetry assertions
+  remain prohibited.
 Modified sections: Development Workflow and Review steps 3–5 (seven planning phases, slice-grouped tasks,
-per-slice verification).
+per-slice verification; a slice is ready only when its assigned telemetry is usable, its full claims are
+established, and any other result matches a limitation approved in verification.md or plan.md).
 Affected artifacts: docs/engineering/verification-harness.md (new), docs/engineering/git-workflow.md,
 docs/engineering/testing/README.md, docs/observability.md, AGENTS.md, .github review instructions and
 implementation PR template.
@@ -139,9 +142,11 @@ use public-interface examples, useful properties, real integration evidence, exi
 manual/transient probes at the smallest meaningful boundary. Manual module evidence is conditional;
 manual feature verification is standard.
 
-Runtime telemetry is part of the verification harness. When feature verification needs a runtime
-fact, the plan MUST design the span, log, or metric that exposes it in a telemetry contract, and that
-instrumentation is committed product code. Telemetry MUST NOT carry credentials, cookies, session
+Runtime telemetry is part of the verification harness. When a claim's approved evidence channel in
+`verification.md` is server or browser telemetry, the plan MUST design the span, log, or metric that
+exposes the runtime fact in a telemetry contract, and that instrumentation is committed product
+code. Facts observed through browser interaction, assistive technology, module tests, or
+requirements BDD need no committed telemetry. Telemetry MUST NOT carry credentials, cookies, session
 references, tokens, OIDC codes, state, or nonces, PHI, personal data, or raw subject identifiers; a
 fact that cannot be emitted safely MUST be verified another way. Ad-hoc probes and instrumentation
 outside an approved telemetry contract MUST include cleanup and MUST NOT be committed.

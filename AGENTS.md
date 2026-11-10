@@ -68,8 +68,8 @@ Before designing or changing tests, read [Testing as evidence](docs/engineering/
 For property tests, also read [Property-based testing](docs/engineering/testing/property-based-testing.md).
 Choose evidence for a named expectation and the boundary responsible for it; do not add tests solely for coverage.
 
-Runtime telemetry is part of the verification harness. When a feature claim needs a
-runtime fact, the plan's `contracts/telemetry.md` puts it in a span, log, or metric that
+Runtime telemetry is part of the verification harness. When a claim's approved evidence channel
+in `verification.md` is server or browser telemetry, the plan's `contracts/telemetry.md` puts it in a span, log, or metric that
 follows the [verification telemetry conventions](docs/observability.md#verification-telemetry-conventions),
 and a verification agent inspects real exported data for each implementation slice. Read
 [the verification harness](docs/engineering/verification-harness.md) before planning, implementing,

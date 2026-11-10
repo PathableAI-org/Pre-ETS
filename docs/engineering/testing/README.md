@@ -148,9 +148,11 @@ isolate dependencies, but a simulated adapter does not establish the real adapte
 
 ### Observe telemetry, do not test it
 
-Runtime telemetry is evidence of application behavior. When a feature claim needs a
-runtime fact, the plan's telemetry contract puts it in a span, log, or metric, and a
-verification agent inspects the exported data for each implementation slice. See
+Runtime telemetry is evidence of application behavior. When a claim's approved evidence
+channel in `verification.md` is server or browser telemetry, the plan's telemetry contract puts it in a span, log, or metric, and a
+verification agent inspects the exported data for each implementation slice. Facts
+observed through browser interaction, assistive technology, module tests, or requirements
+BDD need no committed telemetry. See
 [the verification harness](../verification-harness.md).
 
 Telemetry is observed through that verification agent, manual checks, or temporary

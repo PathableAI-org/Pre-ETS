@@ -37,9 +37,11 @@ person perceives, and it does not replace module tests for durable regressions.
 
 ### What goes in telemetry
 
-If a verifier needs a runtime fact and the fact is safe to emit, the telemetry contract puts it in a span, log, or
-metric. Typical facts are an operation's outcome, the decision a policy made, a deadline or policy value, which
-tenant alias was bound, and the causal order of operations in one journey.
+When a claim's approved evidence channel in `verification.md` is server or browser telemetry, the telemetry contract
+puts the runtime fact it needs in a span, log, or metric. Facts observed through browser interaction, assistive
+technology, module tests, or requirements BDD need no committed telemetry. Typical facts are an operation's outcome,
+the decision a policy made, a deadline or policy value, which tenant alias was bound, and the causal order of
+operations in one journey.
 
 A fact that falls in a forbidden data class in [Observability](../observability.md#verification-telemetry-conventions)
 is never emitted. The telemetry contract says how that fact is verified instead.
