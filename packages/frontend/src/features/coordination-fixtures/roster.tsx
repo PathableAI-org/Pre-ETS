@@ -33,8 +33,8 @@ export function RosterFixture({ action }: { readonly action: ProtectedFormAction
       <Form action={record}>
         <CoordinationTagField />
         <FormGroup>
-          <Label>Attendance note</Label>
-          <Input name="note" type="text" />
+          <Label htmlFor="roster-attendance-note">Attendance note</Label>
+          <Input id="roster-attendance-note" name="note" type="text" />
         </FormGroup>
         <Button disabled={recording} type="submit">Record attendance note</Button>
         <Text aria-live="polite" role="status">{outcome._tag === "Ready" ? "" : outcome.message}</Text>

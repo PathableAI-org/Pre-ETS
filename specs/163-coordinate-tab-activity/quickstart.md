@@ -265,8 +265,9 @@ evidenced by the frontend-services suites (revision ordering, gate never renewin
 They include: the tag-binding, same-origin, and tag properties (`coordination.test.ts`); the never-renewing endpoint
 property and the no-`Set-Cookie` property over protected requests (`protection.test.ts`); composed gate → handler on
 real Redis for an action-shaped stale-tag activity and a navigation to status, deadline unchanged
-(`coordination-redis.test.ts`); overlapping status and activity snapshots, the later observation carrying the stored
-deadline; non-decreasing observation times across interleaved clients (`session-redis.test.ts`); the B5-W property
+(`coordination-redis.test.ts`); overlapping status and activity snapshots, the higher revision carrying the stored
+deadline; the record revision rising by exactly one per write and unchanged by reads and excluded refreshes across
+interleaved clients, and version-1 migration (`session-redis.test.ts`); the B5-W property
 through `decideActivityCommunication` and `flushActivityCommunication` with stale flush timers; `adoptSnapshot`
 examples; the D4 table; the Server Action tag refusal examples.
 
