@@ -132,13 +132,17 @@ stay planned here and are added to the feature file in increment 5.
 | A logout whose tab closes before the response still conceals every other tab within 2 seconds (010)                                            | V-011        | #158 |
 | An activity or document-entry response for an earlier session delayed past a new login leaves the new session's cookie and access intact (010) | V-012        | #158 |
 | A stale document parsed after a new login does not end tabs of the new session (010)                                                           | V-003, V-012 | #158 |
+| A stale document parsed after a new login cannot renew or act on the new session by submitting a form (010)                                    | V-012        | #158 |
+| A logout the server completed whose response was lost still conceals every sharing tab within 2 seconds (010)                                  | V-011        | #158 |
 | A tab opened before logout but hydrated after it shows no protected content (010)                                                              | V-011, V-017 | #158 |
 
 Non-BDD Playwright browser evidence (retained under `tests/bdd/support` helpers, run by the same harness) covers the
-timing bounds and lifecycle cases that Gherkin would obscure: V-004 (2-second reflection, measured as a tab hidden and
-shown past its former deadline more than 2 seconds after renewal showing no concealment; repeated for a document-entry
-renewal with script bundles delayed by request interception, and for a policy refresh that shortens the timeout, where
-the other tab must adopt the earlier deadline), V-013 and V-014 (a
+timing bounds and lifecycle cases that Gherkin would obscure: V-004 (in a running tab, read the held deadline and
+warning lead that the coordinator's header exposes as non-protected attributes, `data-session-deadline` and
+`data-session-warning-lead`, and assert they match the renewal response within 2 seconds; repeated after changing the
+tenant's effective policy while the session is valid, for a document-entry renewal with script bundles delayed by
+request interception, and for a refresh that shortens the timeout, where the running tab must adopt the higher revision
+with the earlier deadline; resume behavior is evidenced separately under V-013), V-013 and V-014 (a
 synthetic `visibilitychange` dispatched by `page.evaluate` is **not** acceptable; change visibility by bringing another
 page to the front with `page.bringToFront()`, freeze and resume with the CDP `Page.setWebLifecycleState` command, and
 exercise the back/forward cache with a navigation and `page.goBack()`; confirm the exact mechanisms against Playwright
@@ -186,12 +190,9 @@ values, tags, references, tokens, or store contents.
   (research D6); its timing still depends on the browser receiving and parsing the document.
 - A logout that completes after a new document's inline script ran and before its coordinator subscribed is applied at
   subscription; exposure is bounded by hydration time (research D14).
-- A Server Action already in flight when another tab re-logs in can renew the later session at the gate; it has no
-  protected effect, and the stale tab ends when it observes the new tag (research D2).
 - Pre-script paint on visibility resume is outside application control; bfcache restoration is concealed at `pagehide`
   (research D9).
-- Snapshot ordering uses the Redis host clock (`TIME`); a backwards clock step could misorder two observations taken
-  across it (research D6).
+- Snapshot ordering uses the stored record's revision; `observedAt` (Redis `TIME`) is diagnostic only (research D6).
 - The session cookie no longer has `Max-Age`; it lasts for the browser session and may outlive its record, which then
   grants nothing (research D15).
 - Server time is real; deadline-crossing journeys take at least 5 minutes each (research D12).

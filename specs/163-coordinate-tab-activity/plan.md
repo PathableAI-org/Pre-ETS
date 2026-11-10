@@ -43,7 +43,8 @@ browser `BroadcastChannel`, `navigator.locks`, `localStorage`, Page Visibility a
 **Storage**: Existing frontend-services Redis session records only (unchanged schema and key layout); the existing
 host-only `pathable-session` cookie, now written only at establishment and without `Max-Age` (no renewal or logout
 response sets it, research D15); per-origin `localStorage`
-record `preets-session-activity:v1` holding only a tag and two timestamps
+records holding only tags and timestamps (per-tag activity windows, a current-session hint, ended tags). The stored
+Redis session record gains a `revision` counter (schema version 2, research D6)
 
 **Testing**: Vitest 5.1.0 with `@effect/vitest` 4.1.2 and `@fast-check/vitest` 0.5.0 (frontend-services unit and
 real-Redis integration), frontend Vitest (`node` environment) for pure browser policy, Cucumber 13.3.0 requirements
@@ -76,14 +77,14 @@ designation unchanged.
 
 _GATE: Passed before Phase 0 research and re-checked after Phase 1 design. No violation requires Complexity Tracking._
 
-| Principle                                     | Pre-design gate                                                                                                                   | Post-design result                                                                                                                                                                                                                                                                                                          |
-| --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| I. Evidence-grounded specification            | `spec.md`, `verification.md`, issue #155, S3, B5, B6, and PREETS-SESSION-009/010 on `origin/main` `00116612` read as authorities. | Pass. No acceptance criterion or verification obligation changes. The spec's three authority findings are carried as research F-1 (S1 precedent), F-2 (application-session logout, flagged), and F-3 (resolved in the specification as FR-023, SC-011, and V-017). No product decision is hidden as an assumption.          |
-| II. Explicit ownership and authoritative data | Session workflows belong to frontend-services; the Next app owns presentation; no backend or domain data.                         | Pass. All Effect composition is in frontend-services host adapters. The Next app holds route wiring, presentation, and browser coordination. Redis stays the only session authority; browser state is advisory and always confirmed with the server.                                                                        |
-| III. Tenant isolation                         | Tenant resolved per request; cross-tenant and cross-context effects forbidden.                                                    | Pass. Handlers resolve the tenant first and use `*ForTenant` operations. Browser channels and storage are origin- and context-scoped; the coordination tag separates successive sessions (research D2, D13). Same-origin enforcement blocks forced cross-site logout or keep-alive (D10).                                   |
-| IV. Accessible, server-rendered UI            | UI uses installed `@pathableai/react`; client components justified.                                                               | Pass. Pages stay server-rendered. The coordinator is a client component because B5 behavior is browser behavior. Log out is a `Button` with an accessible name and visible focus; the signed-out notice is an `Alert` with a heading, a live region, and a `Link`. Concealment removes content from the accessibility tree. |
-| V. Meaningful behavioral tests                | Evidence names claims and separates module, feature, and manual observations.                                                     | Pass. Module claims in [contracts/modules.md](contracts/modules.md) use properties and real-Redis integration at the responsible boundary; [quickstart.md](quickstart.md) maps every V-claim once; renewal is always shown by the authoritative deadline, never by an event or request alone; no telemetry tests.           |
-| VI. Simplicity and verifiable quality         | Every new abstraction needs a current consumer and owner.                                                                         | Pass. Three handler factories (one route file each), one private child, one feature with one composition point, one fixture feature with two pages, one shared provider with three consumers; no service, Layer, package, dependency, or speculative re-export. Policy exports are a recorded reviewer question.            |
+| Principle                                     | Pre-design gate                                                                                                                   | Post-design result                                                                                                                                                                                                                                                                                                           |
+| --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| I. Evidence-grounded specification            | `spec.md`, `verification.md`, issue #155, S3, B5, B6, and PREETS-SESSION-009/010 on `origin/main` `00116612` read as authorities. | Pass. No acceptance criterion or verification obligation changes. The spec's three authority findings are carried as research F-1 (S1 precedent), F-2 (application-session logout, flagged), and F-3 (resolved in the specification as FR-023, SC-011, and V-017). No product decision is hidden as an assumption.           |
+| II. Explicit ownership and authoritative data | Session workflows belong to frontend-services; the Next app owns presentation; no backend or domain data.                         | Pass. All Effect composition is in frontend-services host adapters. The Next app holds route wiring, presentation, and browser coordination. Redis stays the only session authority; browser state is advisory and always confirmed with the server.                                                                         |
+| III. Tenant isolation                         | Tenant resolved per request; cross-tenant and cross-context effects forbidden.                                                    | Pass. Handlers resolve the tenant first and use `*ForTenant` operations. Browser channels and storage are origin- and context-scoped; the coordination tag separates successive sessions (research D2, D13). Same-origin enforcement blocks forced cross-site logout or keep-alive (D10).                                    |
+| IV. Accessible, server-rendered UI            | UI uses installed `@pathableai/react`; client components justified.                                                               | Pass. Pages stay server-rendered. The coordinator is a client component because B5 behavior is browser behavior. Log out is a `Button` with an accessible name and visible focus; the signed-out notice is an `Alert` with a heading, a live region, and a `Link`. Concealment removes content from the accessibility tree.  |
+| V. Meaningful behavioral tests                | Evidence names claims and separates module, feature, and manual observations.                                                     | Pass. Module claims in [contracts/modules.md](contracts/modules.md) use properties and real-Redis integration at the responsible boundary; [quickstart.md](quickstart.md) maps every V-claim once; renewal is always shown by the authoritative deadline, never by an event or request alone; no telemetry tests.            |
+| VI. Simplicity and verifiable quality         | Every new abstraction needs a current consumer and owner.                                                                         | Pass. Three handler factories (one route file each), one private child, one feature with one composition point, one fixture feature with two pages, one shared provider with three consumers; no service, Layer, package, dependency, or speculative re-export. Private policy modules are tested directly by user decision. |
 
 Architecture constraints: frontend/backend separation unchanged; the shared `ManagedRuntime` runs the handlers through
 the existing `toNext`; `packages/frontend` imports no Effect; Fallow zones unchanged. `fallow guard` was run on the
@@ -115,7 +116,7 @@ packages/frontend-services/
 ├── src/
 │   ├── index.ts                     # + three handler factories, wire types
 │   ├── session.ts                   # UsableSession.observedAtEpochMilliseconds
-│   ├── session/store.ts             # script returns Redis TIME
+│   ├── session/{store,codec}.ts     # record v2 revision; script returns Redis TIME
 │   ├── next.ts                      # + re-exports from next/coordination.ts
 │   └── next/
 │       ├── coordination.ts          # NEW private child: schema, origin check, three programs
@@ -143,7 +144,7 @@ packages/frontend/
 │   │   └── session-confirmation.tsx            # NEW shared context + hook
 │   └── features/
 │       ├── session-coordination.ts             # NEW entry
-│       ├── session-coordination/{activity-classification,activity-window,mount-script,session-endpoints,tab-channel}.ts
+│       ├── session-coordination/{activity-classification,activity-window,snapshot-order,mount-script,session-endpoints,tab-channel}.ts
 │       ├── session-coordination/{coordinator,logout-control,signed-out-notice}.tsx
 │       ├── coordination-fixtures.ts            # NEW entry
 │       ├── coordination-fixtures/{roster,participant,fixture-action-form}.tsx
@@ -199,10 +200,11 @@ Compatibility-sensitive points:
 - `ResolvedSessionRequest.coordination` is additive; existing consumers compile unchanged.
 - The S1 outcome matrix, public designation, and `ProtectionResponses` are unchanged. The private classifier never
   renews on `/session/activity`, `/session/status`, or `/auth/logout`.
-- Protected Server Actions receive the observed tag in a hidden `coordinationTag` field and refuse a mismatch with no
-  effect.
-- Frontend entries: `session-coordination` (`SessionCoordinator` plus four pure policy functions, a recorded
-  reviewer question), `coordination-fixtures` (`RosterFixture`, `ParticipantFixture`), shared
+- The gate no longer renews Server Actions. Protected Server Actions receive the observed tag in a hidden
+  `coordinationTag` field and call the new `authorizeSessionAction`, which renews only after the tag matches.
+- `UsableSession` and the snapshot gain `revision` (ordering) and `observedAtEpochMilliseconds` (diagnostic).
+- Frontend entries: `session-coordination` (`SessionCoordinator` only; the pure policy modules are private and unit
+  tests import them directly, an exception the user accepted on 2026-11-10 following `onsite-visit-state.test.ts`), `coordination-fixtures` (`RosterFixture`, `ParticipantFixture`), shared
   `session-confirmation` (`SessionConfirmationProvider`, `useSessionConfirmation`).
 
 ### Phase 3 — Module contract evidence
@@ -251,12 +253,19 @@ Claim-based evidence is tabulated per module in [contracts/modules.md](contracts
 warningLeadMinutes }` built by `next/coordination-snapshot.ts`.
 
 **Gate classification** (`next/protection.ts`): `classify` returns `{ entry: "application", renewal: undefined }` for
-any request whose pathname is in `NON_RENEWING_PATHS`, before the document and action rules. The public designation
-is checked first and does not include these paths. `admit` no longer re-issues the session cookie; the callback's
+any request whose pathname is in `NON_RENEWING_PATHS`, and for every Server Action (`next-action`), so only document
+entries renew at the gate. The public designation is checked first and does not include these paths. `admit` no longer re-issues the session cookie; the callback's
 establishment response is its only writer, without `Max-Age` (research D15).
 
-**Store observation time** (`session/store.ts`, `session.ts`): the read/refresh script appends `redis.call("TIME")` to
-its reply; `UsableSession.observedAtEpochMilliseconds` carries it (research D6, R13).
+**Store revision and observation time** (`session/store.ts`, `session/codec.ts`, `session.ts`): the stored record
+becomes version 2 with `revision`; the read/refresh script increments it in the same `SET` that renews or adopts
+policy, accepts version-1 records as revision 0, and appends `redis.call("TIME")` to its reply. `UsableSession` carries
+`revision` and `observedAtEpochMilliseconds` (research D6, R13, R16).
+
+**Action authorization** (`next/coordination.ts`, exported as `authorizeSessionAction`): tenant, tag comparison against
+the cookie's tag, then `refreshForTenant({ activity: "deliberate-form-submission", ... })`; failures map as
+`readSessionRequest` does. `runReferenceOperation` and the fixture action call it before any effect (research D2,
+R17).
 
 **Next host composition**: `app/session/activity/route.ts` exports `POST = createSessionActivityHandler()` with
 `dynamic = "force-dynamic"`; `app/session/status/route.ts` exports `GET`; `app/auth/logout/route.ts` exports `POST`.
@@ -275,15 +284,18 @@ events, then replays the ended and current records, then adopts the snapshot. Do
 `keydown` and `pointerdown` for the "gesture in the current task" flag (cleared by `setTimeout(0)`), and capture
 listeners for `click`, `beforeinput`, `keydown`, `pointerdown`, and `focusin` classify only targets inside the
 protected content wrapper. A document-level capture `submit` listener applies the submit guard (research D2).
-Classified activity enters `decideActivityCommunication` inside `navigator.locks.request`; `SendNow` posts to
+Classified activity enters `decideActivityCommunication` on the tab's own tag record
+(`preets-session-activity:v1:<tag>`) inside `navigator.locks.request`; `SendNow` posts to
 `/session/activity`, `Coalesce` broadcasts `pending` and schedules the flush, which runs
 `flushActivityCommunication` under the lock and reschedules a stale timer. Every snapshot (activity 200, status 200,
-broadcast) passes `adoptSnapshot` (later store observation time wins, even with an earlier deadline), is broadcast as
+broadcast) passes `adoptSnapshot` (higher revision wins, even with an earlier deadline; equal revisions ignored), is broadcast as
 `renewed` when newly adopted, and reschedules the single confirmation timer at the local deadline. Listeners for `visibilitychange`, `resume`, and `pagehide` implement research D9; confirmation uses
 `AbortSignal.timeout(1500)`. Logout bypasses the window. `logout-control.tsx` renders the header `Button`;
 `signed-out-notice.tsx` renders `Alert` + `Heading` + `Text` + `Link href="/"`; the coordinator renders the provider
 from `providers/session-confirmation.tsx` with `confirm` bound to the status read and the current `coordinationTag`.
-Logout writes the ended record before broadcasting. `tab-channel.ts` wraps
+Logout writes the ended record before broadcasting; a network failure or timeout keeps the initiator and the other
+tabs confirming, and only a definitive 403 or 503 broadcasts `logout-failed` (research D8, R18). A held submission is
+replayed once with an in-memory pass, so unavailable storage cannot loop it (R19). `tab-channel.ts` wraps
 `BroadcastChannel`, `localStorage` (try/catch, treating failure as an absent record), and `navigator.locks`; where
 `navigator.locks` is unavailable, the tab sends immediately rather than coalescing (fail toward renewal of a valid
 session, never toward early expiry). `session-endpoints.ts` narrows JSON and maps statuses to coordinator events.
@@ -303,13 +315,13 @@ logout). `specs/` outside this directory are not touched. The delivery plan is n
 
 **Implementation increments** (each a reviewable implementation branch or commit series; gates in bold):
 
-| # | Increment                       | Content                                                                                                                                                                                                                                                                                                                                         | Evidence completed                                                                          | Gate                                           |
-| - | ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- | ---------------------------------------------- |
-| 1 | Coordination server contract    | `next/coordination.ts`, `next/coordination-snapshot.ts`, gate `NON_RENEWING_PATHS` and no renewal cookie writes, callback cookie without `Max-Age`, store `TIME` and `UsableSession.observedAtEpochMilliseconds`, `ResolvedSessionRequest.coordination`, exports; unit, property, composed gate-plus-handler, and real-Redis integration suites | Module evidence for the adapters                                                            | None                                           |
-| 2 | Browser coordination policy     | `activity-classification.ts`, `activity-window.ts`, `tab-channel.ts`, `session-endpoints.ts`, coordinator, logout control, signed-out notice, shared provider; frontend unit suite                                                                                                                                                              | Module evidence for classifier and window                                                   | None                                           |
-| 3 | Application composition         | Route files, `(app)/layout.tsx`, fixture feature, pages, and action, `session-reference` tag and confirmation, docs, BDD feature (`@partial`) with **only executable ungated scenarios**, and support helpers                                                                                                                                   | V-005 (HTTP part), V-009 (HTTP denial part)                                                 | None                                           |
-| 4 | Ungated running-app evidence    | Quickstart §3 with prepared records; V-015 store-outage rows that need no login (status and logout handler mapping through the running app with a prepared record)                                                                                                                                                                              | V-005 HTTP, V-009 HTTP, V-015 server part                                                   | None                                           |
-| 5 | Live multi-tab feature evidence | Real-login BDD scenarios (added to the feature file only now), browser lifecycle and timing evidence, manual steps 3–10                                                                                                                                                                                                                         | V-001–V-004, V-006–V-008, V-009 browser part, V-010–V-014, V-015 browser part, V-016, V-017 | **#158 B6 freshness confirmation functioning** |
+| # | Increment                       | Content                                                                                                                                                                                                                                                                                                                                                                                              | Evidence completed                                                                          | Gate                                           |
+| - | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| 1 | Coordination server contract    | `next/coordination.ts`, `next/coordination-snapshot.ts`, gate `NON_RENEWING_PATHS` and no renewal cookie writes, callback cookie without `Max-Age`, record `revision` (v2) and store `TIME` on `UsableSession`, gate stops renewing actions, `authorizeSessionAction`, `ResolvedSessionRequest.coordination`, exports; unit, property, composed gate-plus-handler, and real-Redis integration suites | Module evidence for the adapters                                                            | None                                           |
+| 2 | Browser coordination policy     | `activity-classification.ts`, `activity-window.ts`, `tab-channel.ts`, `session-endpoints.ts`, coordinator, logout control, signed-out notice, shared provider; frontend unit suite                                                                                                                                                                                                                   | Module evidence for classifier and window                                                   | None                                           |
+| 3 | Application composition         | Route files, `(app)/layout.tsx`, fixture feature, pages, and action, `session-reference` tag and confirmation, docs, BDD feature (`@partial`) with **only executable ungated scenarios**, and support helpers                                                                                                                                                                                        | V-005 (HTTP part), V-009 (HTTP denial part)                                                 | None                                           |
+| 4 | Ungated running-app evidence    | Quickstart §3 with prepared records; V-015 store-outage rows that need no login (status and logout handler mapping through the running app with a prepared record)                                                                                                                                                                                                                                   | V-005 HTTP, V-009 HTTP, V-015 server part                                                   | None                                           |
+| 5 | Live multi-tab feature evidence | Real-login BDD scenarios (added to the feature file only now), browser lifecycle and timing evidence, manual steps 3–10                                                                                                                                                                                                                                                                              | V-001–V-004, V-006–V-008, V-009 browser part, V-010–V-014, V-015 browser part, V-016, V-017 | **#158 B6 freshness confirmation functioning** |
 
 Gated real-login journeys stay planned prose in [quickstart.md](quickstart.md) until increment 5. Committing them
 earlier would fail the nightly requirements BDD run, which discovers every requirements feature; `@partial` does not
@@ -337,8 +349,9 @@ request alone. Gated claims are reported incomplete until #158 functions, never 
 | 3. Presentation in tabs after logout   | **Resolved in the specification** (US3 scenario 6, FR-023, SC-011, V-017; maintainer decision A of 2026-11-09). Designed in research D8: every tab unmounts protected content and shows an accessible signed-out notice with a Log in link to `/`, which enters S1's fresh-entry flow; nothing starts authentication automatically. |
 
 Non-blocking findings F-4 (logout when a later session is in force) and F-5 (JavaScript required for coordination and
-logout) are recorded in [research.md](research.md#findings). The reviewer question on exporting the two pure policy
-functions is in [contracts/modules.md](contracts/modules.md#frontendsrcfeaturessession-coordinationts).
+logout) are recorded in [research.md](research.md#findings). The user decided on 2026-11-10 that unit tests may import the
+private policy modules, following the `onsite-visit-state.test.ts` precedent; the policy functions are not exported
+([contracts/modules.md](contracts/modules.md#frontendsrcfeaturessession-coordinationts)).
 
 ## Complexity Tracking
 
