@@ -23,8 +23,8 @@ export interface ReadSessionRequestInput {
 }
 
 export interface ResolvedSessionRequest {
-  /** Present exactly when `session` is a `UsableSession`. */
-  readonly coordination?: SessionCoordinationSnapshot | undefined
+  /** Defined exactly when `session` is a `UsableSession`. */
+  readonly coordination: SessionCoordinationSnapshot | undefined
   readonly session: NoUsableSession | UsableSession
   readonly tenantAlias: TenantAlias
 }

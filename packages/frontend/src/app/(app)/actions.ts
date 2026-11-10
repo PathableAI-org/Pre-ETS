@@ -11,10 +11,10 @@ const receiptCookie = "preets-ref-effect"
 const receiptLifetimeSeconds = 120
 
 export async function runReferenceOperation(
-  previousState: ReferenceActionState,
+  _previousState: ReferenceActionState,
   formData: FormData
 ): Promise<ReferenceActionState> {
-  if (previousState._tag.length === 0 || !(await admitSubmission(formData))) {
+  if (!(await admitSubmission(formData))) {
     return { _tag: "Denied", message: "This operation is unavailable until you have a usable session." }
   }
   const host = (await headers()).get("host") ?? ""

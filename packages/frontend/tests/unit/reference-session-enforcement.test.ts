@@ -69,6 +69,7 @@ describe("reference session enforcement [PREETS-SESSION-001, PREETS-SESSION-004,
 
   it("renders the admitted session and passes only the action into the feature client", async () => {
     vi.mocked(readSessionRequest).mockResolvedValue({
+      coordination,
       session: usableSession,
       tenantAlias: usableSession.tenantAlias
     })
@@ -128,6 +129,7 @@ describe("reference session enforcement [PREETS-SESSION-001, PREETS-SESSION-004,
 
   it("redirects a page without a usable session and does not emit a receipt", async () => {
     vi.mocked(readSessionRequest).mockResolvedValue({
+      coordination: undefined,
       session: { _tag: "NoUsableSession" },
       tenantAlias: springfield
     })
@@ -138,6 +140,7 @@ describe("reference session enforcement [PREETS-SESSION-001, PREETS-SESSION-004,
 
   it("denies an action without a usable session and does not start login or emit a receipt", async () => {
     vi.mocked(readSessionRequest).mockResolvedValue({
+      coordination: undefined,
       session: { _tag: "NoUsableSession" },
       tenantAlias: springfield
     })

@@ -157,5 +157,5 @@ export const createSessionActivityHandler = (): (request: NextRequest) => Promis
 /** `GET /session/status`: reads the session without renewing it. */
 export const createSessionStatusHandler = (): (request: NextRequest) => Promise<NextResponse> => toNext(sessionStatus)
 
-/** `POST /auth/logout`: ends the tab's session and expires its cookie. */
+/** `POST /auth/logout`: ends the tab's session. It leaves the cookie untouched (research D15). */
 export const createLogoutHandler = (): (request: NextRequest) => Promise<NextResponse> => toNext(logout)

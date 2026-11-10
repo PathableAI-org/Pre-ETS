@@ -202,10 +202,10 @@ These do not change any acceptance criterion or HTTP outcome. Each needs reviewe
    a status read and a concurrent renewal tied in the integration run, so "adopt only if later" could drop the
    renewal. Redis `TIME` microseconds remove the tie. Establishment reads `TIME` just before its `SET NX`, not in a
    `MULTI`, which orders it before every later transition of the record.
-2. **`ResolvedSessionRequest.coordination` is optional** (`readonly coordination?: SessionCoordinationSnapshot |
-   undefined`). The planned required field broke existing constructions of `ResolvedSessionRequest`, against the
-   contract's "existing consumers compile unchanged". Semantics are as planned. `UsableSession.observedAt…` is
-   required, as planned, so S1 and S2 test doubles were updated.
+2. **Withdrawn after review of #364.** `ResolvedSessionRequest.coordination` was first made optional because the
+   required field broke existing constructions. It is now required as planned (`SessionCoordinationSnapshot |
+   undefined`), and the frontend test doubles that construct it were updated. `UsableSession.observedAt…` is required,
+   as planned, so S1 and S2 test doubles were updated.
 3. **Policy functions are not exported from the feature entry.** Frontend Fallow runs dead-code analysis in production
    mode, so entry exports used only by tests are findings, and suppressions are not allowed. The entry exports only
    `SessionCoordinator`; the unit suite imports the private policy children (`activity-classification.ts`,
