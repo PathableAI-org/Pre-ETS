@@ -89,12 +89,15 @@ For a recorded one-pull-request exception, say which gates are combined in the b
 invent an exception because a stack is inconvenient.
 
 Mark a draft ready with `gh pr ready` only after validate passes and the task is to request review. For an
-implementation slice, also require that the latest verification report for the pushed SHA passes
+implementation slice, also require that the latest verification report passes
 [the verification gate](../../../docs/engineering/verification-harness.md#gate-and-escalation): every telemetry row
 assigned to the slice is usable, every full claim is `established`, every other result matches a limitation already
-approved in `verification.md` or `plan.md`, and there is no `violated` result or forbidden telemetry finding. Before more
-intermediate pushes, return it to draft with `gh pr ready --undo`. Classify Copilot findings as accepted, rejected
-with a reason, or waiting on a human. Do not apply them automatically.
+approved in `verification.md` or `plan.md`, and there is no `violated` result or forbidden telemetry finding. The
+report must cover the pushed SHA, or only evidence-only commits may follow its verified SHA:
+`git diff --name-only <verified-SHA>..<pushed-SHA>` lists only the feature's `quickstart.md`. Any other change after
+the verified SHA needs a new verification request. Before more intermediate pushes, return it to draft with
+`gh pr ready --undo`. Classify Copilot findings as accepted, rejected with a reason, or waiting on a human. Do not
+apply them automatically.
 
 ## Revise
 

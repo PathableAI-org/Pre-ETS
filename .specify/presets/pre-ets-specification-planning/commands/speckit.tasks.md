@@ -35,7 +35,9 @@ completed as planned is a plan correction. End each slice with these tasks:
    ID, claim IDs, and `quickstart.md` sections, as described in
    `docs/engineering/verification-harness.md`.
 3. Address the report, repeat verification as needed, and summarize the final report in
-   `quickstart.md` and the pull request before marking it ready.
+   `quickstart.md` and the pull request before marking it ready. Commit the `quickstart.md`
+   summary as an evidence-only commit that changes nothing else, so it needs no new
+   verification. Any other change after the verified SHA needs a new verification request.
 
 Instrumentation tasks name the telemetry row they implement. They never add durable tests
 that assert telemetry output.
