@@ -166,14 +166,19 @@ it also hides content until confirmed. A Server Action submitted while the hint 
 session is held, confirmed, and replayed only if this tab's session is still current.
 
 A tab confirms with `GET /session/status` before acting on its local deadline and on resume. Past
-its deadline on resume it first hides content (`hidden` and `inert`). An unanswered or failed
+its deadline on resume it first hides content, setting `hidden` and `inert` on the DOM at once
+rather than waiting for React to render. Concealment also applies while a logout is in progress,
+which keeps its busy state. A usable answer reveals content when its read started after
+concealment began, even if a newer renewal from another tab was adopted meanwhile. An unanswered or failed
 confirmation (1.5 seconds) hides content and retries. A page entering the back-forward cache is
 hidden first, and the history guard reloads it on restore. Server Action forms confirm after
 they settle, so other tabs learn of the gate's renewal.
 
 Every protected page has a Log out button. Logout announces `logout-started`, then is sent at once
 with `keepalive`. Other tabs start a confirmation each second, without waiting for earlier reads,
-until they see the outcome (at most 10 seconds). Each watch read gives up after one second, so a
+until they see the outcome (at most 10 seconds). The initiating tab also records the logout in
+progress in `localStorage`, so a tab that mounts or resumes during that time replays the watch;
+the record only triggers confirmation and never ends a tab by itself. Each watch read gives up after one second, so a
 tab conceals within two seconds even if the initiating tab closes. A `logout-failed` broadcast does
 not stop the watch, because the response may have been lost after the session ended; the tabs
 confirm at once instead. On 204, 401, or 409 the tab records its tag as

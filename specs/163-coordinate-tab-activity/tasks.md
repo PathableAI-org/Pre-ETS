@@ -236,3 +236,8 @@ These do not change any acceptance criterion or HTTP outcome. Each needs reviewe
 12. **`logout-failed` does not cancel other tabs' watches** (review of #364). A failed request may have lost the
     response after the store ended the session, so receiving tabs, and the initiating tab, confirm at once and keep
     watching.
+13. **Concealment is a flag beside the view, not a `concealed` view** (review of #364). A logout in progress keeps its
+    busy state while an undetermined confirmation hides the content (FR-021). The controller sets `hidden` and `inert`
+    on the DOM synchronously (FR-017) and reveals on a usable answer whose read started after concealment began.
+14. **A logout-in-progress record** (`preets-session-logout:v1`, tag and watch end) lets a tab that mounts or resumes
+    after `logout-started` replay the confirmation watch (review of #364). It triggers confirmation only.

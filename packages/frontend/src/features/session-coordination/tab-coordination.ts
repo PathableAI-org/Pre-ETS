@@ -14,8 +14,10 @@ import {
   openTabChannel,
   readCurrentHint,
   readEndedTags,
+  readLogoutInProgress,
   readWindowRecord,
   recordEnded,
+  recordLogoutInProgress,
   type TabChannel,
   type TabMessage,
   windowLock,
@@ -23,10 +25,15 @@ import {
   writeWindowRecord
 } from "./tab-channel.ts"
 
-/** Tab states from data-model "Tab coordination states"; `Confirming` keeps the `active` view. */
-export type TabView = "active" | "concealed" | "ended" | "logging-out" | "logout-failed"
+/**
+ * Tab states from data-model "Tab coordination states"; `Confirming` keeps its view. Concealment is orthogonal, so a
+ * logout in progress keeps its busy state while an unconfirmed session hides the content.
+ */
+export type TabView = "active" | "ended" | "logging-out" | "logout-failed"
 
 export interface TabViewState {
+  /** Protected content is hidden and inert (temporary concealment, or a failed logout). */
+  readonly concealed: boolean
   /** The session ended by this tab's own logout, so this tab moves focus to the notice. */
   readonly endedHere: boolean
   readonly view: TabView
@@ -60,7 +67,9 @@ export class TabCoordination {
   /** Aborts reads still in flight when the controller is torn down. */
   readonly #cancel = new AbortController()
   #channel: TabChannel | undefined
-  /** What each message for this tab's own session does (data-model "Channel messages"). */
+  #concealed = false
+  /** When concealment began; a confirmation started later may reveal the content. */
+  #concealedSince = Number.POSITIVE_INFINITY
   /** A form whose held submission was confirmed; its replay passes the guard once (R15). */
   #confirmedReplay: HTMLFormElement | undefined
   readonly #content: () => HTMLElement | null
@@ -70,6 +79,7 @@ export class TabCoordination {
   readonly #initial: SessionCoordinationSnapshot
   readonly #notify: (state: TabViewState) => void
   #pendingActivity: InPageSessionActivity | undefined
+  /** What each message for this tab's own session does (data-model "Channel messages"). */
   readonly #receivers: Readonly<Record<TabMessage["type"], (message: TabMessage) => void>> = {
     "logged-out": () => {
       this.#end(false)
@@ -117,14 +127,16 @@ export class TabCoordination {
   /** Reads the session without renewing it and acts on the answer. Never throws. */
   async confirm(timeout?: number): Promise<void> {
     if (this.#view === "ended") return
+    const startedAt = Date.now()
     const outcome = await readSessionStatus(this.#cancel.signal, timeout)
-    if (this.#live()) this.#applyStatus(outcome)
+    if (this.#live()) this.#applyStatus(outcome, startedAt)
   }
 
   /** Logout is sent at once with `keepalive` and never enters the activity window (FR-009, research D8). */
   async logout(): Promise<void> {
     if (this.#view === "ended" || this.#view === "logging-out") return
     this.#setView("logging-out")
+    recordLogoutInProgress(this.#tag, Date.now() + LOGOUT_WATCH_LIMIT_MILLISECONDS)
     this.#post("logout-started")
     const outcome = await sendLogout(this.#tag)
     if (outcome === "failed") {
@@ -147,7 +159,7 @@ export class TabCoordination {
       this.#receive(message)
     })
     const stopListening = this.#listen()
-    this.#notify({ endedHere: false, view: this.#view })
+    this.#publish()
     if (!this.#replayRecords()) this.#adoptSnapshot(this.#initial, true)
     return () => {
       stopListening()
@@ -161,11 +173,11 @@ export class TabCoordination {
   /** A newer server-rendered snapshot of this session (a route refresh) counts as a confirmation of it. */
   update(snapshot: SessionCoordinationSnapshot): void {
     if (!this.#live() || this.#view === "ended") return
-    this.#applyStatus({ _tag: "Usable", snapshot })
+    this.#applyStatus({ _tag: "Usable", snapshot }, Number.NEGATIVE_INFINITY)
   }
 
   #activity(activity: InPageSessionActivity) {
-    if (this.#view !== "active") return
+    if (this.#view !== "active" || this.#concealed) return
     const lock = windowLock()
     if (lock === undefined) {
       this.#send(activity)
@@ -206,7 +218,12 @@ export class TabCoordination {
     return true
   }
 
-  #applyStatus(outcome: SessionOutcome) {
+  /**
+   * Acts on a status answer for a read started at `startedAt`. A usable answer for this session reveals concealed
+   * content when the read started after concealment began, or when its snapshot is newer than the held one, so a
+   * renewal adopted from another tab meanwhile does not keep this tab hidden.
+   */
+  #applyStatus(outcome: SessionOutcome, startedAt: number) {
     switch (outcome._tag) {
       case "Ended":
         this.#endConfirmed()
@@ -218,7 +235,7 @@ export class TabCoordination {
         })
         return
       case "Usable":
-        if (this.#adoptSnapshot(outcome.snapshot, true) && this.#view === "concealed") this.#setView("active")
+        if (this.#adoptSnapshot(outcome.snapshot, true) || startedAt >= this.#concealedSince) this.#reveal()
     }
   }
 
@@ -227,16 +244,23 @@ export class TabCoordination {
     this.#timers.clear()
   }
 
-  /** Temporary concealment; never the ended state, and never over a logout in progress or failed. */
+  /**
+   * Temporary concealment, applied to the DOM at once so nothing stays visible or focusable until React commits.
+   * It applies over a logout in progress too.
+   */
   #conceal() {
-    if (this.#view === "active") this.#setView("concealed")
+    if (this.#view === "ended" || !this.#live()) return
+    if (!this.#concealed) this.#concealedSince = Date.now()
+    this.#concealed = true
+    this.#publish()
   }
 
   /** Holds a submission whose hint names another session, confirms, and replays it if this session is current (R15). */
   async #confirmThenReplay(form: HTMLFormElement, submitter: HTMLElement | null) {
+    const startedAt = Date.now()
     const outcome = await readSessionStatus(this.#cancel.signal)
     if (!this.#live()) return
-    this.#applyStatus(outcome)
+    this.#applyStatus(outcome, startedAt)
     if (outcome._tag !== "Usable" || outcome.snapshot.coordinationTag !== this.#tag) return
     writeCurrentHint(this.#tag)
     this.#confirmedReplay = form
@@ -266,7 +290,7 @@ export class TabCoordination {
     this.#clearTimers()
     this.#pendingActivity = undefined
     this.#view = "ended"
-    this.#notify({ endedHere, view: "ended" })
+    this.#notify({ concealed: true, endedHere, view: "ended" })
   }
 
   /** The server answered 401 or a different session: record it so tabs that missed it can replay it. */
@@ -349,17 +373,22 @@ export class TabCoordination {
 
   /** Conceals before the page enters the back/forward cache; `RestoredPageGuard` reloads it on restore. */
   #pageHide(event: PageTransitionEvent) {
-    if (!event.persisted || this.#view === "ended") return
-    const content = this.#content()
-    if (content !== null) {
-      content.hidden = true
-      content.inert = true
-    }
-    this.#conceal()
+    if (event.persisted) this.#conceal()
   }
 
   #post(type: "logged-out" | "logout-failed" | "logout-started") {
     this.#channel?.post({ coordinationTag: this.#tag, type })
+  }
+
+  /** Applies `hidden` and `inert` synchronously, then lets React render the same state. */
+  #publish() {
+    const concealed = this.#concealed || this.#view === "logout-failed"
+    const content = this.#content()
+    if (content !== null) {
+      content.hidden = concealed
+      content.inert = concealed
+    }
+    this.#notify({ concealed, endedHere: false, view: this.#view })
   }
 
   #receive(message: TabMessage) {
@@ -372,14 +401,16 @@ export class TabCoordination {
   }
 
   /**
-   * Applies the shared records synchronously: a confirmed-ended tag ends the tab; a hint naming another session
-   * conceals temporarily and confirms. Answers whether the tab ended.
+   * Applies the shared records synchronously: a confirmed-ended tag ends the tab; a logout in progress resumes the
+   * confirmation watch; a hint naming another session conceals temporarily and confirms. Answers whether the tab ended.
    */
   #replayRecords(): boolean {
     if (readEndedTags().includes(this.#tag)) {
       this.#end(false)
       return true
     }
+    const logoutUntil = readLogoutInProgress(this.#tag)
+    if (logoutUntil !== undefined && !this.#timers.has("logout-watch")) this.#watchLogout(logoutUntil)
     const hint = readCurrentHint()
     if (hint !== undefined && hint !== this.#tag) {
       this.#conceal()
@@ -394,6 +425,14 @@ export class TabCoordination {
     if (this.#replayRecords()) return
     if (Date.now() >= this.#deadline) this.#conceal()
     this.#guard(this.confirm())
+  }
+
+  /** Ends temporary concealment after the server confirmed this session. */
+  #reveal() {
+    if (!this.#concealed || this.#view === "ended" || !this.#live()) return
+    this.#concealed = false
+    this.#concealedSince = Number.POSITIVE_INFINITY
+    this.#publish()
   }
 
   #schedule(name: TimerName, at: number, task: () => void) {
@@ -421,7 +460,7 @@ export class TabCoordination {
   #setView(view: Exclude<TabView, "ended">) {
     if (this.#view === "ended" || !this.#live()) return
     this.#view = view
-    this.#notify({ endedHere: false, view })
+    this.#publish()
   }
 
   #stopTimer(name: TimerName) {

@@ -8,6 +8,7 @@ export const CHANNEL = "preets-session-coordination"
 export const CURRENT_KEY = "preets-session-current:v1"
 export const ENDED_KEY = "preets-session-ended:v1"
 const RECORD_KEY = "preets-session-activity:v1"
+const LOGOUT_KEY = "preets-session-logout:v1"
 const LOCK = "preets-session-activity"
 const ENDED_TAGS_KEPT = 8
 
@@ -142,6 +143,19 @@ export const readEndedTags = (): readonly string[] => {
 export const recordEnded = (coordinationTag: string): void => {
   const others = readEndedTags().filter((tag) => tag !== coordinationTag)
   writeJson(ENDED_KEY, { coordinationTags: [coordinationTag, ...others].slice(0, ENDED_TAGS_KEPT) })
+}
+
+/**
+ * Logout in progress for a tag, until a time: a tab that mounts or resumes after `logout-started` replays the
+ * confirmation watch from it. It triggers confirmation only; it never establishes that logout succeeded.
+ */
+export const readLogoutInProgress = (coordinationTag: string): number | undefined => {
+  const value = readJson(LOGOUT_KEY)
+  return isRecord(value) && value.coordinationTag === coordinationTag && isTime(value.until) ? value.until : undefined
+}
+
+export const recordLogoutInProgress = (coordinationTag: string, until: number): void => {
+  writeJson(LOGOUT_KEY, { coordinationTag, until })
 }
 
 /** Runs `task` under the cross-tab window lock, or answers `undefined` where Web Locks are unavailable. */

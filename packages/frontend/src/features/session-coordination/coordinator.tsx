@@ -11,7 +11,7 @@ import { ENDED_DOCUMENT_STYLE, mountScriptSource, PROTECTED_CONTENT_ATTRIBUTE } 
 import { SignedOutNotice } from "./signed-out-notice.tsx"
 import { TabCoordination, type TabView, type TabViewState } from "./tab-coordination.ts"
 
-const initialState: TabViewState = { endedHere: false, view: "active" }
+const initialState: TabViewState = { concealed: false, endedHere: false, view: "active" }
 
 const logoutFailedAlert = (
   <Alert heading="Logout was not completed" role="alert" status="error">
@@ -21,12 +21,11 @@ const logoutFailedAlert = (
 
 /** How each running view presents the header and content; `ended` unmounts both. */
 const VIEW_PRESENTATION: Readonly<
-  Record<Exclude<TabView, "ended">, { readonly alert: ReactNode; readonly busy: boolean; readonly concealed: boolean }>
+  Record<Exclude<TabView, "ended">, { readonly alert: ReactNode; readonly busy: boolean }>
 > = {
-  active: { alert: null, busy: false, concealed: false },
-  concealed: { alert: null, busy: false, concealed: true },
-  "logging-out": { alert: null, busy: true, concealed: false },
-  "logout-failed": { alert: logoutFailedAlert, busy: false, concealed: true }
+  active: { alert: null, busy: false },
+  "logging-out": { alert: null, busy: true },
+  "logout-failed": { alert: logoutFailedAlert, busy: false }
 }
 
 /**
@@ -89,8 +88,8 @@ export function SessionCoordinator({
           </Inline>
           {VIEW_PRESENTATION[state.view].alert}
           <div
-            hidden={VIEW_PRESENTATION[state.view].concealed}
-            inert={VIEW_PRESENTATION[state.view].concealed}
+            hidden={state.concealed}
+            inert={state.concealed}
             ref={content}
             {...protectedContent}
           >
@@ -104,6 +103,6 @@ export function SessionCoordinator({
 
 function SessionAnnouncement({ state }: { readonly state: TabViewState }) {
   if (state.view === "ended") return <SignedOutNotice initiating={state.endedHere} />
-  if (state.view === "concealed") return <Text>Checking your session…</Text>
+  if (state.concealed && state.view !== "logout-failed") return <Text>Checking your session…</Text>
   return null
 }
