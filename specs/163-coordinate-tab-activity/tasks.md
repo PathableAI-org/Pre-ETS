@@ -211,7 +211,8 @@ These do not change any acceptance criterion or HTTP outcome. Each needs reviewe
    `SessionCoordinator`; the unit suite imports the private policy children (`activity-classification.ts`,
    `activity-window.ts`, `snapshot-order.ts`), following the existing `onsite-visit-state.test.ts` precedent. This
    settles the plan's recorded reviewer question against its proposal and conflicts with the root AGENTS.md rule that
-   external tests use the parent's public interface. **Needs a human decision.**
+   external tests use the parent's public interface. **Accepted by the user after review of #364** as an exception
+   following that precedent; the policy functions stay unexported.
 4. **The shared provider exposes `useSessionConfirmedActionState`, `CoordinationTagField`, and `ProtectedFormAction`
    instead of `useSessionConfirmation()` returning `{ confirm, coordinationTag }`.** The run-then-confirm logic and the
    hidden tag field were otherwise Fallow clones between the reference operation and the fixture form. The field name
