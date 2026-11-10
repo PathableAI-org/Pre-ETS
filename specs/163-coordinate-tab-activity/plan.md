@@ -168,7 +168,8 @@ session service, store, and history guard are preserved.
 ### Phase 1 — Module architecture
 
 Decisions per responsibility are tabulated in
-[contracts/modules.md](contracts/modules.md#module-architecture-decisions). In short: **preserve** `RestoredPageGuard` and every `SessionService` operation;
+[contracts/modules.md](contracts/modules.md#module-architecture-decisions). In short: **preserve** `RestoredPageGuard` and every `SessionService` operation except an
+additive optional cutoff on `invalidate` (research D8, R27);
 **extend** `UsableSession` additively with the store observation time (research D6); **change** the session cookie
 so only establishment writes it, without `Max-Age` (research D15); **extend** the S1 gate's private classifier with the non-renewing endpoint paths;
 **extend** `frontend-services/src/next.ts` with activity, status, and logout handler factories in private
@@ -292,9 +293,11 @@ broadcast) passes `adoptSnapshot` (higher revision wins, even with an earlier de
 `signed-out-notice.tsx` renders `Alert` + `Heading` + `Text` + `Link href="/"`; the coordinator renders the provider
 from `providers/session-confirmation.tsx` with `confirm` bound to the status read and the current `coordinationTag`.
 Logout writes the ended record before broadcasting; a network failure or timeout keeps the initiator and the other
-tabs confirming until the attempt's `notAfter` plus 2 seconds; the handler refuses an attempt received after `notAfter`
-with 408; a 503 is ambiguous; only a definitive 403 or a confirmed-usable status after `notAfter` broadcasts
-`logout-failed` (research D8, R18, R21, R22). A held submission is
+tabs confirming while any attempt of the tag (tracked by `attemptId`, replayable from
+`preets-session-logout-pending:v1` on mount and resume) is unresolved and before its `notAfter` plus 3 seconds; the
+store's invalidation script enforces `notAfter` against Redis `TIME` atomically with the delete, and a late attempt gets
+408; a 503 is ambiguous; only a definitive 403 or a confirmed-usable status after `notAfter` broadcasts
+`logout-failed` (research D8, R18, R21, R22, R26–R28). A held submission is
 replayed once with an in-memory pass, so unavailable storage cannot loop it (R19). `tab-channel.ts` wraps
 `BroadcastChannel`, `localStorage` (try/catch), and `navigator.locks`; where storage or locks are unavailable, the
 window for the tab's tag is kept in memory and communication times are shared on the channel (research D5, R24). `session-endpoints.ts` narrows JSON and maps statuses to coordinator events.

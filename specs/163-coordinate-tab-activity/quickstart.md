@@ -139,6 +139,9 @@ stay planned here and are added to the feature file in increment 5.
 | A logout the server completed whose response was lost still conceals every sharing tab within 2 seconds (010)                                                                                                         | V-011               | #158 |
 | A logout whose response fails after the delete applied (503) still conceals every sharing tab (010)                                                                                                                   | V-011               | #158 |
 | A keepalive logout delayed past its `notAfter` is refused and leaves the session and tabs usable (010)                                                                                                                | V-011, V-015        | #158 |
+| Two overlapping logout attempts where the first fails and the second's initiator closes still conceal every tab (010)                                                                                                 | V-011               | #158 |
+| A logout admitted before its cutoff but delayed past it before deleting leaves the session and tabs usable (010)                                                                                                      | V-011, V-015        | #158 |
+| A tab that opens or resumes during an interrupted logout conceals once the session ends (010)                                                                                                                         | V-011               | #158 |
 | A tab opened before logout but hydrated after it conceals content when its coordinator mounts, and its protected requests are denied throughout (010); exposure before mount is gap G1, recorded rather than asserted | V-010, V-011, V-017 | #158 |
 
 Non-BDD Playwright browser evidence (retained under `tests/bdd/support` helpers, run by the same harness) covers the
@@ -201,6 +204,7 @@ values, tags, references, tokens, or store contents.
   (research D9).
 - With `localStorage` or Web Locks unavailable, two interactions in different tabs within channel latency can each
   send once (research D5); the window is otherwise kept.
+- The logout watch margin assumes the application and Redis clocks agree within 1 second (research D8).
 - Snapshot ordering uses the stored record's revision; `observedAt` (Redis `TIME`) is diagnostic only (research D6).
 - The session cookie no longer has `Max-Age`; it lasts for the browser session and may outlive its record, which then
   grants nothing (research D15).

@@ -63,6 +63,9 @@ The first plan review found these defects. Each is corrected in the decision nam
 | R23 | A logout after page parse but before hydration had no listener to conceal content.                                                              | Not handled, by user decision (2026-11-10); part of acknowledged gap G1 (D14).                                                                                                                                                        |
 | R24 | Without storage or locks, every interaction was sent immediately, breaking FR-007 coalescing.                                                   | Fallback keeps the window in memory per tab and shares communication times over the channel; only a near-simultaneous cross-tab race can duplicate a send, recorded as a limitation (D5).                                             |
 | R25 | The ungated positive-renewal BDD scenario needs a usable session, which BDD cannot create before #158.                                          | Ungated BDD keeps only no-session denial scenarios; prepared-record renewal stays in quickstart §3 and integration tests (quickstart §4).                                                                                             |
+| R26 | `logout-failed` named only the session, so one attempt's failure stopped watches for a later pending attempt.                                   | Each attempt has an `attemptId`; tabs keep watching while any attempt of their tag is unresolved and unexpired (D8).                                                                                                                  |
+| R27 | Checking `notAfter` on receipt did not bound when the delete commits; an admitted request could delete after watchers stopped.                  | The cutoff is enforced inside the store's invalidation script against Redis `TIME`, atomically with the delete; watches run until `notAfter` + 3 s (D8).                                                                              |
+| R28 | A tab mounting or resuming during an interrupted logout never started a watch.                                                                  | Pending attempts are kept in `preets-session-logout-pending:v1`; mount and resume replay unexpired attempts of the tab's tag and start the watch (D8, D14).                                                                           |
 
 ## Current implementation facts
 
@@ -345,15 +348,23 @@ broadcast already knows, and otherwise expiration is the remaining cause.
 - The `(app)` layout renders a **Log out** `Button` from `@pathableai/react` in a header region on every protected
   page (FR-013). Activation sends `POST /auth/logout` with `{ coordinationTag }` immediately, never through the
   activity window (FR-009).
-- **Before the request (R11)**: the tab broadcasts `logout-started` for its tag and sends the request with
-  `keepalive: true`, so it completes even if the tab closes. The body carries `notAfter`, the server-clock time 10
-  seconds ahead (computed from the tab's server offset, D6); the handler answers 408 with no store write when it
-  receives the request later than that (R21). `logout-started` carries the same `notAfter`. Every other tab with that
-  tag then confirms through `GET /session/status` once per second until it receives `logged-out` or `logout-failed`, or
-  until `notAfter` plus 2 seconds has passed with the session still usable; after that no invalidation from this
-  attempt can happen. A 401 or a different tag ends the tab. If the initiator dies after the server ended the session,
+- **Before the request (R11, R26, R28)**: the tab creates a random `attemptId`, adds
+  `{ coordinationTag, attemptId, notAfter }` to `preets-session-logout-pending:v1`, broadcasts `logout-started` with
+  the same fields, and then sends the request with `keepalive: true`, so it completes even if the tab closes.
+  `notAfter` is the server-clock time 10 seconds ahead (computed from the tab's server offset, D6). Every other tab
+  with that tag, including a tab that mounts or resumes later and replays the pending record, confirms through
+  `GET /session/status` once per second while any attempt of its tag is unresolved and has not passed `notAfter` plus
+  3 seconds. An attempt is resolved by `logged-out` for the tag or by `logout-failed` with its own `attemptId`. The
+  outcome removes the attempt from the pending record, and expired entries are pruned.
+- **Cutoff enforced at the delete (R21, R27)**: the handler passes `notAfter` to
+  `SessionService.invalidate({ reference, notAfterEpochMilliseconds })`. The store's invalidation script reads Redis
+  `TIME` and deletes the record only if `TIME ≤ notAfter`, in the same atomic step; otherwise it deletes nothing and
+  the handler answers 408. A request admitted before the cutoff that pauses past it therefore cannot delete later.
+  Watches run until `notAfter` plus 3 seconds, which covers the confirmation interval and assumes the application and
+  Redis clocks agree within 1 second (recorded in [quickstart.md](quickstart.md#limitations)); after that no
+  invalidation from the attempt can commit. A 401 or a different tag ends the tab. If the initiator dies after the server ended the session,
   each surviving tab therefore conceals within about one second of the server ending it, inside the 2-second bound.
-  The initiator broadcasts `logout-failed` only for a definitive 403, or after `notAfter` has passed and its own status
+  The initiator broadcasts `logout-failed` with its `attemptId` only for a definitive 403, or after `notAfter` has passed and its own status
   confirmation shows the session still usable. A network failure, timeout, or 503 is ambiguous, since the server may
   have removed the record and then lost or failed the reply (S2 covers `DEL` applying before its reply fails). In that
   case the initiator does not broadcast; it confirms with status itself, and the other tabs keep watching (R18,
@@ -393,7 +404,8 @@ than hiding for a shared workstation, while hiding is required for temporary con
 **Decision**: The coordinator listens to `visibilitychange` (to visible), the Page Lifecycle `resume` event, and
 `pagehide`/`pageshow`:
 
-- **Every resume, first**: read `preets-session-ended:v1` and `preets-session-current:v1` synchronously. If this tab's
+- **Every resume, first**: read `preets-session-ended:v1`, `preets-session-logout-pending:v1`, and
+  `preets-session-current:v1` synchronously; an unexpired pending attempt for this tag starts the logout watch (R28). If this tab's
   tag is in the ended record (written only after a server-confirmed logout), move to `Ended` at once. If the
   current-session hint differs, conceal temporarily and confirm before handling input; end only on a server-confirmed
   401 or different tag (R2, R3, R14).
@@ -465,9 +477,11 @@ real time with the shortest permitted timeout is slower but changes no product c
 after hydration, it:
 
 1. subscribes to the channel and the `storage` event;
-2. replays `preets-session-ended:v1`: if it lists this snapshot's tag, the tab moves to `Ended` and unmounts the
+2. replays `preets-session-logout-pending:v1`: an unexpired attempt for this snapshot's tag starts the logout watch
+   (D8, R28);
+3. replays `preets-session-ended:v1`: if it lists this snapshot's tag, the tab moves to `Ended` and unmounts the
    protected content;
-3. otherwise adopts the server-rendered snapshot (D6), writes its tag to `preets-session-current:v1` (a hint, D2),
+4. otherwise adopts the server-rendered snapshot (D6), writes its tag to `preets-session-current:v1` (a hint, D2),
    and broadcasts `renewed` and `session-current`.
 
 A logout writes the ended record before it broadcasts, so a tab that subscribes late still sees it at step 2.
