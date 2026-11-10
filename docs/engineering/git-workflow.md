@@ -42,6 +42,7 @@ The engineering plan divides implementation into slices. Each slice is one pull 
 - **Verified.** A slice is marked ready for review only after the verification agent's latest report passes the
   [verification gate](verification-harness.md#gate-and-escalation): assigned telemetry is usable, full claims are
   `established`, and any other result matches a limitation already approved in `verification.md` or `plan.md`.
+  Commits after the verified SHA that only record `quickstart.md` execution results need no new report.
 
 If implementation shows that the planned slices cannot meet these rules, change the plan's slices through the
 [corrections](#corrections) path rather than letting one slice grow.

@@ -144,6 +144,13 @@ review only when its latest report shows all of the following:
   `plan.md`.
 - No `violated` result and no forbidden data finding.
 
+The report covers the verified SHA, which may be older than the pushed tip only through evidence-only commits. An
+evidence-only commit changes nothing but the feature's `quickstart.md` execution results, as described under
+[Recording](#recording). It needs no new verification request. The report and the pull request body name the
+verified SHA, and the reviewer or verifier checks that the diff from the verified SHA to the pushed tip touches only
+those results. Any application, instrumentation, test, or run-instruction change after the verified SHA, including
+a change to `quickstart.md` steps, needs a new verification request.
+
 A slice pull request cannot create its own exception. A new limitation goes back through the
 [corrections](git-workflow.md#corrections) path to the phase that owns it.
 
@@ -159,6 +166,11 @@ Escalate to the orchestrator, and through it to a person, instead of patching th
 The implementation session summarizes each final report in the `quickstart.md` execution results for the slice:
 revision, conditions, result per claim, and limitations. Record superseded results as stale rather than deleting
 them, as earlier features did.
+
+Committing that summary creates a commit after the verified SHA. Keep it evidence-only: the diff from the verified
+SHA touches only the feature's `quickstart.md` execution results. Such commits need no re-verification, and the
+pull request body names the verified SHA so the reviewer can check the diff. Commit any other change, including a
+change to the run instructions, separately and request verification of the new SHA.
 
 ## Known limits
 

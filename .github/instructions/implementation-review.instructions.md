@@ -35,8 +35,10 @@ Review the implementation against the approved specification and engineering pla
   summarizes a verification report for that slice's claims, as described in
   [the verification harness](../../docs/engineering/verification-harness.md). Flag a missing or unusable assigned
   telemetry row, a full claim that is not `established`, and a `not established` or `blocked` result that does not
-  match a limitation already approved in `verification.md` or `plan.md`; the slice cannot create that exception. Flag a slice well over 15 hand-written
-  files without a stated reason. A single pull request that the
+  match a limitation already approved in `verification.md` or `plan.md`; the slice cannot create that exception.
+  Check that the pull request names the verified SHA and that the diff from it to the head touches only the
+  feature's `quickstart.md` execution results; flag any other change after the verified SHA as unverified. Flag a
+  slice well over 15 hand-written files without a stated reason. A single pull request that the
   [Git workflow](../../docs/engineering/git-workflow.md#implementation-slices) exempts from the stack, such as a
   dependency update or a fix inside an approved contract, needs no slice or verification report; check that it
   says why the stack does not apply.
