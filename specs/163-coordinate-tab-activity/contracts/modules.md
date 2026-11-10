@@ -327,9 +327,11 @@ same way and ignored when malformed or for another tag.
 - A snapshot is adopted only when its revision is higher than the held snapshot's, even if its deadline is earlier;
   equal revisions are ignored (research D6).
 - A tab reads and writes only its own tag's activity-window record (research D5).
-- An ambiguous logout outcome (network failure, timeout, 503, 408) keeps every tab under confirmation until `notAfter`
-  plus 2 seconds; `logout-failed` follows only a definitive 403 or a confirmed-usable status after `notAfter`
-  (research D8).
+- A logout response is ended (204), no longer in force (401, 409), refused (any other 4xx), or ambiguous (every 5xx, 408,
+  network failure, timeout). An ambiguous attempt keeps every tab of the tag under confirmation until it resolves;
+  `logout-failed` follows a refusal or a usable status whose Redis `observedAtEpochMilliseconds` is later than
+  `notAfter` (research D8, R31). Pending attempts are stored one key per attempt (R30).
+- In the storage-unavailable fallback, a received communication clears own pending activity it covers (R32).
 - With storage or locks unavailable, the window is kept in memory and shared over the channel (research D5).
 - A tag recorded as ended is applied when the coordinator mounts, before the snapshot is trusted, and on every resume
   (research D14). Before mount, nothing conceals server-rendered content (acknowledged gap G1).

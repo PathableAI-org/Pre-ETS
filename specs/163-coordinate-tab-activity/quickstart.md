@@ -141,6 +141,9 @@ stay planned here and are added to the feature file in increment 5.
 | A keepalive logout delayed past its `notAfter` is refused and leaves the session and tabs usable (010)                                                                                                                | V-011, V-015        | #158 |
 | Two overlapping logout attempts where the first fails and the second's initiator closes still conceal every tab (010)                                                                                                 | V-011               | #158 |
 | A logout admitted before its cutoff but delayed past it before deleting leaves the session and tabs usable (010)                                                                                                      | V-011, V-015        | #158 |
+| Two logout attempts started concurrently in different tabs are both replayed by a tab that mounts afterwards (010)                                                                                                    | V-011               | #158 |
+| With the application clock ahead of Redis, a usable status read just after application-time `notAfter` does not end the watch before a pending delete can commit (010)                                                | V-011               | #158 |
+| Storage unavailable: a communication received before another tab's flush covers its earlier pending activity, so no extra renewal is sent (009)                                                                       | V-008               | #158 |
 | A tab that opens or resumes during an interrupted logout conceals once the session ends (010)                                                                                                                         | V-011               | #158 |
 | A tab opened before logout but hydrated after it conceals content when its coordinator mounts, and its protected requests are denied throughout (010); exposure before mount is gap G1, recorded rather than asserted | V-010, V-011, V-017 | #158 |
 
@@ -206,7 +209,6 @@ values, tags, references, tokens, or store contents.
   (research D9).
 - With `localStorage` or Web Locks unavailable, two interactions in different tabs within channel latency can each
   send once (research D5); the window is otherwise kept.
-- The logout watch margin assumes the application and Redis clocks agree within 1 second (research D8).
 - Snapshot ordering uses the stored record's revision; `observedAt` (Redis `TIME`) is diagnostic only (research D6).
 - The session cookie no longer has `Max-Age`; it lasts for the browser session and may outlive its record, which then
   grants nothing (research D15).
@@ -216,5 +218,9 @@ values, tags, references, tokens, or store contents.
 - Microsoft compatibility remains unexecuted.
 
 ## Execution results
+
+The §3 prepared-record HTTP procedure and the V-015 server rows predate the contract changes R12–R32 (session
+cookie, record revision, action renewal, logout cutoff and classification). Any result recorded for them before those
+changes is stale and must be re-run on the implementation revision under assessment.
 
 Not executed. Implementation records results here per increment, with conditions and limitations.
