@@ -6,11 +6,12 @@ import { IN_PAGE_ACTIVITIES } from "./activity-classification.ts"
 
 const CHANNEL = "preets-session-coordination"
 export const CURRENT_KEY = "preets-session-current:v1"
-export const ENDED_KEY = "preets-session-ended:v1"
+const ENDED_PREFIX = "preets-session-ended:v1:"
 const RECORD_PREFIX = "preets-session-activity:v1:"
 const PENDING_LOGOUT_PREFIX = "preets-session-logout-pending:v1:"
 const LOCK = "preets-session-activity"
-const ENDED_TAGS_KEPT = 8
+/** Ended markers older than this are pruned (R33). */
+const ENDED_MARKER_LIFETIME_MILLISECONDS = 24 * 60 * 60_000
 /** Window records kept for tags other than this tab's and the current hint's. */
 const OTHER_WINDOW_RECORDS_KEPT = 4
 
@@ -51,16 +52,17 @@ export type TabMessage =
   }
   | {
     readonly coordinationTag: string
+    /** `window-query`: storage or locks unavailable and a tab joined; tabs answer with `communicated` (R37). */
+    readonly type: "logged-out" | "session-current" | "window-query"
+  }
+  | {
+    readonly coordinationTag: string
     /** On the server clock; each receiving tab converts it with its own offset (R29). */
     readonly idleDeadlineEpochMilliseconds: number
     readonly observedAtEpochMilliseconds: number
     readonly revision: number
     readonly type: "renewed"
     readonly warningLeadMinutes: number
-  }
-  | {
-    readonly coordinationTag: string
-    readonly type: "logged-out" | "session-current"
   }
 
 type UnknownRecord = Readonly<Record<string, unknown>>
@@ -71,7 +73,7 @@ const isOptionalTime = (value: unknown): value is number | undefined => value ==
 const isActivity = (value: unknown): value is InPageSessionActivity =>
   typeof value === "string" && IN_PAGE_ACTIVITIES.has(value)
 
-const SIGNALS: ReadonlySet<unknown> = new Set(["logged-out", "session-current"])
+const SIGNALS: ReadonlySet<unknown> = new Set(["logged-out", "session-current", "window-query"])
 
 const pendingMessage = (data: UnknownRecord, coordinationTag: string): TabMessage | undefined =>
   isTime(data.sendAt) && isActivity(data.activity) ?
@@ -166,9 +168,9 @@ const writeJson = (key: string, value: unknown): boolean => {
 
 const parseWindowRecord = (value: unknown): ActivityWindowRecord | undefined => {
   if (!isRecord(value)) return undefined
-  const { lastCommunicatedAt, pendingSince } = value
-  if (!isOptionalTime(lastCommunicatedAt) || !isOptionalTime(pendingSince)) return undefined
-  return { lastCommunicatedAt, pendingSince }
+  const { lastCommunicatedAt, pendingLatest, pendingSince } = value
+  if (!isOptionalTime(lastCommunicatedAt) || !isOptionalTime(pendingLatest)) return undefined
+  return isOptionalTime(pendingSince) ? { lastCommunicatedAt, pendingLatest, pendingSince } : undefined
 }
 
 /** This session's B5-W record; another session's record is never read (R20). */
@@ -208,15 +210,31 @@ export const readCurrentHint = (): string | undefined => {
 export const writeCurrentHint = (coordinationTag: string): boolean => writeJson(CURRENT_KEY, { coordinationTag })
 
 /** Tags of sessions confirmed ended, newest first, so a tab that missed the broadcast can replay it (R3). */
-export const readEndedTags = (): readonly string[] => {
-  const value = readJson(ENDED_KEY)
-  if (!isRecord(value) || !Array.isArray(value.coordinationTags)) return []
-  return value.coordinationTags.filter((tag): tag is string => typeof tag === "string")
+/** One marker per ended tag, so concurrent writers never overwrite one another (R3, R33). */
+export const endedKey = (coordinationTag: string): string => `${ENDED_PREFIX}${coordinationTag}`
+
+export const isEnded = (coordinationTag: string): boolean => {
+  const value = readJson(endedKey(coordinationTag))
+  return isRecord(value) && isTime(value.endedAt)
+}
+
+const pruneEndedMarkers = (now: number) => {
+  try {
+    for (const key of Object.keys(localStorage)) {
+      if (!key.startsWith(ENDED_PREFIX)) continue
+      const value = readJson(key)
+      const endedAt = isRecord(value) && isTime(value.endedAt) ? value.endedAt : Number.NEGATIVE_INFINITY
+      if (now - endedAt > ENDED_MARKER_LIFETIME_MILLISECONDS) localStorage.removeItem(key)
+    }
+  } catch {
+    // Storage is advisory.
+  }
 }
 
 export const recordEnded = (coordinationTag: string): void => {
-  const others = readEndedTags().filter((tag) => tag !== coordinationTag)
-  writeJson(ENDED_KEY, { coordinationTags: [coordinationTag, ...others].slice(0, ENDED_TAGS_KEPT) })
+  const now = Date.now()
+  writeJson(endedKey(coordinationTag), { endedAt: now })
+  pruneEndedMarkers(now)
 }
 
 /** One unresolved logout attempt of a tag; `notAfter` is its server-clock cutoff (research D8, R26, R30). */

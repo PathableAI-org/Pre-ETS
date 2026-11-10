@@ -344,14 +344,6 @@ describe("status and logout outcomes [PREETS-SESSION-010]", () => {
     expect(await response.text()).toBe("")
   })
 
-  it("refuses an attempt received after its notAfter with 408 and no store operation", async () => {
-    const tag = await tagFor(defaultReference)
-    install({ session: () => Effect.die("no session operation after notAfter") })
-
-    await expectEmpty(await logout(post("/auth/logout", logoutBody(tag, Date.now() - 1))), 408)
-    expect(recorded.invalidations).toEqual([])
-  })
-
   it("answers 408 when the store reports the cutoff passed before the delete", async () => {
     const tag = await tagFor(defaultReference)
     install({ invalidate: Effect.succeed({ _tag: "InvalidationExpired" }) })

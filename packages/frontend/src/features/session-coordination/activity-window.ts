@@ -13,7 +13,29 @@ export type ActivityWindowDecision =
 /** One session's window record, stored under that session's tag so a stale tab never writes another's (R20). */
 export interface ActivityWindowRecord {
   readonly lastCommunicatedAt: number | undefined
+  /** Local time of the latest coalesced interaction not yet communicated (R36). */
+  readonly pendingLatest: number | undefined
   readonly pendingSince: number | undefined
+}
+
+const communicatedAt = (now: number): ActivityWindowRecord => ({
+  lastCommunicatedAt: now,
+  pendingLatest: undefined,
+  pendingSince: undefined
+})
+
+/**
+ * No-storage fallback (research D5, R32, R36): applies a received `communicated { at }` to this tab's own record. A
+ * communication at or after the latest pending interaction covers all of it; otherwise only later interactions remain,
+ * so `pendingSince` moves up to `at`, which keeps the 60-second bound for them.
+ */
+export function applyCommunication(record: ActivityWindowRecord, at: number): ActivityWindowRecord {
+  const lastCommunicatedAt = Math.max(record.lastCommunicatedAt ?? at, at)
+  const { pendingLatest, pendingSince } = record
+  if (pendingSince === undefined || pendingLatest === undefined || at >= pendingLatest) {
+    return { lastCommunicatedAt, pendingLatest: undefined, pendingSince: undefined }
+  }
+  return { lastCommunicatedAt, pendingLatest, pendingSince: Math.max(pendingSince, at) }
 }
 
 /**
@@ -28,11 +50,11 @@ export function decideActivityCommunication(
   const windowOpen = last !== undefined && input.now - last < ACTIVITY_WINDOW_MILLISECONDS
   const nearDeadline = input.deadline - input.now < ACTIVITY_WINDOW_MILLISECONDS
   if (!windowOpen || nearDeadline) {
-    return { _tag: "SendNow", record: { lastCommunicatedAt: input.now, pendingSince: undefined } }
+    return { _tag: "SendNow", record: communicatedAt(input.now) }
   }
   return {
     _tag: "Coalesce",
-    record: { lastCommunicatedAt: last, pendingSince: record?.pendingSince ?? input.now },
+    record: { lastCommunicatedAt: last, pendingLatest: input.now, pendingSince: record?.pendingSince ?? input.now },
     sendAt: last + ACTIVITY_WINDOW_MILLISECONDS
   }
 }
@@ -48,5 +70,5 @@ export function flushActivityCommunication(
   if (record?.pendingSince === undefined) return { _tag: "Nothing" }
   const due = (record.lastCommunicatedAt ?? Number.NEGATIVE_INFINITY) + ACTIVITY_WINDOW_MILLISECONDS
   if (input.now < due) return { _tag: "Reschedule", sendAt: due }
-  return { _tag: "Send", record: { lastCommunicatedAt: input.now, pendingSince: undefined } }
+  return { _tag: "Send", record: communicatedAt(input.now) }
 }

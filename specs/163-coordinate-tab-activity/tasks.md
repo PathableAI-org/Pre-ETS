@@ -257,6 +257,18 @@ The plan was amended again after review of #364 (user decisions of 2026-11-10). 
 - The plan now covers former deviations 15–17 (refusal classification, `logout-failed` broadcast with `attemptId`,
   clock-estimator details), so they are removed below.
 
+## Amended-plan rework (plan `6c7288c`, R33–R37)
+
+- **R33**: ended markers are one key per tag, `preets-session-ended:v1:<tag>` → `{ endedAt }`, pruned after 24 hours.
+- **R34**: logout `notAfter` is on the Redis clock, from a second per-tab offset calibrated against snapshots'
+  `observedAtEpochMilliseconds` with the same estimator. The handler no longer compares clocks; only the store's atomic
+  `TIME` check enforces the cutoff (the receipt-time unit example was removed, and the store-cutoff examples remain).
+- **R35**: mount and resume replay every unresolved attempt whatever its age (already true since R31).
+- **R36**: the window record gains `pendingLatest`; `applyCommunication` clears pending activity when `at ≥
+  pendingLatest`, else sets `pendingSince = max(pendingSince, at)`. A Fast-Check property over generated interactions
+  and delayed communications checks coverage within 60 s and no unjustified send.
+- **R37**: in the fallback, a joining tab broadcasts `window-query`, answered with `communicated { at }`.
+
 ## Implementation deviations from the plan (for plan review)
 
 These do not change any acceptance criterion or HTTP outcome. Each needs reviewer confirmation at the plan gate.

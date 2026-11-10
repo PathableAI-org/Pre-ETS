@@ -4,6 +4,7 @@ import { classifySessionActivity } from "./activity-classification.ts"
 import {
   ACTIVITY_WINDOW_MILLISECONDS,
   type ActivityWindowRecord,
+  applyCommunication,
   decideActivityCommunication,
   flushActivityCommunication
 } from "./activity-window.ts"
@@ -13,11 +14,11 @@ import { adoptSnapshot } from "./snapshot-order.ts"
 import {
   addPendingLogout,
   CURRENT_KEY,
-  ENDED_KEY,
+  endedKey,
+  isEnded,
   openTabChannel,
   pendingLogouts,
   readCurrentHint,
-  readEndedTags,
   readWindowRecord,
   recordEnded,
   removePendingLogout,
@@ -66,35 +67,52 @@ const listenAll = (listeners: readonly Listener[]) => {
   }
 }
 
+const EMPTY_WINDOW: ActivityWindowRecord = {
+  lastCommunicatedAt: undefined,
+  pendingLatest: undefined,
+  pendingSince: undefined
+}
+
 /** The page navigation's own request timing describes the first server-rendered snapshot of this document only. */
 let navigationTimingUsed = false
 
-/**
- * The server-rendered snapshot's estimate: from Navigation Timing for the document's first coordinator. Otherwise its
- * timing is unknown: the estimate assumes receipt at mount and has an unbounded round trip, so the first timed
- * response replaces it (R29).
- */
-const initialOffset = (snapshot: SessionCoordinationSnapshot): ClockOffset => {
-  const serverTime = snapshot.serverTimeEpochMilliseconds
-  const [entry] = typeof performance === "undefined" ? [] : performance.getEntriesByType("navigation")
-  if (navigationTimingUsed || !(entry instanceof PerformanceNavigationTiming)) {
-    return { offset: serverTime - Date.now(), roundTrip: Number.POSITIVE_INFINITY }
-  }
-  navigationTimingUsed = true
-  const origin = performance.timeOrigin
-  return calibrateClockOffset(undefined, {
-    receivedAt: origin + entry.responseStart,
-    sentAt: origin + entry.requestStart,
-    serverTime
-  })
+/** Which server clock a snapshot field reads: the application's, or Redis `TIME` for logout cutoffs (R29, R34). */
+type ClockOf = (snapshot: SessionCoordinationSnapshot) => number
+
+interface TimedSnapshot {
+  readonly receivedAt: number
+  readonly sentAt: number
+  readonly snapshot: SessionCoordinationSnapshot
 }
 
-const responseSample = (
-  outcome: { readonly receivedAt: number; readonly sentAt: number; readonly snapshot: SessionCoordinationSnapshot }
-): ClockSample => ({
+const applicationClock: ClockOf = (snapshot) => snapshot.serverTimeEpochMilliseconds
+const redisClock: ClockOf = (snapshot) => snapshot.observedAtEpochMilliseconds
+
+/**
+ * The server-rendered snapshot's request timing, from Navigation Timing for the document's first coordinator only.
+ * Otherwise it is unknown.
+ */
+const navigationTiming = (): undefined | { readonly receivedAt: number; readonly sentAt: number } => {
+  const [entry] = typeof performance === "undefined" ? [] : performance.getEntriesByType("navigation")
+  if (navigationTimingUsed || !(entry instanceof PerformanceNavigationTiming)) return undefined
+  navigationTimingUsed = true
+  const origin = performance.timeOrigin
+  return { receivedAt: origin + entry.responseStart, sentAt: origin + entry.requestStart }
+}
+
+/**
+ * The server-rendered snapshot's estimate. With unknown timing it assumes receipt at mount and has an unbounded round
+ * trip, so the first timed response replaces it (R29).
+ */
+const initialOffset = (serverTime: number, timing: ReturnType<typeof navigationTiming>): ClockOffset =>
+  timing === undefined ?
+    { offset: serverTime - Date.now(), roundTrip: Number.POSITIVE_INFINITY } :
+    calibrateClockOffset(undefined, { ...timing, serverTime })
+
+const responseSample = (outcome: TimedSnapshot, clockOf: ClockOf): ClockSample => ({
   receivedAt: outcome.receivedAt,
   sentAt: outcome.sentAt,
-  serverTime: outcome.snapshot.serverTimeEpochMilliseconds
+  serverTime: clockOf(outcome.snapshot)
 })
 
 /**
@@ -132,23 +150,16 @@ export class TabCoordination {
   /** This tab's own latest logout attempt (R26). */
   #ownAttempt: string | undefined
   #pendingActivity: InPageSessionActivity | undefined
-  /** Local time of the latest coalesced interaction, so a covering `communicated` can clear it (R32). */
-  #pendingLastAt = Number.NEGATIVE_INFINITY
   /** What each message for this tab's own session does (data-model "Channel messages"). */
   readonly #receivers: Readonly<Record<TabMessage["type"], (message: TabMessage) => void>> = {
     communicated: (message) => {
       if (message.type !== "communicated") return
-      const last = Math.max(this.#memoryWindow?.lastCommunicatedAt ?? message.at, message.at)
-      // That communication covers pending activity at or before it; newer activity stays queued (R32).
-      const covered = this.#pendingLastAt <= message.at
-      if (covered) {
-        this.#pendingActivity = undefined
-        this.#stopTimer("flush")
-      }
-      this.#memoryWindow = {
-        lastCommunicatedAt: last,
-        pendingSince: covered ? undefined : this.#memoryWindow?.pendingSince
-      }
+      // It covers pending activity at or before it; later activity keeps its 60-second bound (R32, R36).
+      const record = applyCommunication(this.#memoryWindow ?? EMPTY_WINDOW, message.at)
+      this.#memoryWindow = record
+      if (record.pendingSince !== undefined) return
+      this.#pendingActivity = undefined
+      this.#stopTimer("flush")
     },
     "logged-out": () => {
       this.#end(false)
@@ -180,8 +191,16 @@ export class TabCoordination {
         warningLeadMinutes: message.warningLeadMinutes
       }, false)
     },
-    "session-current": () => undefined
+    "session-current": () => undefined,
+    // A joining tab without storage or locks learns the open window (R37).
+    "window-query": () => {
+      const at = this.#memoryWindow?.lastCommunicatedAt
+      if (this.#sharedWindow || at === undefined) return
+      this.#channel?.post({ at, coordinationTag: this.#tag, type: "communicated" })
+    }
   }
+  /** Redis `TIME` minus this tab's clock, calibrated from snapshots' `observedAt`; generates logout cutoffs (R34). */
+  #redisClock: ClockOffset | undefined
   /** Whether the activity window is shared through storage under a Web Lock; otherwise it is kept in memory (R24). */
   #sharedWindow = false
   readonly #tag: string
@@ -217,7 +236,8 @@ export class TabCoordination {
     if (this.#view === "ended" || this.#view === "logging-out") return
     this.#setView("logging-out")
     const attemptId = crypto.randomUUID()
-    const notAfter = Date.now() + this.#serverOffset + LOGOUT_ATTEMPT_MILLISECONDS
+    // On the Redis clock, which the store's atomic check and attempt resolution also use (R34).
+    const notAfter = Date.now() + (this.#redisClock?.offset ?? this.#serverOffset) + LOGOUT_ATTEMPT_MILLISECONDS
     this.#ownAttempt = attemptId
     addPendingLogout(this.#tag, { attemptId, notAfter })
     this.#channel?.post({ attemptId, coordinationTag: this.#tag, notAfter, type: "logout-started" })
@@ -249,12 +269,15 @@ export class TabCoordination {
     this.#sharedWindow = windowLock() !== undefined && storageAvailable()
     const stopListening = this.#listen()
     this.#publish()
-    this.#clock = initialOffset(this.#initial)
+    const timing = navigationTiming()
+    this.#clock = initialOffset(applicationClock(this.#initial), timing)
+    this.#redisClock = initialOffset(redisClock(this.#initial), timing)
     this.#replayPendingLogouts()
     if (!this.#replayEnded()) {
       this.#adoptSnapshot(this.#initial, true)
       if (!writeCurrentHint(this.#tag)) this.#hintOverride = this.#tag
       this.#channel.post({ coordinationTag: this.#tag, type: "session-current" })
+      if (!this.#sharedWindow) this.#channel.post({ coordinationTag: this.#tag, type: "window-query" })
     }
     return () => {
       stopListening()
@@ -337,7 +360,7 @@ export class TabCoordination {
         })
         return
       case "Usable":
-        this.#calibrate(responseSample(outcome))
+        this.#calibrate(outcome)
         this.#resolveAttempts(outcome.snapshot)
         if (this.#adoptSnapshot(outcome.snapshot, true) || startedAt >= this.#concealedSince) this.#reveal()
         // An equal revision with the deadline still passed adopts nothing, so keep confirming instead of going idle.
@@ -349,9 +372,10 @@ export class TabCoordination {
     }
   }
 
-  /** Any response may recalibrate the offset, including an equal revision; a changed offset reconverts the deadline. */
-  #calibrate(sample: ClockSample) {
-    const next = calibrateClockOffset(this.#clock, sample)
+  /** Any response may recalibrate the offsets, including an equal revision; a changed offset reconverts the deadline. */
+  #calibrate(outcome: TimedSnapshot) {
+    this.#redisClock = calibrateClockOffset(this.#redisClock, responseSample(outcome, redisClock))
+    const next = calibrateClockOffset(this.#clock, responseSample(outcome, applicationClock))
     if (next === this.#clock) return
     this.#clock = next
     this.#applyDeadline()
@@ -395,7 +419,6 @@ export class TabCoordination {
       return
     }
     this.#pendingActivity ??= activity
-    this.#pendingLastAt = Date.now()
     // In memory each tab flushes only its own pending activity (R24).
     if (this.#sharedWindow) {
       this.#channel?.post({ activity, coordinationTag: this.#tag, sendAt: decision.sendAt, type: "pending" })
@@ -565,7 +588,7 @@ export class TabCoordination {
 
   /** A confirmed-ended tag ends the tab. Answers whether it did. */
   #replayEnded(): boolean {
-    if (!readEndedTags().includes(this.#tag)) return false
+    if (!isEnded(this.#tag)) return false
     this.#end(false)
     return true
   }
@@ -637,7 +660,7 @@ export class TabCoordination {
       sendActivity(activity, this.#tag).then((outcome) => {
         if (!this.#live()) return
         if (outcome._tag === "Usable") {
-          this.#calibrate(responseSample(outcome))
+          this.#calibrate(outcome)
           this.#adoptSnapshot(outcome.snapshot, true)
         }
         if (outcome._tag === "Ended") this.#endConfirmed()
@@ -658,7 +681,7 @@ export class TabCoordination {
   }
 
   #storage(event: StorageEvent) {
-    if (event.key === ENDED_KEY && readEndedTags().includes(this.#tag)) this.#end(false)
+    if (event.key === endedKey(this.#tag) && isEnded(this.#tag)) this.#end(false)
     if (event.key !== CURRENT_KEY) return
     this.#hintOverride = undefined
     if (readCurrentHint() !== this.#tag) this.#guard(this.confirm())

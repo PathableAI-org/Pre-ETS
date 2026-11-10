@@ -148,12 +148,10 @@ const sessionStatus = Effect.fn("sessionStatus")(function*(request: NextRequest)
  */
 const logout = Effect.fn("logout")(function*(request: NextRequest) {
   const body = yield* decodeLogoutBody(yield* readJsonBody(request))
-  // A keepalive attempt arriving after its watchers stopped must not end the session unseen (research D8, R21).
-  if ((yield* Clock.currentTimeMillis) > body.notAfter) return yield* new LateLogoutAttempt({})
   const current = yield* currentSession(request)
   if (Option.isNone(current)) return emptyResponse(401)
   yield* requireTag(current.value.reference, body.coordinationTag)
-  // The store enforces the cutoff atomically with the delete, so an admitted attempt cannot delete later (R27).
+  // `notAfter` is on the Redis clock; only the store's atomic `TIME` check enforces it, with the delete (R27, R34).
   const outcome = yield* (yield* SessionService).invalidate({
     notAfterEpochMilliseconds: body.notAfter,
     reference: current.value.reference

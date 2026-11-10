@@ -4,6 +4,7 @@ import { describe, expect } from "vitest"
 import { classifySessionActivity } from "../../src/features/session-coordination/activity-classification.ts"
 import {
   type ActivityWindowRecord,
+  applyCommunication,
   decideActivityCommunication,
   flushActivityCommunication
 } from "../../src/features/session-coordination/activity-window.ts"
@@ -289,5 +290,92 @@ describe("calibrateClockOffset (research D6, R29) [PREETS-SESSION-010]", () => {
     })
 
     expect((deadline - tabB.offset) - (deadline - tabA.offset)).toBe(skew)
+  })
+})
+
+/**
+ * The no-storage fallback in one tab: own interactions decide against the in-memory record, other tabs' sends arrive
+ * as delayed `communicated { at }`, and the window-end flush re-decides. Returns own send times.
+ */
+interface FallbackEvent {
+  readonly at: number
+  readonly kind: "flush" | "interaction" | "received"
+  readonly sentAt?: number | undefined
+}
+
+const runFallback = (interactions: readonly number[], received: readonly (readonly [number, number])[]) => {
+  const events: FallbackEvent[] = [
+    ...interactions.map((at): FallbackEvent => ({ at, kind: "interaction" })),
+    ...received.map(([sentAt, delay]): FallbackEvent => ({ at: sentAt + delay, kind: "received", sentAt }))
+  ]
+  let record: ActivityWindowRecord = {
+    lastCommunicatedAt: undefined,
+    pendingLatest: undefined,
+    pendingSince: undefined
+  }
+  const sends: number[] = []
+  const handlers: Record<FallbackEvent["kind"], (event: FallbackEvent) => void> = {
+    flush: ({ at }) => {
+      const decision = flushActivityCommunication(record, { now: at })
+      if (decision._tag === "Reschedule") events.push({ at: decision.sendAt, kind: "flush" })
+      if (decision._tag !== "Send") return
+      record = decision.record
+      sends.push(at)
+    },
+    interaction: ({ at }) => {
+      const decision = decideActivityCommunication(record, { deadline: Number.POSITIVE_INFINITY, now: at })
+      record = decision.record
+      if (decision._tag === "SendNow") sends.push(at)
+      else events.push({ at: decision.sendAt, kind: "flush" })
+    },
+    received: ({ sentAt }) => {
+      record = applyCommunication(record, sentAt ?? 0)
+    }
+  }
+  while (events.length > 0) {
+    events.sort((left, right) => left.at - right.at)
+    const next = events.shift()
+    if (next !== undefined) handlers[next.kind](next)
+  }
+  return sends
+}
+
+describe("applyCommunication (research D5, R32, R36) [PREETS-SESSION-009]", () => {
+  it.prop([
+    interactionTimes,
+    fc.array(fc.tuple(fc.integer({ max: 600_000, min: 0 }), fc.integer({ max: 5_000, min: 0 })), { maxLength: 10 })
+  ], { numRuns: 500 })(
+    "covers every interaction by a send within 60 s and never sends without uncovered activity",
+    (interactions, received) => {
+      const sends = runFallback(interactions, received)
+      const communications = [...sends, ...received.map(([sentAt]) => sentAt)]
+
+      for (const at of interactions) {
+        expect(communications.some((sentAt) => sentAt >= at && sentAt - at <= WINDOW)).toBe(true)
+      }
+      // A send is justified by an interaction no communication this tab knew of by then had covered.
+      for (const sentAt of sends) {
+        const known = [
+          ...sends.filter((other) => other < sentAt),
+          ...received.filter(([at, delay]) => at + delay < sentAt).map(([at]) => at)
+        ]
+        const uncovered = interactions.some((at) => at <= sentAt && known.every((other) => other < at))
+        expect(uncovered).toBe(true)
+      }
+    }
+  )
+
+  it("keeps later pending activity when a communication covers only earlier activity", () => {
+    const pending = { lastCommunicatedAt: 0, pendingLatest: 20, pendingSince: 5 }
+    expect(applyCommunication(pending, 10)).toStrictEqual({
+      lastCommunicatedAt: 10,
+      pendingLatest: 20,
+      pendingSince: 10
+    })
+    expect(applyCommunication(pending, 20)).toStrictEqual({
+      lastCommunicatedAt: 20,
+      pendingLatest: undefined,
+      pendingSince: undefined
+    })
   })
 })

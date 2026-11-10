@@ -163,13 +163,16 @@ B5 windows across tabs through one `localStorage` record per session tag
 (`preets-session-activity:v1:<tag>`) under a Web Lock, so a stale tab writes only its own session's
 record. Records for tags other than the tab's and the current hint's are pruned to the four most
 recently touched. Without `localStorage` or Web Locks, each tab keeps its window in memory and
-announces each send on the channel (`communicated`), so other tabs share it and drop pending activity
-that send already covered. A window-end flush sends only when that window is
+announces each send on the channel (`communicated`). A receiving tab clears its pending activity if
+the send is at or after its latest pending interaction, and otherwise keeps the later activity with
+its 60-second bound. A tab that joins in this mode broadcasts `window-query`, and the others answer
+with their last communication time. A window-end flush sends only when that window is
 due, so a stale timer reschedules. Tabs share renewed deadlines, coalesced activity, and logout on
 `BroadcastChannel("preets-session-coordination")`, ignoring other tags, and adopt a snapshot only
 when its revision is higher than the one they hold; equal revisions are ignored. Two more records support replay:
 `preets-session-current:v1`, the tag of the most recently mounted protected document, and
-`preets-session-ended:v1`, the last eight tags the server confirmed ended. Messages and records hold
+one `preets-session-ended:v1:<tag>` → `{ endedAt }` key per tag the server confirmed ended, pruned
+after 24 hours. Messages and records hold
 only tags, times, the warning lead, and an activity kind.
 
 When the coordinator mounts after hydration, it subscribes first and replays the ended record; if
@@ -197,9 +200,10 @@ they settle, so other tabs learn of the gate's renewal.
 
 Every protected page has a Log out button. Each attempt gets an `attemptId` and is written to its
 own `localStorage` key (`preets-session-logout-pending:v1:<tag>:<attemptId>` → `{ notAfter }`), then
-announced as `logout-started` and sent at once with `keepalive`. `notAfter` is the server-clock time
-10 seconds ahead: the handler refuses an attempt received later with 408, and the store deletes
-the record only while Redis `TIME` is at or before it. Other tabs, and tabs that mount or resume
+announced as `logout-started` and sent at once with `keepalive`. `notAfter` is the Redis-clock time
+10 seconds ahead, from a second per-tab offset calibrated against snapshots'
+`observedAtEpochMilliseconds`. The handler compares no clocks: the store deletes the record only while
+Redis `TIME` is at or before `notAfter`, and otherwise the handler answers 408. Other tabs, and tabs that mount or resume
 while the key exists, start a confirmation each second, without waiting for earlier reads, until
 the attempt resolves: `logged-out`, its own `logout-failed`, a 401 or different tag, or a usable
 status whose Redis `observedAtEpochMilliseconds` is later than `notAfter`, after which the attempt
