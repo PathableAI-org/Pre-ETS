@@ -136,8 +136,16 @@ output, screenshots, and transcripts are not committed.
 ### Gate and escalation
 
 The implementation session fixes the slice and requests verification again. A slice may be marked ready for
-review only when its latest report has no `violated` result and no forbidden data finding. `not established` and
-`blocked` results are allowed only when the slice's pull request names them as limitations.
+review only when its latest report shows all of the following:
+
+- Every telemetry row that `plan.md` assigns to the slice is present and usable.
+- Every claim the slice asserts in full is `established`.
+- Every `not established` or `blocked` result matches a limitation already approved in `verification.md` or
+  `plan.md`.
+- No `violated` result and no forbidden data finding.
+
+A slice pull request cannot create its own exception. A new limitation goes back through the
+[corrections](git-workflow.md#corrections) path to the phase that owns it.
 
 Escalate to the orchestrator, and through it to a person, instead of patching the implementation when:
 

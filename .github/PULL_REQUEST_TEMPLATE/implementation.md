@@ -19,7 +19,8 @@ including its public contracts and evidence. Unapproved contract or acceptance c
 
 ## Verification report
 
-Summarize the latest verification report for this slice's revision. Do not paste raw query output.
+Summarize the latest verification report for this slice's revision. Do not paste raw query output. Name the approved
+limitation in `verification.md` or `plan.md` for each `not established` or `blocked` result.
 
 | Claim ID | Result | Revision | Evidence (trace IDs or query) | Limits |
 | -------- | ------ | -------- | ----------------------------- | ------ |

@@ -39,8 +39,9 @@ The engineering plan divides implementation into slices. Each slice is one pull 
   Do not split a single decision across pull requests only to meet the number.
 - **Vertical.** Each slice passes CI, `pnpm check:unused`, and `pnpm check:health` on its own. A public contract
   lands with its first consumer and its evidence, not ahead of them.
-- **Verified.** A slice is marked ready for review only after the verification agent has reported on its claims, as
-  described in [the verification harness](verification-harness.md#gate-and-escalation).
+- **Verified.** A slice is marked ready for review only after the verification agent's latest report passes the
+  [verification gate](verification-harness.md#gate-and-escalation): assigned telemetry is usable, full claims are
+  `established`, and any other result matches a limitation already approved in `verification.md` or `plan.md`.
 
 If implementation shows that the planned slices cannot meet these rules, change the plan's slices through the
 [corrections](#corrections) path rather than letting one slice grow.
