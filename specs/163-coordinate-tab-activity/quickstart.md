@@ -229,70 +229,85 @@ The §3 prepared-record HTTP procedure and the V-015 server rows predate the con
 cookie, record revision, action renewal, logout cutoff and classification). Any result recorded for them before those
 changes is stale and must be re-run on the implementation revision under assessment.
 
-Recorded by the implementation agent. Results only; the procedure above is unchanged.
+Recorded by the implementation agent. Results only; the procedure above is unchanged. These results are for the plan
+at `e1c8399` (review corrections R1–R15). An earlier run against the superseded plan was discarded.
 
 ### Conditions
 
-- Revision under assessment: `4ade9e1` on `163-coordinate-tab-activity-impl`. Executed 2026-11-09 about 23:00 UTC.
+- Application code at `4018847` on `163-coordinate-tab-activity-impl`. Executed 2026-11-09.
 - Node.js 26.2.0, pnpm 12.18.0, Docker Compose 5.7.0, Next.js 16.4.5 production build (`next start`), Playwright
   1.65.0 bundled Chromium (headless). Shared Redis 8.10.3 (`pre-ets-redis-1`), touched only under owned prefixes
   (`preets:verify:session:<run-uuid>:`, `preets:verify:oidc-tx:<run-uuid>:`). Owned outage Redis: a separate
-  `redis:8.10.3` container on 127.0.0.1:6391, created for this run and removed afterwards.
+  `redis:8.10.3` container on 127.0.0.1:6391, created for this run and removed afterwards. Local Keycloak 26.8.1 for
+  the BDD suite.
 - Instances A `:3100` (shared Redis) and B `:3101` (owned outage Redis), host mode, `BASE_HOSTNAME=localhost`,
   `OTEL_SDK_DISABLED=true`, tenants from `fixtures/tenant-config/`, started as in S1's quickstart §2.
 - B6 freshness policy absent; `CallbackFreshness` default (deny) in force. No login was performed.
 - Prepared sessions: a transient scratchpad script importing only the built public `session.js` entry
   (`SessionService.establish` / `invalidate`) under the owned prefix, synthetic subject label `verify-user`, references
-  kept in memory. Deleted after the run, with its owned keys (0 remained).
+  kept in memory. Deleted after the run, with its owned keys (none remained).
 
 ### Module evidence (§1)
 
-| Suite                                                                  | Result                     |
-| ---------------------------------------------------------------------- | -------------------------- |
-| `frontend-services` `tests/unit/coordination.test.ts`                  | 23 passed (3 properties)   |
-| `frontend-services` `tests/unit/reference-session-enforcement.test.ts` | passed (snapshot examples) |
-| `frontend-services` `tests/integration/coordination-redis.test.ts`     | 5 passed                   |
-| `frontend` `tests/unit/session-coordination.test.ts`                   | 27 passed (3 properties)   |
+| Suite                                                              | Result                           |
+| ------------------------------------------------------------------ | -------------------------------- |
+| `frontend-services` unit and library suites (`pnpm … test`)        | 436 passed                       |
+| `frontend-services` integration suites (`pnpm … test:integration`) | 36 passed; outage suite 2 passed |
+| `frontend` unit suites (`pnpm … test:unit`)                        | 61 passed                        |
 
-Transient classifier probe (removed): the classifier, transpiled into a scratch Chromium page with the coordinator's
-gesture flag. Tab into an input → `focusin` counted as user-driven focus; `element.focus()` from a 100 ms timeout →
-not counted; mouse click → `pointerdown` (mouse) not counted, `focusin` and `click` counted; typing → `keydown` and
-`beforeinput` counted; pointer movement and a script `click()` → not counted.
+They include: the tag-binding, same-origin, and tag properties (`coordination.test.ts`); the never-renewing endpoint
+property and the no-`Set-Cookie` property over protected requests (`protection.test.ts`); composed gate → handler on
+real Redis for an action-shaped stale-tag activity and a navigation to status, deadline unchanged
+(`coordination-redis.test.ts`); overlapping status and activity snapshots, the later observation carrying the stored
+deadline; non-decreasing observation times across interleaved clients (`session-redis.test.ts`); the B5-W property
+through `decideActivityCommunication` and `flushActivityCommunication` with stale flush timers; `adoptSnapshot`
+examples; the D4 table; the Server Action tag refusal examples.
+
+Transient classifier probe (removed): Tab into an input → user-driven focus counted; `element.focus()` from a 100 ms
+timeout → not counted; mouse click → `pointerdown` (mouse) not counted, `focusin` and `click` counted; typing →
+`keydown` and `beforeinput` counted; pointer movement and a script `click()` → not counted.
+
+Transient mount probe (removed; an implementation check with a prepared session, not feature evidence):
+`/coordination/roster` in Chromium rendered Log out and the protected content, wrote the current-session hint, and
+logged no console or page errors. After the probe added the page's tag to `preets-session-ended:v1`, a reload marked
+`html[data-session-ended]`, hid the protected text, and showed the signed-out notice, with no errors.
 
 ### Ungated HTTP evidence (§3) — V-005 HTTP part, V-009 HTTP part
 
 Authoritative deadline read through `GET /session/status` after each step on A. Deltas are against the previous read.
+Every status read reported a later `observedAtEpochMilliseconds` than the one before.
 
-| Step | Observation                                                                                                                                            | Result |
-| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ------ |
-| 1    | Status 200, `private, no-store`, body keys exactly the four snapshot fields                                                                            | Pass   |
-| 2    | `GET /` navigation 200 with re-issued cookie (`Max-Age=1799`) and the Log out control; deadline +123 ms                                                | Pass   |
-| 3    | `GET /` `cors`/`empty` 200, no cookie, deadline unchanged; `GET /favicon.ico` `no-cors` 404, deadline unchanged                                        | Pass   |
-| 4    | Activity with the observed tag 200 and re-issued cookie, deadline +152 ms; wrong tag 409 empty, unchanged; `sec-fetch-site: cross-site` 403, unchanged | Pass   |
-| 4a   | `/coordination/roster` navigation 200 with synthetic roster and Log out                                                                                | Pass   |
-| 5    | After invalidation: activity 401 without a cookie; `GET /` navigation 307 `/auth/login`; status 401                                                    | Pass   |
-| 5a   | Logout with the observed tag 204 with `Max-Age=0`; then status 401 and activity 401 (no revival after logout)                                          | Pass   |
-| 5b   | Logout carrying an earlier session's tag 409, no cookie; the current session's status stays 200                                                        | Pass   |
-| 6    | Owned keys removed                                                                                                                                     | Done   |
+| Step | Observation                                                                                                                         | Result |
+| ---- | ----------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| 1    | Status 200, `private, no-store`, body keys exactly the five snapshot fields                                                         | Pass   |
+| 2    | `GET /` navigation 200 with the inline mount script and no `Set-Cookie`; deadline +119 ms                                           | Pass   |
+| 3    | `GET /` `cors`/`empty` 200, no `Set-Cookie`, deadline unchanged; `GET /favicon.ico` `no-cors` 404, deadline unchanged               | Pass   |
+| 4    | Activity with the observed tag 200, no `Set-Cookie`, deadline +155 ms; wrong tag 409 empty, unchanged                               | Pass   |
+| 4a   | Wrong tag with a `next-action` header 409, no `Set-Cookie`, unchanged; navigation `GET /session/status` 200, no redirect, unchanged | Pass   |
+| 4b   | `sec-fetch-site: cross-site` activity 403, unchanged                                                                                | Pass   |
+| 5    | After invalidation: activity 401; `GET /` navigation 307 `/auth/login`; status 401                                                  | Pass   |
+| 5a   | Logout with the observed tag 204 with no `Set-Cookie`; then status 401 and activity 401 (no revival after logout)                   | Pass   |
+| 5b   | Logout carrying an earlier session's tag 409, no `Set-Cookie`; the current session's status stays 200                               | Pass   |
+| 6    | Owned keys removed                                                                                                                  | Done   |
 
-Form-submission renewal is S1's gate evidence and was not repeated here.
+Form-submission renewal is S1's gate evidence; the tag refusal of protected actions is module evidence. Neither was
+repeated here.
 
 ### V-015 server part
 
 B with a prepared session on the owned Redis: status 200; `docker pause` → status 503 and logout 503, empty bodies,
-no `Set-Cookie`. **Pass.** After `docker unpause`, B kept answering 503 for more than 12 seconds; this is S1's recorded
-finding 2 (no Redis reconnection after a socket-timeout outage), unchanged by this feature.
+no `Set-Cookie`. **Pass.** After `docker unpause`, B did not recover within the earlier run's 12-second check; this is
+S1's recorded finding 2 (no Redis reconnection after a socket-timeout outage), unchanged by this feature.
 
 ### Requirements-backed BDD (§4)
 
-`pnpm test:bdd:dry`: 67 scenarios discovered. Executed with `OTEL_SDK_DISABLED=true` against a production build:
-`cucumber-js --config cucumber.mjs` with the names of the new outline and S1's default-protection outlines →
-15 scenarios, 136 steps passed. The new feature `session-tab-coordination.feature` (`@partial`, `@preets-session-009`)
-holds only the scenario that needs no session. Every session-requiring scenario in §4 waits for #158, because BDD
-steps must not open session stores.
+`pnpm test:bdd:dry`: 67 scenarios discovered. Full suite executed with `OTEL_SDK_DISABLED=true` against the production
+build, Redis, and Keycloak: 67 scenarios, 768 steps passed. The new feature `session-tab-coordination.feature`
+(`@partial`, `@preets-session-009`) holds only the scenario that needs no session (R4). Every session-requiring
+scenario in §4 stays planned prose until #158.
 
 ### Incomplete (increment 5, gated on #158)
 
 V-001–V-004, V-006–V-008, the browser parts of V-009 and V-015, V-010–V-014, V-016, and V-017 are **incomplete**.
 Each needs a real login, which the callback refuses until #158's freshness confirmation functions. No prepared session
-stood in for login in any browser claim. Manual steps 3–10 were not executed.
+stood in for login in any feature claim. Manual steps 3–10 were not executed.

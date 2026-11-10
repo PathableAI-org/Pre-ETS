@@ -185,34 +185,47 @@ Blocks every story: the snapshot, tag, and three endpoints are what every tab co
 Reused evidence: S2 session service and store suites (renewal, no revival, invalidation, outage); S1 gate unit,
 property, and integration suites.
 
+## Revised-plan rework (plan `e1c8399`)
+
+The plan was revised after these tasks were generated (review corrections R1–R15). The implementation follows the
+revision: `observedAtEpochMilliseconds` from Redis `TIME` in the store transitions; the leaf
+`next/coordination-snapshot.ts`; the gate's never-renewing endpoint paths and no cookie on any renewal; a
+browser-session cookie written only at establishment; no cookie on activity or logout; `adoptSnapshot` and
+`flushActivityCommunication`; the inline mount script with the current and ended records; the Server Action submit
+guard with tag-checked actions; and the `logout-started` watch with `keepalive` logout.
+
 ## Implementation deviations from the plan (for plan review)
 
-These do not change any acceptance criterion or HTTP contract. Each needs reviewer confirmation at the plan gate.
+These do not change any acceptance criterion or HTTP outcome. Each needs reviewer confirmation at the plan gate.
 
-1. **`ResolvedSessionRequest.coordination` is optional** (`readonly coordination?: SessionCoordinationSnapshot |
-   undefined`). The planned required field broke existing constructions of `ResolvedSessionRequest`, contradicting the
-   contract's own "existing consumers compile unchanged" note. Semantics are as planned: present exactly when the
-   session is usable.
-2. **Policy functions are not exported from the feature entry** (T016). Frontend Fallow runs dead-code analysis in
-   production mode, so entry exports used only by tests are findings, and suppressions are not allowed. The entry
-   exports only `SessionCoordinator`; the unit suite imports the two private policy children, following the existing
-   `onsite-visit-state.test.ts` precedent. This settles the plan's recorded reviewer question in the opposite direction
-   from its proposal and conflicts with the root AGENTS.md rule that external tests use the parent's public
-   interface. It needs a human decision.
-3. **The shared provider exposes `useSessionConfirmedActionState` and `ProtectedFormAction` instead of
-   `useSessionConfirmation`** (T015, T017, T025). The run-the-action-then-confirm logic was otherwise a Fallow clone
-   between the reference operation and the fixture form. The behavior is unchanged: confirm after the action settles,
-   never throw.
-4. **Private file changes**: the coordinator's controller lives in `session-coordination/tab-coordination.ts` (a class
-   with the timers, channel, and lifecycle listeners, keeping each function within Fallow's unit-size and complexity
-   limits). The fixture form is part of `coordination-fixtures/roster.tsx`, not a separate `fixture-action-form.tsx`.
-   `SESSION_COOKIE` moved from `next/session.ts` to `next/cookies.ts` to avoid a `session` ↔ `coordination` import
-   cycle; its public export is unchanged.
-5. **The `pending` channel message carries the coalesced `activity` kind**, so whichever tab flushes the window sends
-   a real observed kind. Data-model lists only `sendAt`. No protected content is added.
-6. **The fixture Server Action sets no receipt cookie.** It reports admission only.
-7. **BDD scope**: quickstart §4 lists V-005 and V-009 HTTP rows as ungated BDD scenarios. Those need a prepared session,
-   and BDD steps must not open session stores. They ran as the manual §3 procedure instead. BDD holds only the
-   no-session refusal scenario.
-8. **Frontend devDependency `@fast-check/vitest` 0.5.0** for the B5-W property. It was already in the lockfile for
-   frontend-services.
+1. **`observedAtEpochMilliseconds` keeps microsecond precision** (a fractional millisecond). With whole milliseconds,
+   a status read and a concurrent renewal tied in the integration run, so "adopt only if later" could drop the
+   renewal. Redis `TIME` microseconds remove the tie. Establishment reads `TIME` just before its `SET NX`, not in a
+   `MULTI`, which orders it before every later transition of the record.
+2. **`ResolvedSessionRequest.coordination` is optional** (`readonly coordination?: SessionCoordinationSnapshot |
+   undefined`). The planned required field broke existing constructions of `ResolvedSessionRequest`, against the
+   contract's "existing consumers compile unchanged". Semantics are as planned. `UsableSession.observedAt…` is
+   required, as planned, so S1 and S2 test doubles were updated.
+3. **Policy functions are not exported from the feature entry.** Frontend Fallow runs dead-code analysis in production
+   mode, so entry exports used only by tests are findings, and suppressions are not allowed. The entry exports only
+   `SessionCoordinator`; the unit suite imports the private policy children (`activity-classification.ts`,
+   `activity-window.ts`, `snapshot-order.ts`), following the existing `onsite-visit-state.test.ts` precedent. This
+   settles the plan's recorded reviewer question against its proposal and conflicts with the root AGENTS.md rule that
+   external tests use the parent's public interface. **Needs a human decision.**
+4. **The shared provider exposes `useSessionConfirmedActionState`, `CoordinationTagField`, and `ProtectedFormAction`
+   instead of `useSessionConfirmation()` returning `{ confirm, coordinationTag }`.** The run-then-confirm logic and the
+   hidden tag field were otherwise Fallow clones between the reference operation and the fixture form. The field name
+   lives in `providers/coordination-tag-field.ts`, a plain module, because a server action cannot read a value
+   exported from a `"use client"` module. Behavior is as planned.
+5. **Data-model inconsistency, resolved toward the contract.** Data-model says a different current-session hint or a
+   `session-current` message ends a tab at once. Research R14 and the contract say a hint never ends a tab. The
+   implementation follows R14: a different hint makes the tab confirm (and conceal on resume) and ends it only on a
+   server-confirmed 401 or different tag.
+6. **Private file changes**: the controller lives in `session-coordination/tab-coordination.ts`; snapshot ordering in
+   `snapshot-order.ts`; the fixture form is part of `coordination-fixtures/roster.tsx` (no `fixture-action-form.tsx`).
+7. **The `pending` channel message carries the coalesced `activity` kind**, so whichever tab flushes sends a real
+   observed kind. No protected content is added.
+8. **A status 401 or different tag also records the tag as ended** (data-model lists "401/409 on logout or status";
+   research D8 names only logout). No `logged-out` broadcast is sent for it.
+9. **The fixture Server Action sets no receipt cookie.** It reports admission only, which the contract permits.
+10. **Frontend devDependency `@fast-check/vitest` 0.5.0** for the B5-W property. It was already in the lockfile.
