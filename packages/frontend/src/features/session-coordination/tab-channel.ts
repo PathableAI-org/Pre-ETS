@@ -4,9 +4,12 @@ import type { ActivityWindowRecord } from "./activity-window.ts"
 
 import { IN_PAGE_ACTIVITIES } from "./activity-classification.ts"
 
-const CHANNEL = "preets-session-coordination"
+export const CHANNEL = "preets-session-coordination"
+export const CURRENT_KEY = "preets-session-current:v1"
+export const ENDED_KEY = "preets-session-ended:v1"
 const RECORD_KEY = "preets-session-activity:v1"
 const LOCK = "preets-session-activity"
+const ENDED_TAGS_KEPT = 8
 
 export interface TabChannel {
   readonly close: () => void
@@ -14,8 +17,8 @@ export interface TabChannel {
 }
 
 /**
- * Messages between tabs of one origin and storage partition. Each carries only the coordination tag, times, and the
- * warning lead or activity kind; never protected content, identity, or the session reference.
+ * Messages between tabs of one origin and storage partition (data-model "Channel messages"). Each carries only the
+ * coordination tag, times, and the warning lead or activity kind; never protected content, identity, or the reference.
  */
 export type TabMessage =
   | {
@@ -24,12 +27,16 @@ export type TabMessage =
     readonly sendAt: number
     readonly type: "pending"
   }
-  | { readonly coordinationTag: string; readonly type: "logged-out" }
   | {
     readonly coordinationTag: string
     readonly localDeadline: number
+    readonly observedAtEpochMilliseconds: number
     readonly type: "renewed"
     readonly warningLeadMinutes: number
+  }
+  | {
+    readonly coordinationTag: string
+    readonly type: "logged-out" | "logout-failed" | "logout-started" | "session-current"
   }
 
 type UnknownRecord = Readonly<Record<string, unknown>>
@@ -40,34 +47,28 @@ const isOptionalTime = (value: unknown): value is number | undefined => value ==
 const isActivity = (value: unknown): value is InPageSessionActivity =>
   typeof value === "string" && IN_PAGE_ACTIVITIES.has(value)
 
+const SIGNALS: ReadonlySet<unknown> = new Set(["logged-out", "logout-failed", "logout-started", "session-current"])
+
 const pendingMessage = (data: UnknownRecord, coordinationTag: string): TabMessage | undefined =>
   isTime(data.sendAt) && isActivity(data.activity) ?
     { activity: data.activity, coordinationTag, sendAt: data.sendAt, type: "pending" } :
     undefined
 
-const renewedMessage = (data: UnknownRecord, coordinationTag: string): TabMessage | undefined =>
-  isTime(data.localDeadline) && isTime(data.warningLeadMinutes) ?
-    {
-      coordinationTag,
-      localDeadline: data.localDeadline,
-      type: "renewed",
-      warningLeadMinutes: data.warningLeadMinutes
-    } :
-    undefined
+const renewedMessage = (data: UnknownRecord, coordinationTag: string): TabMessage | undefined => {
+  const { localDeadline, observedAtEpochMilliseconds, warningLeadMinutes } = data
+  if (!isTime(localDeadline) || !isTime(observedAtEpochMilliseconds) || !isTime(warningLeadMinutes)) return undefined
+  return { coordinationTag, localDeadline, observedAtEpochMilliseconds, type: "renewed", warningLeadMinutes }
+}
+
+const signalMessage = (data: UnknownRecord, coordinationTag: string): TabMessage | undefined =>
+  SIGNALS.has(data.type) ? { coordinationTag, type: data.type as "logged-out" } : undefined
 
 /** Malformed messages are ignored. */
 const parseMessage = (data: unknown): TabMessage | undefined => {
   if (!isRecord(data) || typeof data.coordinationTag !== "string") return undefined
-  switch (data.type) {
-    case "logged-out":
-      return { coordinationTag: data.coordinationTag, type: "logged-out" }
-    case "pending":
-      return pendingMessage(data, data.coordinationTag)
-    case "renewed":
-      return renewedMessage(data, data.coordinationTag)
-    default:
-      return undefined
-  }
+  if (data.type === "pending") return pendingMessage(data, data.coordinationTag)
+  if (data.type === "renewed") return renewedMessage(data, data.coordinationTag)
+  return signalMessage(data, data.coordinationTag)
 }
 
 const silentChannel: TabChannel = { close: () => undefined, post: () => undefined }
@@ -89,26 +90,58 @@ export const openTabChannel = (receive: (message: TabMessage) => void): TabChann
   }
 }
 
-/** The shared B5-W record. Unavailable storage or a malformed value reads as absent. */
-export const readWindowRecord = (): ActivityWindowRecord | undefined => {
+/** Unavailable storage or a malformed value reads as absent. */
+const readJson = (key: string): unknown => {
   try {
-    const raw = localStorage.getItem(RECORD_KEY)
-    const value: unknown = raw === null ? undefined : JSON.parse(raw)
-    if (!isRecord(value) || typeof value.coordinationTag !== "string") return undefined
-    const { lastCommunicatedAt, pendingSince } = value
-    if (!isOptionalTime(lastCommunicatedAt) || !isOptionalTime(pendingSince)) return undefined
-    return { coordinationTag: value.coordinationTag, lastCommunicatedAt, pendingSince }
+    const raw = localStorage.getItem(key)
+    return raw === null ? undefined : JSON.parse(raw)
   } catch {
     return undefined
   }
 }
 
-export const writeWindowRecord = (record: ActivityWindowRecord): void => {
+/** Unavailable storage leaves each tab deciding alone; it never delays a communication or claims a session. */
+const writeJson = (key: string, value: unknown): void => {
   try {
-    localStorage.setItem(RECORD_KEY, JSON.stringify(record))
+    localStorage.setItem(key, JSON.stringify(value))
   } catch {
-    // Unavailable storage leaves each tab deciding alone; it never delays a communication.
+    // Storage is advisory; the server stays the authority.
   }
+}
+
+/** The shared B5-W record. */
+export const readWindowRecord = (): ActivityWindowRecord | undefined => {
+  const value = readJson(RECORD_KEY)
+  if (!isRecord(value) || typeof value.coordinationTag !== "string") return undefined
+  const { lastCommunicatedAt, pendingSince } = value
+  if (!isOptionalTime(lastCommunicatedAt) || !isOptionalTime(pendingSince)) return undefined
+  return { coordinationTag: value.coordinationTag, lastCommunicatedAt, pendingSince }
+}
+
+export const writeWindowRecord = (record: ActivityWindowRecord): void => {
+  writeJson(RECORD_KEY, record)
+}
+
+/** The current-session hint: the tag of the most recently mounted protected document. A hint, never proof (R14). */
+export const readCurrentHint = (): string | undefined => {
+  const value = readJson(CURRENT_KEY)
+  return isRecord(value) && typeof value.coordinationTag === "string" ? value.coordinationTag : undefined
+}
+
+export const writeCurrentHint = (coordinationTag: string): void => {
+  writeJson(CURRENT_KEY, { coordinationTag })
+}
+
+/** Tags of sessions confirmed ended, newest first, so a tab that missed the broadcast can replay it (R3). */
+export const readEndedTags = (): readonly string[] => {
+  const value = readJson(ENDED_KEY)
+  if (!isRecord(value) || !Array.isArray(value.coordinationTags)) return []
+  return value.coordinationTags.filter((tag): tag is string => typeof tag === "string")
+}
+
+export const recordEnded = (coordinationTag: string): void => {
+  const others = readEndedTags().filter((tag) => tag !== coordinationTag)
+  writeJson(ENDED_KEY, { coordinationTags: [coordinationTag, ...others].slice(0, ENDED_TAGS_KEPT) })
 }
 
 /** Runs `task` under the cross-tab window lock, or answers `undefined` where Web Locks are unavailable. */

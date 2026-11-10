@@ -4,8 +4,10 @@ import { describe, expect } from "vitest"
 import { classifySessionActivity } from "../../src/features/session-coordination/activity-classification.ts"
 import {
   type ActivityWindowRecord,
-  decideActivityCommunication
+  decideActivityCommunication,
+  flushActivityCommunication
 } from "../../src/features/session-coordination/activity-window.ts"
+import { adoptSnapshot } from "../../src/features/session-coordination/snapshot-order.ts"
 
 const WINDOW = 60_000
 
@@ -103,9 +105,19 @@ interface Outcome {
  * Drives the window policy as the coordinator does: each interaction decides against the shared record; the window
  * end and the near-deadline point re-decide while a pending interaction remains; each send renews the deadline.
  */
-const simulate = (interactions: readonly number[], initialDeadline: number, idle: number): Outcome => {
+interface Timer {
+  readonly at: number
+  readonly kind: "flush" | "near-deadline"
+}
+
+const simulate = (
+  interactions: readonly number[],
+  initialDeadline: number,
+  idle: number,
+  staleFlushes: readonly number[] = []
+): Outcome => {
   const queue = [...interactions]
-  const timers: number[] = []
+  const timers: Timer[] = staleFlushes.map((at) => ({ at, kind: "flush" }))
   let record: ActivityWindowRecord | undefined
   let deadline = initialDeadline
   let pending: number[] = []
@@ -123,22 +135,34 @@ const simulate = (interactions: readonly number[], initialDeadline: number, idle
     const decision = decideActivityCommunication(record, { coordinationTag: TAG, deadline, now })
     record = decision.record
     if (decision._tag === "SendNow") send(now)
-    else timers.push(decision.sendAt, deadline - WINDOW + 1)
+    else timers.push({ at: decision.sendAt, kind: "flush" }, { at: deadline - WINDOW + 1, kind: "near-deadline" })
+  }
+  const flush = (now: number) => {
+    const decision = flushActivityCommunication(record, { coordinationTag: TAG, now })
+    if (decision._tag === "Reschedule") timers.push({ at: decision.sendAt, kind: "flush" })
+    if (decision._tag !== "Send") return
+    record = decision.record
+    send(now)
+  }
+  const nearDeadline = (now: number) => {
+    if (record?.pendingSince !== undefined && deadline - now < WINDOW) decide(now)
   }
   const interact = (at: number) => {
     previousSends.push(sends.at(-1)?.[0])
     pending.push(at)
     decide(at)
   }
-  const fire = (at: number) => {
-    if (record?.pendingSince !== undefined) decide(Math.max(at, record.pendingSince))
-  }
   const step = () => {
-    timers.sort((left, right) => left - right)
-    const nextTimer = timers[0] ?? Number.POSITIVE_INFINITY
+    timers.sort((left, right) => left.at - right.at)
+    const nextTimer = timers[0]
     const nextInteraction = queue[0] ?? Number.POSITIVE_INFINITY
-    if (nextInteraction <= nextTimer) interact(queue.shift() ?? nextInteraction)
-    else fire(timers.shift() ?? nextTimer)
+    if (nextTimer === undefined || nextInteraction <= nextTimer.at) {
+      interact(queue.shift() ?? nextInteraction)
+      return
+    }
+    timers.shift()
+    if (nextTimer.kind === "flush") flush(nextTimer.at)
+    else nearDeadline(nextTimer.at)
   }
 
   while (queue.length > 0 || (timers.length > 0 && pending.length > 0)) step()
@@ -150,12 +174,15 @@ const interactionTimes = fc
   .map((times) => [...times].sort((left, right) => left - right))
 
 describe("decideActivityCommunication (research D5, B5-W) [PREETS-SESSION-009]", () => {
-  it.prop([interactionTimes, fc.integer({ max: 1_800_000, min: -60_000 }), fc.integer({ max: 30, min: 5 })], {
-    numRuns: 500
-  })(
-    "communicates every interaction within 60 s, at most once per window except near the deadline",
-    (interactions, initialDeadline, idleMinutes) => {
-      const { covered, sends } = simulate(interactions, initialDeadline, idleMinutes * WINDOW)
+  it.prop([
+    interactionTimes,
+    fc.integer({ max: 1_800_000, min: -60_000 }),
+    fc.integer({ max: 30, min: 5 }),
+    fc.array(fc.integer({ max: 700_000, min: 0 }), { maxLength: 10 })
+  ], { numRuns: 500 })(
+    "communicates every interaction within 60 s, at most once per window except near the deadline, despite stale timers",
+    (interactions, initialDeadline, idleMinutes, staleFlushes) => {
+      const { covered, sends } = simulate(interactions, initialDeadline, idleMinutes * WINDOW, staleFlushes)
 
       expect(covered.map(([at]) => at)).toEqual(interactions)
       for (const [at, sentAt] of covered) {
@@ -198,4 +225,28 @@ describe("decideActivityCommunication (research D5, B5-W) [PREETS-SESSION-009]",
         .toStrictEqual(decideActivityCommunication(undefined, input))
     }
   )
+})
+
+const snapshot = (observedAtEpochMilliseconds: number, idleDeadlineEpochMilliseconds: number) => ({
+  coordinationTag: TAG,
+  idleDeadlineEpochMilliseconds,
+  observedAtEpochMilliseconds,
+  serverTimeEpochMilliseconds: observedAtEpochMilliseconds + 5,
+  warningLeadMinutes: 2
+})
+
+describe("adoptSnapshot (research D6) [PREETS-SESSION-010]", () => {
+  it("adopts a later observation even when a policy refresh shortened the deadline", () => {
+    expect(adoptSnapshot(snapshot(1_000, 1_800_000), snapshot(2_000, 300_000))).toBe(true)
+  })
+
+  it("rejects an earlier observation that arrives late, whatever its deadline or server time", () => {
+    const held = snapshot(2_000.5, 300_000)
+    expect(adoptSnapshot(held, { ...snapshot(2_000.25, 1_800_000), serverTimeEpochMilliseconds: 9_999 })).toBe(false)
+    expect(adoptSnapshot(held, snapshot(2_000.5, 1_800_000))).toBe(false)
+  })
+
+  it("adopts the first snapshot", () => {
+    expect(adoptSnapshot(undefined, snapshot(1, 1))).toBe(true)
+  })
 })

@@ -41,8 +41,21 @@ const usableSession = {
   _tag: "UsableSession" as const,
   identity: { issuer: "https://provider.test/", subject: "subject-1" },
   idleDeadlineEpochMilliseconds: 1_800_000_000_000,
+  observedAtEpochMilliseconds: 1_799_999_999_000,
   tenantAlias: springfield,
   warningLeadMinutes: 5
+}
+const coordination = {
+  coordinationTag: "observed-session-tag",
+  idleDeadlineEpochMilliseconds: usableSession.idleDeadlineEpochMilliseconds,
+  observedAtEpochMilliseconds: usableSession.observedAtEpochMilliseconds,
+  serverTimeEpochMilliseconds: 1_799_999_999_500,
+  warningLeadMinutes: usableSession.warningLeadMinutes
+}
+const submittedTag = (tag: string) => {
+  const formData = new FormData()
+  formData.set("coordinationTag", tag)
+  return formData
 }
 
 describe("reference session enforcement [PREETS-SESSION-001, PREETS-SESSION-004, PREETS-SESSION-005]", () => {
@@ -76,11 +89,12 @@ describe("reference session enforcement [PREETS-SESSION-001, PREETS-SESSION-004,
 
   it("returns one protected result and emits one receipt for a matching action", async () => {
     vi.mocked(readSessionRequest).mockResolvedValue({
+      coordination,
       session: usableSession,
       tenantAlias: usableSession.tenantAlias
     })
 
-    const result = await runReferenceOperation(initialReferenceActionState, new FormData())
+    const result = await runReferenceOperation(initialReferenceActionState, submittedTag(coordination.coordinationTag))
 
     expect(result._tag).toBe("Succeeded")
     if (result._tag === "Succeeded") {
@@ -94,6 +108,22 @@ describe("reference session enforcement [PREETS-SESSION-001, PREETS-SESSION-004,
     expect(options).toMatchObject({ httpOnly: true, path: "/", sameSite: "lax", secure: false })
     expect(options).not.toHaveProperty("domain")
     expect(readSessionRequest).toHaveBeenCalledTimes(1)
+  })
+
+  it.each([
+    ["a stale tab's tag", submittedTag("earlier-session-tag")],
+    ["no tag", new FormData()]
+  ])("refuses an action submitted with %s and emits no receipt [PREETS-SESSION-010]", async (_label, formData) => {
+    vi.mocked(readSessionRequest).mockResolvedValue({
+      coordination,
+      session: usableSession,
+      tenantAlias: usableSession.tenantAlias
+    })
+
+    const result = await runReferenceOperation(initialReferenceActionState, formData)
+
+    expect(result._tag).toBe("Denied")
+    expect(cookieWriteCount()).toBe(0)
   })
 
   it("redirects a page without a usable session and does not emit a receipt", async () => {

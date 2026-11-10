@@ -2,7 +2,11 @@
 
 import { Button, Form, FormGroup, Heading, Input, Label, Link, Stack, Text } from "@pathableai/react"
 
-import { type ProtectedFormAction, useSessionConfirmedActionState } from "../../providers/session-confirmation.tsx"
+import {
+  CoordinationTagField,
+  type ProtectedFormAction,
+  useSessionConfirmedActionState
+} from "../../providers/session-confirmation.tsx"
 import { type FixtureActionState, initialFixtureActionState } from "./action-state.ts"
 
 const SYNTHETIC_ROSTER = ["Participant A", "Participant B", "Participant C"] as const
@@ -13,7 +17,11 @@ const notRecorded: FixtureActionState = { _tag: "Denied", message: "The attendan
  * shares the session after it settles (research D6).
  */
 export function RosterFixture({ action }: { readonly action: ProtectedFormAction<FixtureActionState> }) {
-  const [outcome, record, recording] = useSessionConfirmedActionState(action, initialFixtureActionState, notRecorded)
+  const [outcome, record, recording] = useSessionConfirmedActionState(
+    action,
+    initialFixtureActionState,
+    notRecorded
+  )
   return (
     <Stack gap="md">
       <Heading level={1}>Coordination roster</Heading>
@@ -23,6 +31,7 @@ export function RosterFixture({ action }: { readonly action: ProtectedFormAction
       </ul>
       <Link href="/coordination/participant">Open participant page</Link>
       <Form action={record}>
+        <CoordinationTagField />
         <FormGroup>
           <Label>Attendance note</Label>
           <Input name="note" type="text" />

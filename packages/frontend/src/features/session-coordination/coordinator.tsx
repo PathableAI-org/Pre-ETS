@@ -7,6 +7,7 @@ import { type ReactNode, useCallback, useEffect, useRef, useState } from "react"
 
 import { SessionConfirmationProvider } from "../../providers/session-confirmation.tsx"
 import { LogoutControl } from "./logout-control.tsx"
+import { ENDED_DOCUMENT_STYLE, mountScriptSource, PROTECTED_CONTENT_ATTRIBUTE } from "./mount-script.ts"
 import { SignedOutNotice } from "./signed-out-notice.tsx"
 import { TabCoordination, type TabViewState } from "./tab-coordination.ts"
 
@@ -48,8 +49,12 @@ export function SessionCoordinator({
   }, [])
 
   const concealed = state.view === "concealed" || state.view === "logout-failed"
+  const protectedContent = { [PROTECTED_CONTENT_ATTRIBUTE]: "" }
   return (
-    <SessionConfirmationProvider confirm={confirm}>
+    <SessionConfirmationProvider confirm={confirm} coordinationTag={snapshot.coordinationTag}>
+      <style>{ENDED_DOCUMENT_STYLE}</style>
+      {/* Runs when the document is parsed, before hydration (research D14); React does not execute it on the client. */}
+      <script dangerouslySetInnerHTML={{ __html: mountScriptSource(snapshot) }} />
       <div aria-live="polite" role="status">
         <SessionAnnouncement state={state} />
       </div>
@@ -65,7 +70,7 @@ export function SessionCoordinator({
               </Alert>
             ) :
             null}
-          <div hidden={concealed} inert={concealed} ref={content}>{children}</div>
+          <div hidden={concealed} inert={concealed} ref={content} {...protectedContent}>{children}</div>
         </>
       )}
     </SessionConfirmationProvider>

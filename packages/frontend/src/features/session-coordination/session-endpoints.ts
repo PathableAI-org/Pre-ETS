@@ -25,11 +25,17 @@ const isNumber = (record: UnknownRecord, key: string) => typeof record[key] === 
 
 const asSnapshot = (value: unknown): SessionCoordinationSnapshot | undefined => {
   if (!isRecord(value) || typeof value.coordinationTag !== "string") return undefined
-  const timing = ["idleDeadlineEpochMilliseconds", "serverTimeEpochMilliseconds", "warningLeadMinutes"]
+  const timing = [
+    "idleDeadlineEpochMilliseconds",
+    "observedAtEpochMilliseconds",
+    "serverTimeEpochMilliseconds",
+    "warningLeadMinutes"
+  ]
   if (!timing.every((key) => isNumber(value, key))) return undefined
   return {
     coordinationTag: value.coordinationTag,
     idleDeadlineEpochMilliseconds: Number(value.idleDeadlineEpochMilliseconds),
+    observedAtEpochMilliseconds: Number(value.observedAtEpochMilliseconds),
     serverTimeEpochMilliseconds: Number(value.serverTimeEpochMilliseconds),
     warningLeadMinutes: Number(value.warningLeadMinutes)
   }
@@ -61,8 +67,11 @@ export const readSessionStatus = (): Promise<SessionOutcome> =>
 export const sendActivity = (activity: InPageSessionActivity, coordinationTag: string): Promise<SessionOutcome> =>
   call("/session/activity", postJson({ activity, coordinationTag })).then(outcomeOf, () => undetermined)
 
+/** `keepalive` completes the request even if this tab closes right after starting it (research D8, R11). */
 export const sendLogout = async (coordinationTag: string): Promise<LogoutOutcome> => {
-  const response = await call("/auth/logout", postJson({ coordinationTag })).catch(() => undefined)
+  const response = await call("/auth/logout", { ...postJson({ coordinationTag }), keepalive: true }).catch(() =>
+    undefined
+  )
   if (response?.status === 204) return "ended"
   if (response?.status === 401 || response?.status === 409) return "not-in-force"
   return "failed"
