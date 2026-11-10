@@ -175,12 +175,12 @@ Blocks every story: the snapshot, tag, and three endpoints are what every tab co
 
 ## Traceability
 
-| Claim                                               | Implementation  | Evidence here                    | Status after increments 1–4 |
-| --------------------------------------------------- | --------------- | -------------------------------- | --------------------------- |
-| V-005 HTTP part                                     | gate (S1), T004 | T028 (manual, prepared records)  | executed                    |
-| V-009 HTTP denial part                              | T004, S2        | T008, T027, T028                 | executed                    |
-| V-015 server part                                   | T004            | T003, T008, T028                 | executed                    |
-| V-001–V-004, V-006–V-008, V-010–V-014, V-016, V-017 | T010–T025       | module evidence T003, T008, T009 | incomplete (#158)           |
+| Claim                                               | Implementation  | Evidence here                    | Status after increments 1–4                                      |
+| --------------------------------------------------- | --------------- | -------------------------------- | ---------------------------------------------------------------- |
+| V-005 HTTP part                                     | gate (S1), T004 | T028 (manual, prepared records)  | T028 run on the superseded protocol (historical); re-run pending |
+| V-009 HTTP denial part                              | T004, S2        | T008, T027, T028                 | T008 and T027 current; T028 historical, re-run pending           |
+| V-015 server part                                   | T004            | T003, T008, T028                 | T003 and T008 current; T028 historical, re-run pending           |
+| V-001–V-004, V-006–V-008, V-010–V-014, V-016, V-017 | T010–T025       | module evidence T003, T008, T009 | incomplete (#158)                                                |
 
 Reused evidence: S2 session service and store suites (renewal, no revival, invalidation, outage); S1 gate unit,
 property, and integration suites.

@@ -340,6 +340,12 @@ export class TabCoordination {
         this.#calibrate(responseSample(outcome))
         this.#resolveAttempts(outcome.snapshot)
         if (this.#adoptSnapshot(outcome.snapshot, true) || startedAt >= this.#concealedSince) this.#reveal()
+        // An equal revision with the deadline still passed adopts nothing, so keep confirming instead of going idle.
+        if (Date.now() >= this.#deadline && !this.#timers.has("confirm")) {
+          this.#schedule("confirm", Date.now() + CONFIRMATION_RETRY_MILLISECONDS, () => {
+            this.#guard(this.confirm())
+          })
+        }
     }
   }
 
