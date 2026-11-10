@@ -13,6 +13,7 @@ import {
   type UsableSession
 } from "../../src/session.ts"
 import { TenantAlias } from "../../src/tenant.ts"
+import { sessionState } from "../helpers/session.ts"
 
 const redisUrl = process.env.REDIS_URL ?? "redis://127.0.0.1:6379"
 const sessionPrefix = `test:session:${randomUUID()}:`
@@ -191,13 +192,13 @@ describe("SessionService with independently scoped NodeRedis clients [PREETS-SES
     try {
       const established = await establish(runtimeA, 30)
       const fromB = await read(runtimeB, established.reference)
-      expect(fromB).toStrictEqual(established.session)
+      expect(sessionState(fromB)).toStrictEqual(sessionState(established.session))
 
       await runtimeB.dispose()
       const runtimeB2 = ManagedRuntime.make(sessionLayer(sessionPrefix))
       try {
         const fromB2 = await read(runtimeB2, established.reference)
-        expect(fromB2).toStrictEqual(established.session)
+        expect(sessionState(fromB2)).toStrictEqual(sessionState(established.session))
       } finally {
         await runtimeB2.dispose()
       }
@@ -235,7 +236,7 @@ describe("SessionService with independently scoped NodeRedis clients [PREETS-SES
   it("invalidates a session across independent clients without recreating it", async () => {
     await withClients(async (runtimeA, runtimeB, prefix) => {
       const established = await establish(runtimeA, 30)
-      expect(await read(runtimeB, established.reference)).toStrictEqual(established.session)
+      expect(sessionState(await read(runtimeB, established.reference))).toStrictEqual(sessionState(established.session))
 
       expect(await invalidate(runtimeB, established.reference)).toStrictEqual(noUsableSession)
 
@@ -295,7 +296,9 @@ describe("SessionService with independently scoped NodeRedis clients [PREETS-SES
     const recovered = ManagedRuntime.make(sessionLayer(sessionPrefix))
     try {
       const established = await establish(recovered, 30)
-      expect(await read(recovered, established.reference)).toStrictEqual(established.session)
+      expect(sessionState(await read(recovered, established.reference))).toStrictEqual(
+        sessionState(established.session)
+      )
     } finally {
       await recovered.dispose()
     }
@@ -310,7 +313,7 @@ describe("SessionService with independently scoped NodeRedis clients [PREETS-SES
         const service = yield* SessionService
         return yield* service.readForTenant({ reference: established.reference, tenantAlias: alias })
       }))
-      expect(matching).toStrictEqual(established.session)
+      expect(sessionState(matching)).toStrictEqual(sessionState(established.session))
       if (matching._tag === "UsableSession") {
         expect(matching.identity).toStrictEqual(established.session.identity)
         expect(matching.tenantAlias).toBe(established.session.tenantAlias)
@@ -350,7 +353,7 @@ describe("SessionService with independently scoped NodeRedis clients [PREETS-SES
         expect(result.failure.cause).toBeUndefined()
         expect(String(result.failure)).not.toContain("subject-redis")
       }
-      expect(await read(healthy, established.reference)).toStrictEqual(established.session)
+      expect(sessionState(await read(healthy, established.reference))).toStrictEqual(sessionState(established.session))
     } finally {
       await healthy.dispose()
       await outage.dispose()
@@ -377,7 +380,12 @@ describe("SessionService with independently scoped NodeRedis clients [PREETS-SES
         const invalidationResult = yield* service.invalidate({ reference: forInvalidation.reference }).pipe(
           Effect.result
         )
-        return [readResult, refreshResult, invalidationResult] as const
+        const all: readonly Result.Result<unknown, SessionServiceUnavailable | SessionTenantMismatch>[] = [
+          readResult,
+          refreshResult,
+          invalidationResult
+        ]
+        return all
       }))
       for (const result of results) {
         expect(Result.isFailure(result)).toBe(true)
@@ -388,9 +396,11 @@ describe("SessionService with independently scoped NodeRedis clients [PREETS-SES
         }
       }
 
-      expect(await read(healthy, forRead.reference)).toStrictEqual(forRead.session)
-      expect(await read(healthy, forRefresh.reference)).toStrictEqual(forRefresh.session)
-      expect(await read(healthy, forInvalidation.reference)).toStrictEqual(forInvalidation.session)
+      expect(sessionState(await read(healthy, forRead.reference))).toStrictEqual(sessionState(forRead.session))
+      expect(sessionState(await read(healthy, forRefresh.reference))).toStrictEqual(sessionState(forRefresh.session))
+      expect(sessionState(await read(healthy, forInvalidation.reference))).toStrictEqual(
+        sessionState(forInvalidation.session)
+      )
       expect(await invalidate(healthy, forInvalidation.reference)).toStrictEqual(noUsableSession)
       expect(await read(healthy, forInvalidation.reference)).toStrictEqual(noUsableSession)
     } finally {
@@ -531,8 +541,8 @@ describe("SessionService renewal, expiration, and invalidation on real Redis [PR
         })
       }))
       expect(renewed).toMatchObject({ _tag: "UsableSession", warningLeadMinutes: 2 })
-      expect(await read(runtimeA, first.reference)).toStrictEqual(renewed)
-      expect(await read(runtimeB, second.reference)).toStrictEqual(second.session)
+      expect(sessionState(await read(runtimeA, first.reference))).toStrictEqual(sessionState(renewed))
+      expect(sessionState(await read(runtimeB, second.reference))).toStrictEqual(sessionState(second.session))
     })
   })
 
@@ -544,9 +554,13 @@ describe("SessionService renewal, expiration, and invalidation on real Redis [PR
       const renewed = await refreshAt(runtimeB, established.reference, receivedAt, changedPolicy)
       expectRenewed(renewed, receivedAt)
       const expiration = await readAt(runtimeA, established.reference, deadline)
-      expect(expiration).toStrictEqual(renewed)
-      expect(await readAt(runtimeA, established.reference, receivedAt)).toStrictEqual(renewed)
-      expect(await readAt(runtimeB, established.reference, receivedAt)).toStrictEqual(renewed)
+      expect(sessionState(expiration)).toStrictEqual(sessionState(renewed))
+      expect(sessionState(await readAt(runtimeA, established.reference, receivedAt))).toStrictEqual(
+        sessionState(renewed)
+      )
+      expect(sessionState(await readAt(runtimeB, established.reference, receivedAt))).toStrictEqual(
+        sessionState(renewed)
+      )
     })
   })
 
@@ -601,9 +615,9 @@ describe("SessionService renewal, expiration, and invalidation on real Redis [PR
       const laterB = await readAt(runtimeB, established.reference, receivedAt)
       if (renewal._tag === "UsableSession") {
         expectRenewed(renewal, receivedAt)
-        expect(expiration).toStrictEqual(renewal)
-        expect(laterA).toStrictEqual(renewal)
-        expect(laterB).toStrictEqual(renewal)
+        expect(sessionState(expiration)).toStrictEqual(sessionState(renewal))
+        expect(sessionState(laterA)).toStrictEqual(sessionState(renewal))
+        expect(sessionState(laterB)).toStrictEqual(sessionState(renewal))
         return
       }
       expect(renewal).toStrictEqual(noUsableSession)
@@ -635,7 +649,7 @@ describe("SessionService renewal, expiration, and invalidation on real Redis [PR
     await withClients(async (runtimeA, runtimeB, prefix) => {
       const established = await establish(runtimeA, 30, 5)
       const receivedAt = established.session.idleDeadlineEpochMilliseconds - 60_000
-      expect(await read(runtimeB, established.reference)).toStrictEqual(established.session)
+      expect(sessionState(await read(runtimeB, established.reference))).toStrictEqual(sessionState(established.session))
 
       expect(await invalidate(runtimeA, established.reference)).toStrictEqual(noUsableSession)
       expect(await refreshAt(runtimeB, established.reference, receivedAt, changedPolicy)).toStrictEqual(noUsableSession)
@@ -652,7 +666,7 @@ describe("SessionService renewal, expiration, and invalidation on real Redis [PR
     await withClients(async (runtimeA, runtimeB, prefix) => {
       const established = await establish(runtimeA, 30, 5)
       const receivedAt = established.session.idleDeadlineEpochMilliseconds - 60_000
-      expect(await read(runtimeB, established.reference)).toStrictEqual(established.session)
+      expect(sessionState(await read(runtimeB, established.reference))).toStrictEqual(sessionState(established.session))
       const start = Deferred.makeUnsafe<undefined>()
       const renewalReady = Deferred.makeUnsafe<undefined>()
       const invalidationReady = Deferred.makeUnsafe<undefined>()
@@ -769,5 +783,52 @@ describe("SessionService renewal, expiration, and invalidation on real Redis [PR
       await runtime.dispose()
       await deleteOwnedPrefix(prefix)
     }
+  })
+})
+
+const refreshExcluded = (runtime: ManagedRuntime.ManagedRuntime<SessionService, unknown>, reference: string) =>
+  runtime.runPromise(
+    Effect.gen(function*() {
+      const service = yield* SessionService
+      return yield* service.refreshForTenant({ activity: "automatic-polling", reference, tenantAlias: alias })
+    })
+  )
+
+const revisionOf = (session: NoUsableSession | UsableSession) => {
+  expect(session._tag).toBe("UsableSession")
+  return session._tag === "UsableSession" ? session.revision : Number.NaN
+}
+
+describe("SessionService record revision on real Redis [PREETS-SESSION-010]", () => {
+  it("increments by exactly one on every write and is unchanged by reads and excluded refreshes", async () => {
+    await withClients(async (runtimeA, runtimeB) => {
+      const established = await establish(runtimeA, 30, 5)
+      expect(established.session.revision).toBe(1)
+      let expected = 1
+      for (let step = 0; step < 6; step += 1) {
+        const runtime = step % 2 === 0 ? runtimeA : runtimeB
+        const other = step % 2 === 0 ? runtimeB : runtimeA
+        expect(revisionOf(await read(runtime, established.reference))).toBe(expected)
+        expect(revisionOf(await refreshExcluded(other, established.reference))).toBe(expected)
+        const policy = step === 3 ? { idleTimeoutMinutes: 5, warningLeadMinutes: 0 } : changedPolicy
+        expected += 1
+        expect(revisionOf(await refreshAt(runtime, established.reference, Date.now(), policy))).toBe(expected)
+        expect(revisionOf(await read(other, established.reference))).toBe(expected)
+      }
+    })
+  })
+
+  it("reads a version-1 record as revision 0 and rewrites it as version 2 on its next write", async () => {
+    await withClients(async (runtimeA, runtimeB, prefix) => {
+      const established = await establish(runtimeA, 30, 5)
+      await corruptSinglePayload(prefix, (payload) => {
+        const { revision: _revision, ...record } = JSON.parse(payload) as Record<string, unknown>
+        return JSON.stringify({ ...record, version: 1 })
+      })
+      expect(revisionOf(await read(runtimeB, established.reference))).toBe(0)
+      expect(revisionOf(await refreshAt(runtimeB, established.reference, Date.now(), changedPolicy))).toBe(1)
+      const stored = await corruptSinglePayload(prefix, (payload) => payload)
+      expect(JSON.parse(stored.payload)).toMatchObject({ revision: 1, version: 2 })
+    })
   })
 })

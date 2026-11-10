@@ -40,6 +40,8 @@ const usableSession: UsableSession = {
   _tag: "UsableSession",
   identity: { issuer: "https://provider.test/", subject: "subject-1" },
   idleDeadlineEpochMilliseconds: NOW + 1_234_567,
+  observedAtEpochMilliseconds: 1_799_999_999_000,
+  revision: 3,
   tenantAlias: alias,
   warningLeadMinutes: 4
 }
@@ -499,7 +501,7 @@ describe("createProtectionProxy renewal [PREETS-SESSION-005]", () => {
   const sessionCookies = (response: Response) =>
     response.headers.getSetCookie().filter((cookie) => cookie.startsWith("pathable-session="))
 
-  it("renews a document entry as a deliberate page request and re-issues the cookie for the remaining idle time", async () => {
+  it("renews a document entry as a deliberate page request without writing the session cookie", async () => {
     install(sessionDouble(() => Effect.succeed(usableSession)))
 
     const response = await protect(request("/", { cookie: reference, headers: navigation }))
@@ -511,30 +513,52 @@ describe("createProtectionProxy renewal [PREETS-SESSION-005]", () => {
       reference,
       tenantAlias: alias
     }])
-    const cookies = sessionCookies(response)
-    expect(cookies).toHaveLength(1)
-    expect(cookies[0]).toContain(`pathable-session=${reference}`)
-    expect(cookies[0]).toContain("Max-Age=1234")
-    expect(cookies[0]).toContain("HttpOnly")
-    expect(cookies[0]).toContain("SameSite=lax")
-    expect(cookies[0]).toContain("Path=/")
-    expect(cookies[0]).toContain("Secure")
-    expect(cookies[0]).not.toContain("Domain=")
+    expect(response.headers.getSetCookie()).toEqual([])
     expect(passedThrough(response)).toBe(true)
   })
 
-  it("renews a protected Server Action submission as a deliberate form submission", async () => {
-    install(sessionDouble(() => Effect.succeed(usableSession)))
+  it.prop([pathname, anyMethod, headerSubset], { numRuns: 300 })(
+    "never renews a Server Action at the gate; the action renews after its tag check",
+    async (path, method, headers) => {
+      install(sessionDouble(() => Effect.succeed(usableSession)))
 
-    const response = await protect(
-      request("/", { cookie: reference, headers: { ...rscFetch, "next-action": "abc" }, method: "POST" })
-    )
+      const response = await protect(
+        request(path, { cookie: reference, headers: { ...headers, "next-action": "abc" }, method })
+      )
 
-    expect(recorded.reads).toEqual([])
-    expect(recorded.refreshes.map((input) => input.activity)).toEqual(["deliberate-form-submission"])
-    expect(recorded.refreshes[0]?.policy).toEqual(effectiveSessionPolicy(tenantConfig))
-    expect(sessionCookies(response)).toHaveLength(1)
-  })
+      expect(recorded.refreshes).toEqual([])
+      expect(recorded.reads).toEqual([{ reference, tenantAlias: alias }])
+      expect(passedThrough(response)).toBe(true)
+      expect(response.headers.getSetCookie()).toEqual([])
+    }
+  )
+
+  it.prop([fc.constantFrom("/session/activity", "/session/status", "/auth/logout"), anyMethod, headerSubset], {
+    numRuns: 300
+  })(
+    "never renews on a coordination endpoint, whatever the method, Fetch Metadata, or action header",
+    async (path, method, headers) => {
+      install(sessionDouble(() => Effect.succeed(usableSession)))
+
+      const response = await protect(request(path, { cookie: reference, headers, method }))
+
+      expect(recorded.refreshes).toEqual([])
+      expect(recorded.reads).toEqual([{ reference, tenantAlias: alias }])
+      expect(passedThrough(response)).toBe(true)
+      expect(response.headers.getSetCookie()).toEqual([])
+    }
+  )
+
+  it.prop([pathname, anyMethod, headerSubset], { numRuns: 300 })(
+    "sets no cookie on any protected outcome",
+    async (path, method, headers) => {
+      install(sessionDouble(() => Effect.succeed(usableSession)))
+
+      const response = await protect(request(path, { cookie: reference, headers, method }))
+
+      expect(response.headers.getSetCookie()).toEqual([])
+    }
+  )
 
   it.each([
     { headers: rscFetch, label: "RSC fetch or prefetch", method: "GET" },

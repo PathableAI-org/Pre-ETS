@@ -11,14 +11,13 @@ vi.mock("@pathableai/pre-ets-frontend-services", () => ({
 }))
 
 describe("application entry [PREETS-SESSION-001, PREETS-SESSION-004]", () => {
-  it("renders layout children without tenant work and redirects home before protected content", async () => {
+  it("redirects the protected layout and home page to login before protected content", async () => {
     vi.mocked(readSessionRequest).mockResolvedValue({
+      coordination: undefined,
       session: { _tag: "NoUsableSession" },
       tenantAlias: "springfield" as TenantAlias
     })
-    expect(await AppLayout({ children: "child rendering is independently gated" })).toBe(
-      "child rendering is independently gated"
-    )
+    await expect(AppLayout({ children: "protected content" })).rejects.toEqual(new RedirectError("/auth/login"))
     await expect(HomePage()).rejects.toEqual(new RedirectError("/auth/login"))
   })
 })

@@ -11,7 +11,8 @@ import {
   encodeStoredSession,
   makeSessionReference,
   makeTelemetryId,
-  type SessionReference
+  type SessionReference,
+  storedRevision
 } from "./session/codec.js"
 import { SessionStore } from "./session/store.js"
 
@@ -34,6 +35,11 @@ export type ExcludedSessionActivity =
   | "programmatic-focus"
   | "raw-pointer-movement"
   | "unrelated-background-traffic"
+
+/** A cutoff invalidation reached the store after its cutoff and deleted nothing (research D8, R27). */
+export interface InvalidationExpired {
+  readonly _tag: "InvalidationExpired"
+}
 
 /** Missing, malformed, expired, and deleted references. No identity or policy. */
 export interface NoUsableSession {
@@ -82,6 +88,13 @@ export interface UsableSession {
   readonly _tag: "UsableSession"
   readonly identity: SessionIdentity
   readonly idleDeadlineEpochMilliseconds: number
+  /**
+   * Redis `TIME` read inside the atomic store transition that returned this state, in milliseconds with microsecond
+   * fraction. Diagnostic only; never the ordering key.
+   */
+  readonly observedAtEpochMilliseconds: number
+  /** Stored record revision: 1 at establishment, plus 1 on every store write; orders states of one record (D6). */
+  readonly revision: number
   readonly tenantAlias: TenantAlias
   readonly warningLeadMinutes: number
 }
@@ -105,6 +118,7 @@ class SessionReferenceCollision extends Schema.TaggedError<SessionReferenceColli
   {}
 ) {}
 const noUsableSession: NoUsableSession = { _tag: "NoUsableSession" }
+const invalidationExpired: InvalidationExpired = { _tag: "InvalidationExpired" }
 
 const toUsableSession = (
   record: {
@@ -113,11 +127,14 @@ const toUsableSession = (
     readonly subject: string
     readonly tenantAlias: TenantAlias
     readonly warningLeadMinutes: number
-  }
+  },
+  observation: { readonly observedAtEpochMilliseconds: number; readonly revision: number }
 ): UsableSession => ({
   _tag: "UsableSession",
   identity: { issuer: record.issuer, subject: record.subject },
   idleDeadlineEpochMilliseconds: record.idleDeadlineEpochMilliseconds,
+  observedAtEpochMilliseconds: observation.observedAtEpochMilliseconds,
+  revision: observation.revision,
   tenantAlias: record.tenantAlias,
   warningLeadMinutes: record.warningLeadMinutes
 })
@@ -129,11 +146,23 @@ const isQualifyingRefresh = (
 ): input is Extract<RefreshSessionForTenantInput, { readonly activity: QualifyingSessionActivity }> =>
   isQualifyingActivity(input.activity)
 
-const exposeIfStillUsable = Effect.fnUntraced(function*(payload: string) {
-  const record = yield* serviceUnavailable(decodeStoredSession(payload))
+/** Missing and expired records are no usable session; a current or renewed record is exposed if still usable. */
+const exposeOutcome = (
+  outcome:
+    | { readonly _tag: "Current" | "Renewed"; readonly observedAtEpochMilliseconds: number; readonly payload: string }
+    | { readonly _tag: "Expired" | "Missing" }
+) => "payload" in outcome ? exposeIfStillUsable(outcome) : Effect.succeed(noUsableSession)
+
+const exposeIfStillUsable = Effect.fnUntraced(function*(
+  outcome: { readonly observedAtEpochMilliseconds: number; readonly payload: string }
+) {
+  const record = yield* serviceUnavailable(decodeStoredSession(outcome.payload))
   if (record.idleDeadlineEpochMilliseconds <= (yield* Clock.currentTimeMillis)) return noUsableSession
   yield* Effect.annotateCurrentSpan("session.id", record.telemetryId)
-  return toUsableSession(record)
+  return toUsableSession(record, {
+    observedAtEpochMilliseconds: outcome.observedAtEpochMilliseconds,
+    revision: storedRevision(record)
+  })
 })
 
 const refreshRequest = (
@@ -157,9 +186,11 @@ export class SessionService extends Context.Service<SessionService, {
   readonly establish: (
     input: EstablishSessionInput
   ) => Effect.Effect<EstablishedSession, SessionServiceUnavailable>
-  readonly invalidate: (
-    input: { readonly reference?: string | undefined }
-  ) => Effect.Effect<NoUsableSession, SessionServiceUnavailable>
+  readonly invalidate: (input: {
+    /** When present, delete only if Redis `TIME` is at or before this value; otherwise delete nothing. */
+    readonly notAfterEpochMilliseconds?: number | undefined
+    readonly reference?: string | undefined
+  }) => Effect.Effect<InvalidationExpired | NoUsableSession, SessionServiceUnavailable>
   readonly read: (
     input: { readonly reference?: string | undefined }
   ) => Effect.Effect<NoUsableSession | UsableSession, SessionServiceUnavailable>
@@ -186,25 +217,29 @@ export class SessionService extends Context.Service<SessionService, {
               const payload = yield* serviceUnavailable(encodeStoredSession({
                 idleDeadlineEpochMilliseconds,
                 issuer: input.identity.issuer,
+                revision: 1,
                 subject: input.identity.subject,
                 telemetryId,
                 tenantAlias: input.tenantAlias,
-                version: 1,
+                version: 2,
                 warningLeadMinutes: input.policy.warningLeadMinutes
               }))
               const ttlMilliseconds = idleDeadlineEpochMilliseconds - now
               const outcome = yield* serviceUnavailable(store.create({ reference }, payload, ttlMilliseconds))
-              if (outcome === "exists") return yield* new SessionReferenceCollision({})
+              if (outcome._tag === "Exists") return yield* new SessionReferenceCollision({})
               yield* Effect.annotateCurrentSpan("session.id", telemetryId)
               return {
                 reference,
-                session: toUsableSession({
-                  idleDeadlineEpochMilliseconds,
-                  issuer: input.identity.issuer,
-                  subject: input.identity.subject,
-                  tenantAlias: input.tenantAlias,
-                  warningLeadMinutes: input.policy.warningLeadMinutes
-                })
+                session: toUsableSession(
+                  {
+                    idleDeadlineEpochMilliseconds,
+                    issuer: input.identity.issuer,
+                    subject: input.identity.subject,
+                    tenantAlias: input.tenantAlias,
+                    warningLeadMinutes: input.policy.warningLeadMinutes
+                  },
+                  { observedAtEpochMilliseconds: outcome.observedAtEpochMilliseconds, revision: 1 }
+                )
               }
             })
 
@@ -218,21 +253,23 @@ export class SessionService extends Context.Service<SessionService, {
         })
 
         const invalidate = Effect.fn("SessionService.invalidate")(function*(
-          input: { readonly reference?: string | undefined }
+          input: Parameters<SessionService["Service"]["invalidate"]>[0]
         ) {
           const reference = decodeSessionReference(input.reference)
           if (Option.isNone(reference)) return noUsableSession
-          yield* serviceUnavailable(store.invalidate({ reference: reference.value }))
-          return noUsableSession
+          const outcome = yield* serviceUnavailable(
+            store.invalidate({ reference: reference.value }, input.notAfterEpochMilliseconds)
+          )
+          return outcome === "expired" ? invalidationExpired : noUsableSession
         })
 
         const read = Effect.fn("SessionService.read")(function*(input: { readonly reference?: string | undefined }) {
           const reference = decodeSessionReference(input.reference)
           if (Option.isNone(reference)) return noUsableSession
-          const receivedAt = yield* Clock.currentTimeMillis
-          const outcome = yield* serviceUnavailable(store.read({ receivedAt, reference: reference.value }))
-          if (outcome._tag === "Missing" || outcome._tag === "Expired") return noUsableSession
-          return yield* exposeIfStillUsable(outcome.payload)
+          const outcome = yield* serviceUnavailable(
+            store.read({ receivedAt: yield* Clock.currentTimeMillis, reference: reference.value })
+          )
+          return yield* exposeOutcome(outcome)
         })
 
         const readForTenant = Effect.fn("SessionService.readForTenant")(function*(input: ReadSessionForTenantInput) {
@@ -249,9 +286,8 @@ export class SessionService extends Context.Service<SessionService, {
           if (Option.isNone(reference)) return noUsableSession
           const receivedAt = yield* Clock.currentTimeMillis
           const outcome = yield* serviceUnavailable(store.refresh(refreshRequest(input, receivedAt, reference.value)))
-          if (outcome._tag === "Missing" || outcome._tag === "Expired") return noUsableSession
           if (outcome._tag === "Mismatch") return yield* new SessionTenantMismatch({})
-          return yield* exposeIfStillUsable(outcome.payload)
+          return yield* exposeOutcome(outcome)
         })
 
         return SessionService.of({

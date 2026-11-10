@@ -4,7 +4,7 @@ import { TestClock } from "effect/testing"
 
 import { SessionService } from "../../src/session.ts"
 import { effectiveSessionPolicy, TenantConfigService } from "../../src/tenant.ts"
-import { SessionRedis, sessionWorld } from "../helpers/session.ts"
+import { SessionRedis, sessionState, sessionWorld } from "../helpers/session.ts"
 
 const baseDocument = {
   displayName: "Synthetic policy",
@@ -115,7 +115,9 @@ describe("selected tenant policy and session refresh [PREETS-SESSION-008, PREETS
         idleDeadlineEpochMilliseconds: BASE_TIME + 5 * 60_000,
         warningLeadMinutes: 0
       })
-      expect(yield* session.read({ reference: first.reference })).toStrictEqual(first.session)
+      expect(sessionState(yield* session.read({ reference: first.reference }))).toStrictEqual(
+        sessionState(first.session)
+      )
       const receivedAt = BASE_TIME + 20_000
       yield* TestClock.setTime(receivedAt)
       const renewed = yield* refreshFromHost("renewal.example.test", first.reference)
@@ -123,7 +125,9 @@ describe("selected tenant policy and session refresh [PREETS-SESSION-008, PREETS
         idleDeadlineEpochMilliseconds: receivedAt + 5 * 60_000,
         warningLeadMinutes: 0
       })
-      expect(yield* session.read({ reference: second.reference })).toStrictEqual(second.session)
+      expect(sessionState(yield* session.read({ reference: second.reference }))).toStrictEqual(
+        sessionState(second.session)
+      )
       documents.set("renewal.json", tenantDocument({ idleTimeoutMinutes: 30, warningLeadMinutes: 5 }))
       const later = receivedAt + 10_000
       yield* TestClock.setTime(later)
@@ -132,7 +136,7 @@ describe("selected tenant policy and session refresh [PREETS-SESSION-008, PREETS
         idleDeadlineEpochMilliseconds: later + 30 * 60_000,
         warningLeadMinutes: 5
       })
-      expect(yield* session.read({ reference: first.reference })).toStrictEqual(renewed)
+      expect(sessionState(yield* session.read({ reference: first.reference }))).toStrictEqual(sessionState(renewed))
     }).pipe(Effect.provide(world(documents)))
   })
 })

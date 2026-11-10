@@ -1,6 +1,11 @@
 import type * as FrontendServices from "@pathableai/pre-ets-frontend-services"
 
-import { readSessionRequest, SESSION_COOKIE, type TenantAlias } from "@pathableai/pre-ets-frontend-services"
+import {
+  authorizeSessionAction,
+  readSessionRequest,
+  SESSION_COOKIE,
+  type TenantAlias
+} from "@pathableai/pre-ets-frontend-services"
 import { readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -32,6 +37,7 @@ vi.mock("../../src/features/session-reference.ts", () => ({
 
 vi.mock("@pathableai/pre-ets-frontend-services", async (importOriginal) => ({
   ...await importOriginal<typeof FrontendServices>(),
+  authorizeSessionAction: vi.fn(),
   readSessionRequest: vi.fn()
 }))
 
@@ -41,14 +47,30 @@ const usableSession = {
   _tag: "UsableSession" as const,
   identity: { issuer: "https://provider.test/", subject: "subject-1" },
   idleDeadlineEpochMilliseconds: 1_800_000_000_000,
+  observedAtEpochMilliseconds: 1_799_999_999_000,
+  revision: 3,
   tenantAlias: springfield,
   warningLeadMinutes: 5
+}
+const coordination = {
+  coordinationTag: "observed-session-tag",
+  idleDeadlineEpochMilliseconds: usableSession.idleDeadlineEpochMilliseconds,
+  observedAtEpochMilliseconds: usableSession.observedAtEpochMilliseconds,
+  revision: usableSession.revision,
+  serverTimeEpochMilliseconds: 1_799_999_999_500,
+  warningLeadMinutes: usableSession.warningLeadMinutes
+}
+const submittedTag = (tag: string) => {
+  const formData = new FormData()
+  formData.set("coordinationTag", tag)
+  return formData
 }
 
 describe("reference session enforcement [PREETS-SESSION-001, PREETS-SESSION-004, PREETS-SESSION-005]", () => {
   beforeEach(() => {
     operationProps.length = 0
     vi.mocked(readSessionRequest).mockReset()
+    vi.mocked(authorizeSessionAction).mockReset()
     resetRequestCookies()
     setRequestHost("springfield.localhost:3000")
     setRequestCookie(SESSION_COOKIE, "opaque-reference")
@@ -56,6 +78,7 @@ describe("reference session enforcement [PREETS-SESSION-001, PREETS-SESSION-004,
 
   it("renders the admitted session and passes only the action into the feature client", async () => {
     vi.mocked(readSessionRequest).mockResolvedValue({
+      coordination,
       session: usableSession,
       tenantAlias: usableSession.tenantAlias
     })
@@ -74,13 +97,14 @@ describe("reference session enforcement [PREETS-SESSION-001, PREETS-SESSION-004,
     })
   })
 
-  it("returns one protected result and emits one receipt for a matching action", async () => {
-    vi.mocked(readSessionRequest).mockResolvedValue({
+  it("returns one protected result and emits one receipt for an authorized action", async () => {
+    vi.mocked(authorizeSessionAction).mockResolvedValue({
+      _tag: "Authorized",
       session: usableSession,
       tenantAlias: usableSession.tenantAlias
     })
 
-    const result = await runReferenceOperation(initialReferenceActionState, new FormData())
+    const result = await runReferenceOperation(initialReferenceActionState, submittedTag(coordination.coordinationTag))
 
     expect(result._tag).toBe("Succeeded")
     if (result._tag === "Succeeded") {
@@ -93,11 +117,37 @@ describe("reference session enforcement [PREETS-SESSION-001, PREETS-SESSION-004,
     const options = cookieWriteOptions()[0]
     expect(options).toMatchObject({ httpOnly: true, path: "/", sameSite: "lax", secure: false })
     expect(options).not.toHaveProperty("domain")
-    expect(readSessionRequest).toHaveBeenCalledTimes(1)
+    expect(authorizeSessionAction).toHaveBeenCalledExactlyOnceWith({
+      coordinationTag: coordination.coordinationTag,
+      host: "springfield.localhost:3000",
+      reference: "opaque-reference"
+    })
+    expect(readSessionRequest).not.toHaveBeenCalled()
   })
+
+  it.each([
+    ["a stale tab's tag", submittedTag("earlier-session-tag"), "earlier-session-tag"],
+    ["no tag", new FormData(), undefined]
+  ])(
+    "passes %s to authorization and refuses a changed session with no receipt [PREETS-SESSION-010]",
+    async (_label, formData, coordinationTag) => {
+      vi.mocked(authorizeSessionAction).mockResolvedValue({ _tag: "SessionChanged" })
+
+      const result = await runReferenceOperation(initialReferenceActionState, formData)
+
+      expect(result._tag).toBe("Denied")
+      expect(authorizeSessionAction).toHaveBeenCalledExactlyOnceWith({
+        coordinationTag,
+        host: "springfield.localhost:3000",
+        reference: "opaque-reference"
+      })
+      expect(cookieWriteCount()).toBe(0)
+    }
+  )
 
   it("redirects a page without a usable session and does not emit a receipt", async () => {
     vi.mocked(readSessionRequest).mockResolvedValue({
+      coordination: undefined,
       session: { _tag: "NoUsableSession" },
       tenantAlias: springfield
     })
@@ -107,10 +157,7 @@ describe("reference session enforcement [PREETS-SESSION-001, PREETS-SESSION-004,
   })
 
   it("denies an action without a usable session and does not start login or emit a receipt", async () => {
-    vi.mocked(readSessionRequest).mockResolvedValue({
-      session: { _tag: "NoUsableSession" },
-      tenantAlias: springfield
-    })
+    vi.mocked(authorizeSessionAction).mockResolvedValue({ _tag: "NoUsableSession" })
 
     const result = await runReferenceOperation({ _tag: "Succeeded", message: "previous" }, new FormData())
 
@@ -121,11 +168,12 @@ describe("reference session enforcement [PREETS-SESSION-001, PREETS-SESSION-004,
       expect(result.message).not.toContain("previous")
     }
     expect(cookieWriteCount()).toBe(0)
-    expect(readSessionRequest).toHaveBeenCalledTimes(1)
+    expect(authorizeSessionAction).toHaveBeenCalledTimes(1)
   })
 
   it("lets a tenant mismatch forbid the page and action before a receipt", async () => {
     vi.mocked(readSessionRequest).mockRejectedValue(new ForbiddenError())
+    vi.mocked(authorizeSessionAction).mockRejectedValue(new ForbiddenError())
 
     await expect(HomePage()).rejects.toBeInstanceOf(ForbiddenError)
     await expect(runReferenceOperation(initialReferenceActionState, new FormData())).rejects.toBeInstanceOf(
@@ -136,6 +184,7 @@ describe("reference session enforcement [PREETS-SESSION-001, PREETS-SESSION-004,
 
   it("propagates service and tenant failures without a protected result or receipt", async () => {
     vi.mocked(readSessionRequest).mockRejectedValue(new Error("The session service is unavailable"))
+    vi.mocked(authorizeSessionAction).mockRejectedValue(new Error("The session service is unavailable"))
     await expect(HomePage()).rejects.toThrow("The session service is unavailable")
     await expect(runReferenceOperation(initialReferenceActionState, new FormData())).rejects.toThrow(
       "The session service is unavailable"
@@ -156,7 +205,9 @@ describe("reference session enforcement [PREETS-SESSION-001, PREETS-SESSION-004,
       join(frontendRoot, "../frontend-services/src/next/tenant.ts")
     ]
     for (const file of files) {
-      expect(readFileSync(file, "utf8")).not.toContain("readSessionRequest")
+      const source = readFileSync(file, "utf8")
+      expect(source).not.toContain("readSessionRequest")
+      expect(source).not.toContain("authorizeSessionAction")
     }
   })
 })

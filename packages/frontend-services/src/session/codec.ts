@@ -21,25 +21,35 @@ type TelemetryId = typeof TelemetryId.Type
 
 const NonEmptyString = Schema.NonEmptyString
 
-/**
- * Version-1 stored session record. The private wire representation of one
- * frontend-owned transient session. It contains no provider token, credential,
- * callback evidence, role, arbitrary value, refresh timestamp, maximum lifetime,
- * or tombstone.
- */
-const StoredSessionV1 = Schema.Struct({
+const storedFields = {
   idleDeadlineEpochMilliseconds: Schema.Int.pipe(Schema.check(Schema.isGreaterThan(0))),
   issuer: NonEmptyString,
   subject: NonEmptyString,
   telemetryId: TelemetryId,
   tenantAlias: TenantAlias,
-  version: Schema.Literal(1),
   warningLeadMinutes: Schema.Int.pipe(Schema.check(Schema.isGreaterThanOrEqualTo(0)))
-})
+}
 
-type StoredSessionV1 = typeof StoredSessionV1.Type
+/**
+ * The private wire representation of one frontend-owned transient session. It contains no provider token,
+ * credential, callback evidence, role, arbitrary value, refresh timestamp, maximum lifetime, or tombstone.
+ * Version 2 adds `revision`, incremented on every store write; a version-1 record reads as revision 0 and is
+ * rewritten as version 2 on its next write (research D6, R16).
+ */
+const StoredSessionRecord = Schema.Union([
+  Schema.Struct({ ...storedFields, version: Schema.Literal(1) }),
+  Schema.Struct({
+    ...storedFields,
+    revision: Schema.Int.pipe(Schema.check(Schema.isGreaterThan(0))),
+    version: Schema.Literal(2)
+  })
+])
 
-const StoredSession = Schema.fromJsonString(StoredSessionV1)
+const StoredSession = Schema.fromJsonString(StoredSessionRecord)
+
+/** The record's revision; a version-1 record has none and reads as 0. */
+export const storedRevision = (record: typeof StoredSessionRecord.Type): number =>
+  record.version === 2 ? record.revision : 0
 
 export const decodeStoredSession = Schema.decodeUnknownEffect(StoredSession, { onExcessProperty: "error" })
 export const encodeStoredSession = Schema.encodeEffect(StoredSession)

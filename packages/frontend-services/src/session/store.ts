@@ -6,12 +6,15 @@ import { createHash } from "node:crypto"
  * Store-level existence outcomes kept deliberately coarse: the parent owns the
  * public session vocabulary and never exposes a key or encoded payload here.
  */
-type CreateOutcome = "created" | "exists"
+type CreateOutcome =
+  | { readonly _tag: "Created"; readonly observedAtEpochMilliseconds: number }
+  | { readonly _tag: "Exists" }
 
-type InvalidateOutcome = "missing" | "removed"
+type InvalidateOutcome = "expired" | "missing" | "removed"
 
+/** `observedAtEpochMilliseconds` is the Redis `TIME` read inside the atomic transition that returned the payload. */
 type ReadOutcome =
-  | { readonly _tag: "Current"; readonly payload: string }
+  | { readonly _tag: "Current"; readonly observedAtEpochMilliseconds: number; readonly payload: string }
   | { readonly _tag: "Expired" }
   | { readonly _tag: "Missing" }
 
@@ -30,11 +33,11 @@ interface SessionStoreAddress {
 }
 
 type StoreTransition =
-  | { readonly _tag: "Current"; readonly payload: string }
+  | { readonly _tag: "Current"; readonly observedAtEpochMilliseconds: number; readonly payload: string }
   | { readonly _tag: "Expired" }
   | { readonly _tag: "Mismatch" }
   | { readonly _tag: "Missing" }
-  | { readonly _tag: "Renewed"; readonly payload: string }
+  | { readonly _tag: "Renewed"; readonly observedAtEpochMilliseconds: number; readonly payload: string }
 
 class SessionStoreUnavailable extends Schema.TaggedError<SessionStoreUnavailable>()(
   "SessionStoreUnavailable",
@@ -52,7 +55,7 @@ const keyFor = (prefix: string, reference: string): string => {
  */
 const TransitionReply = Schema.Union([
   Schema.Tuple([Schema.Literals(["expired", "mismatch", "missing"])]),
-  Schema.Tuple([Schema.Literals(["current", "renewed"]), Schema.String])
+  Schema.Tuple([Schema.Literals(["current", "renewed"]), Schema.String, Schema.NumberFromString])
 ])
 
 const decodeTransitionReply = Schema.decodeUnknownEffect(TransitionReply)
@@ -68,7 +71,7 @@ const transitionTags = {
 const toTransition = (reply: typeof TransitionReply.Type): StoreTransition =>
   reply.length === 1 ?
     { _tag: transitionTags[reply[0]] } :
-    { _tag: transitionTags[reply[0]], payload: reply[1] }
+    { _tag: transitionTags[reply[0]], observedAtEpochMilliseconds: reply[2] / 1_000, payload: reply[1] }
 
 /**
  * One key. Validate the stored record, admit the tenant, and build the reply
@@ -105,6 +108,13 @@ local function is_uuid(value)
   return string.match(value, "^%x%x%x%x%x%x%x%x%-%x%x%x%x%-[1-8]%x%x%x%-[89abAB]%x%x%x%-%x%x%x%x%x%x%x%x%x%x%x%x$") ~= nil
 end
 
+-- Redis TIME inside this transition, in whole microseconds (exact below 2^53), as a decimal string: Redis would
+-- truncate a fractional Lua number. Microseconds keep a read and a concurrent renewal from tying within a millisecond.
+local function observed_at()
+  local now = redis.call("TIME")
+  return string.format("%.0f", tonumber(now[1]) * 1000000 + tonumber(now[2]))
+end
+
 local function is_alias(value)
   return nonempty(value) and string.match(value, "^[%l%-]+$") ~= nil
 end
@@ -112,6 +122,7 @@ end
 local allowed = {
   idleDeadlineEpochMilliseconds = true,
   issuer = true,
+  revision = true,
   subject = true,
   telemetryId = true,
   tenantAlias = true,
@@ -126,8 +137,10 @@ local function valid(record)
     if allowed[field] ~= true then return false end
     count = count + 1
   end
-  if count ~= 7 then return false end
-  return record.version == 1
+  -- Version 1 has seven fields; version 2 adds a positive integral revision (research D6, R16).
+  local versioned = (record.version == 1 and count == 7)
+    or (record.version == 2 and count == 8 and integral(record.revision) and record.revision > 0)
+  return versioned
     and nonempty(record.issuer)
     and nonempty(record.subject)
     and is_uuid(record.telemetryId)
@@ -157,7 +170,7 @@ if decoded.idleDeadlineEpochMilliseconds <= received_at then
 end
 
 if mode == "read" or activity == "excluded" then
-  return {"current", raw}
+  return {"current", raw, observed_at()}
 end
 
 if activity ~= "qualifying" or not integral(timeout_ms) or timeout_ms <= 0 or not integral(warning) or warning < 0 then
@@ -165,13 +178,15 @@ if activity ~= "qualifying" or not integral(timeout_ms) or timeout_ms <= 0 or no
 end
 
 local new_deadline = received_at + timeout_ms
+-- Every write increments the revision; a version-1 record counts as revision 0 and is rewritten as version 2.
 local encoded_ok, replacement = pcall(cjson.encode, {
   idleDeadlineEpochMilliseconds = new_deadline,
   issuer = decoded.issuer,
+  revision = (decoded.revision or 0) + 1,
   subject = decoded.subject,
   telemetryId = decoded.telemetryId,
   tenantAlias = decoded.tenantAlias,
-  version = 1,
+  version = 2,
   warningLeadMinutes = warning
 })
 if not encoded_ok or type(replacement) ~= "string" or new_deadline <= received_at then
@@ -179,8 +194,27 @@ if not encoded_ok or type(replacement) ~= "string" or new_deadline <= received_a
 end
 
 redis.call("SET", key, replacement, "PX", new_deadline - received_at)
-return {"renewed", replacement}
+return {"renewed", replacement, observed_at()}
 `
+
+/**
+ * Deletes the record only while Redis `TIME` is at or before the cutoff, in one atomic step, so an attempt admitted
+ * before the cutoff cannot delete after it (research D8, R27). Times are compared in whole microseconds.
+ */
+const cutoffInvalidationLua = `
+local cutoff_ms = tonumber(ARGV[1])
+if cutoff_ms == nil then return "rejected" end
+local now = redis.call("TIME")
+local now_us = tonumber(now[1]) * 1000000 + tonumber(now[2])
+if now_us > math.floor(cutoff_ms * 1000) then return "expired" end
+if redis.call("DEL", KEYS[1]) == 1 then return "removed" end
+return "missing"
+`
+
+const cutoffInvalidation = Redis.script(
+  (key: string, cutoffMilliseconds: string) => [key, cutoffMilliseconds],
+  { lua: cutoffInvalidationLua, numberOfKeys: 1 }
+).withReturnType<unknown>()
 
 interface TransitionInput {
   readonly activity: string
@@ -216,8 +250,24 @@ const expectedReply = <const A>(
   return match === undefined ? Effect.fail(unavailable()) : Effect.succeed(match[1])
 }
 
+/** Redis `TIME` as `[seconds, microseconds]`. */
+const TimeReply = Schema.Tuple([Schema.NumberFromString, Schema.NumberFromString])
+const decodeTimeReply = Schema.decodeUnknownEffect(TimeReply)
+
+/**
+ * Read before the `SET NX`, so the establishment observation orders before every later transition of the record.
+ * Establishment happens once per reference, so the extra round trip is not on a hot path.
+ */
+const observeTime = (redis: Redis.Redis["Service"]) =>
+  redis.send("TIME").pipe(
+    Effect.flatMap(decodeTimeReply),
+    Effect.map(([seconds, microseconds]) => seconds * 1_000 + microseconds / 1_000),
+    Effect.mapError(unavailable)
+  )
+
 const makeCreate = (redis: Redis.Redis["Service"], prefix: string) =>
   Effect.fnUntraced(function*(address: SessionStoreAddress, payload: string, ttlMilliseconds: number) {
+    const observedAtEpochMilliseconds = yield* observeTime(redis)
     const reply = yield* redis.send(
       "SET",
       keyFor(prefix, address.reference),
@@ -226,15 +276,23 @@ const makeCreate = (redis: Redis.Redis["Service"], prefix: string) =>
       "PX",
       String(ttlMilliseconds)
     ).pipe(Effect.mapError(unavailable))
-    return yield* expectedReply(reply, [["OK", "created"], [null, "exists"]])
+    const outcome = yield* expectedReply(reply, [["OK", "created"], [null, "exists"]])
+    return outcome === "created" ?
+      { _tag: "Created" as const, observedAtEpochMilliseconds } :
+      { _tag: "Exists" as const }
   })
 
 const makeInvalidate = (redis: Redis.Redis["Service"], prefix: string) =>
-  Effect.fnUntraced(function*(address: SessionStoreAddress) {
-    const reply = yield* redis.send("DEL", keyFor(prefix, address.reference)).pipe(
+  Effect.fnUntraced(function*(address: SessionStoreAddress, cutoffMilliseconds?: number) {
+    const key = keyFor(prefix, address.reference)
+    if (cutoffMilliseconds === undefined) {
+      const reply = yield* redis.send("DEL", key).pipe(Effect.mapError(unavailable))
+      return yield* expectedReply(reply, [[0, "missing"], [1, "removed"]])
+    }
+    const reply = yield* redis.eval(cutoffInvalidation)(key, String(cutoffMilliseconds)).pipe(
       Effect.mapError(unavailable)
     )
-    return yield* expectedReply(reply, [[0, "missing"], [1, "removed"]])
+    return yield* expectedReply(reply, [["expired", "expired"], ["missing", "missing"], ["removed", "removed"]])
   })
 
 const makeTransition = (redis: Redis.Redis["Service"], prefix: string) =>
@@ -290,7 +348,8 @@ export class SessionStore extends Context.Service<SessionStore, {
     ttlMilliseconds: number
   ) => Effect.Effect<CreateOutcome, SessionStoreUnavailable>
   readonly invalidate: (
-    address: SessionStoreAddress
+    address: SessionStoreAddress,
+    cutoffMilliseconds?: number
   ) => Effect.Effect<InvalidateOutcome, SessionStoreUnavailable>
   readonly read: (
     input: { readonly receivedAt: number; readonly reference: string }

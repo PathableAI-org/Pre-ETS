@@ -2,8 +2,9 @@ import { NodeRedis } from "@effect/platform-node"
 import { Clock, Context, Deferred, Effect, Layer } from "effect"
 import * as Redis from "effect/persistence/Redis"
 import { randomUUID } from "node:crypto"
+import { expect } from "vitest"
 
-import { SessionService } from "../../src/session.ts"
+import { type NoUsableSession, SessionService, type UsableSession } from "../../src/session.ts"
 import { makeRedis, poolClock } from "./redis.ts"
 
 export interface StoredSessionRecord {
@@ -39,7 +40,8 @@ type SessionRedisFault =
 export class SessionRedis extends Context.Service<SessionRedis, {
   /** Store commands the session service sent, in order. Setup and inspection are not recorded. */
   readonly commands: Effect.Effect<readonly string[]>
-  readonly injectNext: (command: SessionRedisCommand, fault: SessionRedisFault) => Effect.Effect<void>
+  /** Applies `fault` to the matching command after `skip` earlier matches pass through unchanged. */
+  readonly injectNext: (command: SessionRedisCommand, fault: SessionRedisFault, skip?: number) => Effect.Effect<void>
   /** Every live record under this scenario's prefix, by key. */
   readonly records: Effect.Effect<ReadonlyMap<string, StoredSessionRecord>, Redis.RedisError>
   readonly removeAll: Effect.Effect<void, Redis.RedisError>
@@ -111,20 +113,25 @@ const makeSessionRedis = Effect.fnUntraced(function*(prefix: string) {
   const real = yield* Redis.Redis
   yield* Effect.addFinalizer(() => Effect.ignore(removeOwned(real, prefix)))
   const commands: string[] = []
-  const faults = new Map<string, SessionRedisFault>()
+  const faults = new Map<string, { readonly fault: SessionRedisFault; skip: number }>()
 
   const send = <A>(command: string, ...args: readonly string[]) =>
     Effect.suspend(() => {
       commands.push(command)
-      const fault = faults.get(command)
-      faults.delete(command)
       const forward = real.send<A>(command, ...args)
-      return fault === undefined ? forward : applyFault(fault, forward)
+      const pending = faults.get(command)
+      if (pending === undefined) return forward
+      if (pending.skip > 0) {
+        pending.skip -= 1
+        return forward
+      }
+      faults.delete(command)
+      return applyFault(pending.fault, forward)
     })
 
   const control = SessionRedis.of({
     commands: Effect.sync(() => [...commands]),
-    injectNext: (command, fault) => Effect.sync(() => faults.set(command, fault)),
+    injectNext: (command, fault, skip = 0) => Effect.sync(() => faults.set(command, { fault, skip })),
     records: readRecords(real, prefix),
     removeAll: removeOwned(real, prefix),
     rewriteAll: Effect.fnUntraced(function*(rewrite) {
@@ -149,3 +156,11 @@ export const sessionWorld: Layer.Layer<SessionRedis | SessionService, Redis.Redi
     return SessionService.layer({ keyPrefix: prefix }).pipe(Layer.provideMerge(redis))
   })
 )
+
+/** Public session state without the store observation time, which differs per transition by design (research D6). */
+export const sessionState = (session: NoUsableSession | UsableSession) => {
+  if (session._tag === "NoUsableSession") return session
+  const { observedAtEpochMilliseconds, ...state } = session
+  expect(Number.isFinite(observedAtEpochMilliseconds)).toBe(true)
+  return state
+}

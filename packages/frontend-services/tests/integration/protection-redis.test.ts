@@ -89,15 +89,22 @@ describe("createProtectionProxy over the real session store [PREETS-SESSION-001,
     }
   }
 
-  it("admits and renews a live Springfield session, re-issuing its cookie", () =>
+  it("admits and renews a live Springfield session without writing its cookie", () =>
     withWorld(async (world) => {
       const established = await establish(world, springfield)
+      await new Promise((resolve) => setTimeout(resolve, 20))
 
       const response = await protect(request(established.reference, navigation))
 
       expect(response.headers.get("x-middleware-next")).toBe("1")
-      const cookie = response.headers.getSetCookie().find((value) => value.startsWith("pathable-session="))
-      expect(cookie).toContain(`pathable-session=${established.reference}`)
+      expect(response.headers.getSetCookie()).toEqual([])
+      const renewed = await world.runPromise(
+        SessionService.use((sessions) => sessions.read({ reference: established.reference }))
+      )
+      expect(renewed._tag).toBe("UsableSession")
+      if (renewed._tag === "UsableSession") {
+        expect(renewed.idleDeadlineEpochMilliseconds).toBeGreaterThan(established.session.idleDeadlineEpochMilliseconds)
+      }
     }))
 
   it("sends an expired session to login for a document and 401 otherwise", () =>

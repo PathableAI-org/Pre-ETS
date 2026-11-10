@@ -4,6 +4,18 @@
  */
 export { type CallbackResponses, createCallbackHandler } from "./next/callback.js"
 export { requestCookieOptions } from "./next/cookies.js"
+export { type SessionCoordinationSnapshot } from "./next/coordination-snapshot.js"
+export {
+  type AuthorizedSessionAction,
+  authorizeSessionAction,
+  type AuthorizeSessionActionInput,
+  createLogoutHandler,
+  createSessionActivityHandler,
+  createSessionStatusHandler,
+  type InPageSessionActivity,
+  type LogoutRequestBody,
+  type SessionActivityRequestBody
+} from "./next/coordination.js"
 export { CallbackFreshness } from "./next/freshness.js"
 export { PRIVATE_NO_STORE } from "./next/handler.js"
 export { createLoginHandler } from "./next/login.js"

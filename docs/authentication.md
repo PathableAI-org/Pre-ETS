@@ -172,6 +172,15 @@ versioned Redis keys, host-only callback-path correlation cookies, and TTL-bound
 session records all expire naturally. A remaining `pathable-session` cookie grants no
 protected access and must not be treated as authenticated state by a prior revision.
 
+## Application logout
+
+`POST /auth/logout` ([#155](https://github.com/PathableAI-org/Pre-ETS/issues/155)) invalidates the
+application session and expires `pathable-session`. It sends no end-session request to the
+identity provider, so a provider session may remain. The B6 decision requires fresh
+authentication for every login without a valid application session (enforced once
+[#158](https://github.com/PathableAI-org/Pre-ETS/issues/158) lands), so that provider session cannot
+silently restore application access. Provider logout would need a requirements decision.
+
 ## Session policy handoff
 
 [TenantConfigService](../packages/frontend-services/src/tenant.ts) provides validated

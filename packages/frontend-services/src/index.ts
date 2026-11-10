@@ -1,9 +1,17 @@
 export {
+  type AuthorizedSessionAction,
+  authorizeSessionAction,
+  type AuthorizeSessionActionInput,
   type CallbackResponses,
   createCallbackHandler,
   createLoginHandler,
+  createLogoutHandler,
   createProtectionProxy,
+  createSessionActivityHandler,
+  createSessionStatusHandler,
+  type InPageSessionActivity,
   loadTenantConfig,
+  type LogoutRequestBody,
   PRIVATE_NO_STORE,
   type ProtectionResponses,
   readSessionRequest,
@@ -11,6 +19,8 @@ export {
   requestCookieOptions,
   type ResolvedSessionRequest,
   SESSION_COOKIE,
+  type SessionActivityRequestBody,
+  type SessionCoordinationSnapshot,
   tenantConfigResponse,
   type TenantFailureResponse
 } from "./next.js"

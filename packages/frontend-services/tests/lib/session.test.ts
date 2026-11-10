@@ -16,7 +16,7 @@ import {
   SessionTenantMismatch
 } from "../../src/session.ts"
 import { type SessionPolicy, TenantAlias } from "../../src/tenant.ts"
-import { SessionRedis, sessionWorld, type StoredSessionRecord } from "../helpers/session.ts"
+import { SessionRedis, sessionState, sessionWorld, type StoredSessionRecord } from "../helpers/session.ts"
 
 const alias = Schema.decodeSync(TenantAlias)("alpha")
 const otherAlias = Schema.decodeSync(TenantAlias)("beta")
@@ -101,10 +101,11 @@ describe("SessionService establishment [PREETS-SESSION-003, PREETS-SESSION-008]"
         expect(result.reference).toMatch(/^[A-Za-z0-9_-]{43}$/)
         expect(result.reference).not.toContain("subject-1")
         expect(result.reference).not.toContain("alpha")
-        expect(result.session).toStrictEqual({
+        expect(sessionState(result.session)).toStrictEqual({
           _tag: "UsableSession",
           identity: { issuer: "https://provider.test/", subject: "subject-1" },
           idleDeadlineEpochMilliseconds: BASE_TIME + 30 * 60_000,
+          revision: 1,
           tenantAlias: alias,
           warningLeadMinutes: 5
         })
@@ -129,10 +130,11 @@ describe("SessionService establishment [PREETS-SESSION-003, PREETS-SESSION-008]"
         const service = yield* SessionService
         const { reference } = yield* establish(service, 7, 3)
         const read = yield* service.read({ reference })
-        expect(read).toStrictEqual({
+        expect(sessionState(read)).toStrictEqual({
           _tag: "UsableSession",
           identity: { issuer: "https://provider.test/", subject: "subject-1" },
           idleDeadlineEpochMilliseconds: BASE_TIME + 7 * 60_000,
+          revision: 1,
           tenantAlias: alias,
           warningLeadMinutes: 3
         })
@@ -171,7 +173,7 @@ describe("SessionService invalidation [PREETS-SESSION-013]", () => {
             yield* redis.rewriteAll(() => "not-json")
           }
           if (state === "unknown-version") {
-            yield* redis.rewriteAll((payload) => JSON.stringify({ ...JSON.parse(payload), version: 2 }))
+            yield* redis.rewriteAll((payload) => JSON.stringify({ ...JSON.parse(payload), version: 3 }))
           }
 
           const result = yield* service.invalidate({ reference: established.reference })
@@ -346,7 +348,7 @@ describe("SessionService read outcomes [PREETS-SESSION-008]", () => {
         yield* TestClock.setTime(BASE_TIME)
         const service = yield* SessionService
         const { reference } = yield* establish(service, 30, 5)
-        yield* redis.rewriteAll((payload) => JSON.stringify({ ...JSON.parse(payload), version: 2 }))
+        yield* redis.rewriteAll((payload) => JSON.stringify({ ...JSON.parse(payload), version: 3 }))
         const result = yield* service.read({ reference }).pipe(Effect.result)
         expect(Result.isFailure(result)).toBe(true)
         if (Result.isFailure(result)) {
@@ -449,7 +451,7 @@ describe("SessionService tenant admission [PREETS-SESSION-005]", () => {
         const read = yield* service.read({ reference })
         const admittedInput: ReadSessionForTenantInput = { reference, tenantAlias: alias }
         const admitted = yield* service.readForTenant(admittedInput)
-        expect(admitted).toStrictEqual(read)
+        expect(sessionState(admitted)).toStrictEqual(sessionState(read))
         if (read._tag === "UsableSession" && admitted._tag === "UsableSession") {
           expect(admitted.identity).toStrictEqual(read.identity)
           expect(admitted.tenantAlias).toBe(read.tenantAlias)
@@ -538,7 +540,7 @@ describe("SessionService tenant admission [PREETS-SESSION-005]", () => {
           }).pipe(Effect.result)
           if (storedAlias === requestAlias) {
             expect(Result.isSuccess(admitted)).toBe(true)
-            if (Result.isSuccess(admitted)) expect(admitted.success).toStrictEqual(read)
+            if (Result.isSuccess(admitted)) expect(sessionState(admitted.success)).toStrictEqual(sessionState(read))
             return
           }
           expect(Result.isFailure(admitted)).toBe(true)
@@ -611,14 +613,17 @@ describe("SessionService.refreshForTenant renewal [PREETS-SESSION-008, PREETS-SE
             reference: established.reference,
             tenantAlias: alias
           })
-          expect(renewed).toStrictEqual({
+          expect(sessionState(renewed)).toStrictEqual({
             _tag: "UsableSession",
             identity: established.session.identity,
             idleDeadlineEpochMilliseconds: receivedAt + 12 * 60_000,
+            revision: 2,
             tenantAlias: alias,
             warningLeadMinutes: 4
           })
-          expect(yield* service.read({ reference: established.reference })).toStrictEqual(renewed)
+          expect(sessionState(yield* service.read({ reference: established.reference }))).toStrictEqual(
+            sessionState(renewed)
+          )
         })
       )
   )
@@ -684,7 +689,9 @@ describe("SessionService.refreshForTenant renewal [PREETS-SESSION-008, PREETS-SE
           idleDeadlineEpochMilliseconds: receivedAt + 18 * 60_000,
           warningLeadMinutes: 0
         })
-        expect(yield* service.read({ reference: second.reference })).toStrictEqual(second.session)
+        expect(sessionState(yield* service.read({ reference: second.reference }))).toStrictEqual(
+          sessionState(second.session)
+        )
         const secondRecords = [...before].filter(([, record]) => record.payload.includes("\"subject-2\""))
         expect(secondRecords).toHaveLength(1)
         const after = yield* redis.records
@@ -742,7 +749,9 @@ describe("SessionService.refreshForTenant renewal [PREETS-SESSION-008, PREETS-SE
           expect(diagnostic).not.toContain("beta")
         }
         yield* unchangedSince(before)
-        expect(yield* service.read({ reference: established.reference })).toStrictEqual(established.session)
+        expect(sessionState(yield* service.read({ reference: established.reference }))).toStrictEqual(
+          sessionState(established.session)
+        )
       })
     ))
 
@@ -818,7 +827,7 @@ describe("SessionService.refreshForTenant expiration [PREETS-SESSION-008, PREETS
             reference: established.reference,
             tenantAlias: alias
           })
-          expect(observed).toStrictEqual(established.session)
+          expect(sessionState(observed)).toStrictEqual(sessionState(established.session))
           yield* unchangedSince(before)
         })
       )
@@ -1009,7 +1018,7 @@ describe("SessionService storage failures", () => {
   it.effect.each(
     [
       ["not-json", () => "not-json"],
-      ["version", (payload: string) => JSON.stringify({ ...JSON.parse(payload), version: 2 })],
+      ["version", (payload: string) => JSON.stringify({ ...JSON.parse(payload), version: 3 })],
       ["missing-subject", (payload: string) => {
         const record = JSON.parse(payload) as Record<string, unknown>
         delete record.subject
@@ -1079,7 +1088,7 @@ describe("SessionService shared reads", () => {
         const { reference, session } = yield* establish(service, 30, 5)
         for (let i = 0; i < 3; i++) {
           const read = yield* service.read({ reference })
-          expect(read).toStrictEqual(session)
+          expect(sessionState(read)).toStrictEqual(sessionState(session))
         }
       })
     ))
