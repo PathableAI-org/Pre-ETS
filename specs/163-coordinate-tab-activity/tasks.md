@@ -215,6 +215,21 @@ The plan was amended again after review of #364 (user decisions of 2026-11-10). 
 - **R20**: activity-window records are keyed by tag (`preets-session-activity:v1:<tag>`); others are pruned to four.
 - **V-004 support**: the header carries `data-session-deadline` and `data-session-warning-lead`.
 
+## Amended-plan rework (plan `1a58fc9`, R21–R25, gaps G1/G2)
+
+- **Mount script removed** (user decision 2026-11-10): `mount-script.ts`, the pre-paint `data-session-ended` style,
+  and `data-protected-content` are gone. On mount the coordinator subscribes, replays the ended record, adopts the
+  server-rendered snapshot, writes the current-session hint, and broadcasts `renewed` and `session-current`. A hint
+  naming another session is checked on resume, not on mount. Gaps G1 and G2 are acknowledged, not handled. The
+  bfcache `pagehide` concealment stays.
+- **R21/R22**: the logout body and `logout-started` carry `notAfter` (server clock + 10 s, from the tab's server
+  offset). The handler answers 408 with no store operation after it (unit). A 503, 408, 5xx, network failure, or
+  timeout is ambiguous; a 503 after an applied `DEL` leaves the record absent (real-Redis integration). Watches run
+  until `notAfter` + 2 s; `logout-failed` follows a definitive refusal or a usable status after `notAfter`.
+- **R24**: without storage or Web Locks, each tab keeps its tag's window in memory and broadcasts `communicated { at }`
+  on every send; receivers update their in-memory window.
+- **R25**: the BDD feature keeps only no-session denial scenarios (unchanged).
+
 ## Implementation deviations from the plan (for plan review)
 
 These do not change any acceptance criterion or HTTP outcome. Each needs reviewer confirmation at the plan gate.
@@ -260,6 +275,9 @@ These do not change any acceptance criterion or HTTP outcome. Each needs reviewe
     on the DOM synchronously (FR-017) and reveals on a usable answer whose read started after concealment began.
 14. **A logout-in-progress record** (`preets-session-logout:v1`, tag and watch end) lets a tab that mounts or resumes
     after `logout-started` replay the confirmation watch (review of #364). It triggers confirmation only.
-15. **A "refused" logout includes error statuses other than 403 and 503** (for example 400, 415, or 500). They are
-    definitive answers that the session was not ended, unlike a lost response. The logout request times out after 10
-    seconds, matching the watch limit.
+15. **A "refused" logout includes 4xx statuses other than 401, 408, and 409** (for example 400 or 415), which are
+    definitive answers that the session was not ended. Every 5xx, not only 503, is ambiguous. The logout request times
+    out after 10 seconds, matching `notAfter`.
+16. **`logout-failed` after `notAfter` is broadcast.** Research D8's bullet for "confirmed still usable after
+    `notAfter`" says the tab does not broadcast, while the data-model, contract, and D8's first bullet say it
+    broadcasts `logout-failed`. The implementation broadcasts, so watching tabs stop.

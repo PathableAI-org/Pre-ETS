@@ -126,7 +126,8 @@ const statusRequest = (reference = defaultReference) =>
 
 const activityBody = (coordinationTag: string, kind: InPageSessionActivity = "text-entry") =>
   JSON.stringify({ activity: kind, coordinationTag })
-const logoutBody = (coordinationTag: string) => JSON.stringify({ coordinationTag })
+const logoutBody = (coordinationTag: string, notAfter = Date.now() + 10_000) =>
+  JSON.stringify({ coordinationTag, notAfter })
 
 /** The tag a tab would hold, obtained only through the public status handler. */
 const tagFor = async (reference: string) => {
@@ -340,6 +341,14 @@ describe("status and logout outcomes [PREETS-SESSION-010]", () => {
     expect(recorded.invalidations).toEqual([defaultReference])
     expect(response.headers.getSetCookie()).toEqual([])
     expect(await response.text()).toBe("")
+  })
+
+  it("refuses an attempt received after its notAfter with 408 and no store operation", async () => {
+    const tag = await tagFor(defaultReference)
+    install({ session: () => Effect.die("no session operation after notAfter") })
+
+    await expectEmpty(await logout(post("/auth/logout", logoutBody(tag, Date.now() - 1))), 408)
+    expect(recorded.invalidations).toEqual([])
   })
 
   it("answers 401 and invalidates nothing when there is no usable session", async () => {

@@ -4,7 +4,7 @@ import type { ActivityWindowRecord } from "./activity-window.ts"
 
 import { IN_PAGE_ACTIVITIES } from "./activity-classification.ts"
 
-export const CHANNEL = "preets-session-coordination"
+const CHANNEL = "preets-session-coordination"
 export const CURRENT_KEY = "preets-session-current:v1"
 export const ENDED_KEY = "preets-session-ended:v1"
 const RECORD_PREFIX = "preets-session-activity:v1:"
@@ -30,6 +30,9 @@ export type TabMessage =
     readonly sendAt: number
     readonly type: "pending"
   }
+  | { readonly at: number; readonly coordinationTag: string; readonly type: "communicated" }
+  | { readonly coordinationTag: string; readonly notAfter: number; readonly type: "logout-started" }
+  /** Storage or locks unavailable: a tab sent an in-page communication at local time `at` (R24). */
   | {
     readonly coordinationTag: string
     readonly localDeadline: number
@@ -38,9 +41,10 @@ export type TabMessage =
     readonly type: "renewed"
     readonly warningLeadMinutes: number
   }
+  /** `notAfter` is the attempt's server-clock limit; receivers watch until it plus 2 s (R21). */
   | {
     readonly coordinationTag: string
-    readonly type: "logged-out" | "logout-failed" | "logout-started" | "session-current"
+    readonly type: "logged-out" | "logout-failed" | "session-current"
   }
 
 type UnknownRecord = Readonly<Record<string, unknown>>
@@ -51,7 +55,7 @@ const isOptionalTime = (value: unknown): value is number | undefined => value ==
 const isActivity = (value: unknown): value is InPageSessionActivity =>
   typeof value === "string" && IN_PAGE_ACTIVITIES.has(value)
 
-const SIGNALS: ReadonlySet<unknown> = new Set(["logged-out", "logout-failed", "logout-started", "session-current"])
+const SIGNALS: ReadonlySet<unknown> = new Set(["logged-out", "logout-failed", "session-current"])
 
 const pendingMessage = (data: UnknownRecord, coordinationTag: string): TabMessage | undefined =>
   isTime(data.sendAt) && isActivity(data.activity) ?
@@ -75,12 +79,24 @@ const renewedMessage = (data: UnknownRecord, coordinationTag: string): TabMessag
 const signalMessage = (data: UnknownRecord, coordinationTag: string): TabMessage | undefined =>
   SIGNALS.has(data.type) ? { coordinationTag, type: data.type as "logged-out" } : undefined
 
+const communicatedMessage = (data: UnknownRecord, coordinationTag: string): TabMessage | undefined =>
+  isTime(data.at) ? { at: data.at, coordinationTag, type: "communicated" } : undefined
+
+const logoutStartedMessage = (data: UnknownRecord, coordinationTag: string): TabMessage | undefined =>
+  isTime(data.notAfter) ? { coordinationTag, notAfter: data.notAfter, type: "logout-started" } : undefined
+
+const PARSERS: Readonly<Record<string, (data: UnknownRecord, coordinationTag: string) => TabMessage | undefined>> = {
+  communicated: communicatedMessage,
+  "logout-started": logoutStartedMessage,
+  pending: pendingMessage,
+  renewed: renewedMessage
+}
+
 /** Malformed messages are ignored. */
 const parseMessage = (data: unknown): TabMessage | undefined => {
   if (!isRecord(data) || typeof data.coordinationTag !== "string") return undefined
-  if (data.type === "pending") return pendingMessage(data, data.coordinationTag)
-  if (data.type === "renewed") return renewedMessage(data, data.coordinationTag)
-  return signalMessage(data, data.coordinationTag)
+  const parse = typeof data.type === "string" ? PARSERS[data.type] ?? signalMessage : signalMessage
+  return parse(data, data.coordinationTag)
 }
 
 const silentChannel: TabChannel = { close: () => undefined, post: () => undefined }
@@ -192,6 +208,18 @@ export const readLogoutInProgress = (coordinationTag: string): number | undefine
 
 export const recordLogoutInProgress = (coordinationTag: string, until: number): void => {
   writeJson(LOGOUT_KEY, { coordinationTag, until })
+}
+
+/** Whether `localStorage` can be written and read back; otherwise windows are kept in memory (R24). */
+export const storageAvailable = (): boolean => {
+  try {
+    const probe = `${RECORD_PREFIX}probe`
+    localStorage.setItem(probe, "1")
+    localStorage.removeItem(probe)
+    return true
+  } catch {
+    return false
+  }
 }
 
 /** Runs `task` under the cross-tab window lock, or answers `undefined` where Web Locks are unavailable. */

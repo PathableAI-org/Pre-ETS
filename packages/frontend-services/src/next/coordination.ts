@@ -28,7 +28,7 @@ const InPageActivity = Schema.Literals([
 export type InPageSessionActivity = typeof InPageActivity.Type
 
 const SessionActivityBody = Schema.Struct({ activity: InPageActivity, coordinationTag: Schema.String })
-const LogoutBody = Schema.Struct({ coordinationTag: Schema.String })
+const LogoutBody = Schema.Struct({ coordinationTag: Schema.String, notAfter: Schema.Finite })
 
 /** `POST /auth/logout` JSON body. */
 export type LogoutRequestBody = typeof LogoutBody.Type
@@ -43,6 +43,7 @@ const decodeLogoutBody = Schema.decodeUnknownEffect(Schema.fromJsonString(Logout
 
 class CoordinationTagMismatch extends Schema.TaggedError<CoordinationTagMismatch>()("CoordinationTagMismatch", {}) {}
 class CrossOriginRequest extends Schema.TaggedError<CrossOriginRequest>()("CrossOriginRequest", {}) {}
+class LateLogoutAttempt extends Schema.TaggedError<LateLogoutAttempt>()("LateLogoutAttempt", {}) {}
 class UnsupportedContentType extends Schema.TaggedError<UnsupportedContentType>()("UnsupportedContentType", {}) {}
 
 const emptyResponse = (status: number) =>
@@ -76,6 +77,7 @@ const requireTag = (reference: string, claimed: string) =>
 type CoordinationFailure =
   | CoordinationTagMismatch
   | CrossOriginRequest
+  | LateLogoutAttempt
   | Schema.SchemaError
   | SessionServiceUnavailable
   | SessionTenantMismatch
@@ -85,6 +87,7 @@ type CoordinationFailure =
 const FAILURE_STATUS = {
   CoordinationTagMismatch: 409,
   CrossOriginRequest: 403,
+  LateLogoutAttempt: 408,
   SchemaError: 400,
   SessionServiceUnavailable: 503,
   SessionTenantMismatch: 403,
@@ -145,6 +148,8 @@ const sessionStatus = Effect.fn("sessionStatus")(function*(request: NextRequest)
  */
 const logout = Effect.fn("logout")(function*(request: NextRequest) {
   const body = yield* decodeLogoutBody(yield* readJsonBody(request))
+  // A keepalive attempt arriving after its watchers stopped must not end the session unseen (research D8, R21).
+  if ((yield* Clock.currentTimeMillis) > body.notAfter) return yield* new LateLogoutAttempt({})
   const current = yield* currentSession(request)
   if (Option.isNone(current)) return emptyResponse(401)
   yield* requireTag(current.value.reference, body.coordinationTag)

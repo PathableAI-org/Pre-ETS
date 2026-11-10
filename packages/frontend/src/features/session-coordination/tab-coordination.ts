@@ -3,6 +3,7 @@ import type { InPageSessionActivity, SessionCoordinationSnapshot } from "@pathab
 import { classifySessionActivity } from "./activity-classification.ts"
 import {
   ACTIVITY_WINDOW_MILLISECONDS,
+  type ActivityWindowRecord,
   decideActivityCommunication,
   flushActivityCommunication
 } from "./activity-window.ts"
@@ -18,6 +19,7 @@ import {
   readWindowRecord,
   recordEnded,
   recordLogoutInProgress,
+  storageAvailable,
   type TabChannel,
   type TabMessage,
   windowLock,
@@ -48,7 +50,10 @@ type TimerName = "confirm" | "flush" | "logout-watch" | "near-deadline" | "retry
 const CONFIRMATION_RETRY_MILLISECONDS = 5_000
 /** Watch reads start on a fixed one-second cadence and each gives up after one second, keeping FR-015's 2-second bound. */
 const LOGOUT_WATCH_INTERVAL_MILLISECONDS = 1_000
-const LOGOUT_WATCH_LIMIT_MILLISECONDS = 10_000
+/** A logout attempt is refused by the server after `notAfter`, this far ahead on the server clock (R21). */
+const LOGOUT_ATTEMPT_MILLISECONDS = 10_000
+/** Watches outlast `notAfter` by this much, so no invalidation from the attempt can follow them (R21). */
+const LOGOUT_WATCH_GRACE_MILLISECONDS = 2_000
 const ACTIVITY_EVENTS = ["beforeinput", "click", "focusin", "keydown", "pointerdown"] as const
 const GESTURE_EVENTS = ["keydown", "pointerdown"] as const
 
@@ -83,12 +88,21 @@ export class TabCoordination {
   /** The confirmed tag when storage could not hold it; used as this tab's hint (R19). */
   #hintOverride: string | undefined
   readonly #initial: SessionCoordinationSnapshot
+  /** This tab's logout attempt's `notAfter` on the local clock; a usable answer after it means logout failed (R22). */
+  #logoutNotAfter = Number.POSITIVE_INFINITY
   /** This tab's logout had no definitive answer; confirmation decides its outcome (R18). */
   #logoutUnresolved = false
+  /** The window for this tab's tag when storage or locks are unavailable (R24). */
+  #memoryWindow: ActivityWindowRecord | undefined
   readonly #notify: (state: TabViewState) => void
   #pendingActivity: InPageSessionActivity | undefined
   /** What each message for this tab's own session does (data-model "Channel messages"). */
   readonly #receivers: Readonly<Record<TabMessage["type"], (message: TabMessage) => void>> = {
+    communicated: (message) => {
+      if (message.type !== "communicated") return
+      const last = Math.max(this.#memoryWindow?.lastCommunicatedAt ?? message.at, message.at)
+      this.#memoryWindow = { lastCommunicatedAt: last, pendingSince: this.#memoryWindow?.pendingSince }
+    },
     "logged-out": () => {
       this.#end(false)
     },
@@ -96,8 +110,9 @@ export class TabCoordination {
     "logout-failed": () => {
       this.#stopTimer("logout-watch")
     },
-    "logout-started": () => {
-      this.#watchLogout(Date.now() + LOGOUT_WATCH_LIMIT_MILLISECONDS)
+    "logout-started": (message) => {
+      if (message.type !== "logout-started") return
+      this.#watchLogout(message.notAfter - this.#serverOffset + LOGOUT_WATCH_GRACE_MILLISECONDS)
     },
     pending: (message) => {
       if (message.type !== "pending") return
@@ -117,6 +132,10 @@ export class TabCoordination {
     },
     "session-current": () => undefined
   }
+  /** Server clock minus this tab's clock, from the latest server snapshot (research D6). */
+  #serverOffset = 0
+  /** Whether the activity window is shared through storage under a Web Lock; otherwise it is kept in memory (R24). */
+  #sharedWindow = false
   readonly #tag: string
   readonly #timers = new Map<TimerName, ReturnType<typeof setTimeout>>()
 
@@ -145,17 +164,20 @@ export class TabCoordination {
   async logout(): Promise<void> {
     if (this.#view === "ended" || this.#view === "logging-out") return
     this.#setView("logging-out")
-    recordLogoutInProgress(this.#tag, Date.now() + LOGOUT_WATCH_LIMIT_MILLISECONDS)
-    this.#post("logout-started")
-    const outcome = await sendLogout(this.#tag)
+    const notAfter = Date.now() + this.#serverOffset + LOGOUT_ATTEMPT_MILLISECONDS
+    this.#logoutNotAfter = notAfter - this.#serverOffset
+    const watchUntil = this.#logoutNotAfter + LOGOUT_WATCH_GRACE_MILLISECONDS
+    recordLogoutInProgress(this.#tag, watchUntil)
+    this.#channel?.post({ coordinationTag: this.#tag, notAfter, type: "logout-started" })
+    const outcome = await sendLogout(this.#tag, notAfter)
     if (outcome === "refused") {
       this.#logoutRefused()
       this.#guard(this.confirm())
     } else if (outcome === "unknown") {
-      // The server may have ended the session and lost the response: conceal and let confirmation decide (R18).
+      // The server may have ended the session and lost or failed the reply: conceal; confirmation decides (R18, R22).
       this.#logoutUnresolved = true
       this.#conceal()
-      this.#watchLogout(Date.now() + LOGOUT_WATCH_LIMIT_MILLISECONDS)
+      this.#watchLogout(watchUntil)
       this.#guard(this.confirm())
     } else {
       this.#logoutEnded()
@@ -163,16 +185,24 @@ export class TabCoordination {
   }
 
   /**
-   * Subscribes first, replays missed logouts and session changes, and only then trusts the snapshot (research D14).
-   * Classified activity is observed within the protected content; gestures are tracked at document capture (R7).
+   * On mount: subscribes, replays the ended record, then adopts the server-rendered snapshot, writes the current-session
+   * hint, and broadcasts the page-load renewal (research D14). Until this runs nothing conceals server-rendered
+   * content (gap G1), and the renewal reaches other tabs only now (gap G2). Classified activity is observed within the
+   * protected content; gestures are tracked at document capture (R7).
    */
   start(): () => void {
     this.#channel = openTabChannel((message) => {
       this.#receive(message)
     })
+    this.#sharedWindow = windowLock() !== undefined && storageAvailable()
     const stopListening = this.#listen()
     this.#publish()
-    if (!this.#replayRecords()) this.#adoptSnapshot(this.#initial, true)
+    if (!this.#replayEnded()) {
+      this.#adoptSnapshot(this.#initial, true)
+      if (!writeCurrentHint(this.#tag)) this.#hintOverride = this.#tag
+      this.#channel.post({ coordinationTag: this.#tag, type: "session-current" })
+      this.#replayLogoutInProgress()
+    }
     return () => {
       stopListening()
       this.#cancel.abort()
@@ -190,14 +220,9 @@ export class TabCoordination {
 
   #activity(activity: InPageSessionActivity) {
     if (this.#view !== "active" || this.#concealed) return
-    const lock = windowLock()
-    if (lock === undefined) {
-      this.#send(activity)
-      return
-    }
-    this.#guard(lock(() => {
+    this.#withWindow(() => {
       this.#decide(activity)
-    }))
+    })
   }
 
   /**
@@ -212,6 +237,8 @@ export class TabCoordination {
     if (!adoptSnapshot(this.#held, snapshot)) return false
     this.#held = snapshot
     this.#deadline = Date.now() + snapshot.idleDeadlineEpochMilliseconds - snapshot.serverTimeEpochMilliseconds
+    // Only a server snapshot carries the server clock; a relayed `renewed` message carries a local deadline.
+    if (broadcast) this.#serverOffset = snapshot.serverTimeEpochMilliseconds - Date.now()
     this.#publish()
     this.#schedule("confirm", this.#deadline, () => {
       this.#guard(this.confirm())
@@ -250,7 +277,8 @@ export class TabCoordination {
         })
         return
       case "Usable":
-        if (this.#logoutUnresolved && outcome.snapshot.coordinationTag === this.#tag) this.#logoutRefused()
+        // Before `notAfter` the attempt may still arrive, so a usable answer does not yet mean logout failed (R22).
+        if (this.#logoutUnresolved && Date.now() > this.#logoutNotAfter) this.#logoutRefused()
         if (this.#adoptSnapshot(outcome.snapshot, true) || startedAt >= this.#concealedSince) this.#reveal()
     }
   }
@@ -285,18 +313,18 @@ export class TabCoordination {
 
   #decide(activity: InPageSessionActivity) {
     if (!this.#live()) return
-    const decision = decideActivityCommunication(readWindowRecord(this.#tag), {
-      deadline: this.#deadline,
-      now: Date.now()
-    })
-    writeWindowRecord(this.#tag, decision.record)
+    const decision = decideActivityCommunication(this.#readWindow(), { deadline: this.#deadline, now: Date.now() })
+    this.#writeWindow(decision.record)
     if (decision._tag === "SendNow") {
       this.#pendingActivity = undefined
       this.#send(activity)
       return
     }
     this.#pendingActivity ??= activity
-    this.#channel?.post({ activity, coordinationTag: this.#tag, sendAt: decision.sendAt, type: "pending" })
+    // In memory each tab flushes only its own pending activity (R24).
+    if (this.#sharedWindow) {
+      this.#channel?.post({ activity, coordinationTag: this.#tag, sendAt: decision.sendAt, type: "pending" })
+    }
     this.#scheduleFlush(decision.sendAt)
   }
 
@@ -317,29 +345,27 @@ export class TabCoordination {
 
   /** Window end: one tab sends the coalesced activity if it is still pending and its window is due (R8). */
   #flush() {
-    const lock = windowLock()
     const activity = this.#pendingActivity
-    if (lock === undefined || activity === undefined || this.#view === "ended") return
-    this.#guard(lock(() => {
+    if (activity === undefined || this.#view === "ended") return
+    this.#withWindow(() => {
       if (!this.#live()) return
-      const decision = flushActivityCommunication(readWindowRecord(this.#tag), { now: Date.now() })
+      const decision = flushActivityCommunication(this.#readWindow(), { now: Date.now() })
       if (decision._tag === "Reschedule") this.#scheduleFlush(decision.sendAt)
       if (decision._tag !== "Send") return
-      writeWindowRecord(this.#tag, decision.record)
+      this.#writeWindow(decision.record)
       this.#pendingActivity = undefined
       this.#send(activity)
-    }))
+    })
   }
 
   /** Near the deadline, pending activity is sent at once (B5-W). */
   #flushNearDeadline() {
-    const lock = windowLock()
     const activity = this.#pendingActivity
-    if (lock === undefined || activity === undefined) return
-    this.#guard(lock(() => {
-      if (!this.#live() || readWindowRecord(this.#tag)?.pendingSince === undefined) return
+    if (activity === undefined) return
+    this.#withWindow(() => {
+      if (!this.#live() || this.#readWindow()?.pendingSince === undefined) return
       this.#decide(activity)
-    }))
+    })
   }
 
   /** An unexpected failure leaves the tab concealed rather than presenting a usable session. */
@@ -403,7 +429,7 @@ export class TabCoordination {
     this.#end(true)
   }
 
-  /** Logout did not complete (403, 503, or confirmed still usable): conceal and offer Log out again. */
+  /** Logout did not complete (403, or confirmed still usable after `notAfter`): conceal and offer Log out again. */
   #logoutRefused() {
     this.#logoutUnresolved = false
     this.#stopTimer("logout-watch")
@@ -416,7 +442,7 @@ export class TabCoordination {
     if (event.persisted) this.#conceal()
   }
 
-  #post(type: "logged-out" | "logout-failed" | "logout-started") {
+  #post(type: "logged-out" | "logout-failed") {
     this.#channel?.post({ coordinationTag: this.#tag, type })
   }
 
@@ -433,6 +459,10 @@ export class TabCoordination {
     })
   }
 
+  #readWindow() {
+    return this.#sharedWindow ? readWindowRecord(this.#tag) : this.#memoryWindow
+  }
+
   #receive(message: TabMessage) {
     if (message.coordinationTag === this.#tag) {
       this.#receivers[message.type](message)
@@ -442,29 +472,27 @@ export class TabCoordination {
     if (message.type === "session-current") this.#guard(this.confirm())
   }
 
-  /**
-   * Applies the shared records synchronously: a confirmed-ended tag ends the tab; a logout in progress resumes the
-   * confirmation watch; a hint naming another session conceals temporarily and confirms. Answers whether the tab ended.
-   */
-  #replayRecords(): boolean {
-    if (readEndedTags().includes(this.#tag)) {
-      this.#end(false)
-      return true
-    }
+  /** A confirmed-ended tag ends the tab. Answers whether it did. */
+  #replayEnded(): boolean {
+    if (!readEndedTags().includes(this.#tag)) return false
+    this.#end(false)
+    return true
+  }
+
+  /** A logout in progress for this tag resumes the confirmation watch; the record alone never ends the tab. */
+  #replayLogoutInProgress() {
     const logoutUntil = readLogoutInProgress(this.#tag)
     if (logoutUntil !== undefined && !this.#timers.has("logout-watch")) this.#watchLogout(logoutUntil)
-    const hint = readCurrentHint()
-    if (hint !== undefined && hint !== this.#tag) {
-      this.#conceal()
-      this.#guard(this.confirm())
-    }
-    return false
   }
 
   /** B5-R: replay records first; past the local deadline conceal at once; either way confirm (research D9). */
   #resume() {
     if (this.#view === "ended" || document.visibilityState !== "visible") return
-    if (this.#replayRecords()) return
+    if (this.#replayEnded()) return
+    this.#replayLogoutInProgress()
+    const hint = readCurrentHint()
+    // A hint naming another session conceals temporarily and confirms; it never ends the tab (R14).
+    if (hint !== undefined && hint !== this.#tag) this.#conceal()
     if (Date.now() >= this.#deadline) this.#conceal()
     this.#guard(this.confirm())
   }
@@ -497,6 +525,8 @@ export class TabCoordination {
   }
 
   #send(activity: InPageSessionActivity) {
+    // In memory the window is shared by announcing each communication (R24).
+    if (!this.#sharedWindow) this.#channel?.post({ at: Date.now(), coordinationTag: this.#tag, type: "communicated" })
     this.#guard(
       sendActivity(activity, this.#tag).then((outcome) => {
         if (!this.#live()) return
@@ -541,7 +571,7 @@ export class TabCoordination {
   }
 
   /**
-   * After another tab starts logout, start a confirmation each second until the outcome arrives, at most 10 s (R11).
+   * After a logout starts, start a confirmation each second until the outcome arrives or `notAfter` plus 2 s (R11, R21).
    * Ticks do not wait for earlier reads, so a slow read cannot push the next one past the concealment bound.
    */
   #watchLogout(until: number, at = Date.now() + LOGOUT_WATCH_INTERVAL_MILLISECONDS) {
@@ -550,5 +580,17 @@ export class TabCoordination {
       this.#watchLogout(until, at + LOGOUT_WATCH_INTERVAL_MILLISECONDS)
       this.#guard(this.confirm(LOGOUT_WATCH_INTERVAL_MILLISECONDS))
     })
+  }
+
+  /** Runs window work under the cross-tab lock when the window is shared, otherwise at once (R24). */
+  #withWindow(task: () => void) {
+    const lock = this.#sharedWindow ? windowLock() : undefined
+    if (lock === undefined) task()
+    else this.#guard(lock(task))
+  }
+
+  #writeWindow(record: ActivityWindowRecord) {
+    if (this.#sharedWindow) writeWindowRecord(this.#tag, record)
+    else this.#memoryWindow = record
   }
 }

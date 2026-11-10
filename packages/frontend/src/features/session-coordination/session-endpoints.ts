@@ -6,8 +6,9 @@ import type {
 } from "@pathableai/pre-ets-frontend-services"
 
 /**
- * `refused` is a definitive 403 or 503 (or another error status): logout did not happen. `unknown` is a network
- * failure or timeout: the server may have ended the session and lost the response (research D8, R18).
+ * `refused` is a definitive refusal (403, or another 4xx such as 400 or 415): logout did not happen. `unknown` is a
+ * network failure, timeout, 408, or 5xx: the server may have ended the session and lost or failed the reply, so
+ * confirmation decides (research D8, R18, R22).
  */
 export type LogoutOutcome = "ended" | "not-in-force" | "refused" | "unknown"
 
@@ -19,6 +20,8 @@ export type SessionOutcome =
 
 const CONFIRMATION_TIMEOUT_MILLISECONDS = 1_500
 const LOGOUT_TIMEOUT_MILLISECONDS = 10_000
+
+const isAmbiguous = (status: number) => status === 408 || status >= 500
 
 const ended: SessionOutcome = { _tag: "Ended" }
 const undetermined: SessionOutcome = { _tag: "Undetermined" }
@@ -81,13 +84,13 @@ export const sendActivity = (activity: InPageSessionActivity, coordinationTag: s
   call("/session/activity", postJson({ activity, coordinationTag })).then(outcomeOf, () => undetermined)
 
 /** `keepalive` completes the request even if this tab closes right after starting it (research D8, R11). */
-export const sendLogout = async (coordinationTag: string): Promise<LogoutOutcome> => {
+export const sendLogout = async (coordinationTag: string, notAfter: number): Promise<LogoutOutcome> => {
   const response = await call("/auth/logout", {
-    ...postJson({ coordinationTag }),
+    ...postJson({ coordinationTag, notAfter }),
     keepalive: true,
     signal: AbortSignal.timeout(LOGOUT_TIMEOUT_MILLISECONDS)
   }).catch(() => undefined)
-  if (response === undefined) return "unknown"
+  if (response === undefined || isAmbiguous(response.status)) return "unknown"
   if (response.status === 204) return "ended"
   if (response.status === 401 || response.status === 409) return "not-in-force"
   return "refused"

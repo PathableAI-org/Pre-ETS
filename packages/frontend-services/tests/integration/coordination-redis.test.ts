@@ -229,7 +229,9 @@ describe("coordination handlers over the real session store [PREETS-SESSION-009,
       const established = await establish(world)
       const { coordinationTag } = await readSnapshot(established.reference)
 
-      const ended = await logout(post("/auth/logout", established.reference, { coordinationTag }))
+      const ended = await logout(
+        post("/auth/logout", established.reference, { coordinationTag, notAfter: Date.now() + 10_000 })
+      )
 
       expect(ended.status).toBe(204)
       expect(ended.headers.getSetCookie()).toEqual([])
@@ -240,6 +242,21 @@ describe("coordination handlers over the real session store [PREETS-SESSION-009,
       expect(late.status).toBe(401)
       expect((await status(statusRequest(established.reference))).status).toBe(401)
       expect(await storedDeadlines(world)).toEqual([])
+    }))
+
+  it("answers 503 when the delete applies but its reply fails, leaving the record absent (ambiguous)", () =>
+    withWorld(async (world) => {
+      const established = await establish(world)
+      const { coordinationTag } = await readSnapshot(established.reference)
+      await world.runPromise(SessionRedis.use((redis) => redis.injectNext("DEL", { _tag: "FailAfterApply" })))
+
+      const response = await logout(
+        post("/auth/logout", established.reference, { coordinationTag, notAfter: Date.now() + 10_000 })
+      )
+
+      expect(response.status).toBe(503)
+      expect(await storedDeadlines(world)).toEqual([])
+      expect((await status(statusRequest(established.reference))).status).toBe(401)
     }))
 
   it("does not revive an expired session through activity", () =>
@@ -287,7 +304,7 @@ describe("coordination handlers over the real session store [PREETS-SESSION-009,
       for (
         const response of [
           await status(statusRequest(reference)),
-          await logout(post("/auth/logout", reference, { coordinationTag: tag }))
+          await logout(post("/auth/logout", reference, { coordinationTag: tag, notAfter: Date.now() + 10_000 }))
         ]
       ) {
         expect(response.status).toBe(503)

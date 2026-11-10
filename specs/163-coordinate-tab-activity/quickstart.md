@@ -232,6 +232,13 @@ changes is stale and must be re-run on the implementation revision under assessm
 Recorded by the implementation agent. Results only; the procedure above is unchanged. These results are for the plan
 at `e1c8399` (review corrections R1–R15). An earlier run against the superseded plan was discarded.
 
+**Re-run status after the amended plan (`1a58fc9`, R16–R25)**: the module, real-Redis integration, and BDD results
+below were re-run against the amended implementation. The ungated HTTP procedure (§3), the V-015 server rows, and the
+transient mount probe were **not** re-run. They used the five-field snapshot, the removed inline mount script, and a
+logout body without `notAfter`, so they describe the earlier implementation. The behaviors they covered are now
+evidenced by the frontend-services suites (revision ordering, gate never renewing actions, `authorizeSessionAction`,
+408 for a late logout, 503 after an applied delete). Re-running §3 against the current build is still owed.
+
 ### Conditions
 
 - Application code at `4018847` on `163-coordinate-tab-activity-impl`. Executed 2026-11-09.
