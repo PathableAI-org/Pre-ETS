@@ -40,13 +40,13 @@ The first plan review found these defects. Each is corrected in the decision nam
 | --- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | R1  | Snapshot construction in the handler module created the cycle `next/session.ts → next/coordination.ts → next/cookies.ts → next/session.ts`.     | Tag and snapshot move to a dependency-leaf child, `next/coordination-snapshot.ts`, used by both the read and the handlers (contracts).                                                                                                |
 | R2  | A stale tab's Server Action carries the later session's cookie, and the gate renews it from `next-action` alone.                                | Submit guard against the shared current-session record, plus a tag field that protected actions check before any effect (D2).                                                                                                         |
-| R3  | A new tab can miss a logout broadcast sent before its coordinator subscribes and keep stale content visible.                                    | Replayable ended-session record, subscribe-then-replay mount, and pre-hydration concealment (D14).                                                                                                                                    |
+| R3  | A new tab can miss a logout broadcast sent before its coordinator subscribes and keep stale content visible.                                    | Replayable ended-session record and a subscribe-then-replay mount (D14). Exposure until the coordinator mounts is acknowledged gap G1 (user decision 2026-11-10).                                                                     |
 | R4  | Committing gated real-login scenarios before #158 would fail nightly BDD; `@partial` does not skip scenarios.                                   | Increments 1–4 commit only executable ungated scenarios; gated journeys stay planned prose until increment 5 (plan, quickstart).                                                                                                      |
 | R5  | The gate renews a `POST` with `next-action`, or a navigation `GET`, to the new endpoints before the handler runs.                               | The gate treats the three endpoint paths as protected, never-renewing application requests regardless of request shape, with composed evidence (D1).                                                                                  |
 | R6  | Ordering snapshots by deadline magnitude drops a newer refresh that shortened the timeout (S2 policy refresh).                                  | Snapshots are ordered by server read time, not deadline (D6).                                                                                                                                                                         |
 | R7  | Gesture tracking on the content wrapper misses Tab from the header or body into protected content.                                              | Gestures are observed at document capture; only targets inside protected content qualify (D4).                                                                                                                                        |
 | R8  | A stale flush timer could send a newer window's pending activity early.                                                                         | The flush re-checks the session tag and the current window's due time under the lock and reschedules otherwise (D5).                                                                                                                  |
-| R9  | Hydration-only propagation of a document-entry renewal can exceed the 2-second bound.                                                           | A small inline script broadcasts the server snapshot when the document is parsed, before hydration (D6, D14).                                                                                                                         |
+| R9  | Hydration-only propagation of a document-entry renewal can exceed the 2-second bound.                                                           | Not handled, by user decision (2026-11-10): the coordinator broadcasts the page-load renewal when it mounts. Acknowledged gap G2 (D6, D14).                                                                                           |
 | R10 | A logout response delayed past a fresh login in another tab would clear the later session's cookie with `Max-Age=0`.                            | Logout responses never touch the cookie; the record removal is authoritative, and a dead reference grants nothing (D8).                                                                                                               |
 | R11 | If the initiating tab closes or crashes after the server ended the session but before broadcasting, other tabs had no trigger to conceal.       | Logout announces `logout-started` first; every other tab confirms each second until it sees the outcome; the request uses `keepalive` (D8).                                                                                           |
 | R12 | A delayed renewal response (activity handler or gate) for an earlier session re-issues its cookie and overwrites a later session's cookie.      | Only session establishment writes `pathable-session`, without `Max-Age`; renewals and logout never set it (D15).                                                                                                                      |
@@ -60,7 +60,7 @@ The first plan review found these defects. Each is corrected in the decision nam
 | R20 | A stale tab could overwrite the current session's single activity-window record.                                                                | Window records are keyed by tag (`preets-session-activity:v1:<tag>`); a tab writes only its own tag's record (D3, D5).                                                                                                                |
 | R21 | A keepalive logout reaching the server after the 10-second watch could end the session unseen by stopped watchers.                              | The logout body carries `notAfter` (server clock + 10 s, from the tab's server offset); the handler refuses a later arrival with 408 and no store write. Watches run until `notAfter` + 2 s, so no invalidation can follow them (D8). |
 | R22 | A 503 can follow a delete that applied (S2 covers `DEL` applying before its reply fails), so it does not prove logout failed.                   | 503 is ambiguous like a network failure; `logout-failed` is broadcast only after `notAfter` has passed and status confirms the session still usable (D8).                                                                             |
-| R23 | A logout after the inline script ran but before hydration had no listener to conceal content.                                                   | The inline script also subscribes to the channel and `storage` until the coordinator takes over; a `logged-out` for its tag sets `data-session-ended` at once (D14).                                                                  |
+| R23 | A logout after page parse but before hydration had no listener to conceal content.                                                              | Not handled, by user decision (2026-11-10); part of acknowledged gap G1 (D14).                                                                                                                                                        |
 | R24 | Without storage or locks, every interaction was sent immediately, breaking FR-007 coalescing.                                                   | Fallback keeps the window in memory per tab and shares communication times over the channel; only a near-simultaneous cross-tab race can duplicate a send, recorded as a limitation (D5).                                             |
 | R25 | The ungated positive-renewal BDD scenario needs a usable session, which BDD cannot create before #158.                                          | Ungated BDD keeps only no-session denial scenarios; prepared-record renewal stays in quickstart §3 and integration tests (quickstart §4).                                                                                             |
 
@@ -297,7 +297,7 @@ policy. Renewal sources propagate as follows:
 | Renewal source                                                | How other tabs learn within 2 seconds                                                                                          |
 | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
 | In-page activity communication (`POST /session/activity`)     | The sending tab broadcasts the response snapshot.                                                                              |
-| Document entry (gate renewal)                                 | An inline script in the new document broadcasts the server-rendered snapshot when it is parsed, before hydration (R9).         |
+| Document entry (gate renewal)                                 | The new document's coordinator broadcasts its server-rendered snapshot when it mounts, after hydration (gap G2).               |
 | Protected Server Action (renewal in `authorizeSessionAction`) | The consumer calls the coordinator's `confirm()` after the action settles; the tab reads `GET /session/status` and broadcasts. |
 
 **Ordering (R6, R13, R16)**: the stored session record gains a `revision` counter. Establishment writes 1, and every
@@ -318,9 +318,12 @@ comparable. Server-relative conversion removes browser/server clock skew and sti
 time. A Server Action's renewal is invisible to client code, so its consumer must ask; the only current consumer is
 `ReferenceOperation`, and the fixture form follows the same rule.
 
-**Limitation**: the inline broadcast runs when the browser parses the protected layout, which follows the response
-without waiting for hydration or script bundles. Its timing still depends on the browser receiving and parsing the
-document. If the application later adopts a Content Security Policy, the inline script needs the policy's nonce.
+**Acknowledged gap G2 (user decision 2026-11-10)**: a document-entry renewal reaches other tabs only after the new
+document hydrates and its coordinator mounts. On a slow device or with delayed script bundles, the B5 2-second
+synchronization bound for that renewal may be missed. Other tabs still confirm with the server before acting on their
+own deadline (D7), so the gap cannot cause early expiration; it can leave another tab holding the older deadline and
+policy for longer than 2 seconds. A pre-hydration inline script was considered and rejected as not worth its
+complexity.
 
 ### D7. A tab confirms with the server before acting on its local deadline
 
@@ -455,29 +458,28 @@ real time with the shortest permitted timeout is slower but changes no product c
 | A later session, same origin | Coordination tag mismatch: messages ignored, activity 409 without renewal, logout 409 without invalidation (D2).                                                            |
 | An ended session             | Store refuses renewal of a missing or expired record (S2); handlers answer 401.                                                                                             |
 
-### D14. Mounting a protected document: replay before trust, conceal before hydration
+### D14. Mounting a protected document: subscribe, replay, then trust
 
-**Decision** (R3, R9): the protected layout renders, before the protected content, a small inline script (no
-bundle; JSON of the snapshot without identity or reference) that runs when parsed:
+**Decision** (R3): there is no inline mount script and no pre-paint concealment CSS. When the coordinator mounts
+after hydration, it:
 
-1. Read `preets-session-ended:v1`. If it contains this snapshot's tag, set `data-session-ended` on `<html>`. A CSS rule
-   then hides the protected content wrapper (`html[data-session-ended] [data-protected-content] { display: none }`)
-   before it is painted.
-2. Otherwise broadcast `renewed` with the snapshot (D6) and write the tag to `preets-session-current:v1`.
-3. Subscribe to the channel and the `storage` event (R23). Until the coordinator takes over, a `logged-out` message for
-   this tag, or the tag appearing in the ended record, sets `data-session-ended` at once, so content is hidden within
-   the 2-second bound even while the client bundle is delayed. The coordinator closes this listener after it subscribes.
+1. subscribes to the channel and the `storage` event;
+2. replays `preets-session-ended:v1`: if it lists this snapshot's tag, the tab moves to `Ended` and unmounts the
+   protected content;
+3. otherwise adopts the server-rendered snapshot (D6), writes its tag to `preets-session-current:v1` (a hint, D2),
+   and broadcasts `renewed` and `session-current`.
 
-When the coordinator hydrates, it subscribes to the channel and `storage` events first. It then replays the ended and
-current records, so a logout that happened between the server render and subscription is applied. If the tag ended,
-it moves to `Ended` and unmounts the content. Only then does it adopt the snapshot. A logout writes the ended record
-before it broadcasts, so a tab that subscribes late still sees it.
+A logout writes the ended record before it broadcasts, so a tab that subscribes late still sees it at step 2.
 
-**Rationale**: a server-rendered snapshot can predate a logout in another tab by the time the page is parsed. The
-ended record makes that logout replayable, and the inline script applies it before the content is painted.
+**Rationale**: a server-rendered snapshot can predate a logout in another tab by the time the page loads. The ended
+record makes that logout replayable once the coordinator runs.
 
-**Limitation**: a page that has not parsed its protected layout yet shows nothing protected. Once the inline script
-runs, B5-S applies through its listener and then through the coordinator.
+**Acknowledged gap G1 (user decision 2026-11-10)**: a tab that loads while another tab logs out can show protected
+content from the time the browser paints the server-rendered page until its coordinator mounts and replays the ended
+record. That window depends on hydration time and may exceed the 2-second concealment bound. The server still denies
+every protected request from that tab, because the session record is gone (S2) and the gate refuses it (S1); no
+protected operation or new content results. A pre-paint inline script that closed this window was considered and
+rejected as not worth its complexity.
 
 ### D15. Only establishment writes the session cookie (R12)
 
