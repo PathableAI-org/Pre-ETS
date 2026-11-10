@@ -55,6 +55,9 @@ The slice ends with its verification-handoff tasks from `tasks.md`: run the repo
 slice as a draft pull request; request verification as described in `docs/engineering/verification-harness.md`;
 then address the report, repeat verification as needed, and record the final report in `quickstart.md` and the
 pull request. Wait for each report before continuing. Do not proceed while a requested report is outstanding.
+The slice passes only when the report meets the gate in `docs/engineering/verification-harness.md#gate-and-escalation`.
+A result that needs a limitation not already approved in `verification.md` or `plan.md` is a correction for the
+owning phase; stop and report it rather than naming a new limitation in the pull request.
 
 After the final report is recorded, stop. Do not create the next slice's branch, start its tasks, or mark the
 pull request ready unless the user asks.
@@ -282,5 +285,5 @@ Report final status with summary of completed work.
 
 Completion means the current slice, not the feature. Report the slice ID and branch, the slice tasks completed,
 the hand-written file count against the plan's estimate, the pushed SHA, the final verification result for each of
-the slice's claim IDs with any limitation the pull request names, and the next slice in `plan.md` without starting
-it.
+the slice's claim IDs with the approved limitation in `verification.md` or `plan.md` that covers any result other
+than `established`, and the next slice in `plan.md` without starting it.
