@@ -34,14 +34,16 @@ reason rather than guessing.
 1. Create or reuse a worktree owned by this session and check out the SHA detached. Install dependencies and build
    as `quickstart.md` directs.
 2. Start the local services the quickstart needs, including the observability profile from
-   [Observability](../../../docs/observability.md#local-grafana--otlp). Start application instances on ports this
-   session owns, with OTEL enabled, `OTEL_SERVICE_NAME` as documented, and `OTEL_SERVICE_VERSION` set to the SHA.
-   Use a `preets:verify:<run-uuid>:` prefix for any keys this session writes.
+   [Observability](../../../docs/observability.md#local-grafana--otlp). Generate a run UUID for each verification
+   run, including retries. Start application instances on ports this session owns, with OTEL enabled,
+   `OTEL_SERVICE_NAME` as documented, `OTEL_SERVICE_VERSION` set to the SHA, and
+   `service.version=<SHA>,service.instance.id=<run-uuid>` added to `OTEL_RESOURCE_ATTRIBUTES`, keeping any existing
+   entries. Use a `preets:verify:<run-uuid>:` prefix for any keys this session writes.
 3. Run the requested `quickstart.md` steps. For browser steps, set a W3C `traceparent` header you generate per step
    through Playwright and note the trace ID, so server spans can be found without browser tracing.
 4. Wait for export: about 30 seconds for traces and logs, about 60 seconds for metrics.
 5. Run each verifier query from `contracts/telemetry.md` through the Grafana MCP server, filtered by
-   `service.version` and the run's time range. Compare the result with the expected observation and the expected
+   `service.version`, `service.instance.id`, and the run's time range. Compare the result with the expected observation and the expected
    negative observation for each claim.
 6. Inspect every touched signal against the forbidden data classes: span attributes, log fields, and metric
    labels. Confirm each metric's labels match the contract's metrics-cardinality list and include no session,
@@ -59,7 +61,7 @@ person. Use this shape:
 
 ```text
 Verification report — slice <ID> at <SHA>
-Environment: <instances, ports, services, OTEL settings without header values, run time range>
+Environment: <instances, ports, services, run UUID, OTEL settings without header values, run time range>
 
 | Claim | Result | Evidence | Observed | Limits |
 | ----- | ------ | -------- | -------- | ------ |
