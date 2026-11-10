@@ -30,12 +30,14 @@ infer a slice from unchecked tasks.
 
 ## File count before handoff
 
-Before the slice's commit-and-push task, list the files the slice changes against its base branch with
-`git diff --name-only <base>...HEAD`, where `<base>` is the branch below this one in the stack. Count hand-written
-files, and list lockfile changes and generated output separately. Compare the count with the slice's estimate in
-`plan.md` and the limit of about 15 hand-written files. When the count exceeds either without a reason that
-`plan.md` already states, stop and report it as a plan correction. Otherwise record the count, and any reason
-`plan.md` gives, for the pull request body.
+In the slice's commit-and-push task, count files after committing and before pushing. First confirm the worktree
+is clean (`git status --porcelain` prints nothing), so no staged, unstaged, or untracked change escapes the count.
+Then list the files the slice changes against its base branch with `git diff --name-only <base>...HEAD`, where
+`<base>` is the branch below this one in the stack. Count hand-written files, and list lockfile changes and
+generated output separately. Compare the count with the slice's estimate in `plan.md` and the limit of about 15
+hand-written files. When the count exceeds either without a reason that `plan.md` already states, stop before
+pushing and report it as a plan correction. Otherwise record the count, and any reason `plan.md` gives, for the
+pull request body.
 
 ## Verification handoff and stop
 
