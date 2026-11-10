@@ -28,7 +28,7 @@
     "pre-ets-specification-planning": {
       "version": "1.1.0",
       "source": "local",
-      "manifest_hash": "sha256:a3a3a179af4295e702e3908cca8da8fdcac134348bdfaf386c2533b0630fe459",
+      "manifest_hash": "sha256:15967bd9f88c30c8c0761a56f53acefad9bfd0cba461988d7a745243d9ad7ef1",
       "enabled": true,
       "priority": 5,
       "registered_commands": {
@@ -37,6 +37,7 @@
           "speckit.clarify",
           "speckit.plan",
           "speckit.tasks",
+          "speckit.implement",
           "speckit.constitution",
           "speckit.checklist"
         ]
@@ -47,6 +48,7 @@
           "speckit-clarify",
           "speckit-plan",
           "speckit-tasks",
+          "speckit-implement",
           "speckit-constitution",
           "speckit-checklist"
         ]

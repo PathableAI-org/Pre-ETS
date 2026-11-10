@@ -1,11 +1,63 @@
 ---
-name: "speckit-implement"
-description: "Execute the implementation plan by processing and executing all tasks defined in tasks.md"
-compatibility: "Requires spec-kit project structure with .specify/ directory"
+name: speckit-implement
+description: Execute the implementation plan by processing and executing all tasks
+  defined in tasks.md
+compatibility: Requires spec-kit project structure with .specify/ directory
 metadata:
-  author: "github-spec-kit"
-  source: "templates/commands/implement.md"
+  author: github-spec-kit
+  source: preset:pre-ets-specification-planning
 ---
+
+# Speckit Implement Skill
+
+# Pre-ETS slice-scoped implementation
+
+Apply these rules throughout the wrapped implementation workflow. They limit one run to one implementation
+slice from `plan.md`, as described in `docs/engineering/git-workflow.md#implementation-slices`.
+
+## Resolve the current slice
+
+Before loading `tasks.md`, read the current branch with `git branch --show-current` and the implementation slices
+in `plan.md`. Branch names follow `docs/engineering/git-workflow.md#branches`:
+
+- `{number}-{slug}-impl` is the first slice listed in `plan.md`.
+- `{number}-{slug}-impl-<slice>` is the slice whose ID is `<slice>`.
+
+Stop and ask the user which slice to implement when the branch matches neither form, its number and slug do not
+match the feature directory, the slice ID is not in `plan.md`, or `tasks.md` has no section for that slice. Do not
+infer a slice from unchecked tasks.
+
+## Slice scope
+
+- Execute only the tasks in the current slice's section of `tasks.md`. Do not execute, mark, or edit tasks that
+  belong to another slice.
+- Earlier slices are complete on the base branch. If an earlier slice's task is unchecked, stop and report it
+  rather than finishing it here.
+- Wherever the wrapped workflow refers to all tasks, the task list, or completion, read it as the current slice's
+  tasks. Unchecked tasks in later slices never block this slice's completion.
+- Do not move work between slices. When a task cannot be completed inside the slice as planned, stop and report a
+  plan correction through `docs/engineering/git-workflow.md#corrections`.
+- Requirements, delivery plans, GitHub issues, `spec.md`, `verification.md`, `plan.md`, and `contracts/` remain
+  read-only. Mark completed tasks in `tasks.md` only.
+
+## File count before handoff
+
+Before the slice's commit-and-push task, list the files the slice changes against its base branch with
+`git diff --name-only <base>...HEAD`, where `<base>` is the branch below this one in the stack. Count hand-written
+files, and list lockfile changes and generated output separately. Compare the count with the slice's estimate in
+`plan.md` and the limit of about 15 hand-written files. When the count exceeds either without a reason that
+`plan.md` already states, stop and report it as a plan correction. Otherwise record the count, and any reason
+`plan.md` gives, for the pull request body.
+
+## Verification handoff and stop
+
+The slice ends with its verification-handoff tasks from `tasks.md`: run the repository checks, commit, and push the
+slice as a draft pull request; request verification as described in `docs/engineering/verification-harness.md`;
+then address the report, repeat verification as needed, and record the final report in `quickstart.md` and the
+pull request. Wait for each report before continuing. Do not proceed while a requested report is outstanding.
+
+After the final report is recorded, stop. Do not create the next slice's branch, start its tasks, or mark the
+pull request ready unless the user asks.
 
 
 ## User Input
@@ -224,3 +276,11 @@ Report final status with summary of completed work.
 - [ ] Implementation validated against specification, plan, and test coverage
 - [ ] Extension hooks dispatched or skipped according to the rules in Mandatory Post-Execution Hooks above
 - [ ] Completion reported to user with summary of completed work
+
+
+## Pre-ETS completion rule
+
+Completion means the current slice, not the feature. Report the slice ID and branch, the slice tasks completed,
+the hand-written file count against the plan's estimate, the pushed SHA, the final verification result for each of
+the slice's claim IDs with any limitation the pull request names, and the next slice in `plan.md` without starting
+it.

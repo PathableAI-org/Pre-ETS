@@ -1,7 +1,7 @@
 # Pre-ETS specification and planning preset
 
 This project-owned preset adapts the upstream Spec Kit specification, clarification,
-planning, task, constitution, and checklist commands without editing their generated
+planning, task, implementation, constitution, and checklist commands without editing their generated
 core files.
 
 It establishes this flow:
@@ -18,7 +18,10 @@ It establishes this flow:
    `contracts/telemetry.md`, then implementation slices.
 5. Task generation consumes feature verification, module contracts, and the
    telemetry contract, grouped by slice with a verification handoff per slice.
-6. Specification, plan, and each implementation slice are reviewed on their own
+6. Implementation runs one slice per branch: it resolves the slice from the branch
+   name, executes only that slice's tasks, checks its hand-written file count, and
+   stops after its verification handoff.
+7. Specification, plan, and each implementation slice are reviewed on their own
    pull requests, as described in `docs/engineering/git-workflow.md` and
    `docs/engineering/verification-harness.md`.
 
