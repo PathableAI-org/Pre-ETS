@@ -75,6 +75,8 @@ The first plan review found these defects. Each is corrected in the decision nam
 | R35 | Mount and resume replayed only unexpired attempts, so a tab mounting after `notAfter` could trust a stale snapshot after an unseen logout.            | Every unresolved attempt is replayed regardless of age and resolved only by D8's authoritative outcomes (D8, D9, D14).                                                                                            |
 | R36 | An earliest-only `pendingSince` could not tell which pending interactions a delayed `communicated { at }` covers.                                     | The window record keeps `pendingSince` and `pendingLatest`; a covering `at ≥ pendingLatest` clears it, otherwise `pendingSince` becomes `max(pendingSince, at)` (D5).                                             |
 | R37 | In the no-storage fallback a joining tab missed the open window and sent immediately.                                                                 | A joining tab broadcasts `window-query`; tabs of the tag answer with `communicated { at: lastCommunicatedAt }` (D5).                                                                                              |
+| R38 | A blanket tag filter made `session-current` from a different tag unreachable, removing the hint's channel fallback without storage.                   | `session-current` is exempt from the tag filter and only triggers a server confirmation (D2).                                                                                                                     |
+| R39 | Without storage, a document mounting after both logout broadcasts found no pending or ended marker and trusted a stale snapshot.                      | When replay is unavailable or fails, the coordinator conceals temporarily and confirms with status before trusting the snapshot (D14).                                                                            |
 
 ## Current implementation facts
 
@@ -515,7 +517,10 @@ after hydration, it:
    logout watch and is resolved only by D8's authoritative outcomes (D8, R28, R35);
 3. replays `preets-session-ended:v1:<tag>`: if it exists for this snapshot's tag, the tab moves to `Ended` and unmounts the
    protected content;
-4. otherwise adopts the server-rendered snapshot (D6), writes its tag to `preets-session-current:v1` (a hint, D2),
+4. if `localStorage` is unavailable or a replay read fails, conceals temporarily (`hidden` + `inert`) and confirms
+   with `GET /session/status` before trusting the snapshot: usable with the same tag restores and adopts the
+   response; 401 or another tag ends the tab (R39);
+5. otherwise adopts the server-rendered snapshot (D6), writes its tag to `preets-session-current:v1` (a hint, D2),
    and broadcasts `renewed` and `session-current`.
 
 A logout writes the ended record before it broadcasts, so a tab that subscribes late still sees it at step 2.

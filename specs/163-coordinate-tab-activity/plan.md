@@ -244,14 +244,16 @@ Claim-based evidence is tabulated per module in [contracts/modules.md](contracts
 - `sessionStatus`: tenant, `readForTenant`, snapshot or 401/403/503. No origin check (a `GET` without effect, already
   gated).
 - `logout`: origin, content type, decode; tenant; `readForTenant` → 401 when not usable; tag compare → 409; then
-  `invalidate({ reference })` → 204 without `Set-Cookie`. `SessionServiceUnavailable` at either step → 503.
+  `invalidate({ reference, notAfterEpochMilliseconds: notAfter })` → 204 without `Set-Cookie` when deleted;
+  `InvalidationExpired` → 408 (the store's atomic Redis `TIME` check; the handler compares no clocks, research D8). `SessionServiceUnavailable` at either step → 503.
 - `next/coordination-snapshot.ts` (leaf: imports `node:crypto` and `session.ts` types only) builds the tag and the
   snapshot for both the handlers and `next/session.ts`. The tag is `createHash("sha256").update("preets:session-coordination:v1\0").update(reference).digest("base64url")`
   from `node:crypto`; comparison uses `timingSafeEqual` on equal-length buffers. The handlers run in the Node runtime.
 
 **Snapshot for pages** (`next/session.ts`): when the read returns `UsableSession`, attach
-`{ coordinationTag, idleDeadlineEpochMilliseconds, observedAtEpochMilliseconds, serverTimeEpochMilliseconds: Clock.currentTimeMillis,
-warningLeadMinutes }` built by `next/coordination-snapshot.ts`.
+`{ coordinationTag, idleDeadlineEpochMilliseconds, observedAtEpochMilliseconds, revision,
+serverTimeEpochMilliseconds: Clock.currentTimeMillis, warningLeadMinutes }`, with `revision` and `observedAt` taken from
+the `UsableSession`, built by `next/coordination-snapshot.ts`.
 
 **Gate classification** (`next/protection.ts`): `classify` returns `{ entry: "application", renewal: undefined }` for
 any request whose pathname is in `NON_RENEWING_PATHS`, and for every Server Action (`next-action`), so only document

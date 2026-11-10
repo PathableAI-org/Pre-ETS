@@ -52,8 +52,9 @@ for a moved window reschedules (D5).
 
 ## Channel messages
 
-`BroadcastChannel("preets-session-coordination")`. Every message carries `coordinationTag`; receivers ignore other
-tags and malformed messages.
+`BroadcastChannel("preets-session-coordination")`. Every message carries `coordinationTag`. Receivers ignore malformed messages and
+messages for other tags, except `session-current`, which is useful precisely when its tag differs: it is only a hint
+that triggers a server confirmation, never a snapshot to adopt (R38).
 
 | `type`            | Additional fields                                                                                               | Sent when                                                                                                                            | Receiver effect                                                                                                                                                                 |
 | ----------------- | --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
