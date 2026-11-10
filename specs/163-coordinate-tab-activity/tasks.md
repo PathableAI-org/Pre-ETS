@@ -270,6 +270,16 @@ The plan was amended again after review of #364 (user decisions of 2026-11-10). 
   and delayed communications checks coverage within 60 s and no unjustified send.
 - **R37**: in the fallback, a joining tab broadcasts `window-query`, answered with `communicated { at }`.
 
+## Amended-plan rework (plan `0e6f79f`, R38–R39)
+
+- **R38**: `session-current` from another tag bypasses the tag filter and only triggers a status confirmation (the
+  implementation already did this; documented at `#receive`).
+- **R39**: when `localStorage` is unavailable at mount (the write-and-read-back probe fails), the coordinator conceals
+  temporarily and confirms with status instead of adopting the server-rendered snapshot; a usable answer adopts and
+  reveals, a 401 or another tag ends the tab.
+- Alignment: the logout handler forwards `notAfter` unchanged (new unit example) and maps `InvalidationExpired` to 408;
+  the server-rendered snapshot carries `revision`.
+
 ## Implementation deviations from the plan (for plan review)
 
 These do not change any acceptance criterion or HTTP outcome. Each needs reviewer confirmation at the plan gate.

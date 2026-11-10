@@ -266,7 +266,8 @@ export class TabCoordination {
     this.#channel = openTabChannel((message) => {
       this.#receive(message)
     })
-    this.#sharedWindow = windowLock() !== undefined && storageAvailable()
+    const storage = storageAvailable()
+    this.#sharedWindow = windowLock() !== undefined && storage
     const stopListening = this.#listen()
     this.#publish()
     const timing = navigationTiming()
@@ -274,7 +275,9 @@ export class TabCoordination {
     this.#redisClock = initialOffset(redisClock(this.#initial), timing)
     this.#replayPendingLogouts()
     if (!this.#replayEnded()) {
-      this.#adoptSnapshot(this.#initial, true)
+      // Without readable storage the replay proves nothing, so confirm before trusting the snapshot (R39).
+      if (storage) this.#adoptSnapshot(this.#initial, true)
+      else this.#concealAndConfirm()
       if (!writeCurrentHint(this.#tag)) this.#hintOverride = this.#tag
       this.#channel.post({ coordinationTag: this.#tag, type: "session-current" })
       if (!this.#sharedWindow) this.#channel.post({ coordinationTag: this.#tag, type: "window-query" })
@@ -395,6 +398,11 @@ export class TabCoordination {
     if (!this.#concealed) this.#concealedSince = Date.now()
     this.#concealed = true
     this.#publish()
+  }
+
+  #concealAndConfirm() {
+    this.#conceal()
+    this.#guard(this.confirm())
   }
 
   /** Holds a submission whose hint names another session, confirms, and replays it if this session is current (R15). */
@@ -577,12 +585,12 @@ export class TabCoordination {
     return this.#sharedWindow ? readWindowRecord(this.#tag) : this.#memoryWindow
   }
 
+  /** Messages for other tags are ignored, except `session-current`: a hint that only triggers confirmation (R14, R38). */
   #receive(message: TabMessage) {
     if (message.coordinationTag === this.#tag) {
       this.#receivers[message.type](message)
       return
     }
-    // Another session's document mounted: confirm, never end on the hint alone (R14).
     if (message.type === "session-current") this.#guard(this.confirm())
   }
 

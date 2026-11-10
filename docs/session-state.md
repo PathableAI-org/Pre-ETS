@@ -177,7 +177,10 @@ only tags, times, the warning lead, and an activity kind.
 
 When the coordinator mounts after hydration, it subscribes first and replays the ended record; if
 its tag ended, it unmounts the protected content. Otherwise it adopts the server-rendered snapshot,
-writes the current-session hint, and broadcasts the page-load renewal and `session-current`. There
+writes the current-session hint, and broadcasts the page-load renewal and `session-current`. When
+`localStorage` is unavailable, the replay proves nothing, so the coordinator hides content and
+confirms with the server before trusting the snapshot. A `session-current` from another tag is the
+one message not filtered out by tag; it only makes the tab confirm. There
 is no pre-hydration script, so two gaps are accepted
 ([#155](https://github.com/PathableAI-org/Pre-ETS/issues/155)): a tab that loads while another tab
 logs out can show protected content until its coordinator mounts (the server still denies its

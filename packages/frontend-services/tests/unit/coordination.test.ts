@@ -55,13 +55,14 @@ const noUsableSession: NoUsableSession = { _tag: "NoUsableSession" }
 const defaultReference = "R".repeat(43)
 
 interface Recorded {
+  readonly cutoffs: (number | undefined)[]
   readonly invalidations: (string | undefined)[]
   readonly refreshes: RefreshSessionForTenantInput[]
 }
 
 type SessionOutcome = Effect.Effect<NoUsableSession | UsableSession, SessionServiceUnavailable | SessionTenantMismatch>
 
-let recorded: Recorded = { invalidations: [], refreshes: [] }
+let recorded: Recorded = { cutoffs: [], invalidations: [], refreshes: [] }
 
 interface Doubles {
   readonly invalidate?: Effect.Effect<InvalidationExpired | NoUsableSession, SessionServiceUnavailable>
@@ -70,12 +71,13 @@ interface Doubles {
 }
 
 const install = (doubles: Doubles = {}) => {
-  recorded = { invalidations: [], refreshes: [] }
+  recorded = { cutoffs: [], invalidations: [], refreshes: [] }
   const outcome = doubles.session ?? (() => Effect.succeed(usableSession))
   const sessions: SessionService["Service"] = {
     establish: () => Effect.die("establish must remain unused"),
     invalidate: (input) => {
       recorded.invalidations.push(input.reference)
+      recorded.cutoffs.push(input.notAfterEpochMilliseconds)
       return doubles.invalidate ?? Effect.succeed(noUsableSession)
     },
     read: () => Effect.die("read must remain unused"),
@@ -342,6 +344,15 @@ describe("status and logout outcomes [PREETS-SESSION-010]", () => {
     expect(recorded.invalidations).toEqual([defaultReference])
     expect(response.headers.getSetCookie()).toEqual([])
     expect(await response.text()).toBe("")
+  })
+
+  it("forwards notAfter to the store unchanged, even when it is already past", async () => {
+    const tag = await tagFor(defaultReference)
+    install()
+
+    await logout(post("/auth/logout", logoutBody(tag, 1_234)))
+
+    expect(recorded.cutoffs).toEqual([1_234])
   })
 
   it("answers 408 when the store reports the cutoff passed before the delete", async () => {
