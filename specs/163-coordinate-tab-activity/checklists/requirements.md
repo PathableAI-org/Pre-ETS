@@ -57,5 +57,8 @@
   until #158 functions. Finding 2 (provider logout) is an open product question that does not block the stakeholder
   contract. Finding 3 (logged-out presentation) was resolved by the maintainer on 2026-11-09 with proposal A, now
   FR-023, SC-011, and V-017. Finding 4 (requirement pinning) is resolved.
+- Acknowledged gaps G1 (logout while a tab is loading) and G2 (renewal by page load) were accepted by the maintainer
+  on 2026-11-10 (Authority finding 5). Affected items are qualified, not deleted; server denial, confidentiality, and
+  resume are unchanged.
 - `verification.md` records planned evidence only. No runtime, provider, store, browser, accessibility, or operational
   procedure was executed during specification.

@@ -28,7 +28,9 @@ succeeds, and that the authoritative session deadline moved forward.
 1. **Given** two running tabs for the same resolved tenant in the same browser context, **When** each makes protected
    requests, **Then** both use the same application session and the same authoritative idle deadline.
 2. **Given** two sharing tabs, **When** qualifying activity in tab A renews the authoritative deadline, **Then** tab B
-   reflects the renewed deadline within 2 seconds of the renewal response.
+   reflects the renewed deadline within 2 seconds of the renewal response. Acknowledged gap G2: when the renewal comes
+   from a page load in tab A, tab B may reflect it only after tab A's page becomes interactive, so the bound can be
+   missed.
 3. **Given** tab B is inactive and its previously known deadline passes after activity in tab A renewed the session,
    **When** tab B reaches that former deadline, **Then** it confirms with the server, stays usable, and does not
    present expiration, conceal its content, or deny protected use.
@@ -83,7 +85,8 @@ continues protected use after logout exposes participant information.
 
 **Independent Test**: Sign in, open three sharing tabs, and log out from one. Confirm that within 2 seconds every other
 running sharing tab conceals protected content and shows the signed-out notice, that no tab starts sign-in on its
-own, and that actual protected page requests and protected operations from every tab are denied afterward.
+own, and that actual protected page requests and protected operations from every tab are denied afterward. Under
+acknowledged gap G1, a tab that is still loading when the logout happens is outside the 2-second check.
 
 **Acceptance Scenarios**:
 
@@ -92,7 +95,9 @@ own, and that actual protected page requests and protected operations from every
 2. **Given** several running tabs sharing a session, **When** the user logs out in one of them, **Then** the logout is
    communicated immediately, never coalesced, and the server ends authenticated access for that session.
 3. **Given** the server has ended the session by logout, **When** other running sharing tabs are observed, **Then** each
-   conceals protected content within 2 seconds of the server ending the session.
+   conceals protected content within 2 seconds of the server ending the session. Acknowledged gap G1: a tab that was
+   still loading when the logout happened may briefly show protected content until it becomes interactive and learns
+   of the logout; the server still denies its protected requests (scenario 4).
 4. **Given** the session was logged out, **When** any tab that shared it attempts a protected page request or protected
    operation, **Then** it is denied and no protected content or effect results.
 5. **Given** the session was logged out, **When** any tab that shared it later communicates qualifying activity,
@@ -123,7 +128,7 @@ affect the other.
 2. **Given** a newly joined tab, **When** it starts, **Then** it reflects the session's current authoritative deadline
    and effective policy, not a fresh idle period of its own.
 3. **Given** a newly joined tab, **When** activity or logout occurs in it or in an earlier tab, **Then** it participates
-   exactly as earlier sharing tabs do.
+   exactly as earlier sharing tabs do, subject to acknowledged gaps G1 and G2 while it is still loading.
 
 ---
 
@@ -217,7 +222,8 @@ confirm concealment and denial on resume.
   application session and common authoritative idle state.
 - **FR-002**: A new application tab opened while a valid session exists for its tenant in that browser context MUST join
   that session, adopt its current authoritative deadline and effective policy, and participate in activity,
-  synchronization, and logout like every other sharing tab.
+  synchronization, and logout like every other sharing tab. Acknowledged gaps G1 and G2 apply while the new tab is
+  still loading.
 - **FR-003**: Deliberate authenticated page fetches and form submissions MUST count as qualifying activity and renew a
   still-valid session when the server receives their own request.
 - **FR-004**: Intentional control activation, keyboard interaction, text entry, touch interaction, and user-driven focus
@@ -235,7 +241,9 @@ confirm concealment and denial on resume.
   received at or after expiration or after logout MUST NOT revive authenticated access.
 - **FR-011**: Qualifying activity in any sharing tab MUST renew the authoritative deadline for the shared session, and
   while sharing tabs run and the server is reachable every other sharing tab MUST reflect the renewed deadline and its
-  associated effective policy within 2 seconds of the renewal response.
+  associated effective policy within 2 seconds of the renewal response. Acknowledged gap G2: a renewal caused by a page
+  load (document entry) reaches other tabs only after the loading page becomes interactive and may miss this bound;
+  renewals from in-page activity and form submissions within a running page are not affected.
 - **FR-012**: A running sharing tab MUST NOT present the expired state, conceal content, or deny protected use on its own
   while the server session remains valid; a tab reaching a locally known deadline MUST confirm with the server first.
 - **FR-013**: Every protected page MUST offer an explicit logout action that is keyboard-operable with visible focus, has
@@ -244,7 +252,8 @@ confirm concealment and denial on resume.
   sharing it can continue protected page requests or protected operations under it.
 - **FR-015**: While sharing tabs run and the server is reachable, every other sharing tab MUST conceal protected content,
   visually and from keyboard and assistive-technology access, within 2 seconds of the server ending the session by
-  logout.
+  logout. Acknowledged gap G1: a tab that was still loading when the logout happened may briefly show protected content
+  until it becomes interactive and learns of the logout; FR-014 still denies every protected request from it.
 - **FR-016**: Activity and logout MUST affect only the associated session; they MUST NOT renew or log out a different
   session, including a session for another resolved tenant, a session in another browser context, or a later session
   established after the associated one ended.
@@ -269,6 +278,22 @@ confirm concealment and denial on resume.
   explicit Log in action, keyboard-operable with visible focus, that enters the tenant's fresh-entry flow. Presenting
   the logout outcome in an already-open page MUST NOT start authentication automatically; a later protected-page
   navigation, refresh, or back/forward restoration still follows the fresh-entry policy (FR-020, PREETS-SESSION-004).
+
+### Acknowledged limitations
+
+The maintainer decided on 2026-11-10 that this slice will not close two narrow races, judging them not worth the added
+complexity, and that they are documented here as acknowledged gaps (Authority finding 5).
+
+- **G1 — logout while a tab is loading**: a tab that is still loading when another tab logs out may briefly show
+  protected content until it becomes interactive and learns that the session ended. The server denies every protected
+  request and operation from it throughout (FR-014, FR-022 and SC-005 still hold). Affects US3 scenario 3, FR-015, the
+  logout half of SC-004, and, for a newly opened tab, US4 scenario 3 and FR-002.
+- **G2 — renewal by page load**: a renewal caused by a page load (document entry) reaches other sharing tabs only after
+  that page becomes interactive, so the 2-second bound can be missed. Renewals from in-page activity and form
+  submissions within a running page still meet it. Affects US1 scenario 2, FR-011, the renewal half of SC-004, and, for
+  a newly opened tab, US4 scenario 3 and FR-002.
+
+Resume behavior (FR-017–FR-020) is not affected by either gap.
 
 ### Key Entities
 
@@ -297,7 +322,9 @@ confirm concealment and denial on resume.
   in another sharing tab, and interaction within 60 seconds of the deadline renew immediately; coalesced interaction
   renews no later than 60 seconds after it occurs; repeated interaction within an open window produces one renewal.
 - **SC-004**: In every exercised case with the server reachable, each other running sharing tab reflects a renewed
-  deadline within 2 seconds of the renewal response and conceals protected content within 2 seconds of logout.
+  deadline within 2 seconds of the renewal response and conceals protected content within 2 seconds of logout, except
+  for renewals caused by a page load (acknowledged gap G2) and tabs still loading when the logout happened
+  (acknowledged gap G1).
 - **SC-005**: After logout, 100% of exercised protected page requests and protected operations from every former sharing
   tab are denied with no protected content or effect.
 - **SC-006**: 100% of exercised qualifying activity communicated after expiration or logout leaves authenticated access
@@ -345,11 +372,11 @@ was merged by PR #360. Current `origin/main` authority was inspected at `0011661
 
 ### Accepted requirement coverage
 
-| Requirement                                                                                                                                                   | Acceptance criteria in this slice                         | Feature disposition                                                                                                                                                                                                                                                                                  |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [PREETS-SESSION-009](https://github.com/PathableAI-org/Pre-ETS/blob/00116612c13c85457439a24937f615be72f8ad1b/docs/requirements/session/PREETS-SESSION-009.md) | AC1–4                                                     | Specified in full (FR-003–FR-010), including the B5 60-second communication windows. Live renewal evidence is **incomplete** until real sessions can be established (Authority finding 1).                                                                                                           |
-| [PREETS-SESSION-010](https://github.com/PathableAI-org/Pre-ETS/blob/00116612c13c85457439a24937f615be72f8ad1b/docs/requirements/session/PREETS-SESSION-010.md) | AC1–3, AC5, AC6 (in part)                                 | AC1–3 (FR-001, FR-002, FR-011, FR-012) and AC5 (FR-013–FR-015, FR-023) specified with the B5 2-second bound and resume rule (FR-017–FR-020). AC6 specified for activity and logout (FR-016). Live multi-tab evidence is **incomplete** until real sessions can be established (Authority finding 1). |
-| PREETS-SESSION-010                                                                                                                                            | AC4; AC6 warning, continuation, and expiration conditions | **Deferred** to [#156](https://github.com/PathableAI-org/Pre-ETS/issues/156) (warning, Continue) and [#157](https://github.com/PathableAI-org/Pre-ETS/issues/157) (expiration), as the issue and delivery plan assign. Not specified here.                                                           |
+| Requirement                                                                                                                                                   | Acceptance criteria in this slice                         | Feature disposition                                                                                                                                                                                                                                                                                                                                                                       |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [PREETS-SESSION-009](https://github.com/PathableAI-org/Pre-ETS/blob/00116612c13c85457439a24937f615be72f8ad1b/docs/requirements/session/PREETS-SESSION-009.md) | AC1–4                                                     | Specified in full (FR-003–FR-010), including the B5 60-second communication windows. Live renewal evidence is **incomplete** until real sessions can be established (Authority finding 1).                                                                                                                                                                                                |
+| [PREETS-SESSION-010](https://github.com/PathableAI-org/Pre-ETS/blob/00116612c13c85457439a24937f615be72f8ad1b/docs/requirements/session/PREETS-SESSION-010.md) | AC1–3, AC5, AC6 (in part)                                 | AC1–3 (FR-001, FR-002, FR-011, FR-012) and AC5 (FR-013–FR-015, FR-023) specified with the B5 2-second bound and resume rule (FR-017–FR-020), except the acknowledged gaps G1 and G2, which leave the 2-second bound partly unmet. AC6 specified for activity and logout (FR-016). Live multi-tab evidence is **incomplete** until real sessions can be established (Authority finding 1). |
+| PREETS-SESSION-010                                                                                                                                            | AC4; AC6 warning, continuation, and expiration conditions | **Deferred** to [#156](https://github.com/PathableAI-org/Pre-ETS/issues/156) (warning, Continue) and [#157](https://github.com/PathableAI-org/Pre-ETS/issues/157) (expiration), as the issue and delivery plan assign. Not specified here.                                                                                                                                                |
 
 Related constraints, not coverage claims: [PREETS-SESSION-004](https://github.com/PathableAI-org/Pre-ETS/blob/00116612c13c85457439a24937f615be72f8ad1b/docs/requirements/session/PREETS-SESSION-004.md)
 (fresh entry on back/forward restoration), [PREETS-SESSION-008](https://github.com/PathableAI-org/Pre-ETS/blob/00116612c13c85457439a24937f615be72f8ad1b/docs/requirements/session/PREETS-SESSION-008.md)
@@ -443,3 +470,17 @@ seconds of a shared logout; sessions for other tenants, browser contexts, and la
    - _Impact_: Requirement text is read from current `origin/main`, which carries the merged B5 decisions.
    - _Decision required_: None.
    - _Proposals_: (A) Use current `origin/main` requirement text (applied).
+5. **Acknowledged gaps in the 2-second bound (resolved by maintainer decision on 2026-11-10).**
+   - _Source_: B5 synchronization decision and PREETS-SESSION-010 Verification Plan (2-second bound for renewed
+     deadlines and logout); maintainer direction on 2026-11-10 during plan review in PR #362: "This case is not worth
+     the added complexity. Modify the plan to not handle this case and to instead document it as a possible gap that
+     we acknowledge."
+   - _Ambiguity_: Whether S3 must close the page-load races in which a loading tab misses the 2-second bound. None
+     remaining for this slice.
+   - _Impact_: G1 and G2 (see Acknowledged limitations) qualify US1 scenario 2, US3 scenario 3, US4 scenario 3, FR-002,
+     FR-011, FR-015, SC-004, V-004, V-011, and V-017. Server denial, confidentiality, and resume are unchanged. The
+     accepted requirement and the B5 decision are not edited, so S3 evidence records these as known shortfalls against
+     them rather than as satisfied.
+   - _Decision required_: None for this slice. Any change to the requirement or B5 text belongs to the requirements or
+     delivery workflow.
+   - _Proposals_: (A) Accept and document G1 and G2 as gaps in S3 (applied).
