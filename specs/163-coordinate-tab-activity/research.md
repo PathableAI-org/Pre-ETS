@@ -70,6 +70,11 @@ The first plan review found these defects. Each is corrected in the decision nam
 | R30 | The pending-attempt array had several writers without a lock, so concurrent updates could lose an attempt.                                            | One `localStorage` key per attempt (`preets-session-logout-pending:v1:<tag>:<attemptId>`); each writer touches only its own key (D8).                                                                             |
 | R31 | Ending a watch at application-time `notAfter` + 3 s assumed the application and Redis clocks agree.                                                   | An attempt resolves only by `logged-out`, its `logout-failed`, 401, a different tag, or a usable status whose Redis `observedAt` is later than `notAfter` (D8).                                                   |
 | R32 | In the no-storage fallback, a received `communicated` advanced the window but left already-covered pending activity queued, causing an extra renewal. | A received `communicated { at }` clears pending activity that occurred at or before `at` and keeps newer activity (D5).                                                                                           |
+| R33 | Concurrent writers of the single ended-tag list could overwrite each other's markers.                                                                 | One key per ended tag: `preets-session-ended:v1:<tag>` → `{ endedAt }`; pruning deletes individual keys older than 24 hours (D8, D14).                                                                            |
+| R34 | `notAfter` came from the application-clock offset but was enforced against Redis `TIME`; a Redis clock ahead would reject every logout.               | `notAfter` is on the Redis clock: tabs keep a second offset calibrated from snapshots' `observedAtEpochMilliseconds`; the store alone enforces the cutoff (D6, D8).                                               |
+| R35 | Mount and resume replayed only unexpired attempts, so a tab mounting after `notAfter` could trust a stale snapshot after an unseen logout.            | Every unresolved attempt is replayed regardless of age and resolved only by D8's authoritative outcomes (D8, D9, D14).                                                                                            |
+| R36 | An earliest-only `pendingSince` could not tell which pending interactions a delayed `communicated { at }` covers.                                     | The window record keeps `pendingSince` and `pendingLatest`; a covering `at ≥ pendingLatest` clears it, otherwise `pendingSince` becomes `max(pendingSince, at)` (D5).                                             |
+| R37 | In the no-storage fallback a joining tab missed the open window and sent immediately.                                                                 | A joining tab broadcasts `window-query`; tabs of the tag answer with `communicated { at: lastCommunicatedAt }` (D5).                                                                                              |
 
 ## Current implementation facts
 
@@ -207,8 +212,8 @@ communicate through:
 - three kinds of `localStorage` record: `preets-session-activity:v1:<tag>`, one per session tag, holding
   `{ lastCommunicatedAt, pendingSince }` for the B5-W window, so a stale tab can write only its own session's record
   and never displace the current one (R20; records for tags other than the hint's are pruned, keeping at most 4); `preets-session-current:v1` holding the tag of the most recently mounted session (R2); and
-  `preets-session-ended:v1` holding the last few tags that ended by logout, so a tab that missed the broadcast can
-  replay it (R3); and
+  `preets-session-ended:v1:<tag>` keys for tags that ended by logout, one key per tag, so a tab that missed the
+  broadcast can replay it (R3, R33); and
 - `navigator.locks.request("preets-session-activity", …)` so the read-decide-write on that record is atomic across
   tabs and exactly one tab sends a coalesced communication.
 
@@ -263,9 +268,9 @@ programmatic focus long after a click would qualify on its own.
 record, where `input = { now, deadline, tag }`:
 
 1. The record is read from the key of the tab's own tag, so another session's record is never read or written.
-2. `deadline - now < 60 s` → `send-now`; `lastCommunicatedAt = now`, `pendingSince = undefined`.
+2. `deadline - now < 60 s` → `send-now`; `lastCommunicatedAt = now`, `pendingSince = pendingLatest = undefined`.
 3. No `lastCommunicatedAt`, or `now - lastCommunicatedAt ≥ 60 s` → `send-now`; same record update.
-4. Otherwise → `coalesce-until(lastCommunicatedAt + 60 s)`; `pendingSince ??= now`.
+4. Otherwise → `coalesce-until(lastCommunicatedAt + 60 s)`; `pendingSince ??= now`; `pendingLatest = now`.
 
 At the window end, a tab whose timer fires acquires the lock and re-reads its own tag's record. It sends once only if the record
 belongs to its session's tag, `pendingSince` is set, and `now ≥ lastCommunicatedAt + 60 s`. It then sets
@@ -283,8 +288,11 @@ A pure function lets Fast-Check state the B5-W invariants directly (D5 evidence 
 
 **Storage or locks unavailable (R24)**: when `localStorage` or `navigator.locks` is unavailable, each tab keeps the
 window record for its own tag in memory, and every send broadcasts `communicated { at }` on the channel. Receiving tabs
-update their in-memory `lastCommunicatedAt` and clear their own pending activity that occurred at or before `at`,
-since that communication covers it; newer pending activity stays queued (R32). The window therefore stays shared across
+update their in-memory `lastCommunicatedAt` and apply the covering rule to their own pending activity: if
+`at ≥ pendingLatest`, the pending activity is covered and cleared; otherwise only later interactions remain, so
+`pendingSince` becomes `max(pendingSince, at)`, which keeps the 60-second bound for them (R32, R36). A tab that joins
+in this mode broadcasts `window-query`, and every tab of the tag answers with `communicated { at: lastCommunicatedAt }`,
+so the joining tab learns an open window (R37). The window therefore stays shared across
 running tabs, and each tab flushes only its own uncovered pending activity. Within one tab, the window is exact. Across tabs, two interactions within channel delivery
 latency (milliseconds) can each send once. That duplicate is a renewal of a valid session, never a missed one, and is
 recorded in [quickstart.md](quickstart.md#limitations). Without `BroadcastChannel` as well, only the per-tab window
@@ -312,7 +320,8 @@ first coordinator. A coordinator mounted later for a new session tag starts from
 trip, so its first timed response replaces that estimate. A sample whose uncertainty interval does not overlap the held
 estimate's replaces it, so a local clock step cannot leave a stale offset. A route-refresh snapshot has no request
 timing and does not recalibrate. Broadcasts carry the deadline on the server clock, and each receiving tab converts it with its own
-offset. Renewal sources propagate as follows:
+offset. The tab keeps a second offset to the Redis clock, estimated the same way from `observedAtEpochMilliseconds`,
+which it uses only to generate logout `notAfter` values (D8, R34). Renewal sources propagate as follows:
 
 | Renewal source                                                | How other tabs learn within 2 seconds                                                                                          |
 | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
@@ -369,15 +378,16 @@ broadcast already knows, and otherwise expiration is the remaining cause.
   `preets-session-logout-pending:v1:<coordinationTag>:<attemptId>` with value `{ notAfter }`, broadcasts
   `logout-started` with the same fields, and then sends the request with `keepalive: true` and a 10-second timeout, so
   it completes even if the tab closes. Each attempt has its own key, so adding, removing, and pruning attempts never
-  overwrite one another (R30). `notAfter` is the server-clock time 10 seconds ahead, computed with the tab's calibrated
-  offset (D6, R29). Every other tab with that tag, including a tab that mounts or resumes later and replays the pending
+  overwrite one another (R30). `notAfter` is the **Redis-clock** time 10 seconds ahead, computed with the tab's Redis offset,
+  which is calibrated like the application offset but from each snapshot's `observedAtEpochMilliseconds` (D6, R34).
+  Generation, enforcement, and resolution therefore all use the Redis clock. Every other tab with that tag, including a tab that mounts or resumes later and replays the pending
   keys, starts a reading once per second on a fixed cadence (each read gives up after one second and counts as
   undetermined) while any attempt of its tag is unresolved. An attempt is resolved by `logged-out` for the tag, by
   `logout-failed` with its own `attemptId`, or by the tab's own status answer: 401 or a different tag means ended; a
   usable answer whose `observedAtEpochMilliseconds` (Redis `TIME`) is later than `notAfter` means the attempt can no
   longer delete (R31). The outcome deletes the attempt's key; keys whose attempt resolved by observation are deleted
   by the tab that observed it.
-- **Cutoff enforced at the delete (R21, R27)**: the handler passes `notAfter` to
+- **Cutoff enforced at the delete (R21, R27, R34)**: the handler does no clock comparison of its own; it passes `notAfter` to
   `SessionService.invalidate({ reference, notAfterEpochMilliseconds })`. The store's invalidation script reads Redis
   `TIME` and deletes the record only if `TIME ≤ notAfter`, in the same atomic step; otherwise it deletes nothing and
   the handler answers 408. A request admitted before the cutoff that pauses past it therefore cannot delete later.
@@ -396,7 +406,7 @@ broadcast already knows, and otherwise expiration is the remaining cause.
 - **No cookie change (R10)**: the logout response sets no cookie. If it is delayed until another tab has completed a
   fresh login, an unconditional `Max-Age=0` would delete the later session's cookie. The removed record is the
   authority; the old reference left in the cookie names nothing and grants nothing, and the next login overwrites it.
-- **204**: the server ended the session. The tab adds its tag to `preets-session-ended:v1`,
+- **204**: the server ended the session. The tab writes `preets-session-ended:v1:<tag>` (one key per tag, R33),
   then broadcasts `logged-out` for its tag, and shows the signed-out notice (D14). Every other running tab with that tag shows the same notice on receipt (FR-015, B5-S).
 - **401** or **409**: the tab's session is no longer in force in this browser. The tab records its tag as ended,
   shows the signed-out notice, and broadcasts. It does not state that it ended a session (FR-021).
@@ -428,8 +438,8 @@ than hiding for a shared workstation, while hiding is required for temporary con
 **Decision**: The coordinator listens to `visibilitychange` (to visible), the Page Lifecycle `resume` event, and
 `pagehide`/`pageshow`:
 
-- **Every resume, first**: read `preets-session-ended:v1`, `preets-session-logout-pending:v1`, and
-  `preets-session-current:v1` synchronously; an unexpired pending attempt for this tag starts the logout watch (R28). If this tab's
+- **Every resume, first**: read this tag's ended key, its pending-attempt keys, and `preets-session-current:v1`
+  synchronously; every unresolved pending attempt for this tag, whatever its age, starts the logout watch (R28, R35). If this tab's
   tag is in the ended record (written only after a server-confirmed logout), move to `Ended` at once. If the
   current-session hint differs, conceal temporarily and confirm before handling input; end only on a server-confirmed
   401 or different tag (R2, R3, R14).
@@ -501,9 +511,9 @@ real time with the shortest permitted timeout is slower but changes no product c
 after hydration, it:
 
 1. subscribes to the channel and the `storage` event;
-2. replays `preets-session-logout-pending:v1`: an unexpired attempt for this snapshot's tag starts the logout watch
-   (D8, R28);
-3. replays `preets-session-ended:v1`: if it lists this snapshot's tag, the tab moves to `Ended` and unmounts the
+2. replays the pending-attempt keys for this snapshot's tag: every unresolved attempt, whatever its age, starts the
+   logout watch and is resolved only by D8's authoritative outcomes (D8, R28, R35);
+3. replays `preets-session-ended:v1:<tag>`: if it exists for this snapshot's tag, the tab moves to `Ended` and unmounts the
    protected content;
 4. otherwise adopts the server-rendered snapshot (D6), writes its tag to `preets-session-current:v1` (a hint, D2),
    and broadcasts `renewed` and `session-current`.
