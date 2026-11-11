@@ -6,6 +6,7 @@ import HomePage from "../../src/app/(app)/page.tsx"
 import { RedirectError } from "./next-navigation-stub.ts"
 
 vi.mock("@pathableai/pre-ets-frontend-services", () => ({
+  readBrowserTracing: vi.fn(() => Promise.resolve(undefined)),
   readSessionRequest: vi.fn(),
   SESSION_COOKIE: "pathable-session"
 }))
