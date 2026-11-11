@@ -63,8 +63,9 @@ export interface OtelEnabled {
 ```
 
 **Inputs and validation ownership**: `OTEL_EXPORTER_OTLP_ENDPOINT` is decoded through the shared `withoutEcho`
-helper (new private child `config/redaction.ts`, moved from `config/authentication.ts`), so a malformed value never
-appears in a startup error (research D15). `BROWSER_TRACING_ENABLED` is untrusted environment input decoded by
+helper, now owned by `config.ts` and passed into the child recipe builders (`authenticationConfig(withoutEcho)`,
+`otelConfig(withoutEcho)`), so a malformed value never appears in a startup error and no child imports a sibling
+(research D15). `BROWSER_TRACING_ENABLED` is untrusted environment input decoded by
 `Config.Boolean` with default `false`. `OTEL_RESOURCE_ATTRIBUTES` is read optionally; only `service.instance.id` is
 extracted and a malformed list yields `undefined`.
 
