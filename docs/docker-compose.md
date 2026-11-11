@@ -132,7 +132,7 @@ skips the browser login) for manual testing.
 Local OpenTelemetry + Grafana is **opt-in**. Default
 `docker compose up -d --wait redis keycloak` does **not** start it.
 
-Pinned image: `grafana/otel-lgtm:0.37.0` (digest pinned in `compose.yaml`).
+Pinned image: `grafana/otel-lgtm:0.40.0` (digest pinned in `compose.yaml`).
 Compose service name: **`otel-lgtm`**. Compose profile: **`observability`**.
 The image runs Grafana plus Tempo, Loki, and Prometheus. With OTEL enabled, the
 frontend exports traces, Effect logs, and Effect/Node runtime metrics together.
@@ -140,11 +140,11 @@ With `OTEL_SDK_DISABLED=true`, it exports none of them. Empty query results are
 not conclusive application evidence; check configuration, traffic, export
 timing, and collector delivery.
 
-| Host binding     | Container | Purpose                            |
-| ---------------- | --------- | ---------------------------------- |
-| `127.0.0.1:3300` | `3000`    | Grafana UI (Next.js keeps `:3000`) |
-| `127.0.0.1:4317` | `4317`    | OTLP gRPC (not used by Next)       |
-| `127.0.0.1:4318` | `4318`    | OTLP HTTP protobuf (Next exporter) |
+| Host binding     | Container | Purpose                                        |
+| ---------------- | --------- | ---------------------------------------------- |
+| `127.0.0.1:3300` | `3000`    | Grafana UI (Next.js keeps `:3000`)             |
+| `127.0.0.1:4317` | `4317`    | OTLP gRPC (not used by Next)                   |
+| `127.0.0.1:4318` | `4318`    | OTLP HTTP (Next server protobuf, browser JSON) |
 
 Anonymous Grafana org role is **Viewer** (`GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer`)
 for least-privilege local MCP reads. Do not treat anonymous Admin or
@@ -164,6 +164,27 @@ docker compose --profile observability up -d --wait
 
 Port notes: Grafana is on **3300** so it does not collide with Next on **3000**.
 Keycloak remains on **8080** (unchanged).
+
+### Browser export and CORS
+
+With [browser tracing](./observability.md#browser-export) on, the page exports
+straight to the collector, so set `OTEL_EXPORTER_OTLP_ENDPOINT` to an address
+the browser can reach: `http://127.0.0.1:4318/`. The image's OTLP HTTP
+receiver already allows `http://*` origins, so a page on
+`http://127.0.0.1:3000` (or any other local port) is accepted without a
+mounted collector configuration. To check it from a shell:
+
+```sh
+curl -si -X OPTIONS http://127.0.0.1:4318/v1/traces \
+  -H 'Origin: http://127.0.0.1:3000' \
+  -H 'Access-Control-Request-Method: POST' \
+  -H 'Access-Control-Request-Headers: content-type'
+# Expect: 204 with Access-Control-Allow-Origin: http://127.0.0.1:3000
+```
+
+If a future image narrows that default, browser export fails its preflight and
+no browser records arrive; mount a receiver configuration that allows the
+application origin.
 
 ### Stop only the observability service
 

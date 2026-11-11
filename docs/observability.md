@@ -2,11 +2,11 @@
 
 Instrumentation for the **Next.js Node server**
 (`@pathableai/pre-ets-frontend`). `packages/backend` instrumentation does not
-exist yet. Browser tracing is being added so the
-[verification harness](engineering/verification-harness.md) can observe browser
+exist yet. Browser tracing lets the
+[verification harness](engineering/verification-harness.md) observe browser
 behavior. Its switch and rendered configuration are described in
-[Browser tracing switch](#browser-tracing-switch). Until the browser starts
-exporting, browser facts are verified through browser interaction.
+[Browser tracing switch](#browser-tracing-switch), and its export, CORS
+requirement, and signals in [Browser export](#browser-export).
 
 **Runtime + export**: `instrumentation.ts` starts one process runtime. OTEL is
 all-or-nothing: `OTEL_SDK_DISABLED=true` installs no SDK, exporters, automatic
@@ -148,6 +148,59 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318/ \
 OTEL_SERVICE_NAME=pre-ets-frontend \
 BROWSER_TRACING_ENABLED=true \
 pnpm --filter @pathableai/pre-ets-frontend start
+```
+
+### Browser export
+
+With browser tracing effective, the client entry (`src/instrumentation-client.ts`)
+reads the `preets-browser-tracing` element before hydration. Without it, the
+page loads no tracing code and sends nothing to the collector. With it, the page
+lazily loads the OpenTelemetry web SDK, which:
+
+- exports OTLP/HTTP JSON straight from the browser to `<endpoint>v1/traces`
+  (for example `http://127.0.0.1:4318/v1/traces`). There is no relay on the
+  application origin. The request carries no collector headers and no cookies.
+- continues the document's server trace: the `documentLoad` record's parent is
+  the rendered `traceparent`.
+- adds `traceparent` to same-origin `fetch` requests only (data fetches, Server
+  Actions, and RSC navigation payloads). Requests to other origins, including
+  the identity provider and the collector, never carry it.
+- sets `<html data-preets-browser-tracing="started">` once it is registered.
+  Requests sent before the marker carry no browser trace context.
+
+The collector must be reachable from the browser at that endpoint and must
+accept cross-origin `POST` requests, including the CORS preflight, from the
+application origin. The local `otel-lgtm` collector already allows `http://*`
+origins ([Docker Compose](docker-compose.md#browser-export-and-cors)). A
+collector that requires headers is not supported for browser export.
+
+Spans are batched and exported about 30 seconds after they end. Keep the page
+open that long before querying; records from a page that closes first may be
+lost. A collector that is down or rejects export never changes the page.
+
+Every span passes an export filter before it leaves the page. Only the record
+names below (and the later harness records) are exported. Attributes are kept
+only from the contract's allow list; `url.full` becomes `url.path`, a pathname
+with no origin, query string, or fragment. Event attributes, `exception`
+events, links, and status descriptions are removed. `resourceFetch` and
+`CORS Preflight` spans are dropped. The resource carries only `service.name`,
+`service.version`, `service.instance.id` (when rendered), and the SDK's
+`telemetry.sdk.*` attributes; `telemetry.sdk.language` is `webjs` for browser
+records and `nodejs` for server records.
+
+| Record                                 | Emitted by                    | Attributes                                                                                                        | Parent                                                                          |
+| -------------------------------------- | ----------------------------- | ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `documentLoad`                         | Document-load instrumentation | `preets.outcome` = `loaded`; `url.path`; timing events (names only)                                               | The server span that rendered the document                                      |
+| `documentFetch`                        | Document-load instrumentation | `preets.outcome` = `fetched`; `url.path`                                                                          | `documentLoad`                                                                  |
+| HTTP method (`GET`, `POST`, and so on) | Fetch instrumentation         | `preets.outcome` (`responded` or `network_error`); `http.request.method`; `http.response.status_code`; `url.path` | The active scope, otherwise a root; the server span of the request is its child |
+
+Example TraceQL, after the run filter
+`resource.service.version = "<sha>" && resource.service.instance.id = "<run>"`
+(written `RUN`):
+
+```text
+{ RUN && resource.telemetry.sdk.language = "nodejs" && kind = server } >> { RUN && resource.telemetry.sdk.language = "webjs" && name = "documentLoad" }
+{ RUN && resource.telemetry.sdk.language = "webjs" && kind = client && span.url.path = "/session/status" } > { RUN && resource.telemetry.sdk.language = "nodejs" && kind = server }
 ```
 
 ### Startup and export policy
@@ -335,7 +388,7 @@ enabled, a valid `OTEL_EXPORTER_OTLP_ENDPOINT`, and `OTEL_SERVICE_NAME`.
 request for trace/log batch export and 60 seconds for periodic metrics.
 
 The image and digest are the `otel-lgtm` service in `compose.yaml`
-(`grafana/otel-lgtm:0.37.0`). That image includes Tempo, Loki, and Prometheus.
+(`grafana/otel-lgtm:0.40.0`). That image includes Tempo, Loki, and Prometheus.
 Enabled OTEL exports all three signals. Empty Loki or Prometheus results are
 not evidence that the application logged nothing or emitted no metrics; check
 configuration, traffic, export timing, and collector delivery.
@@ -432,7 +485,8 @@ Docs-only command lists without a live success are not SC-006 evidence.
 
 ## Out of scope (stubs)
 
-- Browser/RUM
+- Browser RUM, browser metrics, and browser logs (browser tracing exports
+  traces only)
 - Independent per-signal enablement, signal-specific collector endpoints, and
   alternate JSON HTTP or gRPC exporters
 - A second OTLP export pipeline alongside the shared processors (including
