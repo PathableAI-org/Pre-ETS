@@ -211,7 +211,7 @@ See [contracts/modules.md](contracts/modules.md#contract-evidence).
   `TraceScope.run(task)` is `context.with(trace.setSpan(context.active(), span), task)`.
 - **Harness facts**: `facts.ts` holds the recorders. Each one starts a zero-duration span with the closed-set
   attributes and `preets.outcome`, then ends it. A send generates its `telemetryId` with `crypto.randomUUID()`, and a
-  receipt records the carried ID when it is a UUID. Submit and router records replace the single pending cause for their request kind, which the cause wrapper claims once. `TabCoordination` keeps the last `UiState` and records only when it changes. Its first publish records
+  receipt records the carried ID when it is a UUID. Submit and router records fill the single pending-cause slot for their request kind; overlap makes it ambiguous, and the cause wrapper claims only an unambiguous cause, once. `TabCoordination` keeps the last `UiState` and records only when it changes. Its first publish records
   `mounted → …`.
 - **Export filter** ([D9](research.md#d9--forbidden-data-enforcement-at-export)): a `SpanExporter` wrapper. It maps
   each `ReadableSpan` to a copy with filtered attributes and events, rewrites `url.full` to `url.path`, drops spans by
@@ -263,10 +263,9 @@ Plan limitations, approved with this plan for the verification gate:
   buffered before registration is replayed as a root span, not as the parent of a request. Facts are kept unless more than 256 occur before registration, which the T-011 overflow record reports, or the SDK does not register within 10 seconds, in which case the marker never appears and the run is not sampled.
   Verifiers wait for the `data-preets-browser-tracing="started"` marker before a sampled request step. A request seen
   before the marker that lacks context is not a V-002 or SC-001 violation.
-- **PL-2**: When two form submits, or two router transitions, overlap before the first one's request starts, the
-  later interaction keeps the cause and the earlier request is unparented (research D16). It is never attributed to
-  the wrong interaction. A guarded submission and its replay count as one interaction. Quickstart samples one
-  interaction at a time.
+- **PL-2**: When two form submits, or two router transitions, are both pending within 5 seconds, neither request is
+  parented (research D16). A guarded submission and its replay count as one interaction, because the guard withdraws
+  the cancelled cause. Quickstart samples one interaction at a time, at least 5 seconds apart.
 - **PL-3**: Only documents under the protected `(app)` layout render browser configuration. Public documents run no
   browser tracing.
 - **PL-4 (proposed; needs approval)**: V-005 now requires a restoration confirmed as served from the back/forward
