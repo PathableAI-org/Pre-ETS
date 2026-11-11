@@ -260,6 +260,14 @@ package sources named below. Implementation re-checks each signature against the
 - **Alternatives**: Stripping userinfo or the query before rendering, rejected for that reason. Rendering nothing while starting
   normally, rejected because it hides a misconfiguration.
 
+- **Decoding without echo**: `Config.URL` would quote a malformed endpoint in its schema issue, and that issue
+  reaches the startup error log before `parseRawConfig` runs. So `OTEL_EXPORTER_OTLP_ENDPOINT` is decoded with the
+  config module's one redacting helper, `withoutEcho`. It moves unchanged from `config/authentication.ts` to a new
+  private child, `config/redaction.ts`, which `config/authentication.ts` and `config/otel.ts` both import. Any
+  endpoint decoding failure then reports only `OTEL_EXPORTER_OTLP_ENDPOINT is invalid`, whatever the switch. Valid
+  endpoints decode exactly as before. The only change for server-only operation is that the error no longer quotes a
+  malformed URL.
+
 ### D16 — Causal parent for Server Action and RSC requests
 
 - **Decision**: The facade records two interaction facts that cause requests outside a synchronous scope:
