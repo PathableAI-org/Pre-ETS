@@ -114,6 +114,11 @@ package sources named below. Implementation re-checks each signature against the
   hydration wins the race (review of #374).
 - **Rationale**: The SDK, exporter, and instrumentations are absent from every off page's network traffic, which
   V-008 observes. The API package is small and inert.
+- **Buffer bounds**: The `pending` state lasts at most 10 seconds. If the SDK has not registered by then, the facade
+  becomes `off`, drops the buffer, and never sets the marker. When the buffer is full, further facts are counted, not
+  stored. On replay the SDK emits one `BrowserTracing.buffer` span with `preets.outcome = overflowed` and
+  `preets.tracing.dropped_count` (T-011), so loss is observable rather than silent. Coordinator startup produces about
+  ten facts, so overflow means something abnormal happened.
 - **Consequence (plan limitation PL-1)**: The import resolves after hydration may begin. A request started before the
   SDK registers carries no browser trace context, and a buffered fact replayed later is a root span, not the parent of
   a request. Harness facts themselves are not lost. Verifiers wait for `data-preets-browser-tracing="started"` before a
@@ -237,18 +242,21 @@ package sources named below. Implementation re-checks each signature against the
   are their own traces, and records from a page that closes before export may be lost. The evidence-channel bullet
   drops "once browser tracing exists".
 
-### D15 — Credential-bearing collector endpoints
+### D15 — Endpoint shape that is safe to render
 
-- **Decision**: When `BROWSER_TRACING_ENABLED` decodes to `true` and OTEL is enabled, an
-  `OTEL_EXPORTER_OTLP_ENDPOINT` with a username or password in its URL fails startup with the fixed message
-  `BROWSER_TRACING_ENABLED requires an OTEL_EXPORTER_OTLP_ENDPOINT without credentials`. The message names neither
-  the URL nor its parts. With the switch off, the same endpoint is accepted as before, and server-only export is
+- **Decision**: When `BROWSER_TRACING_ENABLED` decodes to `true` and OTEL is enabled, `OTEL_EXPORTER_OTLP_ENDPOINT`
+  must be an `http:` or `https:` URL with no username, no password, no query string, and no fragment. Any other
+  endpoint fails startup with the fixed message `BROWSER_TRACING_ENABLED requires an OTEL_EXPORTER_OTLP_ENDPOINT
+  without credentials, query, or fragment`. The message names neither the URL nor its parts. The rendered endpoint is
+  therefore only scheme, host, port, and path. With the switch off, the same endpoint is accepted as before, and server-only export is
   unchanged.
-- **Rationale**: `Config.URL` accepts userinfo, and rendering the endpoint would give the page that credential
-  (FR-007, V-009). Omitting headers alone does not make the rendered URL credential-free. Failing startup follows the
+- **Rationale**: `Config.URL` accepts userinfo and query parameters such as `api_key` or tokens. Rendering such an
+  endpoint would give the page that credential (FR-007, V-009). Omitting headers alone does not make the rendered URL
+  credential-free. An OTLP base URL needs neither a query nor a fragment, because the exporters append `v1/traces` to
+  the path. Failing startup follows the
   repository's configuration rule (D1). Silently stripping the userinfo would export to a collector the operator did
   not configure.
-- **Alternatives**: Stripping userinfo before rendering, rejected for that reason. Rendering nothing while starting
+- **Alternatives**: Stripping userinfo or the query before rendering, rejected for that reason. Rendering nothing while starting
   normally, rejected because it hides a misconfiguration.
 
 ### D16 — Causal parent for Server Action and RSC requests
@@ -258,17 +266,25 @@ package sources named below. Implementation re-checks each signature against the
   - `Router.transition`: from Next's `onRouterTransitionStart`, which `instrumentation-client.ts` re-exports from the
     facade.
 
-  Each one leaves a claim-once pending cause that lasts 5 seconds and is tagged with the request kind it expects. A
-  submit expects a Server Action POST, identified by the `Next-Action` request header. A router transition expects an
-  RSC request, identified by the `RSC: 1` header. The SDK module wraps `window.fetch` outside `FetchInstrumentation`.
-  When a same-origin request matches the oldest unexpired cause of its kind, the wrapper calls the instrumented fetch
-  inside `context.with(cause)`. The fetch span, and the server spans below it, then become the interaction's
-  descendants. Causes are claimed first-in, first-out, and unclaimed causes expire.
+    Each one replaces the pending cause for the request kind it expects. There is one slot per kind, the cause is
+    claimed once, and it lasts 5 seconds. A
+    submit expects a Server Action POST, identified by the `Next-Action` request header. A router transition expects an
+    RSC request, identified by the `RSC: 1` header. The SDK module wraps `window.fetch` outside `FetchInstrumentation`.
+    When a same-origin request matches the unexpired cause in its kind's slot, the wrapper empties the slot and calls the
+    instrumented fetch inside `context.with(cause)`. The fetch span, and the server spans below it, then become the
+    interaction's descendants. Unclaimed causes expire.
+- **Guarded submissions**: `TabCoordination`'s submit guard cancels a submission whose current-session hint names
+  another session, confirms the session, and replays it with `requestSubmit` (`tab-coordination.ts`). The listener
+  therefore sees two submits for one POST. The replay's cause replaces the cancelled one's, so the POST is parented on
+  the replay and nothing is left queued for the next submission. The cancelled submit's `Interaction.submit` span has
+  no request child. A cancelled submit that is never replayed leaves its cause, which the next submit replaces or
+  which expires. It is never claimed by a later POST of another submit, because every submit replaces the slot.
 - **Rationale**: SC-001 requires transition-to-server correlation for every sampled transition and for at least one
   transition of each request kind. Data fetches already nest through `TraceScope.run` (D5). This gives the two
   React-scheduled kinds the same parent relation without Zone.js. The match uses only request headers that Next
   itself sets, never their values or the body.
-- **Limits**: Two submits of the same kind within 5 seconds pair in order. Requests sent before the SDK registers stay
+- **Limits**: When two interactions of one kind overlap before the first request starts, the later one wins. The
+  earlier request is then left unparented rather than attributed to the wrong interaction (PL-2). Requests sent before the SDK registers stay
   unparented (PL-1). Whether Next reads `window.fetch` at call time is checked in slice `facts`. If it does not, the
   slice stops and the plan is corrected rather than claiming SC-001.
 - **Alternatives**: `ZoneContextManager`, rejected (D5). Attributing any fetch inside a time window to the latest
