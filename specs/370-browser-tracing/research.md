@@ -263,7 +263,8 @@ package sources named below. Implementation re-checks each signature against the
 ### D16 — Causal parent for Server Action and RSC requests
 
 - **Decision**: The facade records two interaction facts that cause requests outside a synchronous scope:
-  - `Interaction.submit`: a capture-phase `submit` listener on `document`, which also sees `requestSubmit` replays.
+  - `Interaction.submit`: a capture-phase `submit` listener on `window`. It runs before the guard's capture-phase
+    listener on `document`, and it also sees `requestSubmit` replays.
   - `Router.transition`: from Next's `onRouterTransitionStart`, which `instrumentation-client.ts` re-exports from the
     facade.
 
@@ -277,10 +278,13 @@ package sources named below. Implementation re-checks each signature against the
     instrumented fetch inside `context.with(cause)`. The fetch span, and the server spans below it, then become the
     interaction's descendants. Unclaimed causes expire.
 - **Guarded submissions**: `TabCoordination`'s submit guard cancels a submission whose current-session hint names
-  another session, confirms the session, and replays it with `requestSubmit` (`tab-coordination.ts`). The listener therefore sees two submits for one POST. When the guard cancels a submission, it calls the
-  facade's `withdrawSubmitCause()`, which empties the Server Action slot. The replay then fills an empty slot, so the
-  POST is parented on the replay, and the cancelled submit's `Interaction.submit` span has no request child. A
-  cancelled submission that is never replayed leaves nothing behind.
+  another session, confirms the session, and replays it with `requestSubmit` (`tab-coordination.ts`). The listener therefore sees two submits for one POST. Each submit cause is keyed by its `SubmitEvent`. When the guard cancels a
+  submission, it calls `withdrawSubmitCause(event)`. That empties the slot only when the slot holds exactly that
+  event's cause and is not ambiguous. An ambiguous slot stays ambiguous until it expires, and an interaction that
+  arrives while it is ambiguous keeps it ambiguous and restarts the 5 seconds. So with no overlap, the replay fills
+  an empty slot and parents the POST, and the cancelled submit's `Interaction.submit` span has no request child. When
+  another submission was already pending, cancelling the guarded one cannot clear the ambiguity, and neither POST is
+  parented. A cancelled submission that is never replayed leaves nothing behind.
 - **Rationale**: SC-001 requires transition-to-server correlation for every sampled transition and for at least one
   transition of each request kind. Data fetches already nest through `TraceScope.run` (D5). This gives the two
   React-scheduled kinds the same parent relation without Zone.js. The match uses only request headers that Next
