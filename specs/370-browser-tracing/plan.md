@@ -3,7 +3,7 @@
 **Branch**: `370-browser-tracing-plan` | **Date**: 2026-11-11 | **Spec**: [spec.md](spec.md)
 
 **Input**: Feature contract in `specs/370-browser-tracing/spec.md` and `specs/370-browser-tracing/verification.md`
-at spec commit `348e5cf` (second review);
+at spec commit `134ad80`;
 delivery issue [#368](https://github.com/PathableAI-org/Pre-ETS/issues/368), with the maintainer decisions of
 2026-11-11 recorded in the specification
 
@@ -268,6 +268,12 @@ Plan limitations, approved with this plan for the verification gate:
   first-out (research D16). Quickstart samples one interaction at a time.
 - **PL-3**: Only documents under the protected `(app)` layout render browser configuration. Public documents run no
   browser tracing.
+- **PL-4 (proposed; needs approval)**: V-005 now requires a restoration confirmed as served from the back/forward
+  cache with no new document request (spec commit `0a97ef0`). On every traced page, the existing `RestoredPageGuard`
+  reloads a restored page at once, and protected documents are `no-store`, which browsers commonly exclude from the
+  cache. The required condition therefore does not arise. The design still guarantees FR-013, because no module
+  re-runs on a restoration and the reload is a new render with a new trace. The verifier records V-005 as
+  `not established` with this limitation. Changing `RestoredPageGuard` is outside this issue.
 
 ## Review notes
 
@@ -288,6 +294,11 @@ Decisions that need a human, and discoveries that belong to the specification:
    agent-executed browser interaction on each slice that claims them: quickstart step 2, with the temporary in-page
    probe the verification plan now names, and step 9. A durable suite would
    be new test tooling outside the issue. If the reviewer wants durable checks, that returns to the specification.
-4. **OpenTelemetry update branch.** `renovate/opentelemetry-stack` mixes 0.301 and 0.223 experimental packages. The
+4. **V-005 observability (spec discovery, needs a decision).** The revised V-005 observation, a confirmed
+   back/forward-cache restoration without a new document request, cannot occur on protected pages, because
+   `RestoredPageGuard` reloads them. Options: (A) approve PL-4, so V-005 stays `not established` by design; (B) the
+   spec accepts the reload as the observation, meaning no `documentLoad` joins the old trace and the reload starts a
+   new one; (C) a separate issue changes `RestoredPageGuard`.
+5. **OpenTelemetry update branch.** `renovate/opentelemetry-stack` mixes 0.301 and 0.223 experimental packages. The
    `export` slice pins the release line frontend-services has on `main` when it starts, and extends the Renovate caps,
    so the next update moves server and browser together.
