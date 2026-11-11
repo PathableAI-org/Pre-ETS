@@ -211,7 +211,8 @@ the app's origin and is accepted.
 - **FR-003**: When browser tracing is off, the page MUST receive no browser-tracing configuration and no rendered trace
   context, no browser tracing MUST start, the browser MUST send nothing to the collector, and the browser MUST add no
   trace context to any request.
-- **FR-004**: A switch value that is not a recognized on or off value MUST NOT enable browser tracing.
+- **FR-004**: A switch value that is not a recognized on or off value MUST NOT enable browser tracing. Refusing startup
+  on such a value satisfies this requirement.
 
 #### Configuration and export
 
