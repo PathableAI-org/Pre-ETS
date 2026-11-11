@@ -28,7 +28,7 @@ Every claim in `verification.md` whose evidence channel includes browser or serv
 | V-002     | The server record of each request kind continues the browser's trace (server part; headers are browser interaction)                                   | T-003; server HTTP and `protectRequest` spans                     | `export`                    |
 | V-004     | The browser document-load record has the trace ID of the server render whose context the document carries                                             | T-001, T-002; server HTTP server span                             | `export`                    |
 | V-005     | No second document-load record joins the original render's trace after a back/forward restoration                                                     | T-001                                                             | `export`                    |
-| V-006     | Run filters select the run's browser records and none of another run's                                                                                | Resource of T-001–T-007, T-009, T-010                             | `export`                    |
+| V-006     | Run filters select the run's browser records and none of another run's                                                                                | Resource of T-001–T-007, T-009–T-011                              | `export`                    |
 | V-011     | Exported browser records arrive in the trace store (acceptance itself is browser interaction)                                                         | T-001                                                             | `export`                    |
 | V-013     | Each concealment, restoration, and signed-out transition is recorded with closed-set states, in Playwright's order                                    | T-004                                                             | `facts`                     |
 | V-014     | Tab A's send and tab B's receipt exist with the same kind and can be matched without contents                                                         | T-005, T-006                                                      | `facts`                     |
@@ -53,6 +53,7 @@ by the run filter `resource.service.version = "<sha>" && resource.service.instan
 | T-007 | Span   | `Focus.move`                                        | The facade's focus recorder (document `focusin`/`focusout`)           | `preets.outcome`; `preets.focus.target`; `preets.focus.change`; `preets.focus.cause`                                                                           | Root span; ordered by start time with T-004                                                                                                                                                            | `{ RUN && name = "Focus.move" } \| select(span.preets.focus.target, span.preets.focus.change, span.preets.focus.cause)`                                                                                                                                                                               | The signed-out heading or the fixture Goal input focus shows `user`, a keyboard move to Log out shows `application`, or a move is missing  |
 | T-009 | Span   | `Interaction.submit`                                | The facade's capture-phase `submit` listener                          | `preets.outcome`; `preets.interaction.kind` = `form_submit`                                                                                                    | Parent of the claimed Server Action fetch (T-003) and, below it, the server span                                                                                                                       | V-001 (Server Action): `{ RUN && name = "Interaction.submit" } > { RUN && kind = client && span.http.request.method = "POST" } > { RUN && resource.telemetry.sdk.language = "nodejs" && kind = server }`                                                                                              | No trace matches for a sampled fixture form submit                                                                                         |
 | T-010 | Span   | `Router.transition`                                 | `onRouterTransitionStart`, re-exported by `instrumentation-client.ts` | `preets.outcome`; `preets.navigation.type`; `url.path` (destination pathname only)                                                                             | Parent of the claimed RSC fetch (T-003) and, below it, the server span                                                                                                                                 | V-001 (RSC): `{ RUN && name = "Router.transition" } > { RUN && kind = client && span.http.request.method = "GET" } > { RUN && resource.telemetry.sdk.language = "nodejs" && kind = server }`                                                                                                          | No trace matches for a sampled link navigation                                                                                             |
+| T-011 | Span   | `BrowserTracing.buffer`                             | The SDK module when it replays a buffer that dropped facts            | `preets.outcome` = `overflowed`; `preets.tracing.dropped_count` (count)                                                                                        | Root span at registration time                                                                                                                                                                         | `{ RUN && name = "BrowserTracing.buffer" }`                                                                                                                                                                                                                                                           | Any result means facts before registration were lost: a missing T-004 to T-007 record in that page is then inconclusive, not a violation   |
 | T-008 | Log    | `Browser tracing exports without collector headers` | `BrowserTracing.layer` at startup                                     | `preets.outcome` not applicable (log); no annotations beyond the standard resource                                                                             | `service_instance_id` label                                                                                                                                                                            | `{service_name="pre-ets-frontend", service_instance_id="<run>"} \|= "Browser tracing exports without collector headers"`                                                                                                                                                                              | Diagnostic only; no claim depends on it                                                                                                    |
 
 Every verifier query filters by the run resource attributes `service.version` (the revision under verification)
@@ -70,10 +71,10 @@ low-cardinality attributes listed under [Metrics cardinality](#metrics-cardinali
 
 `preets.outcome`, `preets.ui.from_state`, `preets.ui.to_state`, `preets.tab.message.kind`,
 `preets.tab.message.direction`, `preets.tab.message.id`, `preets.focus.target`, `preets.focus.change`,
-`preets.focus.cause`, `preets.interaction.kind`, `preets.navigation.type`,
+`preets.focus.cause`, `preets.interaction.kind`, `preets.navigation.type`, `preets.tracing.dropped_count`,
 `http.request.method`, `http.response.status_code`, `url.path`. `url.full` is rewritten to `url.path` (the URL's
 pathname). Every other attribute and every event attribute is removed, and `exception` events are dropped. The span
-status code is kept and its description is cleared. Spans other than T-001–T-007, T-009, and T-010, including `resourceFetch` and
+status code is kept and its description is cleared. Spans other than T-001–T-007 and T-009–T-011, including `resourceFetch` and
 `CORS Preflight`, are dropped. This covers every text-bearing field FR-021a names: record names are fixed contract or
 instrumentation strings, and no attribute, event, or status value passes unless it is a closed-set value, a method,
 a status code, or a path.
@@ -105,17 +106,18 @@ notice `* → signed_out`. A later feature (for example #156) extends these sets
 
 ### Outcome values
 
-| Signal | `preets.outcome` values and meaning                                                                       |
-| ------ | --------------------------------------------------------------------------------------------------------- |
-| T-001  | `loaded`: the document's load timing was recorded                                                         |
-| T-002  | `fetched`: the document response timing was recorded                                                      |
-| T-003  | `responded`: an HTTP response arrived (any status); `network_error`: no response (network failure, abort) |
-| T-004  | `applied`: the coordinator published the new state                                                        |
-| T-005  | `sent`: the message was posted to the channel                                                             |
-| T-006  | `received`: a well-formed message was delivered to this tab                                               |
-| T-007  | `moved`: focus entered or left the target                                                                 |
-| T-009  | `submitted`: a form submit event was dispatched                                                           |
-| T-010  | `started`: Next started a router transition                                                               |
+| Signal | `preets.outcome` values and meaning                                                                                    |
+| ------ | ---------------------------------------------------------------------------------------------------------------------- |
+| T-001  | `loaded`: the document's load timing was recorded                                                                      |
+| T-002  | `fetched`: the document response timing was recorded                                                                   |
+| T-003  | `responded`: an HTTP response arrived (any status); `network_error`: no response (network failure, abort)              |
+| T-004  | `applied`: the coordinator published the new state                                                                     |
+| T-005  | `sent`: the message was posted to the channel                                                                          |
+| T-006  | `received`: a well-formed message was delivered to this tab                                                            |
+| T-007  | `moved`: focus entered or left the target                                                                              |
+| T-009  | `submitted`: a form submit event was dispatched                                                                        |
+| T-010  | `started`: Next started a router transition                                                                            |
+| T-011  | `overflowed`: more than 256 facts occurred before the SDK registered; `preets.tracing.dropped_count` were not recorded |
 
 ## Facts not emitted
 
