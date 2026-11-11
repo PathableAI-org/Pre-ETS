@@ -1,6 +1,7 @@
 "use client"
 
 import { Button, Form, FormGroup, Heading, Input, Label, Link, Stack, Text } from "@pathableai/react"
+import { useRouter } from "next/navigation"
 
 import {
   CoordinationTagField,
@@ -14,9 +15,12 @@ const notRecorded: FixtureActionState = { _tag: "Denied", message: "The attendan
 
 /**
  * Synthetic protected roster for multi-tab evidence; no real participant data. Its Server Action form confirms and
- * shares the session after it settles (research D6).
+ * shares the session after it settles (research D6). "Open participant page in place" navigates through the App
+ * Router, the fixture's RSC request; the `Link` stays a document navigation. The design-system `Link` has no router
+ * composition yet (PathableAI-org/styles#262).
  */
 export function RosterFixture({ action }: { readonly action: ProtectedFormAction<FixtureActionState> }) {
+  const router = useRouter()
   const [outcome, record, recording] = useSessionConfirmedActionState(
     action,
     initialFixtureActionState,
@@ -30,6 +34,14 @@ export function RosterFixture({ action }: { readonly action: ProtectedFormAction
         {SYNTHETIC_ROSTER.map((name) => <li key={name}>{name}</li>)}
       </ul>
       <Link href="/coordination/participant">Open participant page</Link>
+      <Button
+        onClick={() => {
+          router.push("/coordination/participant")
+        }}
+        type="button"
+      >
+        Open participant page in place
+      </Button>
       <Form action={record}>
         <CoordinationTagField />
         <FormGroup>
