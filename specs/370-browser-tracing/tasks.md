@@ -116,27 +116,73 @@ part. **Telemetry**: T-008. **Planned hand-written files**: 12.
 
 ## Slice `export` — branch `370-browser-tracing-impl-export`
 
-**Claims**: V-002, V-003, V-004, V-005, V-006, V-008, V-010, V-011, V-012; partial V-016. **Telemetry**: T-001, T-002,
-T-003.
+**Decision**: The browser lazily starts the web SDK from the rendered configuration, continues the document trace,
+propagates context to same-origin fetch only, and exports filtered spans straight to a header-free collector. The
+roster fixture gains a client-navigation stimulus for the RSC request kind.
 
-- [ ] T015 Add the `opentelemetry` catalog to `pnpm-workspace.yaml`, point `packages/frontend-services/package.json` at
-      it, and add the browser packages to `packages/frontend/package.json` within the `@effect/opentelemetry` peer ranges
-      (research D12); update `pnpm-lock.yaml` and the caps in `renovate.json`.
-- [ ] T016 Add the approved `src/instrumentation-client.ts` entry to `packages/frontend/.fallowrc.json`
-      `allowUnmatched` (plan Review note 1).
-- [ ] T017 [US6] Create `packages/frontend/src/shared/browser-tracing/export-filter.ts`, the allow-list `SpanExporter`
-      wrapper (research D9; FR-019–FR-021a).
-- [ ] T018 [US1] Create `packages/frontend/src/shared/browser-tracing/sdk.ts`: `WebTracerProvider`,
-      `BatchSpanProcessor` over the filtered `OTLPTraceExporter` (no headers), `FetchInstrumentation` (same-origin only,
-      collector ignored) and `DocumentLoadInstrumentation` (T-001–T-003), and the `started` marker (research D4–D7, D10).
-- [ ] T019 [US1] Add `startBrowserTracing` to `packages/frontend/src/shared/browser-tracing.ts` and create
-      `packages/frontend/src/instrumentation-client.ts` (research D4, D13).
-- [ ] T020 [US1] Add the App Router navigation button to
-      `packages/frontend/src/features/coordination-fixtures/roster.tsx` (research D17).
-- [ ] T021 [P] [US6] Document export, CORS, and signals T-001–T-003 in `docs/observability.md`, and the collector CORS
-      default in `docs/docker-compose.md` (research D11, D14).
-- [ ] T022 Run checks, push, request verification for quickstart steps 2, 4 (export and filters only), 5, 6, 8, 9, record results in
-      `quickstart.md`.
+**Claims**: V-002, V-003, V-004, V-005, V-006, V-008, V-010, V-011, V-012 in full; V-016 in part (automatic records).
+**Telemetry**: T-001, T-002, T-003. **Planned hand-written files**: 13.
+
+### Dependencies and boundaries
+
+- [x] T015 Add the `opentelemetry` catalog to `pnpm-workspace.yaml` with every `@opentelemetry/*` version either
+      workspace uses; point every `@opentelemetry/*` entry in `packages/frontend-services/package.json` at
+      `catalog:opentelemetry`; add `api`, `exporter-trace-otlp-http`, `instrumentation`,
+      `instrumentation-document-load`, `instrumentation-fetch`, `resources`, `sdk-trace-base`, and `sdk-trace-web` to
+      `packages/frontend/package.json` through the same catalog (research D12). Update `pnpm-lock.yaml`, and record
+      `pnpm why -r` for `core`, `sdk-trace-base`, and `api` in the pull request body. Add `instrumentation-fetch` to the
+      `<0.300.0` cap and a `<0.69.0` cap for `instrumentation-document-load` in `renovate.json`.
+- [x] T016 Add the approved `src/instrumentation-client.ts` entry to `packages/frontend/.fallowrc.json`
+      `allowUnmatched` (plan Review note 1), and no other exemption.
+
+### Export filter and SDK (US1, US3, US6)
+
+- [x] T017 [US6] Create `packages/frontend/src/shared/browser-tracing/export-filter.ts` exporting
+      `filterExport(exporter: SpanExporter): SpanExporter`. It forwards only spans named in the contract's closed list
+      (T-001–T-007, T-009–T-011, HTTP method names), keeps only allow-listed attribute keys, reduces `url.full` and
+      `url.path` to a pathname with no origin, query, or fragment, keeps event names and times only, drops `exception`
+      events and links, clears the status description, and delegates `forceFlush` and `shutdown` (research D9;
+      FR-019–FR-021a).
+- [x] T018 [US1] Create `packages/frontend/src/shared/browser-tracing/sdk.ts` exporting `startSdk(config)`: a
+      `WebTracerProvider` whose resource is the SDK default (`telemetry.sdk.*`) merged with the service name, version,
+      and instance ID; a `BatchSpanProcessor` over `filterExport(new OTLPTraceExporter({ url: <endpoint>v1/traces }))`
+      with no headers; `register()` (StackContextManager, W3C propagator); `FetchInstrumentation` with
+      `propagateTraceHeaderCorsUrls` unset, the trace URL in `ignoreUrls`, and `preets.outcome`
+      (`responded`/`network_error`); `DocumentLoadInstrumentation` with `ignorePerformancePaintEvents` and the
+      `loaded`/`fetched` outcomes (T-001–T-003). It sets `data-preets-browser-tracing="started"` last (research D4–D7,
+      D10).
+
+### Client start (US1, US2)
+
+- [x] T019 [US1] Add `startBrowserTracing()` to `packages/frontend/src/shared/browser-tracing.ts`: read and validate the
+      `preets-browser-tracing` meta synchronously (absolute `http:`/`https:` endpoint, non-empty name and version,
+      optional instance ID); with none, load and request nothing; with one, `import("./browser-tracing/sdk.ts")` and
+      call `startSdk`. Every failure is swallowed (FR-003, FR-009). Create `packages/frontend/src/instrumentation-client.ts`
+      calling it (research D4, D13). Buffering, recorders, and `onRouterTransitionStart` stay in slice `facts`.
+- [x] T020 [US1] Add the "Open participant page in place" `Button` calling `useRouter().push("/coordination/participant")`
+      to `packages/frontend/src/features/coordination-fixtures/roster.tsx`, referencing PathableAI-org/styles#262
+      (research D17).
+
+### Documentation (US6)
+
+- [x] T021 [P] [US6] Add "Browser export" to `docs/observability.md`: lazy start, direct header-free OTLP/HTTP JSON
+      export to `<endpoint>v1/traces`, no cookies, same-origin `traceparent`, the readiness marker, the CORS requirement,
+      the export delay and failure policy, the export filter, and signals T-001–T-003 with queries; narrow the browser
+      "Out of scope" stub. Add "Browser export and CORS" to `docs/docker-compose.md` with the browser-reachable endpoint,
+      the image's `http://*` default, and a preflight check; correct the pinned image version to 0.40.0 (research D11,
+      D14).
+
+### Slice completion
+
+- [x] T022 Run `pnpm typecheck`, `pnpm lint`, `pnpm build`, the affected `test:unit` and frontend-services `test`,
+      `pnpm format:check`, `pnpm check:unused`, `pnpm check:health`, and `pnpm check:changes`; commit as explicit
+      Conventional Commits; push with `gh stack push` and open the draft.
+- [ ] T022a Request verification for [quickstart.md](quickstart.md) steps 2, 4 (export and filters only), 5, 6, 8
+      (automatic records), and 9, with the prepared-session fixture: V-002–V-006, V-008, V-010–V-012 in full and
+      V-016 in part.
+- [ ] T022b Address the report, repeat verification as needed, and record the summary under
+      [quickstart.md execution results](quickstart.md#execution-results) as an evidence-only commit; name the verified
+      SHA in the pull request body.
 
 ---
 
