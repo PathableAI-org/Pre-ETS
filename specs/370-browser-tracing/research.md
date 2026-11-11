@@ -131,8 +131,7 @@ package sources named below. Implementation re-checks each signature against the
 
 - **Decision**: `StackContextManager` (the `WebTracerProvider` default). No Zone.js. Code that wants a request to be a
   child of a harness record starts the request synchronously inside the record's `TraceScope.run`. `TabCoordination`
-  does so for logout (`content_shown → logging_out`, then `POST /auth/logout`) and for concealment followed by
-  confirmation (`content_shown → content_concealed`, then `GET /session/status`). Cross-tab receipts run their
+  does so for logout (`content_shown → logging_out`, then `POST /auth/logout`) and for every concealment followed by a confirmation (`content_shown → content_concealed`, then `GET /session/status`). That covers `#concealAndConfirm()` and the resume path `#resume()`, which conceals an overdue or other-session tab and then confirms. When no transition happened, because the tab was already concealed, the confirmation runs in the current scope. Cross-tab receipts run their
   synchronous handler inside the receipt scope, so a transition a receipt causes is its child.
 - **Limits**: Context does not survive `await`, timers, or React's scheduler. Server Action POSTs and RSC navigation
   fetches start in React or the router, outside any synchronous scope. D16 gives them their causal parent another way,
