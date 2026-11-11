@@ -253,8 +253,11 @@ created. No signal carries the session reference, cookie, coordination tag, issu
 | `SessionService.refreshForTenant` | `renewed`, `unchanged`, `expired`, `missing`, `no_reference`, `tenant_mismatch`, `unavailable` | `preets.session.activity`, `preets.session.activity_class`, `preets.tenant.alias`, policy minutes, and the record facts listed for `read` |
 | `SessionService.invalidate`       | `removed`, `missing`, `rejected_late`, `no_reference`, `unavailable`                           | `preets.session.logout_cutoff_ms` when the caller supplied a cutoff                                                                       |
 
-- `renewed` means a qualifying activity wrote a new deadline. `unchanged` means an excluded activity found a current
-  record and left it as stored. `no_reference` means the request carried no well-formed reference, so no store call
+- `renewed` means a qualifying activity wrote a new deadline. `unchanged` means a caller passed an excluded activity
+  to `refreshForTenant` and the record was left as stored. No HTTP path does that today. Excluded requests at the
+  gate, and `GET /session/status`, read through `readForTenant` instead. Over HTTP, an excluded request shows as
+  `protectRequest` with `preets.protection.renewal = none`, and its child `SessionService.read` shows `current` with
+  the same `preets.session.deadline_ms` and `preets.session.revision` as before the request. `no_reference` means the request carried no well-formed reference, so no store call
   was made.
 - `preets.session.activity` is the activity literal, for example `deliberate-page-request` or `keyboard-interaction`.
   `preets.session.activity_class` is `qualifying` or `excluded`.
@@ -272,7 +275,8 @@ created. No signal carries the session reference, cookie, coordination tag, issu
 | `authorizeSessionAction`                     | `authorized`, `session_changed`, `no_session`, `tenant_mismatch`, `unavailable`, `tenant_failure`                                                                        | `preets.tenant.alias`                                                                                                                         |
 
 The session-service span under each adapter span carries the session facts for that request. `rejected_late`
-appears only on `logout`.
+appears only on `logout`. A request the gate denies never reaches its handler. For example, activity after expiry or
+logout shows only on the `protectRequest` span and its session-service child.
 
 ### Tenant configuration log
 
@@ -293,8 +297,11 @@ Filter every query by the run's `service.version` and `service.instance.id`:
 ```
 
 ```text
-{service_name="pre-ets-frontend"} |= "Tenant configuration request failed"
+{service_name="pre-ets-frontend", service_instance_id="<run-uuid>"} |= "Tenant configuration request failed" | service_version="<sha>"
 ```
+
+In Loki, `service_instance_id` is an index label, but `service_version` is structured metadata, so it filters after
+the line selector.
 
 ### Not emitted
 
