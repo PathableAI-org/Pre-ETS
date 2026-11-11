@@ -2,6 +2,7 @@
  * Next.js host adapters: route handlers, server-component reads, and the HTTP mapping of service failures.
  * This module and its children under `next/` are the only code that imports `next/server` or `next/navigation`.
  */
+export { type BrowserTracingConfig, type BrowserTracingDocument, readBrowserTracing } from "./next/browser-tracing.js"
 export { type CallbackResponses, createCallbackHandler } from "./next/callback.js"
 export { requestCookieOptions } from "./next/cookies.js"
 export { type SessionCoordinationSnapshot } from "./next/coordination-snapshot.js"

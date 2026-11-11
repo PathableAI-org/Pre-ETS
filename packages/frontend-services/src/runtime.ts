@@ -5,11 +5,11 @@ import { type Config, ConfigProvider, type Effect, Layer, type ManagedRuntime, S
 
 import { AuthenticationService } from "./authentication.js"
 import { StartupConfig, type StartupSettings } from "./config.js"
-import { type ObservabilityInitializationError, observabilityLayer } from "./observability.js"
+import { BrowserTracing, type ObservabilityInitializationError, observabilityLayer } from "./observability.js"
 import { SessionService } from "./session.js"
 import { TenantConfigService } from "./tenant.js"
 
-export type ApplicationServices = AuthenticationService | SessionService | TenantConfigService
+export type ApplicationServices = AuthenticationService | BrowserTracing | SessionService | TenantConfigService
 
 class StartupNotReady extends Schema.TaggedError<StartupNotReady>()("StartupNotReady", {}) {}
 
@@ -32,7 +32,8 @@ export const applicationLayer = (
     AuthenticationService.layer(startup.authentication).pipe(
       Layer.provideMerge(TenantConfigService.layer(startup.tenant))
     ),
-    SessionService.layer(startup.session)
+    SessionService.layer(startup.session),
+    BrowserTracing.layer(startup.otel)
   ).pipe(
     Layer.provide(infrastructure),
     Layer.provideMerge(observabilityLayer({ otel: startup.otel }))
