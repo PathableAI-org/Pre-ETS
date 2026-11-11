@@ -275,7 +275,7 @@ recording.
 ### `features/session-coordination` (unchanged exports)
 
 **Behavior change**: `TabCoordination` computes `UiState` from `(view, concealed)` in `#publish` and `#end` and calls
-`recordUiTransition` when it changes. `logout()` and `#concealAndConfirm()` start their request inside the returned
+`recordUiTransition` when it changes. `logout()`, and every path that conceals and then starts a status confirmation synchronously (`#concealAndConfirm()` and the resume path `#resume()`), start their request inside the returned
 scope. `tab-channel.ts` calls `recordTabMessageSend` before `postMessage` and adds `telemetryId` when defined. It calls
 `recordTabMessageReceipt` on each parsed message and runs `receive` in that scope. `parseMessage` ignores `telemetryId`. The submit guard calls `withdrawSubmitCause(event)` with the cancelled `SubmitEvent`. `SignedOutNotice` focuses through `moveFocus`, and it and `LogoutControl` spread `focusTargetProps`.
 
