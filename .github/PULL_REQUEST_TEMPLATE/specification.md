@@ -24,6 +24,7 @@ Contributes to #<issue>. This pull request does not close the issue.
 
 - [ ] Specification checklist is complete
 - [ ] `verification.md` maps claims to planned automated, manual, and operational evidence
+- [ ] Each claim names the observation that distinguishes it and the evidence channel for that observation
 - [ ] Planned evidence is labeled as planned
 - [ ] Local formatting check, or the reason it was not run
 

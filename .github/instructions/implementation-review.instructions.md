@@ -27,6 +27,21 @@ Review the implementation against the approved specification and engineering pla
 - Flag single-use helpers whose only purpose is to lower a complexity score. Ask for a representation that removes
   the branches; see [Fallow](../../docs/engineering/fallow.md#complexity-dead-code-and-type-aware-analysis).
 - Flag behavior or signatures that drift from the approved specification or `contracts/modules.md`.
+- Flag instrumentation that drifts from `contracts/telemetry.md`, a telemetry attribute or log field in a forbidden
+  data class from the
+  [verification telemetry conventions](../../docs/observability.md#verification-telemetry-conventions), and durable
+  tests that assert telemetry output.
+- For a delivery-issue implementation slice, check that the pull request names its slice from `plan.md` and
+  summarizes a verification report for that slice's claims, as described in
+  [the verification harness](../../docs/engineering/verification-harness.md). Flag a missing or unusable assigned
+  telemetry row, a full claim that is not `established`, and a `not established` or `blocked` result that does not
+  match a limitation already approved in `verification.md` or `plan.md`; the slice cannot create that exception.
+  Check that the pull request names the verified SHA and that the diff from it to the head touches only the
+  feature's `quickstart.md` execution results; flag any other change after the verified SHA as unverified. Flag a
+  slice well over 15 hand-written files without a stated reason. A single pull request that the
+  [Git workflow](../../docs/engineering/git-workflow.md#implementation-slices) exempts from the stack, such as a
+  dependency update or a fix inside an approved contract, needs no slice or verification report; check that it
+  says why the stack does not apply.
 - A planned `quickstart.md` procedure is not defective because it has not yet been executed. On an implementation
   review, identify evidence the pull request claims but does not show.
 - Do not treat a Copilot suggestion as approval to change an accepted requirement, delivery slice, or public contract.
