@@ -209,17 +209,35 @@ package sources named below. Implementation re-checks each signature against the
 - **Risk**: A future image could narrow the default. V-011 and the documented preflight check detect it; the remedy
   then is a mounted receiver configuration.
 
-### D12 — Package versions and the open OpenTelemetry update
+### D12 — Package versions: one OpenTelemetry version per package
 
-- **Decision**: Add to `packages/frontend` exactly the release line frontend-services pins on `main`:
-  `@opentelemetry/api` 1.9.1, `sdk-trace-web` 2.12.0, `sdk-trace-base` 2.12.0, `resources` 2.12.0,
-  `instrumentation` 0.223.0, `instrumentation-fetch` 0.223.0, `exporter-trace-otlp-http` 0.223.0, and
-  `instrumentation-document-load` 0.68.0. Extend the Renovate caps so `instrumentation-fetch` stays below 0.300.0 and
-  `instrumentation-document-load` below 0.69.0 while the stable SDK is held on 2.x.
-- **Rationale**: SDK 3 needs `@opentelemetry/api` 1.10, which SDK 2.12 rejects; the repository holds the server on
-  2.x until `@effect/opentelemetry` accepts SDK 3. The open `renovate/opentelemetry-stack` branch currently mixes
-  0.301 and 0.223 experimental packages; whichever lands first, the implementation slice that adds the dependencies
-  uses the versions then on `main` for frontend-services, keeping one release line.
+- **Decision (maintainer, 2026-11-11)**: Every `@opentelemetry/*` package, for the server and the browser alike,
+  resolves inside the peer ranges of `@effect/opentelemetry` 4.1.2, the version in the `effect` catalog, so each
+  package has one deduplicated version. Those ranges are `api >=1.9.0 <2`, `api-logs` and `sdk-logs >=0.203.0
+  <0.300.0`, `resources`, `sdk-metrics`, `sdk-trace-base`, `sdk-trace-node`, and `sdk-trace-web >=2.0.0 <3`, and
+  `semantic-conventions >=1.33.0 <2`. The browser uses the versions the server already resolves: `api` 1.9.1,
+  `resources`, `sdk-trace-base`, and `sdk-trace-web` 2.12.0, and `semantic-conventions` 1.43.0.
+- **Packages without a peer range**: `instrumentation`, `instrumentation-fetch`, and `exporter-trace-otlp-http` are
+  pinned to the same 0.223.0 release line as the server's experimental packages. `instrumentation-document-load` is
+  pinned to 0.68.0, its last release on instrumentation 0.223 and SDK 2.x. Their transitive `@opentelemetry/core`,
+  `web-common`, `otlp-exporter-base`, and `otlp-transformer` are exact 2.12.0 or 0.223.0 dependencies of that line, so
+  they dedupe with the server's copies.
+- **Where the pins live**: a new named pnpm catalog, `opentelemetry`, in `pnpm-workspace.yaml` beside the `effect`
+  catalog. It holds every `@opentelemetry/*` version either workspace uses. `packages/frontend-services` and
+  `packages/frontend` both reference `catalog:opentelemetry` instead of literal versions, so both workspaces cannot
+  drift apart and one edit updates them together. The `export` slice converts the frontend-services entries in the same
+  change that adds the browser ones.
+- **Single-version evidence**: after `pnpm install`, `pnpm-lock.yaml` has one `packages:` entry per `@opentelemetry/*`
+  name, for example only `'@opentelemetry/core@2.12.0'`. `pnpm why -r @opentelemetry/core`,
+  `pnpm why -r @opentelemetry/sdk-trace-base`, and `pnpm why -r @opentelemetry/api` each show one version. The slice
+  records those commands and their results in its PR body.
+- **Renovate**: the existing "opentelemetry stack" group and its 2.x/0.2xx caps already cover the catalog entries.
+  The slice adds `instrumentation-fetch` to the `<0.300.0` cap and `instrumentation-document-load` to a `<0.69.0` cap,
+  so no browser package moves to SDK 3 ahead of `@effect/opentelemetry`. The open `renovate/opentelemetry-stack`
+  branch, which mixes 0.301 and 0.223, violates this rule and should not merge as is. Whichever lands first, the slice
+  uses the catalog versions then on `main`.
+- **Rationale**: Mixed versions would load two copies of the API and SDK globals in one process or bundle, and could
+  break the global-provider handoff the server relies on.
 
 ### D13 — Facade location and the client entry file
 
@@ -261,8 +279,9 @@ package sources named below. Implementation re-checks each signature against the
 
 - **Decoding without echo**: `Config.URL` would quote a malformed endpoint in its schema issue, and that issue
   reaches the startup error log before `parseRawConfig` runs. So `OTEL_EXPORTER_OTLP_ENDPOINT` is decoded with the
-  config module's one redacting helper, `withoutEcho`. It moves unchanged from `config/authentication.ts` to a new
-  private child, `config/redaction.ts`, which `config/authentication.ts` and `config/otel.ts` both import. Any
+  config module's one redacting helper, `withoutEcho`. Its owner moves from `config/authentication.ts` up to the parent, `config.ts`. `config.ts`
+  passes it into the child recipe builders, `authenticationConfig(withoutEcho)` and `otelConfig(withoutEcho)`, so no
+  child imports a sibling (recursive module rule). Any
   endpoint decoding failure then reports only `OTEL_EXPORTER_OTLP_ENDPOINT is invalid`, whatever the switch. Valid
   endpoints decode exactly as before. The only change for server-only operation is that the error no longer quotes a
   malformed URL.
@@ -317,5 +336,5 @@ package sources named below. Implementation re-checks each signature against the
   SC-001 a deterministic RSC request with a router-transition cause. The fixture is synthetic and retained for later
   features.
 - **Alternatives**: Wrapping `next/link` around the design-system `Link`, rejected because the library offers no
-  composition point. Rendering `next/link` directly, rejected by the UI rule that pages use the component library. The
-  missing router-aware `Link` is a library gap, which the `export` slice reports to the library's issue tracker.
+  composition point. Rendering `next/link` directly, rejected by the UI rule that pages use the component library. The missing router-aware `Link` is a known library gap, already filed as
+  https://github.com/PathableAI-org/styles/issues/262. The `export` slice references that issue and files nothing.
