@@ -244,3 +244,26 @@ Each slice appends one block in this form:
 - None from this slice. No synthetic header, bearer, or authorization value appears in Loki for any run.
 - Pre-existing and outside this slice: the Node SDK resource detectors export `process.owner`, `host.name`, and
   `process.command_args`. This was referred to a person.
+
+### config — 5ec050aada3a6c4db61a867eefde7982f0928952, 2026-11-11, runs f8de8186-ce91-4146-a1f2-7d8530d28314 (on), 10429034-7ffd-4366-a1e0-0ab12449a914 (unset), 265b24d7-1e91-493a-928b-63d7f535cb2f (OTEL off, switch true), 07869815-06a9-46e9-ba57-aeb5f09eb153 (both off), c863326a-a0e0-4944-9470-8e142ae1142b (maybe)
+
+- Collector image: sha256:4c8056c9c05fcb3c8fd93800e85334bfd79b4d0271b47a54a121a64af41fe1fe. Ports: 3471–3475. Switch
+  settings: on+synthetic headers; OTEL on/switch unset; OTEL_SDK_DISABLED=true/switch true; both off; switch `maybe`.
+- Session source: prepared-session fixture (tenant `springfield`, subject `preets-verify-<run>`).
+  Fixture-backed results cite L-fixture: they establish nothing about authentication, the sign-in callback, or
+  session issuance.
+- V-007: established. Module test `tests/lib/config.test.ts` 67/67; the `maybe` instance refused startup. Session
+  source none.
+- V-009: established. Step 3. Session source prepared-session fixture. Each document's single
+  `preets-browser-tracing` meta had exactly endpoint, serviceInstanceId, serviceName and serviceVersion, and no
+  header name or value, with collector headers configured. Limitation: L-fixture.
+- V-004 (part): established. Step 3. Session source prepared-session fixture. The meta traceparent matched server
+  span `render route (app) /coordination/roster` 418c7934bd6c3cf1 in injected trace
+  7b297445b90f3c8543a49e502a0f06c7, and the server spans in uninjected trace 94398a76be69ca31565030a77677acbd and
+  participant trace 338f3623e75982ca6d31bc700268cc98. Limitation: L-fixture.
+- V-008 (part): established. Step 2 (document only). Session source prepared-session fixture. The three off
+  instances had 0 tracing metas, 0 collector requests, and 0 non-harness traceparents; the probe found nothing
+  initialized; and there were 0 webjs records. The on control rendered both metas. Limitation: L-fixture.
+- T-008: present once for the header run, absent for the unset run, and carrying no header data.
+- Forbidden data: none from the slice. #377 (resource detectors) is pre-existing.
+- Cleanup: keys remaining under `preets:verify:<run>:` = 0 (all five runs).
