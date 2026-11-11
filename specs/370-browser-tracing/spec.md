@@ -34,9 +34,10 @@ in causal order.
 1. **Given** server telemetry and browser tracing are both on, **When** a UI transition in the page causes a
    same-origin request, **Then** the exported browser record of the transition and the exported server record of that
    request share one trace, and the server record is a descendant of the browser's request.
-2. **Given** both switches are on, **When** the page makes a same-origin request of any kind it uses today, including
-   ordinary data fetches, form actions handled by the server, and server-rendered navigation payloads, **Then** the
-   request carries W3C trace context from the browser and the server continues that trace.
+2. **Given** both switches are on, **When** the page issues a same-origin fetch request of any kind it uses today,
+   including ordinary data fetches, form actions handled by the server, and server-rendered navigation payloads,
+   **Then** the request carries W3C trace context from the browser and the server continues that trace. Full document
+   navigations cannot carry a header from the page and are covered by User Story 4.
 3. **Given** both switches are on, **When** the page sends a request to another origin, including the identity provider
    and the collector itself, **Then** the browser adds no trace context to that request.
 4. **Given** a verification run sets its revision and run identifier on the server, **When** the browser exports, **Then**
@@ -224,8 +225,9 @@ the app's origin and is accepted.
 
 #### Trace continuity
 
-- **FR-010**: When browser tracing is on, every same-origin request the page makes, including data fetches, server-handled
-  form actions, and server-rendered navigation payloads, MUST carry W3C trace context, and the server MUST continue it.
+- **FR-010**: When browser tracing is on, every same-origin fetch request the page issues, including data fetches,
+  server-handled form actions, and server-rendered navigation payloads, MUST carry W3C trace context, and the server
+  MUST continue it. Full document navigations are governed by FR-012 instead.
 - **FR-011**: The browser MUST NOT add trace context to requests to any other origin.
 - **FR-012**: When browser tracing is on, a server-rendered document MUST carry the trace context of the server's
   handling of that document request, and the browser's document-load record MUST continue that trace.
@@ -254,6 +256,8 @@ the app's origin and is accepted.
   route template.
 - **FR-021**: Browser telemetry MUST NOT contain cross-tab message contents or any value in the forbidden
   [data classes](../../docs/observability.md#data-classes).
+- **FR-021a**: FR-019 to FR-021 apply to every exported text-bearing field, including record names, attribute and event
+  values, and status or error descriptions.
 
 #### Scope and documentation
 
@@ -293,8 +297,9 @@ the app's origin and is accepted.
 - **SC-003**: In each of the three combinations with browser tracing off, the browser makes zero requests to the
   collector, the page carries zero browser-tracing configuration values or rendered trace context, and zero requests
   carry browser-originated trace context.
-- **SC-004**: Inspection of every exported browser attribute and event from a journey that includes typed input,
-  protected content, query strings, cross-tab messages, and logout finds zero forbidden values.
+- **SC-004**: Inspection of every exported text-bearing browser field (record names, attribute and event values, and
+  status or error descriptions) from a journey that includes typed input, protected content, query strings, cross-tab
+  messages, and logout finds zero forbidden values.
 - **SC-005**: Each of the three harness fact kinds is observable for the journey with closed-set values only, and every
   browser record of the run is selectable by the same revision and run identifier as the server's.
 - **SC-006**: Browser records are queryable within the documented export delay for traces (about 30 seconds) after the
