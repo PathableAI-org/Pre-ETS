@@ -18,7 +18,8 @@ Evidence may establish the switch semantics, the browser configuration, direct h
 collector's CORS acceptance, trace continuity across same-origin requests and document loads, the three harness fact
 kinds, the absence of forbidden data, and the product's indifference to telemetry delivery failure. It may not
 establish staging or production behavior, collectors that require headers, browser telemetry for features not yet
-built (#156), or a production refusal of the switch (spec Authority finding 2).
+built (#156), or a production refusal of the switch, which the maintainer ruled out: browser tracing is assumed never to be active
+in production (spec Authority finding 2).
 
 Browser telemetry is both what this feature builds and an evidence channel for it. A claim about what the browser
 does not send, or about the page's behavior, is observed through browser interaction, because telemetry cannot
@@ -203,8 +204,8 @@ not committed. Planned procedures in this document are not executed evidence.
 - A missing browser record is inconclusive unless the page stayed open past the export delay (spec L2).
 - V-016 searches for seeded probes and known classes. It cannot prove the absence of every possible sensitive value,
   only of those the journey exercised.
-- Staging and production behavior, header-requiring collectors, and the production refusal in spec Authority finding 2
-  are not established.
+- Staging and production behavior and header-requiring collectors are not established. Browser tracing is assumed
+  never to be active in production, and no production refusal exists to verify (spec Authority finding 2).
 - Harness facts for features not yet built, such as #156's warning dialog, are established by those features.
 
 ## Readiness review
