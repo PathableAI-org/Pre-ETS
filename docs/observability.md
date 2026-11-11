@@ -1,10 +1,12 @@
 # Observability (OpenTelemetry traces, metrics, and logs)
 
 Instrumentation for the **Next.js Node server**
-(`@pathableai/pre-ets-frontend`). Browser tracing and `packages/backend`
-instrumentation do not exist yet. Browser tracing is planned so the
+(`@pathableai/pre-ets-frontend`). `packages/backend` instrumentation does not
+exist yet. Browser tracing is being added so the
 [verification harness](engineering/verification-harness.md) can observe browser
-behavior. Until it lands, browser facts are verified through browser interaction.
+behavior. Its switch and rendered configuration are described in
+[Browser tracing switch](#browser-tracing-switch). Until the browser starts
+exporting, browser facts are verified through browser interaction.
 
 **Runtime + export**: `instrumentation.ts` starts one process runtime. OTEL is
 all-or-nothing: `OTEL_SDK_DISABLED=true` installs no SDK, exporters, automatic
@@ -73,6 +75,8 @@ the disabled setting is applied.
 | `OTEL_SERVICE_NAME`           | Required when enabled. Resource `service.name`; use `pre-ets-frontend` for the standard local setup       |
 | `OTEL_SERVICE_VERSION`        | Optional non-empty resource `service.version`. Defaults to `UNKNOWN`                                      |
 | `OTEL_EXPORTER_OTLP_HEADERS`  | Optional collector headers. Do not print them. Headers do not replace either required setting             |
+| `OTEL_RESOURCE_ATTRIBUTES`    | Optional resource attributes, read by the Node SDK. Startup also reads `service.instance.id` from it      |
+| `BROWSER_TRACING_ENABLED`     | Optional browser tracing switch. Defaults to off. See [Browser tracing switch](#browser-tracing-switch)   |
 
 For each signal, the application appends `v1/traces`, `v1/metrics`, or
 `v1/logs` directly to the parsed base URL's string form. Use a trailing slash,
@@ -91,6 +95,60 @@ The OTLP exporters read headers from the environment. Signal-specific
 `OTEL_EXPORTER_OTLP_TRACES_HEADERS`, `OTEL_EXPORTER_OTLP_METRICS_HEADERS`, and
 `OTEL_EXPORTER_OTLP_LOGS_HEADERS` values override matching base header keys.
 Never log or commit real header values.
+
+### Browser tracing switch
+
+Browser tracing is a local-verification facility. It is assumed never to be
+active in production: the switch defaults to off, and production configuration
+never sets it. The application does not refuse the switch in a production
+build, so keep it out of every deployed environment's configuration.
+
+`BROWSER_TRACING_ENABLED` is decoded with the other OTEL settings. It accepts
+`true`, `yes`, `on`, `1`, or `y` for on and `false`, `no`, `off`, `0`, or `n`
+for off. Any other value fails startup and names the setting. Browser tracing
+is effective only when the switch is on **and** OTEL is enabled. With
+`OTEL_SDK_DISABLED=true` the switch has no effect.
+
+When browser tracing is effective, every protected document (the `(app)`
+route group) renders two `<meta>` elements into `<head>`:
+
+- `name="traceparent"`: the W3C trace context of the server's handling of
+  that document request, including a trace continued from an incoming
+  `traceparent` header.
+- `name="preets-browser-tracing"`: JSON with exactly four values:
+  `endpoint` (the OTLP base URL the server exports to), `serviceName`,
+  `serviceVersion`, and `serviceInstanceId` (the run identifier, from
+  `service.instance.id` in `OTEL_RESOURCE_ATTRIBUTES`; absent when that key is
+  missing or the list does not parse).
+
+Public documents, such as `/login-unavailable`, `/forbidden`, and `/_test/*`,
+render neither element. When browser tracing is off, no protected document
+renders either element.
+
+The page never receives collector headers. Browser export supports only
+collectors that require no headers. When browser tracing is effective and
+`OTEL_EXPORTER_OTLP_HEADERS` is set, startup logs one warning,
+`Browser tracing exports without collector headers`, with no header names or
+values. Server export still sends the headers.
+
+Because the endpoint is rendered into the page, it must carry no credential.
+With the switch on, `OTEL_EXPORTER_OTLP_ENDPOINT` must be an `http:` or
+`https:` URL with no username, password, query string, or fragment. Any other
+endpoint fails startup with
+`BROWSER_TRACING_ENABLED requires an OTEL_EXPORTER_OTLP_ENDPOINT without credentials, query, or fragment`.
+That message never quotes the URL. With the switch off, such an endpoint is
+still accepted for server-only export. A malformed endpoint fails startup with
+`OTEL_EXPORTER_OTLP_ENDPOINT is invalid`, without quoting the value, whatever
+the switch.
+
+Local example, with the observability profile running:
+
+```sh
+OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318/ \
+OTEL_SERVICE_NAME=pre-ets-frontend \
+BROWSER_TRACING_ENABLED=true \
+pnpm --filter @pathableai/pre-ets-frontend start
+```
 
 ### Startup and export policy
 
