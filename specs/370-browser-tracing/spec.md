@@ -306,7 +306,7 @@ the app's origin and is accepted.
   browser record of the run is selectable by the same revision and run identifier as the server's.
 - **SC-006**: Browser records are queryable within the documented export delay for traces (about 30 seconds) after the
   page that produced them stays open past it.
-- **SC-007**: With the collector stopped, the same journey reaches the same user-visible outcomes as with browser
+- **SC-007**: With the collector unreachable, the same journey reaches the same user-visible outcomes as with browser
   tracing off.
 - **SC-008**: A developer can enable browser tracing against the local collector using only the repository
   documentation.
