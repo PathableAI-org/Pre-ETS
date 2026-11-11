@@ -83,13 +83,35 @@ that the module test does not make, and it is the only evidence for V-008 and V-
   headers and received documents, and drive back/forward navigation.
 - Synthetic tenants and fixtures from the repository, including the multi-tab coordination fixtures. No real client
   records or credentials.
-- A real application session where a step needs protected content. If one cannot be established at the revision under
-  assessment, record those steps as `blocked` and run the remaining steps against public and fixture pages.
+- An application session where a step needs protected content: a real login, or the prepared-session fixture described
+  below for the claims it covers. If neither can be established at the revision under assessment, record those steps
+  as `blocked` and run the remaining steps against public and fixture pages.
 - A run UUID per run. Set `OTEL_SERVICE_VERSION` to the revision and `service.version`/`service.instance.id` in
   `OTEL_RESOURCE_ATTRIBUTES`, as the [verification harness](../../docs/engineering/verification-harness.md#environment)
   requires.
 - A set of probe values seeded for this run: a distinctive string typed into a field, a distinctive query-string value,
   and a distinctive fragment, all synthetic.
+
+### Prepared-session fixture
+
+The verifier may establish an application session by writing a synthetic session record directly to Redis instead of
+completing an OIDC login. No claim of this feature asserts anything about login, the sign-in callback, or session
+issuance, so the fixture is permitted for every claim that needs a protected page: V-001–V-006 and V-008–V-017. V-007
+is a module test and needs no session. V-003's sign-in redirect chain is started from a context without a session, so
+the fixture does not replace it; the fixture serves only that claim's export-request observation.
+
+The fixture:
+
+- uses a synthetic tenant and identity from the repository's fixtures, with no real credentials or personal data;
+- writes only keys under this run's `preets:verify:<run-uuid>:` prefix, and those keys are deleted at cleanup;
+- uses the application's own session record shape. It replaces only the login step. The application code is not
+  changed, configured differently, or bypassed, and every request is handled as it would be after a real login.
+
+The plan's `quickstart.md` defines how the record is written.
+
+This differs from the precedent in feature 163, whose verification forbade a prepared session for its browser claims.
+Those claims concerned session and login behavior itself: renewal, deadlines, and whether a tab stays usable. This
+feature's claims concern browser telemetry, which behaves the same however the session was established.
 
 ### Procedure
 
@@ -140,7 +162,8 @@ that the module test does not make, and it is the only evidence for V-008 and V-
    the shared collector.
 10. **Documentation (V-017).** In a fresh worktree, follow only the documentation to start the stack and the
     application with browser tracing on. Record any step the documentation did not supply.
-11. **Cleanup.** Stop the application instances, delete Redis keys under this run's prefix, remove the fresh worktree,
+11. **Cleanup.** Stop the application instances, delete Redis keys under this run's prefix (including any
+    prepared-session record), remove the fresh worktree,
     and leave the shared observability stack running unless this run started it.
 
 ### Expected observations
@@ -163,6 +186,8 @@ that the module test does not make, and it is the only evidence for V-008 and V-
 - Counts of collector requests and browser records for each off combination.
 - The forbidden-data search scope (number of records and text-bearing fields inspected) and its result, without matched values.
 - Each claim's result as `established`, `violated`, `not established`, or `blocked`, with conditions and limits.
+- For each claim, whether its session came from a real login or the prepared-session fixture. A fixture-backed result
+  cites limitation L-fixture.
 
 ## Harness observations
 
@@ -218,8 +243,12 @@ not committed. Planned procedures in this document are not executed evidence.
 
 ## Limitations and incomplete claims
 
-- Steps that need a real application session are `blocked` if one cannot be established at the revision under
-  assessment.
+- Steps that need an application session are `blocked` if neither a real login nor the prepared-session fixture can
+  establish one at the revision under assessment.
+- **L-fixture (approved limitation):** a claim established through the prepared-session fixture establishes nothing
+  about authentication, the sign-in callback, or session issuance. Results and reports that rely on the fixture must
+  cite this limitation. Once #158 lets a real login complete, those claims can be re-run through it, but #368 does not
+  require that. The maintainer approved this limitation on 2026-11-11.
 - A missing browser record is inconclusive unless the page stayed open past the export delay (spec L2).
 - V-016 searches for seeded probes and known classes. It cannot prove the absence of every possible sensitive value,
   only of those the journey exercised.

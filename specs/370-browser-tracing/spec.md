@@ -426,6 +426,11 @@ No `speckit-clarify` session was run. The maintainer answered the review questio
 - Q: Are URL fragments excluded along with query strings? → A: Yes, confirmed.
 - Q: Is trace context sent only on same-origin requests, never to the identity provider or the collector? → A: Yes,
   confirmed.
+- Q: Until #158 lets a real login complete, may verification establish a session without logging in? → A: Yes. For
+  claims that assert nothing about login, callback, or session issuance, the verifier may write a synthetic session
+  record in the application's own shape under the run's prefix. Results that rely on it establish nothing about
+  authentication and must say so (`verification.md`, Prepared-session fixture and limitation L-fixture). This is a
+  correction made after slice verification found protected pages unreachable.
 
 Plan-phase note: `docs/observability.md` must state, as current behavior, that browser tracing defaults to off,
 production configuration never sets it, and it is assumed never to be active in production.

@@ -30,13 +30,21 @@ Module evidence (V-007 and the coordination parse example) runs in Vitest and is
   OTEL_SERVICE_VERSION=<sha> \
   OTEL_RESOURCE_ATTRIBUTES=service.version=<sha>,service.instance.id=<run> \
   SESSION_KEY_PREFIX=preets:verify:<run>:session:v1 \
+  OIDC_TX_KEY_PREFIX=preets:verify:<run>:oidc-tx:v1 \
+  TENANT_CONFIG_DIR=<checkout>/fixtures/tenant-config \
+  TENANT_RESOLUTION=static \
+  TENANT_STATIC_ALIAS=springfield \
   BROWSER_TRACING_ENABLED=true \
   PORT=<port> pnpm --filter @pathableai/pre-ets-frontend start
   ```
 
-  Off combinations change only `BROWSER_TRACING_ENABLED` (unset) or set `OTEL_SDK_DISABLED=true`.
-- A real application session on the protected coordination fixtures (`/coordination/roster`,
-  `/coordination/participant`). If one cannot be established, record steps that need it as `blocked`.
+  Off combinations change only `BROWSER_TRACING_ENABLED` (unset) or set `OTEL_SDK_DISABLED=true`. Both key prefixes
+  sit under the run prefix the [verification harness](../../docs/engineering/verification-harness.md#environment)
+  requires. Every run sets them, whether or not it uses the fixture.
+- An application session on the protected coordination fixtures (`/coordination/roster`,
+  `/coordination/participant`). Use a real login, or the [prepared-session fixture](#prepared-session-fixture) for
+  the claims `verification.md` permits it for. If neither can be established, record the steps that need a session as
+  `blocked`.
 - Synthetic probe values for this run: a typed string, a query-string value, and a fragment.
 - Readiness marker: before any sampled step with tracing on, wait for
   `document.documentElement.dataset.preetsBrowserTracing === "started"` (plan limitation PL-1). After the last step of
@@ -56,6 +64,95 @@ Module evidence (V-007 and the coordination parse example) runs in Vitest and is
   "Not initialized" means `marker` is `null`, `otelGlobals` contains none of `trace`, `context`, and `propagation`, and
   `tracingChunks` is `0`. Chunk names are build output, so the network capture remains the primary check for the
   download.
+
+## Prepared-session fixture
+
+This procedure implements the `verification.md` prepared-session fixture. It replaces only the OIDC login. It covers
+V-001–V-006 and V-008–V-017. V-007 is a module test and needs no session. For V-003, the sign-in redirect chain still
+starts in a context with no session cookie, and the fixture serves only the export-request observation.
+
+**Owner of the shape.** The session module in frontend-services owns the record. `src/session.ts` is the module's
+public entry, and `SessionService.establish` is its only writer. It encodes the version-2 record through the private
+`session/codec.ts` and creates the key through the private `session/store.ts`. The key is
+`<SESSION_KEY_PREFIX>:<base64url(sha256(reference))>`, the TTL equals the idle timeout, and the opaque reference is
+the cookie value. The fixture calls `establish` itself, so it writes the same shape, key, and TTL as the login
+callback. Only the OIDC exchange is skipped. No application code changes, no product capability is added, and no
+JSON is built by hand. The script below is a verification aid and is never committed.
+
+**Synthetic inputs.**
+
+- Tenant `springfield`, from `fixtures/tenant-config/springfield.json`. That file sets no session policy, so the
+  effective policy is the default: a 30-minute idle timeout and a 5-minute warning lead (`effectiveSessionPolicy`).
+- Identity: issuer `http://127.0.0.1:8080/realms/pre-ets`, the fixture's own issuer, and subject
+  `preets-verify-<run>`. Neither is a real account or personal data, and no credential is involved.
+
+**1. Write the record.** Build frontend-services first
+(`pnpm --filter @pathableai/pre-ets-frontend-services build`). Then run the following from
+`packages/frontend-services`, so the workspace's own `effect` and `@effect/platform-node` resolve. The `react-server`
+condition is needed because the tenant module imports `server-only`. The script prints only the reference; never put
+the reference in results.
+
+```sh
+REFERENCE=$(RUN=<run> node --conditions=react-server --input-type=module <<'EOF'
+import { NodeRedis } from "@effect/platform-node"
+import { Effect, Layer } from "effect"
+import { SessionService } from "./dist/session.js"
+
+const run = process.env.RUN
+const sessions = SessionService.layer({ keyPrefix: `preets:verify:${run}:session:v1` }).pipe(
+  Layer.provide(NodeRedis.layer({ url: process.env.REDIS_URL ?? "redis://127.0.0.1:6379" }))
+)
+const program = Effect.gen(function*() {
+  const service = yield* SessionService
+  const established = yield* service.establish({
+    identity: { issuer: "http://127.0.0.1:8080/realms/pre-ets", subject: `preets-verify-${run}` },
+    policy: { idleTimeoutMinutes: 30, warningLeadMinutes: 5 },
+    tenantAlias: "springfield"
+  })
+  const read = yield* service.readForTenant({ reference: established.reference, tenantAlias: "springfield" })
+  if (read._tag !== "UsableSession") return yield* Effect.die("prepared session is not usable")
+  return established.reference
+})
+process.stdout.write(await Effect.runPromise(program.pipe(Effect.provide(sessions))))
+EOF
+)
+```
+
+The key prefix must equal the instance's `SESSION_KEY_PREFIX`. A dry run on 2026-11-11 against the compose Redis wrote
+one key under `preets:verify:<run>:session:v1:`, read it back as `UsableSession`, and deleted it.
+
+**2. Set the cookie.** In the Playwright context, before the first protected navigation:
+
+```js
+await context.addCookies([{
+  httpOnly: true,
+  name: "pathable-session",
+  sameSite: "Lax",
+  url: "http://127.0.0.1:<port>",
+  value: process.env.REFERENCE
+}])
+```
+
+`pathable-session` is `SESSION_COOKIE`, exported from frontend-services. A `url` cookie is host-only with path `/`,
+and `Secure` is left off because the instance is plain HTTP on loopback. These are the attributes `setSessionCookie`
+gives a real login there. Cookies do not separate ports, so one record serves every instance in the run that shares
+the prefix.
+
+**3. Renew when needed.** Logging out deletes the record, and so does an expired deadline. Write a fresh record and
+replace the cookie before the next protected step. That applies after steps 2 (once per instance), 4, 8, and 9, and
+after step 7 lets the session expire.
+
+**4. Clean up.** Step 11 deletes every key under the run prefix, including the record:
+
+```sh
+docker compose exec redis sh -c "redis-cli --scan --pattern 'preets:verify:<run>:*' | xargs -r redis-cli del"
+```
+
+Then confirm that `redis-cli --scan --pattern 'preets:verify:<run>:*'` returns nothing.
+
+**Recording.** Each result records its session source: `real login` or `prepared-session fixture`. A fixture-backed
+result cites limitation **L-fixture**: it establishes nothing about authentication, the sign-in callback, or session
+issuance.
 
 ## Steps
 
@@ -77,15 +174,35 @@ Module evidence (V-007 and the coordination parse example) runs in Vitest and is
 Steps 2 and 9 are the hand-run browser checks that `verification.md` names as the only evidence for V-008 and
 V-012.
 
+Every step that loads a protected page (2–10) runs on a session from a real login or the
+[prepared-session fixture](#prepared-session-fixture). Step 5's sign-in redirect chain is the exception: it starts in
+a fresh context with no `pathable-session` cookie, and only its export-request observation uses the fixture. In step
+10 the documentation starts the stack and the application. The session is then set up with the fixture and recorded
+as a step the documentation did not supply.
+
 ## Slice request mapping
 
-| Slice    | Steps to request                           | Claims asserted in full                                       | Claims asserted in part                                                                 |
-| -------- | ------------------------------------------ | ------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| `config` | 2 (document only), 3                       | V-007, V-009                                                  | V-004 (meta carries server context), V-008 (document has no config or context when off) |
-| `export` | 2, 4 (export and filters only), 5, 6, 8, 9 | V-002, V-003, V-004, V-005, V-006, V-008, V-010, V-011, V-012 | V-016 (automatic records only)                                                          |
-| `facts`  | 4, 7, 7b, 8, 10                            | V-001, V-013, V-014, V-015, V-016, V-017                      | —                                                                                       |
+| Slice    | Steps to request                           | Claims asserted in full                                       | Claims asserted in part                                                                 | Session                                                                                              |
+| -------- | ------------------------------------------ | ------------------------------------------------------------- | --------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `config` | 2 (document only), 3                       | V-007, V-009                                                  | V-004 (meta carries server context), V-008 (document has no config or context when off) | [Prepared-session fixture](#prepared-session-fixture) for V-004, V-008, and V-009. V-007 needs none. |
+| `export` | 2, 4 (export and filters only), 5, 6, 8, 9 | V-002, V-003, V-004, V-005, V-006, V-008, V-010, V-011, V-012 | V-016 (automatic records only)                                                          | Prepared-session fixture for every step. V-003's sign-in redirect chain starts without a session.    |
+| `facts`  | 4, 7, 7b, 8, 10                            | V-001, V-013, V-014, V-015, V-016, V-017                      | —                                                                                       | Prepared-session fixture for every step, renewed after logout or expiry (fixture step 3).            |
 
 ## Execution results
+
+Each slice appends one block in this form:
+
+```md
+### <slice> — <sha>, <date>, run <run>
+
+- Collector image: <digest>. Port(s): <port>. Switch settings: <values>.
+- Session source: real login | prepared-session fixture (tenant `springfield`, subject `preets-verify-<run>`).
+  Fixture-backed results cite L-fixture: they establish nothing about authentication, the sign-in callback, or
+  session issuance.
+- <claim>: established | violated | not established | blocked. Steps <n>. Session source <source>. Trace IDs,
+  record counts, and conditions. For a fixture-backed claim: "Limitation: L-fixture."
+- Cleanup: keys remaining under `preets:verify:<run>:` = 0.
+```
 
 ### Slice `config`: verified SHA `aadb76fb6ce51ef072f2147546bff9e9ecfd9426` (2026-11-11)
 
