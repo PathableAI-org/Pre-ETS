@@ -267,25 +267,29 @@ package sources named below. Implementation re-checks each signature against the
   - `Router.transition`: from Next's `onRouterTransitionStart`, which `instrumentation-client.ts` re-exports from the
     facade.
 
-    Each one replaces the pending cause for the request kind it expects. There is one slot per kind, the cause is
-    claimed once, and it lasts 5 seconds. A
+    Each one fills the single pending-cause slot for the request kind it expects. A cause is claimed once and lasts 5
+    seconds. If an interaction arrives while the slot still holds an unclaimed cause, the slot becomes `ambiguous` for
+    5 seconds. No request of that kind claims anything while it is ambiguous, so neither overlapping request is
+    parented. A
     submit expects a Server Action POST, identified by the `Next-Action` request header. A router transition expects an
     RSC request, identified by the `RSC: 1` header. The SDK module wraps `window.fetch` outside `FetchInstrumentation`.
-    When a same-origin request matches the unexpired cause in its kind's slot, the wrapper empties the slot and calls the
+    When a same-origin request finds an unexpired, unambiguous cause in its kind's slot, the wrapper empties the slot and calls the
     instrumented fetch inside `context.with(cause)`. The fetch span, and the server spans below it, then become the
     interaction's descendants. Unclaimed causes expire.
 - **Guarded submissions**: `TabCoordination`'s submit guard cancels a submission whose current-session hint names
-  another session, confirms the session, and replays it with `requestSubmit` (`tab-coordination.ts`). The listener
-  therefore sees two submits for one POST. The replay's cause replaces the cancelled one's, so the POST is parented on
-  the replay and nothing is left queued for the next submission. The cancelled submit's `Interaction.submit` span has
-  no request child. A cancelled submit that is never replayed leaves its cause, which the next submit replaces or
-  which expires. It is never claimed by a later POST of another submit, because every submit replaces the slot.
+  another session, confirms the session, and replays it with `requestSubmit` (`tab-coordination.ts`). The listener therefore sees two submits for one POST. When the guard cancels a submission, it calls the
+  facade's `withdrawSubmitCause()`, which empties the Server Action slot. The replay then fills an empty slot, so the
+  POST is parented on the replay, and the cancelled submit's `Interaction.submit` span has no request child. A
+  cancelled submission that is never replayed leaves nothing behind.
 - **Rationale**: SC-001 requires transition-to-server correlation for every sampled transition and for at least one
   transition of each request kind. Data fetches already nest through `TraceScope.run` (D5). This gives the two
   React-scheduled kinds the same parent relation without Zone.js. The match uses only request headers that Next
   itself sets, never their values or the body.
-- **Limits**: When two interactions of one kind overlap before the first request starts, the later one wins. The
-  earlier request is then left unparented rather than attributed to the wrong interaction (PL-2). Requests sent before the SDK registers stay
+- **Limits**: A request is parented only when exactly one interaction of its kind is pending. Two interactions of
+  one kind within 5 seconds, both unclaimed, leave both requests unparented (PL-2). Misattribution needs a cause and
+  a request of the same kind that are unrelated, with no other interaction in between. A matching request from
+  another source, such as `RestoredPageGuard`'s `router.refresh()`, could claim a router cause, so router causes are
+  claimed only by a request whose URL path equals the transition's destination path. Requests sent before the SDK registers stay
   unparented (PL-1). Whether Next reads `window.fetch` at call time is checked in slice `facts`. If it does not, the
   slice stops and the plan is corrected rather than claiming SC-001.
 - **Alternatives**: `ZoneContextManager`, rejected (D5). Attributing any fetch inside a time window to the latest
