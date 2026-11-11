@@ -233,8 +233,7 @@ log (T-008). Server-side, it references the existing HTTP server spans and the
 [session verification signals](../../docs/session-state.md#verification-signals) (`logout`, `protectRequest`) and
 adds none. Facts not emitted: page text, form values, query strings and fragments, message contents, headers, cookies,
 tokens, user agent, resource-timing URLs, status descriptions, and exception events (FR-021a). Absence facts are
-verified through browser interaction. The cross-tab match identifier is the send span's ID, which the SDK generates
-for telemetry only (FR-016).
+verified through browser interaction. The cross-tab match identifier is `preets.tab.message.id`, a UUID the facade generates per send (`crypto.randomUUID()`) for telemetry only and carries as `telemetryId`. It exists for sends buffered before SDK registration too (FR-016, research D8).
 
 ### Phase 7 — Implementation slices
 
