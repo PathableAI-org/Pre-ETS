@@ -93,7 +93,8 @@ event for the run.
 2. **Given** a journey whose pages and requests have query strings or fragments, **When** browser telemetry is exported,
    **Then** locations appear only as a path or route template without query string or fragment.
 3. **Given** cross-tab messages that coordinate a session, **When** their send and receipt are recorded, **Then** only the
-   message kind and direction are exported, never the message contents.
+   message kind, the direction, and an opaque identifier generated only for telemetry to match a send with its
+   receipts are exported, never the message contents.
 4. **Given** any browser journey, **When** browser telemetry is exported, **Then** it contains no credential, header value,
    cookie or session reference, token, OIDC protocol value, personal data, or PHI, as defined by the
    [data classes](../../docs/observability.md#data-classes).
@@ -241,7 +242,8 @@ the app's origin and is accepted.
 - **FR-015**: Browser telemetry MUST record each client-side UI state transition the application makes, as a
   from-state and to-state from a closed set.
 - **FR-016**: Browser telemetry MUST record each cross-tab message sent and received, with its closed-set message kind
-  and direction, in a way that lets a verifier match a send to its receipts across tabs.
+  and direction, in a way that lets a verifier match a send to its receipts across tabs. The match MAY use an opaque
+  identifier generated only for telemetry; it MUST NOT reuse any value from the message contents.
 - **FR-017**: Browser telemetry MUST record focus moves to and from application-identified controls and regions, with
   a closed-set target identifier and whether the application or the user caused the move.
 - **FR-018**: Every recorded harness fact MUST follow the
