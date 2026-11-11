@@ -257,7 +257,8 @@ the app's origin and is accepted.
 
 #### Scope and documentation
 
-- **FR-022**: Browser tracing MUST be documented as a local-verification facility that production leaves off.
+- **FR-022**: Browser tracing MUST be documented as a local-verification facility that is assumed never to be active in
+  production: the switch defaults to off and production configuration never sets it.
 - **FR-023**: The observability documentation MUST describe the browser tracing scope, its signals, the switch and its
   dependency on server telemetry, direct export, the header-free collector constraint, and the CORS requirement. The
   local Compose documentation MUST describe the local collector's CORS configuration.
@@ -307,13 +308,17 @@ the app's origin and is accepted.
 
 - The verification run's revision and run identifier are the values the harness already sets for the server process.
   The browser reuses them rather than generating its own.
-- "Production leaves it off" is satisfied by the switch defaulting to off and by production configuration not setting
-  it. The product does not refuse the switch in a production build (Authority finding 2).
-- Query strings are forbidden by the issue. URL fragments are treated the same way because they can carry the same
-  kinds of values and add nothing a verifier needs.
-- Trace context is limited to same-origin requests because the issue scopes propagation to same-origin fetch, and
-  adding it to the identity provider or the collector would send telemetry identifiers to another origin and may
-  trigger a cross-origin preflight those services do not expect.
+- **Browser tracing is assumed never to be active in production.** The switch defaults to off, and production
+  configuration never sets it. The product does not refuse or ignore the switch in a production build, and no
+  evidence of such a refusal is planned. This assumption is documented so that a later decision to enable it anywhere
+  other than local development goes back through the issue and specification (Authority finding 2, confirmed by the
+  maintainer on 2026-11-11).
+- Query strings are forbidden by the issue. URL fragments are excluded the same way because they can carry the same
+  kinds of values and add nothing a verifier needs (confirmed by the maintainer on 2026-11-11).
+- Trace context is sent only on same-origin requests, never to the identity provider, the collector, or any other
+  origin. The issue scopes propagation to same-origin fetch, and sending it elsewhere would give telemetry identifiers
+  to another origin and may trigger a cross-origin preflight those services do not expect (confirmed by the maintainer
+  on 2026-11-11).
 - Delivery of browser telemetry is best-effort, matching the existing server export policy in
   [Observability](../../docs/observability.md#startup-and-export-policy).
 - Which UI states, message kinds, and focus targets exist, and the names they are recorded under, are telemetry
@@ -390,16 +395,29 @@ no browser tracing runs.
    - _Decision required_: None. The maintainer rewrote #368 as the authority and directed the full specification, plan,
      and slice workflow because the feature adds a client SDK and a runtime switch and exposes the collector endpoint.
    - _Proposals_: (A) Treat #368 as the sole authority (applied).
-2. **How production stays off (open; does not block this specification).**
+2. **How production stays off (resolved by maintainer decision on 2026-11-11).**
    - _Source_: Issue #368 Constraints: "Browser tracing is for local verification. Production leaves it off."
-   - _Ambiguity_: Whether "leaves it off" is a configuration obligation (default off, never set in production) or a
-     product guarantee (the switch is refused or ignored in a production build).
-   - _Impact_: Proposal A adds no runtime check, and browser tracing could be enabled in production by configuration.
-     Proposal B adds a startup behavior and its evidence.
-   - _Decision required_: Which reading the maintainer intends.
-   - _Proposals_: (A) Default off, documented as local-only, production configuration does not set it (assumed by this
-     specification). (B) The application refuses to enable browser tracing in a production build.
+     Maintainer answer on PR #373, 2026-11-11: the settings default to false and production never sets it, and the
+     documentation should state the assumption that browser tracing is never active in production.
+   - _Ambiguity_: Whether "leaves it off" is a configuration obligation or a product guarantee that refuses the switch in
+     a production build. None remaining.
+   - _Impact_: No runtime refusal and no evidence for one. FR-022 and the Assumptions section record that browser
+     tracing is assumed never to be active in production. The engineering plan carries the same statement into the
+     current-behavior documentation in `docs/observability.md`.
+   - _Decision required_: None.
+   - _Proposals_: (A) Default off, production configuration never sets it, and the assumption is documented
+     (**chosen**). (B) The application refuses to enable browser tracing in a production build (not chosen).
 
 ## Clarifications
 
-No `speckit-clarify` session was run. Authority finding 2 is the only open question and has a stated default.
+No `speckit-clarify` session was run. The maintainer answered the review questions on PR #373 on 2026-11-11:
+
+- Q: Does "Production leaves it off" require the application to refuse the switch in production? → A: No. The switch
+  defaults to off, production never sets it, and the documentation states the assumption that browser tracing is
+  never active in production (Authority finding 2).
+- Q: Are URL fragments excluded along with query strings? → A: Yes, confirmed.
+- Q: Is trace context sent only on same-origin requests, never to the identity provider or the collector? → A: Yes,
+  confirmed.
+
+Plan-phase note: `docs/observability.md` must state, as current behavior, that browser tracing defaults to off,
+production configuration never sets it, and it is assumed never to be active in production.

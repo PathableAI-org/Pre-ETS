@@ -52,9 +52,10 @@
 - The settled decisions in #368 (separate switch effective only with server telemetry, direct header-free export with
   CORS, same-origin propagation, rendered trace context for document loads, closed-set harness facts, local-only) are
   encoded as accepted expectations, not re-decided.
-- Two informed defaults are recorded in Assumptions: URL fragments are excluded with query strings, and trace context
-  is never added to other origins.
+- Two defaults recorded in Assumptions were confirmed by the maintainer on 2026-11-11: URL fragments are excluded with
+  query strings, and trace context is sent only on same-origin requests.
 - Authority finding 1 (no delivery slice or requirement) is resolved by the maintainer's direction. Finding 2 (whether
-  production must refuse the switch) is open, does not block the stakeholder contract, and defaults to proposal A.
+  production must refuse the switch) was resolved by the maintainer on 2026-11-11 with proposal A: the switch defaults
+  to off, production never sets it, and browser tracing is documented as assumed never active in production.
 - `verification.md` records planned evidence only. No browser, collector, or trace-store procedure was executed during
   specification.
