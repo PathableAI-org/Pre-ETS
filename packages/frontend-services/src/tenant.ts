@@ -174,8 +174,10 @@ const tenantConfigFromAlias = (
     const failure = config.resolution === "static" && notFound ?
       new TenantReadError({ cause, message }) :
       new TenantNotFound({ cause, message })
+    // The alias annotation covers the directory check too, so a directory rejection is tenant-correlatable.
     return directoryUnavailable.pipe(
-      Effect.andThen(failTenant(notFound ? "not-found" : "read", failure, { "preets.tenant.alias": alias }))
+      Effect.andThen(failTenant(notFound ? "not-found" : "read", failure)),
+      Effect.annotateLogs({ "preets.tenant.alias": alias })
     )
   }
 

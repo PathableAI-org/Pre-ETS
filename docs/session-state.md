@@ -245,13 +245,13 @@ created. No signal carries the session reference, cookie, coordination tag, issu
 
 ### Session service spans
 
-| Span                              | `preets.outcome`                                                                               | Other attributes                                                                                                                          |
-| --------------------------------- | ---------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `SessionService.establish`        | `established`, `unavailable`                                                                   | `preets.session.deadline_ms`, `preets.session.idle_timeout_minutes`, `preets.session.warning_lead_minutes`, `session.id`                  |
-| `SessionService.read`             | `current`, `expired`, `missing`, `no_reference`, `unavailable`                                 | `preets.session.deadline_ms`, `preets.session.revision`, `preets.session.warning_lead_minutes`, `session.id` when a record was decoded    |
-| `SessionService.readForTenant`    | `current`, `no_session`, `tenant_mismatch`, `unavailable`                                      | `preets.tenant.alias`. The child `SessionService.read` span carries the record facts                                                      |
-| `SessionService.refreshForTenant` | `renewed`, `unchanged`, `expired`, `missing`, `no_reference`, `tenant_mismatch`, `unavailable` | `preets.session.activity`, `preets.session.activity_class`, `preets.tenant.alias`, policy minutes, and the record facts listed for `read` |
-| `SessionService.invalidate`       | `removed`, `missing`, `rejected_late`, `no_reference`, `unavailable`                           | `preets.session.logout_cutoff_ms` when the caller supplied a cutoff                                                                       |
+| Span                              | `preets.outcome`                                                                               | Other attributes                                                                                                                                |
+| --------------------------------- | ---------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SessionService.establish`        | `established`, `unavailable`                                                                   | `preets.session.deadline_ms`, `preets.session.idle_timeout_minutes`, `preets.session.warning_lead_minutes`, `preets.tenant.alias`, `session.id` |
+| `SessionService.read`             | `current`, `expired`, `missing`, `no_reference`, `unavailable`                                 | `preets.session.deadline_ms`, `preets.session.revision`, `preets.session.warning_lead_minutes`, `session.id` when a record was decoded          |
+| `SessionService.readForTenant`    | `current`, `no_session`, `tenant_mismatch`, `unavailable`                                      | `preets.tenant.alias`. The child `SessionService.read` span carries the record facts                                                            |
+| `SessionService.refreshForTenant` | `renewed`, `unchanged`, `expired`, `missing`, `no_reference`, `tenant_mismatch`, `unavailable` | `preets.session.activity`, `preets.session.activity_class`, `preets.tenant.alias`, policy minutes, and the record facts listed for `read`       |
+| `SessionService.invalidate`       | `removed`, `missing`, `rejected_late`, `no_reference`, `unavailable`                           | `preets.session.logout_cutoff_ms` when the caller supplied a cutoff                                                                             |
 
 - `renewed` means a qualifying activity wrote a new deadline. `unchanged` means a caller passed an excluded activity
   to `refreshForTenant` and the record was left as stored. No HTTP path does that today. Excluded requests at the
@@ -281,7 +281,7 @@ logout shows only on the `protectRequest` span and its session-service child.
 ### Tenant configuration log
 
 A rejected tenant configuration keeps the fixed message `Tenant configuration request failed`, with its existing
-`_tag` and `reason`. When the alias was resolved, the log is annotated with `preets.tenant.alias`. A JSON or schema
+`_tag` and `reason`. When the alias was resolved, every rejection log is annotated with `preets.tenant.alias`, including a rejection from an unavailable configuration directory. A JSON or schema
 rejection also carries `preets.tenant.config.rejected_field`: `idleTimeoutMinutes`, `warningLeadMinutes`, or
 `other`. It names the field, never the value or file content. A warning lead that is not below the effective
 timeout reports `warningLeadMinutes`.

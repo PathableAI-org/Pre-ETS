@@ -246,6 +246,7 @@ export class SessionService extends Context.Service<SessionService, {
 
         const establish = Effect.fn("SessionService.establish")(function*(input: EstablishSessionInput) {
           yield* annotatePolicy(input.policy)
+          yield* Effect.annotateCurrentSpan("preets.tenant.alias", input.tenantAlias)
           const attempt: Effect.Effect<EstablishedSession, SessionReferenceCollision | SessionServiceUnavailable> =
             Effect.gen(function*() {
               const now = yield* Clock.currentTimeMillis
