@@ -12,6 +12,13 @@ export class ObservabilityInitializationError extends Schema.TaggedError<Observa
   { cause: Schema.Defect() }
 ) {}
 
+/**
+ * Sets the closed-set `preets.outcome` of the current span, as the verification telemetry conventions require
+ * (docs/observability.md). Each traced operation documents its values in docs/session-state.md.
+ */
+export const annotateOutcome = (outcome: string): Effect.Effect<void> =>
+  Effect.annotateCurrentSpan("preets.outcome", outcome)
+
 export const observabilityLayer = (input: {
   readonly otel: OtelSettings
 }): Layer.Layer<Resource, ObservabilityInitializationError> => {

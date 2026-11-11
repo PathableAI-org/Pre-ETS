@@ -1,6 +1,7 @@
 import { Clock, Effect, Option, Schema } from "effect"
 import { type NextRequest, NextResponse } from "next/server"
 
+import { annotateOutcome } from "../observability.js"
 import {
   decodeSessionReference,
   type NoUsableSession,
@@ -52,6 +53,12 @@ const emptyResponse = (status: number) =>
 const snapshotResponse = (snapshot: SessionCoordinationSnapshot) =>
   NextResponse.json(snapshot, { headers: { "cache-control": PRIVATE_NO_STORE } })
 
+/** Records the handler outcome on its span (docs/session-state.md#verification-signals), then responds. */
+const respond = (outcome: "ok" | "unauthenticated", response: NextResponse) =>
+  annotateOutcome(outcome).pipe(Effect.as(response))
+
+const unauthenticated = () => respond("unauthenticated", emptyResponse(401))
+
 /** Fetch Metadata decides when present; otherwise the `Origin` header must equal the request origin. */
 const isSameOrigin = (request: NextRequest): boolean => {
   const site = request.headers.get("sec-fetch-site")
@@ -94,16 +101,31 @@ const FAILURE_STATUS = {
   UnsupportedContentType: 415
 } as const satisfies Record<Exclude<CoordinationFailure["_tag"], TenantFailure["_tag"]>, number>
 
+const FAILURE_OUTCOME = {
+  CoordinationTagMismatch: "tag_mismatch",
+  CrossOriginRequest: "cross_origin",
+  LateLogoutAttempt: "rejected_late",
+  SchemaError: "invalid_body",
+  SessionServiceUnavailable: "unavailable",
+  SessionTenantMismatch: "tenant_mismatch",
+  TenantNotFound: "tenant_failure",
+  TenantReadError: "tenant_failure",
+  UnsupportedContentType: "unsupported_content_type"
+} as const satisfies Record<CoordinationFailure["_tag"], string>
+
 /** Branches on `_tag`, not `instanceof`: Turbopack can evaluate a module once per chunk. */
-const failureResponse = (failure: CoordinationFailure) => {
+const failureStatus = (failure: CoordinationFailure) => {
   switch (failure._tag) {
     case "TenantNotFound":
     case "TenantReadError":
-      return Effect.succeed(emptyResponse(tenantFailureStatus(failure)))
+      return tenantFailureStatus(failure)
     default:
-      return Effect.succeed(emptyResponse(FAILURE_STATUS[failure._tag]))
+      return FAILURE_STATUS[failure._tag]
   }
 }
+
+const failureResponse = (failure: CoordinationFailure) =>
+  annotateOutcome(FAILURE_OUTCOME[failure._tag]).pipe(Effect.as(emptyResponse(failureStatus(failure))))
 
 /** Every handler answers its failures with an empty, private response. */
 const respondToFailures = <R>(effect: Effect.Effect<NextResponse, CoordinationFailure, R>) =>
@@ -122,7 +144,7 @@ const sessionActivity = Effect.fn("sessionActivity")(function*(request: NextRequ
   const body = yield* decodeActivityBody(yield* readJsonBody(request))
   const tenant = yield* requestTenant(request)
   const reference = decodeSessionReference(request.cookies.get(SESSION_COOKIE)?.value)
-  if (Option.isNone(reference)) return emptyResponse(401)
+  if (Option.isNone(reference)) return yield* unauthenticated()
   yield* requireTag(reference.value, body.coordinationTag)
   const session = yield* (yield* SessionService).refreshForTenant({
     activity: body.activity,
@@ -130,16 +152,22 @@ const sessionActivity = Effect.fn("sessionActivity")(function*(request: NextRequ
     reference: reference.value,
     tenantAlias: tenant.alias
   })
-  if (session._tag === "NoUsableSession") return emptyResponse(401)
+  if (session._tag === "NoUsableSession") return yield* unauthenticated()
   // No Set-Cookie: a delayed renewal must not overwrite a later session's cookie (research D15).
-  return snapshotResponse(coordinationSnapshot(reference.value, session, yield* Clock.currentTimeMillis))
+  return yield* respond(
+    "ok",
+    snapshotResponse(coordinationSnapshot(reference.value, session, yield* Clock.currentTimeMillis))
+  )
 }, respondToFailures)
 
 const sessionStatus = Effect.fn("sessionStatus")(function*(request: NextRequest) {
   const current = yield* currentSession(request)
-  if (Option.isNone(current)) return emptyResponse(401)
+  if (Option.isNone(current)) return yield* unauthenticated()
   const { reference, session } = current.value
-  return snapshotResponse(coordinationSnapshot(reference, session, yield* Clock.currentTimeMillis))
+  return yield* respond(
+    "ok",
+    snapshotResponse(coordinationSnapshot(reference, session, yield* Clock.currentTimeMillis))
+  )
 }, respondToFailures)
 
 /**
@@ -149,7 +177,7 @@ const sessionStatus = Effect.fn("sessionStatus")(function*(request: NextRequest)
 const logout = Effect.fn("logout")(function*(request: NextRequest) {
   const body = yield* decodeLogoutBody(yield* readJsonBody(request))
   const current = yield* currentSession(request)
-  if (Option.isNone(current)) return emptyResponse(401)
+  if (Option.isNone(current)) return yield* unauthenticated()
   yield* requireTag(current.value.reference, body.coordinationTag)
   // `notAfter` is on the Redis clock; only the store's atomic `TIME` check enforces it, with the delete (R27, R34).
   const outcome = yield* (yield* SessionService).invalidate({
@@ -157,7 +185,7 @@ const logout = Effect.fn("logout")(function*(request: NextRequest) {
     reference: current.value.reference
   })
   if (outcome._tag === "InvalidationExpired") return yield* new LateLogoutAttempt({})
-  return emptyResponse(204)
+  return yield* respond("ok", emptyResponse(204))
 }, respondToFailures)
 
 export type AuthorizedSessionAction =
@@ -174,21 +202,31 @@ export interface AuthorizeSessionActionInput {
 
 const sessionChanged: AuthorizedSessionAction = { _tag: "SessionChanged" }
 
-const authorizeAction = Effect.fn("authorizeSessionAction")(function*(input: AuthorizeSessionActionInput) {
-  const tenant = yield* resolveRequestTenant(input.host)
-  const reference = decodeSessionReference(input.reference)
-  if (Option.isNone(reference)) return { _tag: "NoUsableSession" } satisfies AuthorizedSessionAction
-  const claimed = input.coordinationTag
-  if (claimed === undefined || !isCoordinationTagOf(reference.value, claimed)) return sessionChanged
-  const session = yield* (yield* SessionService).refreshForTenant({
-    activity: "deliberate-form-submission",
-    policy: effectiveSessionPolicy(tenant.config),
-    reference: reference.value,
-    tenantAlias: tenant.alias
-  })
-  if (session._tag === "NoUsableSession") return session
-  return { _tag: "Authorized", session, tenantAlias: tenant.alias } satisfies AuthorizedSessionAction
-})
+const ACTION_OUTCOME = {
+  Authorized: "authorized",
+  NoUsableSession: "no_session",
+  SessionChanged: "session_changed"
+} as const satisfies Record<AuthorizedSessionAction["_tag"], string>
+
+const authorizeAction = Effect.fn("authorizeSessionAction")(
+  function*(input: AuthorizeSessionActionInput) {
+    const tenant = yield* resolveRequestTenant(input.host)
+    const reference = decodeSessionReference(input.reference)
+    if (Option.isNone(reference)) return { _tag: "NoUsableSession" } satisfies AuthorizedSessionAction
+    const claimed = input.coordinationTag
+    if (claimed === undefined || !isCoordinationTagOf(reference.value, claimed)) return sessionChanged
+    const session = yield* (yield* SessionService).refreshForTenant({
+      activity: "deliberate-form-submission",
+      policy: effectiveSessionPolicy(tenant.config),
+      reference: reference.value,
+      tenantAlias: tenant.alias
+    })
+    if (session._tag === "NoUsableSession") return session
+    return { _tag: "Authorized", session, tenantAlias: tenant.alias } satisfies AuthorizedSessionAction
+  },
+  Effect.tap((result) => annotateOutcome(ACTION_OUTCOME[result._tag])),
+  Effect.tapError((failure) => annotateOutcome(FAILURE_OUTCOME[failure._tag]))
+)
 
 /**
  * Resolves the tenant, compares the submitted tag with the cookie's tag, and only on a match renews as

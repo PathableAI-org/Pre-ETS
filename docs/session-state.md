@@ -230,3 +230,87 @@ Independent session clients read identical state from the same record without cr
 affinity. This is not independently running protected HTTP recognition, and it does not
 replace the backend's durable domain records. Effective timeout/warning derivation remains
 owned by the tenant service; see [tenant policy](./multi-tenancy.md#idle-timeout-and-warning-policy).
+
+## Verification signals
+
+These spans and logs let a [verification agent](engineering/verification-harness.md) observe session, coordination,
+and protection outcomes from exported telemetry. They follow the
+[verification telemetry conventions](observability.md#verification-telemetry-conventions). Feature telemetry
+contracts reference these rows rather than redefining them. Every row is on an existing `Effect.fn` span. Each span
+sets `preets.outcome` from the closed set listed. Durable tests do not assert any of them.
+
+Correlate through W3C trace context, `service.version`, `service.instance.id`, `preets.tenant.alias`, and
+`session.id`. `session.id` is the record's opaque telemetry UUID, present wherever a stored record was decoded or
+created. No signal carries the session reference, cookie, coordination tag, issuer, subject, or any token.
+
+### Session service spans
+
+| Span                              | `preets.outcome`                                                                               | Other attributes                                                                                                                                |
+| --------------------------------- | ---------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SessionService.establish`        | `established`, `unavailable`                                                                   | `preets.session.deadline_ms`, `preets.session.idle_timeout_minutes`, `preets.session.warning_lead_minutes`, `preets.tenant.alias`, `session.id` |
+| `SessionService.read`             | `current`, `expired`, `missing`, `no_reference`, `unavailable`                                 | `preets.session.deadline_ms`, `preets.session.revision`, `preets.session.warning_lead_minutes`, `session.id` when a record was decoded          |
+| `SessionService.readForTenant`    | `current`, `no_session`, `tenant_mismatch`, `unavailable`                                      | `preets.tenant.alias`. The child `SessionService.read` span carries the record facts                                                            |
+| `SessionService.refreshForTenant` | `renewed`, `unchanged`, `expired`, `missing`, `no_reference`, `tenant_mismatch`, `unavailable` | `preets.session.activity`, `preets.session.activity_class`, `preets.tenant.alias`, policy minutes, and the record facts listed for `read`       |
+| `SessionService.invalidate`       | `removed`, `missing`, `rejected_late`, `no_reference`, `unavailable`                           | `preets.session.logout_cutoff_ms` when the caller supplied a cutoff                                                                             |
+
+- `renewed` means a qualifying activity wrote a new deadline. `unchanged` means a caller passed an excluded activity
+  to `refreshForTenant` and the record was left as stored. No HTTP path does that today. Excluded requests at the
+  gate, and `GET /session/status`, read through `readForTenant` instead. Over HTTP, an excluded request shows as
+  `protectRequest` with `preets.protection.renewal = none`, and its child `SessionService.read` shows `current` with
+  the same `preets.session.deadline_ms` and `preets.session.revision` as before the request. `no_reference` means the request carried no well-formed reference, so no store call
+  was made.
+- `preets.session.activity` is the activity literal, for example `deliberate-page-request` or `keyboard-interaction`.
+  `preets.session.activity_class` is `qualifying` or `excluded`.
+- On a qualifying refresh, `preets.session.idle_timeout_minutes` and `preets.session.warning_lead_minutes` are the
+  effective tenant policy the renewal adopts. On a renewed record, `preets.session.deadline_ms` is the new
+  authoritative deadline and `preets.session.revision` is the stored revision after the write.
+- `rejected_late` on `invalidate` is a cutoff logout that reached the store after `notAfter` and deleted nothing.
+
+### Host adapter spans
+
+| Span                                         | `preets.outcome`                                                                                                                                                         | Other attributes                                                                                                                              |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `protectRequest`                             | `admitted`, `redirected_login`, `denied_unauthenticated`, `denied_forbidden`, `unavailable`, `tenant_failure`                                                            | `preets.protection.entry` (`document`, `application`), `preets.protection.renewal` (`deliberate-page-request`, `none`), `preets.tenant.alias` |
+| `sessionActivity`, `sessionStatus`, `logout` | `ok`, `unauthenticated`, `tag_mismatch`, `cross_origin`, `unsupported_content_type`, `invalid_body`, `rejected_late`, `tenant_mismatch`, `unavailable`, `tenant_failure` | `preets.tenant.alias` once the tenant resolved                                                                                                |
+| `authorizeSessionAction`                     | `authorized`, `session_changed`, `no_session`, `tenant_mismatch`, `unavailable`, `tenant_failure`                                                                        | `preets.tenant.alias`                                                                                                                         |
+
+The session-service span under each adapter span carries the session facts for that request. `rejected_late`
+appears only on `logout`. A request the gate denies never reaches its handler. For example, activity after expiry or
+logout shows only on the `protectRequest` span and its session-service child.
+
+### Tenant configuration log
+
+A rejected tenant configuration keeps the fixed message `Tenant configuration request failed`, with its existing
+`_tag` and `reason`. When the alias was resolved, every rejection log is annotated with `preets.tenant.alias`, including a rejection from an unavailable configuration directory. A JSON or schema
+rejection also carries `preets.tenant.config.rejected_field`: `idleTimeoutMinutes`, `warningLeadMinutes`, or
+`other`. It names the field, never the value or file content. A warning lead that is not below the effective
+timeout reports `warningLeadMinutes`.
+
+### Example verifier queries
+
+Filter every query by the run's `service.version` and `service.instance.id`:
+
+```text
+{ resource.service.instance.id = "<run-uuid>" && name = "SessionService.refreshForTenant" && span.preets.outcome = "renewed" }
+{ resource.service.instance.id = "<run-uuid>" && name = "protectRequest" } | select(span.preets.outcome, span.preets.protection.entry)
+{ resource.service.instance.id = "<run-uuid>" && name = "SessionService.invalidate" && span.preets.outcome = "rejected_late" }
+```
+
+```text
+{service_name="pre-ets-frontend", service_instance_id="<run-uuid>"} |= "Tenant configuration request failed" | service_version="<sha>"
+```
+
+In Loki, `service_instance_id` is an index label, but `service_version` is structured metadata, so it filters after
+the line selector.
+
+### Not emitted
+
+| Fact                                             | Why                                                      | Verified instead                                                                                                                                                            |
+| ------------------------------------------------ | -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Renewal and rejection rates (metrics)            | No current claim needs a rate                            | Per-request span outcomes. Add counters when a telemetry contract needs one                                                                                                 |
+| Public-path pass-through at the gate             | The gate returns before any traced operation             | Module tests and browser interaction                                                                                                                                        |
+| Late activity after Redis has evicted the record | The key's TTL equals the deadline, so the record is gone | The step's trace (the verifier's own `traceparent`) shows `missing` or `expired`. Compare with `preets.session.deadline_ms` from an earlier span with the same `session.id` |
+| Session reference, coordination tag, identity    | Forbidden data classes                                   | Module tests                                                                                                                                                                |
+
+`expired` appears only when the application clock has passed the deadline before Redis evicted the key. Most late
+activity therefore shows as `missing`, and it carries no `session.id`, because nothing was decoded.

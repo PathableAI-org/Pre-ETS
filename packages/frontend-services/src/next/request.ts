@@ -27,6 +27,7 @@ export const resolveRequestTenant = Effect.fnUntraced(function*(
 > {
   const tenant = yield* TenantConfigService
   const alias = yield* Effect.fromResult(tenant.getAlias(host))
+  yield* Effect.annotateCurrentSpan("preets.tenant.alias", alias)
   const config = yield* tenant.getConfigFromAlias(alias)
   return { alias, config }
 })
