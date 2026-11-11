@@ -238,8 +238,9 @@ package sources named below. Implementation re-checks each signature against the
   never to be active in production. The "Out of scope" stub for browser tracing is narrowed to RUM, metrics, and logs.
 - `docs/docker-compose.md`: the collector CORS default and browser-reachable endpoint.
 - `docs/engineering/verification-harness.md`: "Known limits" replaces "Browser telemetry does not exist yet" with the
-  real limits: protected pages only, requests before tracing starts carry no context, Server Action and RSC fetches
-  are their own traces, and records from a page that closes before export may be lost. The evidence-channel bullet
+  real limits: protected pages only (PL-3); requests sent before tracing starts carry no context, and facts buffered
+  then are root spans, with any overflow reported (PL-1); overlapping interactions of one request kind leave the
+  earlier request unparented (PL-2); and records from a page that closes before export may be lost (spec L2). The evidence-channel bullet
   drops "once browser tracing exists".
 
 ### D15 — Endpoint shape that is safe to render
@@ -289,3 +290,17 @@ package sources named below. Implementation re-checks each signature against the
   slice stops and the plan is corrected rather than claiming SC-001.
 - **Alternatives**: `ZoneContextManager`, rejected (D5). Attributing any fetch inside a time window to the latest
   interaction, rejected: unrelated confirmation reads would be attributed to it.
+
+### D17 — Client-navigation stimulus for the RSC request kind
+
+- **Decision**: The roster fixture gains a design-system `Button`, "Open participant page in place". It calls
+  `useRouter().push("/coordination/participant")` from `next/navigation`. The existing `Link` stays as it is.
+- **Rationale**: `@pathableai/react` 0.3.0 `Link` renders a plain `<a>` with no router composition, so following it is
+  a full document navigation (V-004), not an RSC request, and it never calls `onRouterTransitionStart`. Today the only
+  RSC request is `RestoredPageGuard`'s `router.refresh()` after `popstate`, which Next does not report as a router
+  transition. A `Button` that calls the App Router uses supported design-system composition and gives V-002 and
+  SC-001 a deterministic RSC request with a router-transition cause. The fixture is synthetic and retained for later
+  features.
+- **Alternatives**: Wrapping `next/link` around the design-system `Link`, rejected because the library offers no
+  composition point. Rendering `next/link` directly, rejected by the UI rule that pages use the component library. The
+  missing router-aware `Link` is a library gap, which the `export` slice reports to the library's issue tracker.
