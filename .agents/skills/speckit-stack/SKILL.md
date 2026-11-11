@@ -1,6 +1,6 @@
 ---
 name: speckit-stack
-description: Inspect, revise, restack, and validate a Pre-ETS specification, plan, and implementation pull-request stack with gh stack. Does not change requirements or delivery plans.
+description: Inspect, revise, restack, and validate a Pre-ETS specification, plan, and implementation-slice pull-request stack with gh stack. Does not change requirements or delivery plans.
 ---
 
 # Spec Kit stack
@@ -76,8 +76,9 @@ Start from current `origin/main` unless the request names an existing feature br
      branch is its own stack targeting `main`. Keep the original Spec Kit number and `specs/<number>-<slug>/`
      directory. A completed stack cannot be extended; `gh stack submit` starts the new stack instead.
 5. Run `$speckit-plan` only on the plan branch, and `$speckit-tasks` plus implementation only on an implementation
-   branch. Further slices use `gh stack add <number>-<slug>-impl-<slice>` when the predecessor pull request is
-   still open, and the same new-stack path after it has merged.
+   branch. The first slice in `plan.md` uses `<number>-<slug>-impl`. Each further slice uses
+   `gh stack add <number>-<slug>-impl-<slice>` when the predecessor pull request is still open, and the same
+   new-stack path after it has merged. Implement only the current slice's planned scope on its branch.
 
 Do not run a Spec Kit auto-commit while generated output, reports, or temporary probes are in the worktree.
 `.specify/extensions/git/scripts/bash/auto-commit.sh` runs `git add .` immediately before it commits, so
@@ -87,9 +88,17 @@ Commit implementation work as explicit Conventional Commits. The implementation 
 For a recorded one-pull-request exception, say which gates are combined in the body and target `main`. Do not
 invent an exception because a stack is inconvenient.
 
-Mark a draft ready with `gh pr ready` only after validate passes and the task is to request review. Before more
-intermediate pushes, return it to draft with `gh pr ready --undo`. Classify Copilot findings as accepted, rejected
-with a reason, or waiting on a human. Do not apply them automatically.
+Mark a draft ready with `gh pr ready` only after validate passes and the task is to request review. For an
+implementation slice, also require that the latest verification report passes
+[the verification gate](../../../docs/engineering/verification-harness.md#gate-and-escalation): every telemetry row
+assigned to the slice is usable, every full claim is `established`, every other result matches a limitation already
+approved in `verification.md` or `plan.md`, and there is no `violated` result or forbidden telemetry finding. The
+report must cover the pushed SHA, or only evidence-only commits may follow its verified SHA:
+`git diff <verified-SHA>..<pushed-SHA>` touches only the feature's `quickstart.md` execution results, and the pull
+request body names the verified SHA. Any other change after the verified SHA, including a change to `quickstart.md`
+steps, needs a new verification request. Before more intermediate pushes, return it to draft with
+`gh pr ready --undo`. Classify Copilot findings as accepted, rejected with a reason, or waiting on a human. Do not
+apply them automatically.
 
 ## Revise
 
@@ -114,7 +123,9 @@ After a clean rebase, `gh stack push`. Then validate.
 
 For each open layer, compare `gh pr diff` with the paths allowed for that phase in the workflow guide. Report files
 that belong to another phase, especially requirement or delivery-plan edits. A specification diff that adds module
-contracts, or an implementation diff that changes acceptance criteria, is a phase violation. Report any `specs/`
+contracts, or an implementation diff that changes acceptance criteria, is a phase violation. For each
+implementation slice, report the hand-written file count against the slice in `plan.md` and the
+[slice rules](../../../docs/engineering/git-workflow.md#implementation-slices). Report any `specs/`
 path outside that feature's `specs/{number}-{slug}/` directory. Other feature directories are historic. Leave them
 unchanged when later behavior belongs in `docs/`.
 

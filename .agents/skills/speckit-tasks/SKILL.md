@@ -19,8 +19,8 @@ When the wrapped workflow performs setup, run
 the Bash script directly. Preset-aware tasks-template composition requires PyYAML that
 may not exist in the system Python.
 
-Load `verification.md` and `contracts/modules.md` as required inputs in addition to the
-wrapped documents. If either is missing, incomplete, or inconsistent with `spec.md` and
+Load `verification.md`, `contracts/modules.md`, `contracts/telemetry.md`, and the
+implementation slices in `plan.md` as required inputs in addition to the wrapped documents. If either is missing, incomplete, or inconsistent with `spec.md` and
 `plan.md`, stop and return the work to specification or planning rather than inventing
 the missing contract in `tasks.md`.
 
@@ -35,10 +35,30 @@ observability tasks it actually requires. Do not manufacture one test per operat
 force a fixed suite. Do not omit evidence merely because the core template calls tests
 optional.
 
+## Slices and verification handoff
+
+Group tasks under the implementation slices from `plan.md`, in slice order. Each slice's
+tasks implement its module contracts, its telemetry rows from `contracts/telemetry.md`, and
+the evidence for its claim IDs. Do not move work between slices; a slice that cannot be
+completed as planned is a plan correction. End each slice with these tasks:
+
+1. Run the repository checks, commit, and push the slice as a draft pull request.
+2. Request verification from the verification session with the branch, pushed SHA, slice
+   ID, claim IDs, and `quickstart.md` sections, as described in
+   `docs/engineering/verification-harness.md`.
+3. Address the report, repeat verification as needed, and summarize the final report in
+   `quickstart.md` and the pull request before marking it ready. Commit the summary as an
+   evidence-only commit that changes only the `quickstart.md` execution results, so it needs
+   no new verification, and name the verified SHA in the pull request body. Any other change
+   after the verified SHA, including to `quickstart.md` steps, needs a new verification request.
+
+Instrumentation tasks name the telemetry row they implement. They never add durable tests
+that assert telemetry output.
+
 ## Task ordering
 
-Preserve independently deliverable user-story phases, but order work inside the real
-dependency graph:
+Within each slice, preserve independently deliverable user-story phases, but order work
+inside the real dependency graph:
 
 1. Baseline and declaration inspection needed to validate planned APIs.
 2. Shared module boundaries and public contracts that genuinely block several stories.
@@ -273,8 +293,8 @@ Every task MUST strictly follow this format:
 
 ## Pre-ETS completion rule
 
-Before reporting completion, trace every feature verification claim and affected module
-contract to implementation and/or evidence tasks, identify intentionally reused existing
+Before reporting completion, trace every feature verification claim, affected module
+contract, and telemetry row to implementation and/or evidence tasks in its planned slice, identify intentionally reused existing
 evidence, and list any approved limitation. A checklist-shaped task list is not complete
 when it omits standard manual feature verification or sequences implementation before
 the contract it implements. Generate `tasks.md` on the implementation branch described in
