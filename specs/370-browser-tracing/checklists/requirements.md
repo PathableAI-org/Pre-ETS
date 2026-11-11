@@ -60,5 +60,8 @@
 - V-008 and V-012 are hand-run browser checks by the verification agent, not durable browser tests. The only durable
   browser suite is requirements BDD, which needs requirement-ID tags that #368 does not have (maintainer decision,
   2026-11-11). The module test for V-007 remains the only automated evidence.
+- Correction, 2026-11-11 (maintainer-approved): `verification.md` permits a prepared-session fixture for claims that
+  assert nothing about login, callback, or session issuance (V-001–V-006, V-008–V-017), with approved limitation
+  L-fixture. Feature 163's precedent against prepared sessions concerned session behavior itself.
 - `verification.md` records planned evidence only. No browser, collector, or trace-store procedure was executed during
   specification.
