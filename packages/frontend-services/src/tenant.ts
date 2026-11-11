@@ -6,7 +6,7 @@
  * alias for every host. The loaded file is `{alias}.json` under the configured tenant directory.
  */
 import "server-only"
-import { Context, Effect, FileSystem, Layer, Path, type PlatformError, Result, Schema } from "effect"
+import { Context, Effect, FileSystem, Layer, Path, type PlatformError, Result, Schema, SchemaIssue } from "effect"
 
 import type { StaticTenantResolution, TenantResolutionSettings } from "./config.js"
 
@@ -119,13 +119,32 @@ const tenantAliasFromServerConfig = (
   }
 }
 
+/**
+ * Verification facts for the fixed rejection log (docs/session-state.md#verification-signals): the tenant alias and,
+ * for a schema rejection, which policy field was rejected. Never file contents or values.
+ */
+type TenantFailureFacts = Readonly<Record<"preets.tenant.alias" | "preets.tenant.config.rejected_field", string>>
+
 type TenantFailureReason = "alias" | "directory" | "json" | "not-found" | "read" | "schema"
 
-const failTenant = <E extends TenantFailure>(reason: TenantFailureReason, error: E) =>
+const failTenant = <E extends TenantFailure>(
+  reason: TenantFailureReason,
+  error: E,
+  facts: Partial<TenantFailureFacts> = {}
+) =>
   Effect.logWarning("Tenant configuration request failed", {
     _tag: error._tag,
     reason
-  }).pipe(Effect.andThen(Effect.fail(error)))
+  }).pipe(Effect.annotateLogs(facts), Effect.andThen(Effect.fail(error)))
+
+const POLICY_FIELDS: ReadonlySet<PropertyKey> = new Set(["idleTimeoutMinutes", "warningLeadMinutes"])
+const formatIssue = SchemaIssue.makeFormatterStandardSchemaV1()
+
+/** The first rejected session-policy field, or `other` for any other schema or JSON rejection. */
+const rejectedField = (error: Schema.SchemaError): string =>
+  formatIssue(error.issue).issues
+    .map((issue) => issue.path?.[0])
+    .find((segment): segment is string => typeof segment === "string" && POLICY_FIELDS.has(segment)) ?? "other"
 
 const tenantConfigFromAlias = (
   config: TenantResolutionSettings,
@@ -146,7 +165,7 @@ const tenantConfigFromAlias = (
     )
   )
 
-  const readFailure = (configPath: string, error: PlatformError.PlatformError) => {
+  const readFailure = (alias: TenantAlias, configPath: string, error: PlatformError.PlatformError) => {
     const notFound = error.reason._tag === "NotFound"
     const cause = new Error(
       notFound ? "Tenant configuration file was not found" : "Tenant configuration file could not be read"
@@ -155,17 +174,20 @@ const tenantConfigFromAlias = (
     const failure = config.resolution === "static" && notFound ?
       new TenantReadError({ cause, message }) :
       new TenantNotFound({ cause, message })
-    return directoryUnavailable.pipe(Effect.andThen(failTenant(notFound ? "not-found" : "read", failure)))
+    return directoryUnavailable.pipe(
+      Effect.andThen(failTenant(notFound ? "not-found" : "read", failure, { "preets.tenant.alias": alias }))
+    )
   }
 
-  const decodeFailure = (configPath: string, error: Schema.SchemaError) => {
+  const decodeFailure = (alias: TenantAlias, configPath: string, error: Schema.SchemaError) => {
     const reason = error.issue._tag === "Encoding" ? "json" : "schema"
     return failTenant(
       reason,
       new TenantNotFound({
         cause: new Error(`Tenant configuration ${reason} validation failed`),
         message: `Failed to parse tenant config from ${configPath}`
-      })
+      }),
+      { "preets.tenant.alias": alias, "preets.tenant.config.rejected_field": rejectedField(error) }
     )
   }
 
@@ -177,10 +199,10 @@ const tenantConfigFromAlias = (
     const configPath = path.join(config.configDir, `${alias}.json`)
     yield* Effect.logDebug("Reading tenant configuration")
     const raw = yield* fs.readFileString(configPath).pipe(
-      Effect.catchTag("PlatformError", (error) => readFailure(configPath, error))
+      Effect.catchTag("PlatformError", (error) => readFailure(alias, configPath, error))
     )
     return yield* decodeTenantConfig(raw).pipe(
-      Effect.catchTag("SchemaError", (error) => decodeFailure(configPath, error))
+      Effect.catchTag("SchemaError", (error) => decodeFailure(alias, configPath, error))
     )
   })
 }

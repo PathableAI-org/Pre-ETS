@@ -191,6 +191,10 @@ verification failure for the slice that emitted it.
 Durable tests do not assert any of these signals. The verification agent and
 manual inspection observe them.
 
+Signals already emitted by the session, coordination, and protection flows are
+listed in [Session state](session-state.md#verification-signals). Reference
+those rows from a feature's telemetry contract instead of redefining them.
+
 ## Local Grafana / OTLP
 
 Optional Compose profile — see [docker-compose.md](./docker-compose.md):

@@ -5,6 +5,7 @@ import { Clock, Context, Effect, Layer, Option, Schema } from "effect"
 import type { SessionSettings } from "./config.js"
 import type { SessionPolicy, TenantAlias } from "./tenant.js"
 
+import { annotateOutcome } from "./observability.js"
 import {
   decodeSessionReference,
   decodeStoredSession,
@@ -110,6 +111,23 @@ export class SessionTenantMismatch extends Schema.TaggedError<SessionTenantMisma
 const serviceUnavailable = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
   effect.pipe(Effect.mapError(() => new SessionServiceUnavailable({})))
 
+const FAILURE_OUTCOME = {
+  SessionServiceUnavailable: "unavailable",
+  SessionTenantMismatch: "tenant_mismatch"
+} as const
+
+/** Records a public service failure as the span outcome; the failure itself is unchanged. */
+const annotateFailure = <A, E extends SessionServiceUnavailable | SessionTenantMismatch, R>(
+  effect: Effect.Effect<A, E, R>
+) => effect.pipe(Effect.tapError((failure) => annotateOutcome(FAILURE_OUTCOME[failure._tag])))
+
+/** Non-secret policy facts; identity, references, and tags never reach a span. */
+const annotatePolicy = (policy: SessionPolicy) =>
+  Effect.annotateCurrentSpan({
+    "preets.session.idle_timeout_minutes": policy.idleTimeoutMinutes,
+    "preets.session.warning_lead_minutes": policy.warningLeadMinutes
+  })
+
 /** Total establishment attempts; only a generated-reference collision is retried. */
 const COLLISION_RETRIES = 3
 
@@ -146,19 +164,38 @@ const isQualifyingRefresh = (
 ): input is Extract<RefreshSessionForTenantInput, { readonly activity: QualifyingSessionActivity }> =>
   isQualifyingActivity(input.activity)
 
-/** Missing and expired records are no usable session; a current or renewed record is exposed if still usable. */
+/**
+ * Missing and expired records are no usable session; a current or renewed record is exposed if still usable.
+ * Annotates the calling span's outcome, using `current` as the label for an unrenewed record.
+ */
 const exposeOutcome = (
   outcome:
     | { readonly _tag: "Current" | "Renewed"; readonly observedAtEpochMilliseconds: number; readonly payload: string }
-    | { readonly _tag: "Expired" | "Missing" }
-) => "payload" in outcome ? exposeIfStillUsable(outcome) : Effect.succeed(noUsableSession)
+    | { readonly _tag: "Expired" | "Missing" },
+  current: "current" | "unchanged"
+) => {
+  if (!("payload" in outcome)) {
+    return annotateOutcome(outcome._tag === "Expired" ? "expired" : "missing").pipe(Effect.as(noUsableSession))
+  }
+  return exposeIfStillUsable(outcome, outcome._tag === "Renewed" ? "renewed" : current)
+}
 
 const exposeIfStillUsable = Effect.fnUntraced(function*(
-  outcome: { readonly observedAtEpochMilliseconds: number; readonly payload: string }
+  outcome: { readonly observedAtEpochMilliseconds: number; readonly payload: string },
+  label: "current" | "renewed" | "unchanged"
 ) {
   const record = yield* serviceUnavailable(decodeStoredSession(outcome.payload))
-  if (record.idleDeadlineEpochMilliseconds <= (yield* Clock.currentTimeMillis)) return noUsableSession
-  yield* Effect.annotateCurrentSpan("session.id", record.telemetryId)
+  yield* Effect.annotateCurrentSpan({
+    "preets.session.deadline_ms": record.idleDeadlineEpochMilliseconds,
+    "preets.session.revision": storedRevision(record),
+    "preets.session.warning_lead_minutes": record.warningLeadMinutes,
+    "session.id": record.telemetryId
+  })
+  if (record.idleDeadlineEpochMilliseconds <= (yield* Clock.currentTimeMillis)) {
+    yield* annotateOutcome("expired")
+    return noUsableSession
+  }
+  yield* annotateOutcome(label)
   return toUsableSession(record, {
     observedAtEpochMilliseconds: outcome.observedAtEpochMilliseconds,
     revision: storedRevision(record)
@@ -208,6 +245,7 @@ export class SessionService extends Context.Service<SessionService, {
         const store = yield* SessionStore
 
         const establish = Effect.fn("SessionService.establish")(function*(input: EstablishSessionInput) {
+          yield* annotatePolicy(input.policy)
           const attempt: Effect.Effect<EstablishedSession, SessionReferenceCollision | SessionServiceUnavailable> =
             Effect.gen(function*() {
               const now = yield* Clock.currentTimeMillis
@@ -227,7 +265,10 @@ export class SessionService extends Context.Service<SessionService, {
               const ttlMilliseconds = idleDeadlineEpochMilliseconds - now
               const outcome = yield* serviceUnavailable(store.create({ reference }, payload, ttlMilliseconds))
               if (outcome._tag === "Exists") return yield* new SessionReferenceCollision({})
-              yield* Effect.annotateCurrentSpan("session.id", telemetryId)
+              yield* Effect.annotateCurrentSpan({
+                "preets.session.deadline_ms": idleDeadlineEpochMilliseconds,
+                "session.id": telemetryId
+              })
               return {
                 reference,
                 session: toUsableSession(
@@ -248,47 +289,73 @@ export class SessionService extends Context.Service<SessionService, {
               times: COLLISION_RETRIES - 1,
               while: (failure) => failure._tag === "SessionReferenceCollision"
             }),
-            Effect.catchTag("SessionReferenceCollision", () => Effect.fail(new SessionServiceUnavailable({})))
+            Effect.catchTag("SessionReferenceCollision", () => Effect.fail(new SessionServiceUnavailable({}))),
+            Effect.tap(() => annotateOutcome("established"))
           )
-        })
+        }, annotateFailure)
 
         const invalidate = Effect.fn("SessionService.invalidate")(function*(
           input: Parameters<SessionService["Service"]["invalidate"]>[0]
         ) {
+          if (input.notAfterEpochMilliseconds !== undefined) {
+            yield* Effect.annotateCurrentSpan("preets.session.logout_cutoff_ms", input.notAfterEpochMilliseconds)
+          }
           const reference = decodeSessionReference(input.reference)
-          if (Option.isNone(reference)) return noUsableSession
+          if (Option.isNone(reference)) {
+            yield* annotateOutcome("no_reference")
+            return noUsableSession
+          }
           const outcome = yield* serviceUnavailable(
             store.invalidate({ reference: reference.value }, input.notAfterEpochMilliseconds)
           )
+          yield* annotateOutcome(outcome === "expired" ? "rejected_late" : outcome)
           return outcome === "expired" ? invalidationExpired : noUsableSession
-        })
+        }, annotateFailure)
 
         const read = Effect.fn("SessionService.read")(function*(input: { readonly reference?: string | undefined }) {
           const reference = decodeSessionReference(input.reference)
-          if (Option.isNone(reference)) return noUsableSession
+          if (Option.isNone(reference)) {
+            yield* annotateOutcome("no_reference")
+            return noUsableSession
+          }
           const outcome = yield* serviceUnavailable(
             store.read({ receivedAt: yield* Clock.currentTimeMillis, reference: reference.value })
           )
-          return yield* exposeOutcome(outcome)
-        })
+          return yield* exposeOutcome(outcome, "current")
+        }, annotateFailure)
 
         const readForTenant = Effect.fn("SessionService.readForTenant")(function*(input: ReadSessionForTenantInput) {
+          yield* Effect.annotateCurrentSpan("preets.tenant.alias", input.tenantAlias)
           const session = yield* read({ reference: input.reference })
-          if (session._tag === "NoUsableSession") return session
-          if (session.tenantAlias === input.tenantAlias) return session
-          return yield* new SessionTenantMismatch({})
-        })
+          if (session._tag === "NoUsableSession") {
+            yield* annotateOutcome("no_session")
+            return session
+          }
+          if (session.tenantAlias !== input.tenantAlias) return yield* new SessionTenantMismatch({})
+          yield* annotateOutcome("current")
+          return session
+        }, annotateFailure)
 
         const refreshForTenant = Effect.fn("SessionService.refreshForTenant")(function*(
           input: RefreshSessionForTenantInput
         ) {
+          const qualifying = isQualifyingRefresh(input)
+          yield* Effect.annotateCurrentSpan({
+            "preets.session.activity": input.activity,
+            "preets.session.activity_class": qualifying ? "qualifying" : "excluded",
+            "preets.tenant.alias": input.tenantAlias
+          })
+          if (qualifying) yield* annotatePolicy(input.policy)
           const reference = decodeSessionReference(input.reference)
-          if (Option.isNone(reference)) return noUsableSession
+          if (Option.isNone(reference)) {
+            yield* annotateOutcome("no_reference")
+            return noUsableSession
+          }
           const receivedAt = yield* Clock.currentTimeMillis
           const outcome = yield* serviceUnavailable(store.refresh(refreshRequest(input, receivedAt, reference.value)))
           if (outcome._tag === "Mismatch") return yield* new SessionTenantMismatch({})
-          return yield* exposeOutcome(outcome)
-        })
+          return yield* exposeOutcome(outcome, "unchanged")
+        }, annotateFailure)
 
         return SessionService.of({
           establish,

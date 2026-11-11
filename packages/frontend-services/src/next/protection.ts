@@ -1,6 +1,7 @@
 import { Effect } from "effect"
 import { type NextRequest, NextResponse } from "next/server"
 
+import { annotateOutcome } from "../observability.js"
 import { type NoUsableSession, type QualifyingSessionActivity, SessionService, type UsableSession } from "../session.js"
 import { effectiveSessionPolicy } from "../tenant.js"
 import { PRIVATE_NO_STORE, toNext } from "./handler.js"
@@ -91,6 +92,10 @@ const privately = (response: NextResponse): NextResponse => {
 
 const fromHost = (respond: () => Promise<NextResponse>) => Effect.promise(respond).pipe(Effect.map(privately))
 
+/** Records the gate's decision on the `protectRequest` span (docs/session-state.md#verification-signals). */
+const decided = (outcome: string, response: Effect.Effect<NextResponse>) =>
+  annotateOutcome(outcome).pipe(Effect.andThen(response))
+
 /** A renewal sets no cookie: only establishment writes `pathable-session` (research D15). */
 const admit = () => privately(NextResponse.next())
 
@@ -99,15 +104,19 @@ const respondToSession = (
   classified: ProtectedRequest,
   session: NoUsableSession | UsableSession
 ) => {
-  if (session._tag === "UsableSession") return Effect.succeed(admit())
-  if (classified.entry === "application") return Effect.succeed(denial(401))
+  if (session._tag === "UsableSession") return decided("admitted", Effect.sync(admit))
+  if (classified.entry === "application") return decided("denied_unauthenticated", Effect.sync(() => denial(401)))
   const login = NextResponse.redirect(new URL("/auth/login", request.nextUrl), 307)
-  return Effect.succeed(privately(login))
+  return decided("redirected_login", Effect.succeed(privately(login)))
 }
 
 /** One store operation: renewal for a deliberate request, otherwise a read. The request tenant is resolved first. */
 const protectRequest = Effect.fn("protectRequest")(
   function*(_responses: ProtectionResponses, request: NextRequest, classified: ProtectedRequest) {
+    yield* Effect.annotateCurrentSpan({
+      "preets.protection.entry": classified.entry,
+      "preets.protection.renewal": classified.renewal ?? "none"
+    })
     const tenant = yield* resolveRequestTenant(request.headers.get("host") ?? "")
     const sessions = yield* SessionService
     const reference = request.cookies.get(SESSION_COOKIE)?.value
@@ -128,14 +137,17 @@ const protectRequest = Effect.fn("protectRequest")(
         onFailure: (failure) => {
           switch (failure._tag) {
             case "SessionServiceUnavailable":
-              return Effect.succeed(denial(503))
+              return decided("unavailable", Effect.sync(() => denial(503)))
             case "SessionTenantMismatch":
-              return classified.entry === "document" ?
-                fromHost(() => responses.forbiddenDocument(request)) :
-                Effect.succeed(denial(403))
+              return decided(
+                "denied_forbidden",
+                classified.entry === "document" ?
+                  fromHost(() => responses.forbiddenDocument(request)) :
+                  Effect.sync(() => denial(403))
+              )
             case "TenantNotFound":
             case "TenantReadError":
-              return fromHost(() => responses.tenantFailure(tenantFailureStatus(failure)))
+              return decided("tenant_failure", fromHost(() => responses.tenantFailure(tenantFailureStatus(failure))))
           }
         },
         onSuccess: (session) => respondToSession(request, classified, session)
