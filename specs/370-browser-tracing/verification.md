@@ -52,11 +52,11 @@ queries belong to the engineering plan's `contracts/telemetry.md`.
 
 ## Automated behavioral evidence
 
-| Claim IDs | Evidence boundary                                       | Planned scenario or property                                                                                                                                                                                                      | Why this boundary is meaningful                                                                            | Known limits                                                                                                                         |
-| --------- | ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| V-007     | Startup configuration decoding, at its public interface | Examples for every combination of server telemetry on/off and the browser switch unset/on/off/unrecognized; a property that browser tracing is on only when both inputs are on.                                                   | The switch rule is a pure decision; this is the cheapest boundary that would fail for a wrong combination. | Does not establish that the page honors the decision (V-008).                                                                        |
-| V-008     | Built application served locally, real browser          | For each off combination, load a page, perform a transition, and assert from captured network traffic and the received document that there is no collector request, no browser configuration, and no browser-added trace context. | Only the composed build shows whether tracing code still runs when off.                                    | Asserts page outcomes and network traffic, not telemetry output. Whether the tracing code is downloaded when off is a plan decision. |
-| V-012     | Built application served locally, real browser          | Run one short journey with the collector unreachable and assert the same visible outcomes as with tracing off.                                                                                                                    | Guards the user-facing promise that telemetry failure is invisible.                                        | One journey; does not cover every page.                                                                                              |
+| Claim IDs | Evidence boundary                                       | Planned scenario or property                                                                                                                                                                                                                 | Why this boundary is meaningful                                                                            | Known limits                                                                                                                                                                                                        |
+| --------- | ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| V-007     | Startup configuration decoding, at its public interface | Examples for every combination of server telemetry on/off and the browser switch unset/on/off/unrecognized; a property that browser tracing is on only when both inputs are on.                                                              | The switch rule is a pure decision; this is the cheapest boundary that would fail for a wrong combination. | Does not establish that the page honors the decision (V-008).                                                                                                                                                       |
+| V-008     | Built application served locally, real browser          | For each off combination, load a page, perform a transition, and assert from the received document and the application's own requests that there is no browser configuration, no rendered trace context, and no browser-added trace context. | Only the composed build shows whether the page still receives tracing configuration when off.              | Asserts configuration and page outcomes only. Collector traffic and tracing initialization are checked in manual step 2, not by a durable test. Whether the tracing code is downloaded when off is a plan decision. |
+| V-012     | Built application served locally, real browser          | Run one short journey with the collector unreachable and assert the same visible outcomes as with tracing off.                                                                                                                               | Guards the user-facing promise that telemetry failure is invisible.                                        | One journey; does not cover every page.                                                                                                                                                                             |
 
 No requirements-backed BDD applies, because no accepted requirement covers this feature. Durable tests do not assert
 spans, attributes, or exporter behavior; the verification agent observes them (spec L1).
@@ -99,13 +99,15 @@ that the automated page checks do not make.
    one-minute wait, query the trace store for browser records with this run's identifiers and record the count.
 3. **On, configuration (V-009).** Start with both switches on and collector headers configured on the server with a
    synthetic value. Load a page and record the configuration values the document carries.
-4. **Done-when journey (V-001, V-006, V-010, V-011).** With both switches on, perform a UI transition that sends a
+4. **Done-when journey (V-001, V-006, V-010, V-011).** With both switches on and the harness's own trace-context
+   injection turned off for this step, so any trace context on the request comes from the browser, perform a UI transition that sends a
    same-origin request, such as activating logout. Capture the export requests and responses, including any preflight.
    Wait for the trace export delay, then query Tempo by service name, revision, and run UUID. Record the trace ID that
    contains the browser transition and the server record of the request, and the parent chain between them. Run a
    second instance with a different run UUID at the same time and record that neither query returns the other's
    records.
-5. **Request kinds and other origins (V-002, V-003).** Trigger one ordinary data fetch, one server-handled form action,
+5. **Request kinds and other origins (V-002, V-003).** With the harness's trace-context injection still off, trigger
+   one ordinary data fetch, one server-handled form action,
    and one client navigation that fetches a server-rendered payload. Record that each left with trace context and that
    the server record continues it. Start a sign-in that redirects to the identity provider and record that no
    cross-origin request carries browser-added trace context.
@@ -113,8 +115,11 @@ that the automated page checks do not make.
    Record the trace context in the received document, the server record that rendered it, and the browser's
    document-load trace ID. Navigate away and back so the page is restored from the back/forward cache, and record
    whether any new document-load record joined the original trace.
-7. **Harness facts (V-013, V-014, V-015).** In two sharing tabs, type in tab A, freeze and resume tab B so it conceals
-   and restores, log out from tab A by keyboard, and let the signed-out notice take focus. Record, from Playwright, the
+7. **Harness facts (V-013, V-014, V-015).** In two sharing tabs, record tab B's locally known deadline and freeze tab B
+   so it stops receiving coordination updates. Type in tab A so the session renews, and advance time past tab B's
+   recorded deadline while the session stays valid. Resume tab B so it conceals at once and then restores after the
+   server confirms the session. If the setup cannot keep tab B's deadline stale, record V-013's concealment pair as not
+   established. Then log out from tab A by keyboard, and let the signed-out notice take focus. Record, from Playwright, the
    order of visible transitions and focus moves. Record from Tempo each browser record of a UI transition, message send,
    message receipt, and focus move, with its values, and compare their order with Playwright's.
 8. **Forbidden data (V-016).** In a journey that types the probe string, follows a link carrying the probe query value
@@ -174,7 +179,9 @@ Facts that must never be emitted, and how they are verified instead:
 - Cross-tab message contents, including any coordination identifier: never emitted. The match between send and
   receipt uses an identifier generated only for telemetry, or another approach the plan defines.
 - Collector header names and values, cookies, session references, tokens, OIDC values, personal data, and PHI: never
-  emitted, and never given to the page. Their absence from the page is verified through browser interaction (V-009).
+  emitted in any browser telemetry. Collector header names and values are also never included in the rendered
+  browser-tracing configuration, which is verified through browser interaction (V-009). This feature does not change
+  how the application otherwise delivers cookies, OIDC values, or protected content to the page.
 - The absence of browser activity when off: not observable in telemetry. It is verified through browser interaction
   (V-008).
 
