@@ -87,4 +87,43 @@ V-012.
 
 ## Execution results
 
-None yet.
+### Slice `config`: verified SHA `aadb76fb6ce51ef072f2147546bff9e9ecfd9426` (2026-11-11)
+
+**Conditions**
+
+- The stack's verification session ran in its own worktree, detached at the verified SHA, with a frozen install and a
+  production build.
+- Five `next start` instances ran on ports 3471–3475, each with its own run UUID.
+  - Instances:
+    - both on, with synthetic collector headers (step 3)
+    - OTEL on with the switch unset
+    - `OTEL_SDK_DISABLED=true` with the switch `true`
+    - both off
+    - OTEL on with the switch `maybe`
+  - Every instance used static tenant `springfield` from `fixtures/tenant-config`, the shared `otel-lgtm` stack, and
+    `preets:verify:<run>:` key prefixes.
+- Run window: 2026-11-11T20:05:25Z–20:07:02Z.
+- Steps 2 (document only) and 3 were run.
+- No real application session could be established: `CallbackFreshness` is fail-closed until #158. No prepared
+  session was substituted.
+
+**Results**
+
+| Claim        | Result      | Observation                                                                                                                                                                                                                                                                    | Limitation                                                                                                                                    |
+| ------------ | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| V-007        | established | The `tests/lib/config.test.ts` examples all pass: every OTEL × switch combination, the property that tracing is on iff both are on, and an unrecognized value refusing startup. At runtime, the `maybe` instance failed startup on `BROWSER_TRACING_ENABLED` and never served. | Module-test channel only                                                                                                                      |
+| V-009        | blocked     | `/coordination/roster` redirected to login (`protectRequest` outcome `redirected_login`), so no protected document rendered its configuration. The module test asserts the decoded four values with headers configured, as supporting evidence only.                           | verification.md: steps needing a real application session are `blocked`. The gate question for a full claim was escalated to the orchestrator |
+| V-004 (part) | blocked     | The server continued the injected trace (one trace ID across the request spans), but no protected document rendered a `traceparent` meta to compare.                                                                                                                           | Same                                                                                                                                          |
+| V-008 (part) | blocked     | In all four modes, the reachable documents (redirects, empty 401 responses, public pages) carried no tracing meta. There were 0 collector requests and 0 `webjs` records. This does not discriminate, because PL-3 gives the on control the same result.                       | Same; PL-3                                                                                                                                    |
+
+**Telemetry**
+
+- T-008 is present and usable. There was exactly one warning, for the run with collector headers, with
+  `service.version` equal to the SHA. There was none for the switch-unset run.
+- The T-008 line carries no header name or value.
+
+**Forbidden data**
+
+- None from this slice. No synthetic header, bearer, or authorization value appears in Loki for any run.
+- Pre-existing and outside this slice: the Node SDK resource detectors export `process.owner`, `host.name`, and
+  `process.command_args`. This was referred to a person.
