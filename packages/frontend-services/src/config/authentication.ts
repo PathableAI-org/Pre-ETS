@@ -1,4 +1,4 @@
-import { Config, Duration, Effect, Schema, SchemaIssue, SchemaTransformation } from "effect"
+import { Config, Duration, Schema, SchemaTransformation } from "effect"
 
 import { isLoopbackHostname } from "../request-host.js"
 
@@ -26,23 +26,6 @@ export interface TransactionStoreSettings {
   readonly ttl: Duration.Duration
 }
 
-/**
- * Decodes a setting whose supplied value must never appear in an error: a secret, or a setting whose contract
- * forbids echoing it. The failure names the setting and drops the schema issue, which would quote the input.
- */
-const withoutEcho = <A>(name: string, codec: Schema.Codec<A, string>): Config.Config<A> =>
-  Config.String(name).pipe(
-    Config.mapEffect((raw) =>
-      Schema.decodeUnknownEffect(codec)(raw).pipe(
-        Effect.mapError(() =>
-          new Config.ConfigError(
-            new Schema.SchemaError(new SchemaIssue.InvalidValue({ message: `${name} is invalid` }))
-          )
-        )
-      )
-    )
-  )
-
 const callbackOrigins = (allowInsecureLoopback: boolean) => {
   const origin = permittedUrl(allowInsecureLoopback).pipe(
     Schema.check(Schema.makeFilter((url) => url.href === `${url.origin}/` || "Callback authority must be an origin"))
@@ -52,10 +35,11 @@ const callbackOrigins = (allowInsecureLoopback: boolean) => {
   )
 }
 
-const ClientSecrets = withoutEcho(
-  "OIDC_CLIENT_SECRETS_JSON",
-  Schema.fromJsonString(Schema.Record(Schema.NonEmptyString, Schema.NonEmptyString))
-).pipe(Config.withDefault({}))
+const clientSecrets = (withoutEcho: <A>(name: string, codec: Schema.Codec<A, string>) => Config.Config<A>) =>
+  withoutEcho(
+    "OIDC_CLIENT_SECRETS_JSON",
+    Schema.fromJsonString(Schema.Record(Schema.NonEmptyString, Schema.NonEmptyString))
+  ).pipe(Config.withDefault({}))
 
 /** A base-10 integer from 1 through 600: configuration may shorten the transaction lifetime, never extend it. */
 const TransactionTtlSeconds = Schema.String.pipe(
@@ -66,23 +50,27 @@ const TransactionTtlSeconds = Schema.String.pipe(
   )
 )
 
-const TransactionStoreConfig: Config.Config<TransactionStoreSettings> = Config.all({
-  prefix: Config.String("OIDC_TX_KEY_PREFIX").pipe(Config.withDefault("preets:oidc-tx:v1")),
-  ttl: withoutEcho("OIDC_TX_TTL_SECONDS", TransactionTtlSeconds).pipe(
-    Config.map(Duration.seconds),
-    Config.withDefault(Duration.seconds(600))
-  )
-})
+const transactionStoreConfig = (
+  withoutEcho: <A>(name: string, codec: Schema.Codec<A, string>) => Config.Config<A>
+): Config.Config<TransactionStoreSettings> =>
+  Config.all({
+    prefix: Config.String("OIDC_TX_KEY_PREFIX").pipe(Config.withDefault("preets:oidc-tx:v1")),
+    ttl: withoutEcho("OIDC_TX_TTL_SECONDS", TransactionTtlSeconds).pipe(
+      Config.map(Duration.seconds),
+      Config.withDefault(Duration.seconds(600))
+    )
+  })
 
-export const AuthenticationConfig: Config.Config<AuthenticationSettings> = Config.Boolean(
-  "OIDC_ALLOW_INSECURE_LOOPBACK"
-).pipe(
-  Config.withDefault(false),
-  Config.flatMap((allowInsecureLoopback) =>
-    Config.all({
-      callbackOrigins: callbackOrigins(allowInsecureLoopback),
-      clientSecrets: ClientSecrets,
-      transactions: TransactionStoreConfig
-    }).pipe(Config.map((settings) => ({ allowInsecureLoopback, ...settings })))
+export const authenticationConfig = (
+  withoutEcho: <A>(name: string, codec: Schema.Codec<A, string>) => Config.Config<A>
+): Config.Config<AuthenticationSettings> =>
+  Config.Boolean("OIDC_ALLOW_INSECURE_LOOPBACK").pipe(
+    Config.withDefault(false),
+    Config.flatMap((allowInsecureLoopback) =>
+      Config.all({
+        callbackOrigins: callbackOrigins(allowInsecureLoopback),
+        clientSecrets: clientSecrets(withoutEcho),
+        transactions: transactionStoreConfig(withoutEcho)
+      }).pipe(Config.map((settings) => ({ allowInsecureLoopback, ...settings })))
+    )
   )
-)
