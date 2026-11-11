@@ -57,5 +57,8 @@
 - Authority finding 1 (no delivery slice or requirement) is resolved by the maintainer's direction. Finding 2 (whether
   production must refuse the switch) was resolved by the maintainer on 2026-11-11 with proposal A: the switch defaults
   to off, production never sets it, and browser tracing is documented as assumed never active in production.
+- V-008 and V-012 are hand-run browser checks by the verification agent, not durable browser tests. The only durable
+  browser suite is requirements BDD, which needs requirement-ID tags that #368 does not have (maintainer decision,
+  2026-11-11). The module test for V-007 remains the only automated evidence.
 - `verification.md` records planned evidence only. No browser, collector, or trace-store procedure was executed during
   specification.

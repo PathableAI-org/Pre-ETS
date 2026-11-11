@@ -52,14 +52,18 @@ queries belong to the engineering plan's `contracts/telemetry.md`.
 
 ## Automated behavioral evidence
 
-| Claim IDs | Evidence boundary                                       | Planned scenario or property                                                                                                                                                                                                                 | Why this boundary is meaningful                                                                            | Known limits                                                                                                                                                                                                        |
-| --------- | ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| V-007     | Startup configuration decoding, at its public interface | Examples for every combination of server telemetry on/off and the browser switch unset/on/off; a property that browser tracing is on only when both inputs are on; an unrecognized switch value refuses startup and never yields "on".       | The switch rule is a pure decision; this is the cheapest boundary that would fail for a wrong combination. | Does not establish that the page honors the decision (V-008).                                                                                                                                                       |
-| V-008     | Built application served locally, real browser          | For each off combination, load a page, perform a transition, and assert from the received document and the application's own requests that there is no browser configuration, no rendered trace context, and no browser-added trace context. | Only the composed build shows whether the page still receives tracing configuration when off.              | Asserts configuration and page outcomes only. Collector traffic and tracing initialization are checked in manual step 2, not by a durable test. Whether the tracing code is downloaded when off is a plan decision. |
-| V-012     | Built application served locally, real browser          | Run one short journey with the collector unreachable and assert the same visible outcomes as with tracing off.                                                                                                                               | Guards the user-facing promise that telemetry failure is invisible.                                        | One journey; does not cover every page.                                                                                                                                                                             |
+| Claim IDs | Evidence boundary                                       | Planned scenario or property                                                                                                                                                                                                           | Why this boundary is meaningful                                                                            | Known limits                                                  |
+| --------- | ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| V-007     | Startup configuration decoding, at its public interface | Examples for every combination of server telemetry on/off and the browser switch unset/on/off; a property that browser tracing is on only when both inputs are on; an unrecognized switch value refuses startup and never yields "on". | The switch rule is a pure decision; this is the cheapest boundary that would fail for a wrong combination. | Does not establish that the page honors the decision (V-008). |
 
 No requirements-backed BDD applies, because no accepted requirement covers this feature. Durable tests do not assert
 spans, attributes, or exporter behavior; the verification agent observes them (spec L1).
+
+V-008 (no browser tracing when off) and V-012 (telemetry failure is invisible) are verified by hand, not by durable
+browser tests. The verification agent runs them through browser interaction against a locally built application in
+manual steps 2 and 9, and V-008 may use a temporary in-page probe. The repository's only durable browser suite is
+requirements-backed BDD, which needs requirement-ID tags, and #368 cites no requirement. Adding another browser suite
+would be tooling outside the issue. The maintainer accepted hand-run checks for these claims on 2026-11-11.
 
 ## Agent-executable manual feature verification _(mandatory)_
 
@@ -68,7 +72,7 @@ spans, attributes, or exporter behavior; the verification agent observes them (s
 Observe the issue's done-when journey end to end: a real browser, a local build with both switches on, one trace in
 Tempo holding a browser UI transition and the server request it caused, no forbidden data anywhere in the browser's
 export, and no browser tracing at all when either switch is off. This adds trace-store and cross-process observations
-that the automated page checks do not make.
+that the module test does not make, and it is the only evidence for V-008 and V-012.
 
 ### Prerequisites
 
