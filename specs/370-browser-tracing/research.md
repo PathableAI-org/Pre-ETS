@@ -26,7 +26,10 @@ package sources named below. Implementation re-checks each signature against the
   (`pageshow` with `persisted`), so a restored protected page always becomes a new server-rendered document.
 - Client coordination lives in `src/features/session-coordination/`. `TabCoordination` owns every client UI state
   (`TabView` and `concealed`), `tab-channel.ts` owns every `BroadcastChannel` post and receipt, and
-  `signed-out-notice.tsx` is the only code that moves focus. `logout()` calls `sendLogout` synchronously after
+  `signed-out-notice.tsx` moves focus to the signed-out heading. The protected coordination fixture
+  `features/coordination-fixtures/participant.tsx` also moves focus: "Focus later" focuses the Goal input after 2
+  seconds. `features/onsite/visit-log.tsx` moves focus only on the public `/_test/onsite` page, which browser tracing
+  does not cover (PL-3). `logout()` calls `sendLogout` synchronously after
   `#setView("logging-out")`, and `confirm()` calls `readSessionStatus` synchronously before its first `await`.
 - Fallow: `features/session-coordination` may import only its own zone, `server`, and `shared`
   (`fallow guard`, 2026-11-11). A browser-tracing feature folder would be unreachable from it, so the facade must
@@ -100,12 +103,20 @@ package sources named below. Implementation re-checks each signature against the
 - **Decision**: `src/instrumentation-client.ts` calls `startBrowserTracing()` from the shared facade. It reads the
   configuration meta element synchronously; when it is absent it returns, having loaded nothing but the facade. When
   present, it dynamically imports the private SDK module, which registers the provider and instrumentations, then sets
-  `data-preets-browser-tracing="started"` on `<html>`. Feature code depends only on `@opentelemetry/api` through the
-  facade; with no registered provider every recorder is a no-op.
+  `data-preets-browser-tracing="started"` on `<html>`. Feature code depends only on the facade. With no meta element
+  the facade is `off` and every recorder is a no-op.
+- **Early facts**: Between reading a valid meta element and the SDK registering, the facade is `pending`. Recorders
+  then append each fact (record name, closed-set attributes, start time, and the cross-tab telemetry ID) to a bounded
+  in-memory buffer of 256 entries. The focus and submit listeners are installed by the facade itself in this state.
+  When the SDK registers, it replays the buffer as spans with their original start times. If loading fails, the
+  facade becomes `off` and drops the buffer. Coordination never waits for tracing, so the initial
+  `mounted → content_shown` transition and the `session-current` and `renewed` startup messages are kept even when
+  hydration wins the race (review of #374).
 - **Rationale**: The SDK, exporter, and instrumentations are absent from every off page's network traffic, which
   V-008 observes. The API package is small and inert.
 - **Consequence (plan limitation PL-1)**: The import resolves after hydration may begin. A request started before the
-  SDK registers carries no browser trace context. Verifiers wait for `data-preets-browser-tracing="started"` before a
+  SDK registers carries no browser trace context, and a buffered fact replayed later is a root span, not the parent of
+  a request. Harness facts themselves are not lost. Verifiers wait for `data-preets-browser-tracing="started"` before a
   sampled step. The document-load record is unaffected because the instrumentation reads Navigation Timing after the
   fact.
 - **Alternatives**: A static import, which downloads the SDK on every page; rejected per the specification hand-over
@@ -118,10 +129,9 @@ package sources named below. Implementation re-checks each signature against the
   does so for logout (`content_shown → logging_out`, then `POST /auth/logout`) and for concealment followed by
   confirmation (`content_shown → content_concealed`, then `GET /session/status`). Cross-tab receipts run their
   synchronous handler inside the receipt scope, so a transition a receipt causes is its child.
-- **Limits (plan limitation PL-2)**: Context does not survive `await`, timers, or React's scheduler. Server Action POSTs
-  and RSC navigation fetches start in React or the router, so their fetch span is a root span of its own trace. They
-  still carry `traceparent` and the server continues it (V-002); they are not children of a UI transition. V-001 uses
-  logout, which nests.
+- **Limits**: Context does not survive `await`, timers, or React's scheduler. Server Action POSTs and RSC navigation
+  fetches start in React or the router, outside any synchronous scope. D16 gives them their causal parent another way,
+  so SC-001 holds for every request kind.
 - **Alternatives**: `ZoneContextManager`, rejected: it requires Zone.js globally and cannot follow native
   `async`/`await`, which this code uses throughout.
 
@@ -146,18 +156,19 @@ package sources named below. Implementation re-checks each signature against the
 
 ### D8 — Matching a cross-tab send to its receipts
 
-- **Decision**: When browser tracing is started, `tab-channel.ts` adds one telemetry-only field, `trace`, holding the
-  W3C `traceparent` of the `TabChannel.send` span, to the posted object. The receiver extracts it and starts
-  `TabChannel.receive` as a child of that send span. Without tracing the field is absent. Coordination parsing ignores
-  it, so coordination behavior is unchanged. Telemetry records only the closed-set kind and direction; no message
-  field value is copied into telemetry.
-- **Rationale**: The match is causal and needs no content: a receipt's parent span ID is its send's span ID, in the
-  same trace. Several receipts of one send are siblings. A frozen tab records its receipt when it actually receives it.
-  The send's span ID is the opaque identifier generated only for telemetry that FR-016 and User Story 3 scenario 3
-  allow. It is created by the SDK and shares no value with the message contents.
-- **Alternatives**: A random telemetry ID attribute on both records, which also works but leaves send and receipt in
-  unrelated traces and needs a join query. Hashing the coordination tag, rejected: a hash of a forbidden value is still
-  derived from it.
+- **Decision**: While the facade is `pending` or `started`, `recordTabMessageSend` generates a random UUID with
+  `crypto.randomUUID()` for that send only. `tab-channel.ts` adds it to the posted object as one telemetry-only field,
+  `telemetryId`. Both `TabChannel.send` and every `TabChannel.receive` of it carry it as `preets.tab.message.id`.
+  Without tracing, the field is absent. Coordination parsing ignores it, so coordination behavior is unchanged. No
+  message field value is copied into telemetry.
+- **Rationale**: FR-016 and User Story 3 scenario 3 allow an opaque identifier generated only for telemetry. A UUID
+  the facade generates works before the SDK registers, so early startup messages stay matchable (D4). A parent-span
+  link would not: no span context exists yet. Several receipts of one send share its ID. A frozen tab records its
+  receipt when it actually receives it. The receipt's synchronous handler runs in the receipt's scope, so a transition
+  it causes is the receipt's child.
+- **Alternatives**: Carrying the send span's `traceparent` and parenting each receipt on it. That gives one trace per
+  send, but it fails for sends buffered before registration (first review). Hashing the coordination tag, rejected: a
+  hash of a forbidden value is still derived from it.
 
 ### D9 — Forbidden-data enforcement at export
 
@@ -225,3 +236,40 @@ package sources named below. Implementation re-checks each signature against the
   real limits: protected pages only, requests before tracing starts carry no context, Server Action and RSC fetches
   are their own traces, and records from a page that closes before export may be lost. The evidence-channel bullet
   drops "once browser tracing exists".
+
+### D15 — Credential-bearing collector endpoints
+
+- **Decision**: When `BROWSER_TRACING_ENABLED` decodes to `true` and OTEL is enabled, an
+  `OTEL_EXPORTER_OTLP_ENDPOINT` with a username or password in its URL fails startup with the fixed message
+  `BROWSER_TRACING_ENABLED requires an OTEL_EXPORTER_OTLP_ENDPOINT without credentials`. The message names neither
+  the URL nor its parts. With the switch off, the same endpoint is accepted as before, and server-only export is
+  unchanged.
+- **Rationale**: `Config.URL` accepts userinfo, and rendering the endpoint would give the page that credential
+  (FR-007, V-009). Omitting headers alone does not make the rendered URL credential-free. Failing startup follows the
+  repository's configuration rule (D1). Silently stripping the userinfo would export to a collector the operator did
+  not configure.
+- **Alternatives**: Stripping userinfo before rendering, rejected for that reason. Rendering nothing while starting
+  normally, rejected because it hides a misconfiguration.
+
+### D16 — Causal parent for Server Action and RSC requests
+
+- **Decision**: The facade records two interaction facts that cause requests outside a synchronous scope:
+  - `Interaction.submit`: a capture-phase `submit` listener on `document`, which also sees `requestSubmit` replays.
+  - `Router.transition`: from Next's `onRouterTransitionStart`, which `instrumentation-client.ts` re-exports from the
+    facade.
+
+  Each one leaves a claim-once pending cause that lasts 5 seconds and is tagged with the request kind it expects. A
+  submit expects a Server Action POST, identified by the `Next-Action` request header. A router transition expects an
+  RSC request, identified by the `RSC: 1` header. The SDK module wraps `window.fetch` outside `FetchInstrumentation`.
+  When a same-origin request matches the oldest unexpired cause of its kind, the wrapper calls the instrumented fetch
+  inside `context.with(cause)`. The fetch span, and the server spans below it, then become the interaction's
+  descendants. Causes are claimed first-in, first-out, and unclaimed causes expire.
+- **Rationale**: SC-001 requires transition-to-server correlation for every sampled transition and for at least one
+  transition of each request kind. Data fetches already nest through `TraceScope.run` (D5). This gives the two
+  React-scheduled kinds the same parent relation without Zone.js. The match uses only request headers that Next
+  itself sets, never their values or the body.
+- **Limits**: Two submits of the same kind within 5 seconds pair in order. Requests sent before the SDK registers stay
+  unparented (PL-1). Whether Next reads `window.fetch` at call time is checked in slice `facts`. If it does not, the
+  slice stops and the plan is corrected rather than claiming SC-001.
+- **Alternatives**: `ZoneContextManager`, rejected (D5). Attributing any fetch inside a time window to the latest
+  interaction, rejected: unrelated confirmation reads would be attributed to it.

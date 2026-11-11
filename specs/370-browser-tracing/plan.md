@@ -19,8 +19,12 @@ to the collector with no headers. Every span passes an allow-list export filter 
 `url.path` only.
 
 The session-coordination feature records harness facts through the facade: UI state transitions, cross-tab sends and
-receipts, and focus moves. A receipt is the child span of its send, because the posted object carries the send's
-`traceparent` in one telemetry-only field. That matches a send to its receipts without reading message contents. The
+receipts, and focus moves (including the coordination fixture's programmatic focus). Each send carries a UUID
+generated only for telemetry in one telemetry-only message field, and its receipts record the same ID. That matches a
+send to its receipts without reading message contents. Facts recorded before the lazily loaded SDK registers are
+buffered and replayed. Form submits and router transitions are recorded and become the causal parents of the Server
+Action and RSC requests they cause, so every request kind correlates with its UI transition (SC-001). With the switch
+on, a collector endpoint that has URL credentials fails startup, so it is never rendered. The
 local `otel-lgtm` collector already accepts `http://*` origins, so no Compose change is needed. The documentation
 records the switch, direct header-free export, CORS, the browser signals, and the assumption that browser tracing is
 never active in production. No relay route, backend change, or Effect code in `packages/frontend` is added.
@@ -108,7 +112,7 @@ packages/frontend-services/
 packages/frontend/
 ├── package.json                      # browser OpenTelemetry dependencies
 ├── .fallowrc.json                    # coverage exemption for instrumentation-client.ts (human approval)
-├── src/instrumentation-client.ts     # NEW: startBrowserTracing()
+├── src/instrumentation-client.ts     # NEW: startBrowserTracing(), re-export onRouterTransitionStart
 ├── src/app/(app)/layout.tsx          # render BrowserTracingMeta
 ├── src/shared/browser-tracing.ts     # NEW: facade (meta contract, start, recorders, closed sets)
 ├── src/shared/browser-tracing/
@@ -117,10 +121,11 @@ packages/frontend/
 │   └── facts.ts                      # NEW: span recorders over @opentelemetry/api
 ├── src/features/session-coordination/
 │   ├── tab-coordination.ts           # record transitions; logout and confirm inside scope
-│   ├── tab-channel.ts                # record send/receipt; carry and read `trace`
+│   ├── tab-channel.ts                # record send/receipt; carry and read `telemetryId`
 │   ├── signed-out-notice.tsx         # moveFocus + focusTargetProps
 │   └── logout-control.tsx            # focusTargetProps
-└── tests/unit/session-coordination.test.ts  # message with `trace` still accepted
+├── src/features/coordination-fixtures/participant.tsx  # "Focus later" through moveFocus
+└── tests/unit/session-coordination.test.ts  # message with `telemetryId` still accepted
 
 renovate.json                         # caps for instrumentation-fetch and document-load
 docs/observability.md
@@ -163,7 +168,7 @@ See [contracts/modules.md](contracts/modules.md#public-contracts). Compatibility
 - `readBrowserTracing` never rejects. A runtime that is not ready, or any failure, renders no tracing.
 - The `<meta name="preets-browser-tracing">` content is the only server-to-browser contract. It is owned by the shared
   facade, which both renders it (`BrowserTracingMeta`) and parses it (`startBrowserTracing`).
-- The cross-tab message gains an optional `trace` field while tracing runs. Parsing ignores it, so mixed tabs (one on,
+- The cross-tab message gains an optional `telemetryId` field while tracing runs. Parsing ignores it, so mixed tabs (one on,
   one off) still coordinate.
 
 ### Phase 3 — Module contract evidence
@@ -172,16 +177,17 @@ See [contracts/modules.md](contracts/modules.md#contract-evidence).
 
 - Durable: the frontend-services config tests cover the switch truth table, unrecognized values, the instance-ID
   extraction, and a Fast-Check property that browser settings exist if and only if OTEL and the switch are on (V-007).
-  One coordination example shows a message with `trace` is still accepted.
+  One coordination example shows a message with `telemetryId` is still accepted.
 - Feature (browser interaction): rendered configuration contents (V-009), absence when off (V-008), and unchanged
   outcomes when the collector is down (V-012).
 - Not durable: every span, attribute, and filter result. The verification agent observes them (spec L1).
 
 ### Phase 4 — Implementation architecture
 
-- **Settings** ([research D1, D2](research.md#d1--switch-name-decoding-and-effective-rule)): `config/otel.ts` adds
-  `Config.withDefault(Config.Boolean("BROWSER_TRACING_ENABLED"), false)` and an optional
-  `OTEL_RESOURCE_ATTRIBUTES` string. `parseRawConfig` builds `browserTracing` only in the enabled branch.
+- **Settings** ([research D1, D2, D15](research.md#d1--switch-name-decoding-and-effective-rule)): `config/otel.ts`
+  adds `Config.withDefault(Config.Boolean("BROWSER_TRACING_ENABLED"), false)` and an optional
+  `OTEL_RESOURCE_ATTRIBUTES` string. `parseRawConfig` builds `browserTracing` only in the enabled branch. When the
+  switch is on and the endpoint has a username or password, it fails with a fixed message that does not echo the URL.
 - **Service**: `BrowserTracing.layer(otel)` is `Layer.effect`. It logs the header warning once when settings exist and
   `headers` is non-empty, then succeeds with `{ settings }`. `applicationLayer` merges it beside the observability
   layer.
@@ -192,17 +198,21 @@ See [contracts/modules.md](contracts/modules.md#contract-evidence).
   `<BrowserTracingMeta document={…} />` beside `SessionCoordinator`. It renders it even when it redirects, which emits
   nothing. React 19 hoists the `<meta>` elements into `<head>`.
 - **Client start** ([D4](research.md#d4--tracing-code-is-not-downloaded-when-off)): `instrumentation-client.ts` calls
-  `startBrowserTracing()`. That function parses the meta element. If it is absent or invalid, nothing happens. If it is
-  valid, `import("./browser-tracing/sdk.ts")` runs, and `start(config, traceparentPresent)` registers a
+  `startBrowserTracing()` and re-exports `onRouterTransitionStart`. That function parses the meta element. If it is
+  absent or invalid, nothing happens. If it is valid, the facade enters `pending`: it installs the capture-phase
+  `focusin`, `focusout`, and `submit` listeners, and recorders buffer facts (at most 256). Then
+  `import("./browser-tracing/sdk.ts")` runs, and `start(config, traceparentPresent)` registers a
   `WebTracerProvider` with a `BatchSpanProcessor` over `filterExport(new OTLPTraceExporter({ url }))`. It then registers
   `FetchInstrumentation` (`ignoreUrls: [traceUrl]`, `applyCustomAttributesOnSpan` sets `preets.outcome`) and
-  `DocumentLoadInstrumentation` (`ignorePerformancePaintEvents`, outcome hooks), installs the focus listener, and sets
-  `data-preets-browser-tracing="started"`. Every step is inside `try`. A failure leaves the page untouched.
+  `DocumentLoadInstrumentation` (`ignorePerformancePaintEvents`, outcome hooks). It wraps `window.fetch` with the
+  cause wrapper (research D16), replays the buffer with the original start times, and sets
+  `data-preets-browser-tracing="started"`. A load failure returns the facade to `off` and drops the buffer. Every step is inside `try`. A failure leaves the page untouched.
 - **Context** ([D5](research.md#d5--context-manager-and-its-async-limits)): `StackContextManager`.
   `TraceScope.run(task)` is `context.with(trace.setSpan(context.active(), span), task)`.
 - **Harness facts**: `facts.ts` holds the recorders. Each one starts a zero-duration span with the closed-set
-  attributes and `preets.outcome`, then ends it. Receipts use `propagation.extract(ROOT_CONTEXT, { traceparent })` as
-  the parent. `TabCoordination` keeps the last `UiState` and records only when it changes. Its first publish records
+  attributes and `preets.outcome`, then ends it. A send generates its `telemetryId` with `crypto.randomUUID()`, and a
+  receipt records the carried ID when it is a UUID. Submit and router records leave claim-once causes for the cause
+  wrapper. `TabCoordination` keeps the last `UiState` and records only when it changes. Its first publish records
   `mounted → …`.
 - **Export filter** ([D9](research.md#d9--forbidden-data-enforcement-at-export)): a `SpanExporter` wrapper. It maps
   each `ReadableSpan` to a copy with filtered attributes and events, rewrites `url.full` to `url.path`, drops spans by
@@ -219,7 +229,7 @@ own them, and are not duplicated as telemetry.
 
 ### Phase 6 — Verification telemetry contract
 
-See [contracts/telemetry.md](contracts/telemetry.md). It adds seven browser span rows (T-001–T-007) and one startup
+See [contracts/telemetry.md](contracts/telemetry.md). It adds nine browser span rows (T-001–T-007, T-009, and T-010) and one startup
 log (T-008). Server-side, it references the existing HTTP server spans and the
 [session verification signals](../../docs/session-state.md#verification-signals) (`logout`, `protectRequest`) and
 adds none. Facts not emitted: page text, form values, query strings and fragments, message contents, headers, cookies,
@@ -229,11 +239,11 @@ for telemetry only (FR-016).
 
 ### Phase 7 — Implementation slices
 
-| Slice    | Branch                            | Decision a reviewer accepts                                                                                                                                                                                        | Contracts and modules                                                                                                                                                                                                                                | Telemetry rows             | Claim IDs advanced                                                                                           | Est. hand-written files                                                                                                                                                                                                                                                                                                                                                          |
-| -------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `config` | `370-browser-tracing-impl`        | The server decides browser tracing from its own settings and renders exactly four values and the document's trace context into protected documents, and nothing when off.                                          | `config.ts` (`BrowserTracingSettings`, `OtelEnabled.browserTracing`), `observability.ts` (`BrowserTracing`), `runtime.ts`, `next.ts` (`readBrowserTracing`), `index.ts`; `shared/browser-tracing.ts` (`BrowserTracingMeta` only); `(app)/layout.tsx` | T-008                      | V-007, V-009; partial V-004 (document carries server context), partial V-008 (document has nothing when off) | 11: `config/otel.ts`, `config.ts`, `observability.ts`, `runtime.ts`, `next/browser-tracing.ts`, `next.ts`, `index.ts`, `tests/lib/config.test.ts`, `shared/browser-tracing.ts`, `(app)/layout.tsx`, `docs/observability.md` (switch, rendered values, never-in-production). No lockfile change                                                                                   |
-| `export` | `370-browser-tracing-impl-export` | The browser lazily starts the web SDK from the rendered configuration, continues the document trace, propagates context to same-origin fetch only, and exports filtered spans straight to a header-free collector. | `shared/browser-tracing.ts` (`startBrowserTracing`), `browser-tracing/sdk.ts`, `browser-tracing/export-filter.ts`; `instrumentation-client.ts`                                                                                                       | T-001, T-002, T-003        | V-002, V-003, V-004, V-005, V-006, V-008, V-010, V-011, V-012; partial V-016 (automatic records)             | 10: `packages/frontend/package.json`, `.fallowrc.json`, `instrumentation-client.ts`, `shared/browser-tracing.ts`, `browser-tracing/sdk.ts`, `browser-tracing/export-filter.ts`, `renovate.json`, `docs/observability.md` (export, CORS, signals T-001–T-003), `docs/docker-compose.md`, `quickstart.md` (results). Lockfile: `pnpm-lock.yaml`                                    |
-| `facts`  | `370-browser-tracing-impl-facts`  | Session coordination records UI transitions, cross-tab sends and receipts (matched by parent span), and focus moves as closed-set spans, and the harness documents browser telemetry as a live channel.            | `shared/browser-tracing.ts` (recorders, closed sets, `moveFocus`, `focusTargetProps`), `browser-tracing/facts.ts`, `browser-tracing/sdk.ts` (focus listener); session-coordination private files                                                     | T-004, T-005, T-006, T-007 | V-001, V-013, V-014, V-015, V-016, V-017                                                                     | 11: `shared/browser-tracing.ts`, `browser-tracing/facts.ts`, `browser-tracing/sdk.ts`, `tab-coordination.ts`, `tab-channel.ts`, `signed-out-notice.tsx`, `logout-control.tsx`, `tests/unit/session-coordination.test.ts`, `docs/observability.md` (signals T-004–T-007, queries), `docs/engineering/verification-harness.md` (channels, Known limits), `quickstart.md` (results) |
+| Slice    | Branch                            | Decision a reviewer accepts                                                                                                                                                                                                                                                                                                                                                   | Contracts and modules                                                                                                                                                                                                                                                                                   | Telemetry rows                           | Claim IDs advanced                                                                                           | Est. hand-written files                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| -------- | --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `config` | `370-browser-tracing-impl`        | The server decides browser tracing from its own settings, refuses a credential-bearing endpoint when the switch is on, and renders exactly four values and the document's trace context into protected documents, and nothing when off.                                                                                                                                       | `config.ts` (`BrowserTracingSettings`, `OtelEnabled.browserTracing`), `observability.ts` (`BrowserTracing`), `runtime.ts`, `next.ts` (`readBrowserTracing`), `index.ts`; `shared/browser-tracing.ts` (`BrowserTracingMeta` only); `(app)/layout.tsx`                                                    | T-008                                    | V-007, V-009; partial V-004 (document carries server context), partial V-008 (document has nothing when off) | 11: `config/otel.ts`, `config.ts`, `observability.ts`, `runtime.ts`, `next/browser-tracing.ts`, `next.ts`, `index.ts`, `tests/lib/config.test.ts`, `shared/browser-tracing.ts`, `(app)/layout.tsx`, `docs/observability.md` (switch, rendered values, credential-free endpoint, never-in-production). No lockfile change                                                                                                                               |
+| `export` | `370-browser-tracing-impl-export` | The browser lazily starts the web SDK from the rendered configuration, continues the document trace, propagates context to same-origin fetch only, and exports filtered spans straight to a header-free collector.                                                                                                                                                            | `shared/browser-tracing.ts` (`startBrowserTracing`), `browser-tracing/sdk.ts`, `browser-tracing/export-filter.ts`; `instrumentation-client.ts`                                                                                                                                                          | T-001, T-002, T-003                      | V-002, V-003, V-004, V-005, V-006, V-008, V-010, V-011, V-012; partial V-016 (automatic records)             | 10: `packages/frontend/package.json`, `.fallowrc.json`, `instrumentation-client.ts`, `shared/browser-tracing.ts`, `browser-tracing/sdk.ts`, `browser-tracing/export-filter.ts`, `renovate.json`, `docs/observability.md` (export, CORS, signals T-001–T-003), `docs/docker-compose.md`, `quickstart.md` (results). Lockfile: `pnpm-lock.yaml`                                                                                                          |
+| `facts`  | `370-browser-tracing-impl-facts`  | Session coordination and the coordination fixture record UI transitions, cross-tab sends and receipts (matched by a telemetry-only ID), and focus moves as closed-set spans; facts before SDK registration are buffered; form submits and router transitions parent the Server Action and RSC requests they cause; the harness documents browser telemetry as a live channel. | `shared/browser-tracing.ts` (recorders, buffer, closed sets, `moveFocus`, `focusTargetProps`, `onRouterTransitionStart`), `browser-tracing/facts.ts`, `browser-tracing/sdk.ts` (buffer replay, cause wrapper); `instrumentation-client.ts`; session-coordination and coordination-fixture private files | T-004, T-005, T-006, T-007, T-009, T-010 | V-001 (every request kind, SC-001), V-013, V-014, V-015, V-016, V-017                                        | 13: `shared/browser-tracing.ts`, `browser-tracing/facts.ts`, `browser-tracing/sdk.ts`, `instrumentation-client.ts`, `tab-coordination.ts`, `tab-channel.ts`, `signed-out-notice.tsx`, `logout-control.tsx`, `coordination-fixtures/participant.tsx`, `tests/unit/session-coordination.test.ts`, `docs/observability.md` (signals T-004–T-010, queries), `docs/engineering/verification-harness.md` (channels, Known limits), `quickstart.md` (results) |
 
 Order and independence:
 
@@ -250,12 +260,12 @@ Order and independence:
 
 Plan limitations, approved with this plan for the verification gate:
 
-- **PL-1**: A request sent before the lazily loaded SDK registers carries no browser trace context. Verifiers wait for
-  the `data-preets-browser-tracing="started"` marker. A request seen before the marker that lacks context is not a
-  V-002 violation.
-- **PL-2**: Server Action and RSC navigation fetches are root spans of their own traces. They are not children of a
-  UI transition, because React schedules them outside the synchronous scope. V-002 still applies to them. V-001 is
-  established through logout.
+- **PL-1**: A request sent before the lazily loaded SDK registers carries no browser trace context, and a fact
+  buffered before registration is replayed as a root span, not as the parent of a request. Facts are not lost.
+  Verifiers wait for the `data-preets-browser-tracing="started"` marker before a sampled request step. A request seen
+  before the marker that lacks context is not a V-002 or SC-001 violation.
+- **PL-2**: Two form submits, or two router transitions, within 5 seconds pair with their requests first-in,
+  first-out (research D16). Quickstart samples one interaction at a time.
 - **PL-3**: Only documents under the protected `(app)` layout render browser configuration. Public documents run no
   browser tracing.
 
