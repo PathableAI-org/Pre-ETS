@@ -6,6 +6,7 @@
     "coverage": {
       "allowUnmatched": [
         "src/instrumentation.ts",
+        "src/instrumentation-client.ts",
         "src/proxy.ts"
       ],
       "requireAllFiles": true

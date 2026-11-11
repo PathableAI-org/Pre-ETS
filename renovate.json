@@ -108,9 +108,16 @@
         "@opentelemetry/exporter-trace-otlp-http",
         "@opentelemetry/exporter-trace-otlp-proto",
         "@opentelemetry/instrumentation",
+        "@opentelemetry/instrumentation-fetch",
         "@opentelemetry/sdk-logs",
       ],
       "allowedVersions": "<0.300.0",
+    },
+    {
+      "description": "instrumentation-document-load 0.68.x is the last release on instrumentation 0.2xx and SDK 2.x; 0.69.0 moves to SDK 3.",
+      "matchManagers": ["npm"],
+      "matchPackageNames": ["@opentelemetry/instrumentation-document-load"],
+      "allowedVersions": "<0.69.0",
     },
     {
       "description": "Keep the stable OpenTelemetry SDK on 2.x until the Effect wrapper accepts SDK 3.",

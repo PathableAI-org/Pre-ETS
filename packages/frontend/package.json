@@ -17,6 +17,14 @@
     "fallow:audit": "fallow audit --gate new-only --gate-marker frontend"
   },
   "dependencies": {
+    "@opentelemetry/api": "catalog:opentelemetry",
+    "@opentelemetry/exporter-trace-otlp-http": "catalog:opentelemetry",
+    "@opentelemetry/instrumentation": "catalog:opentelemetry",
+    "@opentelemetry/instrumentation-document-load": "catalog:opentelemetry",
+    "@opentelemetry/instrumentation-fetch": "catalog:opentelemetry",
+    "@opentelemetry/resources": "catalog:opentelemetry",
+    "@opentelemetry/sdk-trace-base": "catalog:opentelemetry",
+    "@opentelemetry/sdk-trace-web": "catalog:opentelemetry",
     "@pathableai/pre-ets-frontend-services": "workspace:*",
     "@pathableai/react": "0.3.0",
     "next": "16.4.5",
