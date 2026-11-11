@@ -223,6 +223,9 @@ export const recordTabMessageSend: (kind: TabMessageKind) => string | undefined
 /** Records the receipt with the carried `telemetryId` when it is a UUID; otherwise without one. */
 export const recordTabMessageReceipt: (kind: TabMessageKind, telemetryId: unknown) => TraceScope
 
+/** Empties the pending Server Action cause; called by the submit guard when it cancels a submission (research D16). */
+export const withdrawSubmitCause: () => void
+
 /** Moves focus to `element`, so the focus record names the application as the cause. */
 export const moveFocus: (element: HTMLElement | null, target: FocusTarget) => void
 
@@ -245,9 +248,11 @@ recording.
   not registered within 10 seconds, the facade becomes `off` and drops the buffer. In `started`
   they create spans through `@opentelemetry/api`. Facts from coordinator startup are therefore kept when hydration runs before registration, and any loss is
   reported.
-- A recorded form submit or router transition replaces the single pending cause for its request kind. The next
-  matching Server Action or RSC request claims it once (research D16), so a guarded submission's replay, not its
-  cancelled original, parents the POST.
+- A recorded form submit or router transition fills the single pending-cause slot for its request kind. A second
+  interaction while that slot is unclaimed makes it ambiguous, and then no request is parented. The next matching
+  Server Action request, or RSC request to the transition's destination path, claims an unambiguous cause once
+  (research D16). `withdrawSubmitCause()` empties the Server Action slot, and the submit guard calls it when it
+  cancels a submission, so the replay, not the cancelled original, parents the POST.
 - Every span this module or its children create, and every span an instrumentation creates, passes the export filter
   before export (research D9).
 - `TraceScope.run` returns `task`'s result unchanged and never throws on its own account.
@@ -265,8 +270,7 @@ recording.
 **Behavior change**: `TabCoordination` computes `UiState` from `(view, concealed)` in `#publish` and `#end` and calls
 `recordUiTransition` when it changes. `logout()` and `#concealAndConfirm()` start their request inside the returned
 scope. `tab-channel.ts` calls `recordTabMessageSend` before `postMessage` and adds `telemetryId` when defined. It calls
-`recordTabMessageReceipt` on each parsed message and runs `receive` in that scope. `parseMessage` ignores
-`telemetryId`. `SignedOutNotice` focuses through `moveFocus`, and it and `LogoutControl` spread `focusTargetProps`.
+`recordTabMessageReceipt` on each parsed message and runs `receive` in that scope. `parseMessage` ignores `telemetryId`. The submit guard calls `withdrawSubmitCause()` when it cancels a held submission. `SignedOutNotice` focuses through `moveFocus`, and it and `LogoutControl` spread `focusTargetProps`.
 
 ### `features/coordination-fixtures` (unchanged exports)
 
