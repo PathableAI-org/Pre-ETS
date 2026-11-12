@@ -336,7 +336,6 @@ Each slice appends one block in this form:
 - Forbidden data: none from the slice. Pre-existing, not this slice: #377, and the probe query string in the
   existing server spans' `url.query` and `http.target` (trace 6bdc455f…), referred for a human decision.
 - Cleanup: keys remaining under `preets:verify:<run>:` = 0 (all six runs).
-  ||||||| c395225
 
 ### export — 1b2b896ea15616814b0e26dfbd5f82238296fa29, 2026-11-12, runs 88633591-9632-45ec-ac5e-81be88f03f69 (A, on, synthetic server headers and secret map), 2df68789-09d8-4e72-a004-55c19e1793ac (B, on, concurrent), 49e91eb0-070c-45bb-b2de-1196521f31aa (C, switch unset), 82025719-05f7-4ac1-9a12-f547e311e627 (D, OTEL off, switch true), 454dc28c-c18d-46dc-9d9c-b3fb8b3ffee9 (E, both off), cf0d46c0-093b-4003-ad3b-a530ba826aaa (M, `maybe`)
 
