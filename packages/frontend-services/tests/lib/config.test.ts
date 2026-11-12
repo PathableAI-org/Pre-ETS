@@ -444,6 +444,23 @@ describe("StartupConfig authentication [PREETS-SESSION-002]", () => {
       assert.notInclude(failureText(exit), raw)
     }))
 
+  it.effect.each(
+    [
+      ["\"controlled-shape-secret\"", "controlled-shape-secret"],
+      ["[\"controlled-shape-secret\"]", "controlled-shape-secret"],
+      ["{\"alpha\":7319246}", "7319246"],
+      ["{\"alpha\":[\"controlled-shape-secret\"]}", "controlled-shape-secret"],
+      ["{\"alpha\":\"\"}", "alpha"]
+    ] as const
+  )("rejects wrong-shape credential JSON %s without echoing it", ([raw, marker]) =>
+    Effect.gen(function*() {
+      const exit = yield* startupWith({ OIDC_CLIENT_SECRETS_JSON: raw })
+      assert.isTrue(configError(exit))
+      const text = failureText(exit)
+      assert.include(text, "OIDC_CLIENT_SECRETS_JSON")
+      assert.notInclude(text, marker)
+    }))
+
   it.effect("rejects malformed callback configuration", () =>
     Effect.gen(function*() {
       assert.isTrue(configError(yield* startupWith({ OIDC_CALLBACK_ORIGINS_JSON: "not-json" })))
