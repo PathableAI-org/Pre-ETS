@@ -6,6 +6,7 @@ import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-proto"
 import { HttpInstrumentation } from "@opentelemetry/instrumentation-http"
 import { RedisInstrumentation } from "@opentelemetry/instrumentation-redis"
 import { RuntimeNodeInstrumentation } from "@opentelemetry/instrumentation-runtime-node"
+import { envDetector } from "@opentelemetry/resources"
 import { BatchLogRecordProcessor } from "@opentelemetry/sdk-logs"
 import { PeriodicExportingMetricReader } from "@opentelemetry/sdk-metrics"
 import * as otelSdk from "@opentelemetry/sdk-node"
@@ -46,6 +47,11 @@ export const makeNodeSdkConfiguration = (
         ],
         logRecordProcessors: [logRecordProcessor],
         metricReaders: [globalMetricReader],
+        // Only the environment detector runs, so the resource carries `OTEL_SERVICE_NAME`,
+        // `OTEL_RESOURCE_ATTRIBUTES`, and the SDK's `telemetry.sdk.*` defaults. The default host and process
+        // detectors would export the hostname, OS account, and command line. An explicit list also overrides
+        // `OTEL_NODE_RESOURCE_DETECTORS`.
+        resourceDetectors: [envDetector],
         spanProcessors: [spanProcessor]
       }).start()
       return {
