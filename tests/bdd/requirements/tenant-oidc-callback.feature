@@ -3,8 +3,9 @@
 Feature: Validate the selected tenant OIDC callback
   This slice recovers one tenant-bound provider attempt across frontend instances.
   A real provider return whose authentication event is confirmed fresh establishes a
-  tenant-bound session that admits the application entry; untrusted, mismatched,
-  replayed, expired, and denied returns establish none. Tenant-mismatch denial with a
+  tenant-bound session that admits the application entry; a return whose provider reports
+  a stale authentication time, and untrusted, mismatched, replayed, expired, and denied
+  returns, establish none. Tenant-mismatch denial with a
   real bound session and expired-session action denial remain without end-to-end
   evidence here.
 
@@ -18,6 +19,18 @@ Feature: Validate the selected tenant OIDC callback
     And the response is not cacheable
     And the response contains no protected application content
     And the established session admits the application entry at "springfield.localhost:3000"
+
+  @preets-session-013
+  Scenario: A real provider return with a stale authentication time establishes no session
+    Given production tenant sites for Springfield and Shelbyville
+    And a Stale tenant whose provider always reports an old authentication time
+    And host resolution uses base hostname "localhost"
+    When the visitor completes real provider sign-in across two application instances at "stale.localhost:3000"
+    Then the response status is 200
+    And the response is not cacheable
+    And the response has no redirect
+    And the response contains no protected application content
+    And the response clears recoverable correlation and issues no application session
 
   @preets-session-002
   Scenario: A wrong-state callback preserves the original valid provider return

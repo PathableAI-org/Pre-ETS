@@ -9,7 +9,7 @@ import { setTimeout as delay } from "node:timers/promises"
 
 import type { AppWorld } from "../support/world.ts"
 
-import { applicationBrowser } from "../support/browser.ts"
+import { applicationBrowser, signInAtProvider as signIn } from "../support/browser.ts"
 import { requestInstance, requestSite, startSecondSite, startSite } from "../support/server.ts"
 
 type RecordedResponse = NonNullable<AppWorld["response"]>
@@ -30,12 +30,6 @@ const recordBrowserResponse = async (response: {
     headers: await response.allHeaders(),
     status
   }
-}
-
-const signIn = async (page: Page): Promise<void> => {
-  await page.getByRole("textbox", { name: /username|email/i }).fill("demo")
-  await page.getByRole("textbox", { exact: true, name: "Password" }).fill("demo")
-  await page.getByRole("button", { name: /sign in/i }).click({ noWaitAfter: true })
 }
 
 const waitForCapturedCallback = async (
