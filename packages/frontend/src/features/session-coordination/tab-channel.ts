@@ -2,6 +2,7 @@ import type { InPageSessionActivity } from "@pathableai/pre-ets-frontend-service
 
 import type { ActivityWindowRecord } from "./activity-window.ts"
 
+import { recordTabMessageReceipt, recordTabMessageSend, type TabMessageKind } from "../../shared/browser-tracing.ts"
 import { IN_PAGE_ACTIVITIES } from "./activity-classification.ts"
 
 const CHANNEL = "preets-session-coordination"
@@ -116,7 +117,19 @@ const PARSERS: Readonly<Record<string, (data: UnknownRecord, coordinationTag: st
   renewed: renewedMessage
 }
 
-/** Malformed messages are ignored. */
+/** The closed-set telemetry kind of each message type (telemetry contract). */
+const TELEMETRY_KINDS: Readonly<Record<TabMessage["type"], TabMessageKind>> = {
+  communicated: "communicated",
+  "logged-out": "logged_out",
+  "logout-failed": "logout_failed",
+  "logout-started": "logout_started",
+  pending: "pending",
+  renewed: "renewed",
+  "session-current": "session_current",
+  "window-query": "window_query"
+}
+
+/** Malformed messages are ignored, and so is the telemetry-only `telemetryId` field (research D8). */
 const parseMessage = (data: unknown): TabMessage | undefined => {
   if (!isRecord(data) || typeof data.coordinationTag !== "string") return undefined
   const parse = typeof data.type === "string" ? PARSERS[data.type] ?? signalMessage : signalMessage
@@ -125,19 +138,28 @@ const parseMessage = (data: unknown): TabMessage | undefined => {
 
 const silentChannel: TabChannel = { close: () => undefined, post: () => undefined }
 
+/**
+ * Each well-formed receipt is recorded and `receive` runs in its scope, so a transition it causes is its child. Each
+ * send is recorded and, while tracing runs, carries the send's telemetry-only `telemetryId` (research D8).
+ */
 export const openTabChannel = (receive: (message: TabMessage) => void): TabChannel => {
   if (typeof BroadcastChannel === "undefined") return silentChannel
   const channel = new BroadcastChannel(CHANNEL)
   channel.addEventListener("message", (event: MessageEvent<unknown>) => {
     const message = parseMessage(event.data)
-    if (message !== undefined) receive(message)
+    if (message === undefined) return
+    const telemetryId = isRecord(event.data) ? event.data.telemetryId : undefined
+    recordTabMessageReceipt(TELEMETRY_KINDS[message.type], telemetryId).run(() => {
+      receive(message)
+    })
   })
   return {
     close: () => {
       channel.close()
     },
     post: (message) => {
-      channel.postMessage(message)
+      const telemetryId = recordTabMessageSend(TELEMETRY_KINDS[message.type])
+      channel.postMessage(telemetryId === undefined ? message : { ...message, telemetryId })
     }
   }
 }
