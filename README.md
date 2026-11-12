@@ -539,17 +539,17 @@ skills, workflow overlays, extension configuration, and the constitution. Keep t
 current-feature pointer, local extension overrides, and regenerable preset composition
 caches out of version control.
 
-The [Upgrade Spec Kit workflow](.github/workflows/speckit-upgrade.yml) checks for
-the latest stable release every Monday at 14:00 UTC. It upgrades installed
-integrations and extensions, then opens or refreshes `automation/speckit-upgrade`
-with changes to `.specify/`, `.agents/skills/`, and `.claude/skills/`. Because it
-re-renders presets and extensions only for Claude Code, run the Codex refresh above on
-that branch before merging so `.agents/skills` keeps the project presets. Project
-behavior belongs in presets, workflow overlays, the constitution, and repository
-guidance rather than direct edits to upstream-managed command or template files. The upgrade can regenerate effective
-skills while retaining those project-owned layers. Review the composed diff before
-merging. Use **Run workflow** in GitHub Actions to check immediately or supply a
-specific release tag through `specify_version`.
+The [Upgrade Spec Kit workflow](.github/workflows/speckit-upgrade.yml) checks for the
+latest stable release every Monday at 14:00 UTC. It upgrades installed integrations and
+extensions, then opens or refreshes `automation/speckit-upgrade` with changes to
+`.specify/`, `.agents/skills/`, and `.claude/skills/`. It re-renders presets and
+extensions for every installed integration, so `.agents/skills` keeps the project
+presets without the manual Codex refresh. Project behavior belongs in presets, workflow
+overlays, the constitution, and repository guidance rather than direct edits to
+upstream-managed command or template files. The upgrade can regenerate effective skills
+while retaining those project-owned layers. Review the composed diff before merging. Use
+**Run workflow** in GitHub Actions to check immediately or supply a specific release tag
+through `specify_version`.
 
 ## Durable requirements
 
