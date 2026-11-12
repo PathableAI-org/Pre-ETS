@@ -150,7 +150,8 @@ conditions, results where applicable, limitations, and remaining unsupported out
 executed evidence, and installed monitoring from evidence that it functions correctly. Read
 [Testing as evidence](../engineering/testing/README.md) when assessing claims. Do not invent results.
 
-For BDD, follow [Requirements-backed BDD](../engineering/testing/requirements-bdd.md). Assertions derive from requirement versions already in current `origin/main`; merge new or stronger promises before adding dependent assertions. Requirement-ID tags identify evidence, and feature-level `@partial` identifies an intermediate slice, not a manual requirement status. Scenario coverage remains distinct from executed evidence.
+For BDD evidence, including its main-branch source rule, requirement-ID tags, and `@partial`, follow
+[Requirements-backed BDD](../engineering/testing/requirements-bdd.md).
 
 ## Authoring and review
 

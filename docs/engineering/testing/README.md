@@ -40,7 +40,7 @@ introduces a distinct uncertainty. Tests at different layers can still repeat th
 Prefer semantic assertions that survive an implementation change. A recovery test should establish that a user
 can regain access through the intended interaction. The presence of a button, a particular DOM ancestry, or the
 use of a particular messaging API does not establish that outcome. Follow the
-[constitution's meaningful behavioral testing rules](../../../.specify/memory/constitution.md).
+[constitution's meaningful behavioral testing rules](../../../.specify/memory/constitution.md#v-meaningful-behavioral-tests).
 
 ## Choose a boundary for the claim
 
@@ -56,9 +56,9 @@ and current tests before deciding what is missing.
 | Session store: expiration remains authoritative during renewal    | Late or racing activity restores ended access                     | Integration checks of our Redis adapter, including renewal/clear ordering   | Correctness of every Redis operation or real browser coordination |
 | User: inactivity ends protected access and offers usable recovery | Protected content remains usable, or keyboard recovery fails      | Focused browser outcomes; requirements BDD for real-provider user journeys  | General draft persistence or every identity-provider failure      |
 
-The frontend owns tenant configuration, OIDC, and temporary session/UI state. Backend business rules and durable
-domain persistence belong to the backend. Session Redis tests are not evidence of durable business-record storage;
-see [domain persistence](../../domain-persistence.md).
+Process ownership follows
+[Principle II](../../../.specify/memory/constitution.md#ii-explicit-ownership-and-authoritative-data). Session Redis
+tests are not evidence of durable business-record storage; see [domain persistence](../../domain-persistence.md).
 
 Property testing describes how cases are generated and checked. Unit, integration, and end-to-end describe
 execution boundaries: a property can run against a pure function or a real adapter. BDD is a way to discover and
@@ -141,19 +141,12 @@ explains HTTP and browser ownership; the [historical migration ledger](../../../
 Spec Kit dispositions and is not an active runner. The backend HTTP smoke suite does not validate domain behavior or
 persistence; do not imply a frontend test validates backend behavior.
 
-For Effect behavior, follow [Effect development guidance](../effect-guidance.md): deterministic test Layers can
-isolate dependencies, but a simulated adapter does not establish the real adapter's semantics.
-
 ## Preserve useful knowledge
 
 ### Observe telemetry, do not test it
 
-Runtime telemetry is evidence of application behavior. When a claim's approved evidence
-channel in `verification.md` is server or browser telemetry, the plan's telemetry contract puts it in a span, log, or metric, and a
-verification agent inspects the exported data for each implementation slice. Facts
-observed through browser interaction, assistive technology, module tests, or requirements
-BDD need no committed telemetry. See
-[the verification harness](../verification-harness.md).
+Runtime telemetry is evidence of application behavior. [The verification harness](../verification-harness.md#what-goes-in-telemetry)
+says which claims need committed telemetry and how a verification agent inspects it for each implementation slice.
 
 Telemetry is observed through that verification agent, manual checks, or temporary
 agent probes against real application logs and exported OTel data. Record the
