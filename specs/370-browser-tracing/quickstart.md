@@ -355,6 +355,33 @@ Each slice appends one block in this form:
 - Forbidden data: none from the slice. #377 (resource detectors) is pre-existing.
 - Cleanup: keys remaining under `preets:verify:<run>:` = 0 (all six runs).
 
+### config — 09676afd4301aa03819d5a11b00b60f3ff70a8d9, 2026-11-12, runs d7246097-9368-498a-9855-8add7ab867de (on), 9f571f41-77db-4d58-a996-0f30cd3a13ef (unset), ff261934-e58b-478f-b9e4-b1adf911ab50 (OTEL off, switch true), 12590479-8b03-4548-b18b-c714835fcf66 (both off), cc588faa-d74a-4f12-ac32-2f30f55710b3 (maybe), b2739c84-a792-411c-b290-29836432a8ee (malformed client-secret map)
+
+- Collector image: sha256:4c8056c9c05fcb3c8fd93800e85334bfd79b4d0271b47a54a121a64af41fe1fe. Ports: 3471–3476. Switch
+  settings: on + synthetic headers + synthetic OIDC_CLIENT_SECRETS_JSON marker; OTEL on/switch unset;
+  OTEL_SDK_DISABLED=true/switch true; both off; switch `maybe`; malformed OIDC_CLIENT_SECRETS_JSON. Runtime: Effect
+  4.1.4, Next 16.4.6, Node 26.2.0 (`.node-version` pins 26.13.1; 26.2.0 satisfies `engines >=26`).
+- Session source: prepared-session fixture (tenant `springfield`, subject `preets-verify-<run>`).
+  Fixture-backed results cite L-fixture: they establish nothing about authentication, the sign-in callback, or
+  session issuance.
+- V-007: established. Module test `tests/lib/config.test.ts` 73/73; the `maybe` instance refused startup
+  (ConfigError at BROWSER_TRACING_ENABLED). Session source none.
+- V-009: established. Step 3. Session source prepared-session fixture. Each document's single
+  `preets-browser-tracing` meta had exactly endpoint, serviceInstanceId, serviceName and serviceVersion, and no header
+  name or value, with collector headers configured. Limitation: L-fixture.
+- V-004 (part): established. Step 3. Session source prepared-session fixture. The meta traceparent matched the server
+  span `render route (app)` in injected trace 5ad044c77f6321a44afa2f9b0dd6df49 (976ba1dfcc68a6c2), uninjected trace
+  aaef8015d5c4c45b5531a6bc79a3e85b (231d6f94e2482d38), and participant trace 3f01d06aac0e191a5934315f108d9ea3
+  (73aa15b9d61cc980). Limitation: L-fixture.
+- V-008 (part): established. Step 2 (document only). Session source prepared-session fixture. The three off instances
+  had 0 tracing metas, 0 collector requests, and 0 non-harness traceparents; the probe found nothing initialized; and
+  there were 0 webjs records. The on control rendered both metas. Limitation: L-fixture.
+- T-008: present once for the header run, absent for the unset run, and carrying no header data.
+- Client secret: the synthetic marker appeared in no startup output, Loki line, or exported span. A malformed map
+  refused startup with "Expected a valid value" at OIDC_CLIENT_SECRETS_JSON, without echoing the value.
+- Forbidden data: none from the slice. #377 (resource detectors) is pre-existing.
+- Cleanup: keys remaining under `preets:verify:<run>:` = 0 (all six runs).
+
 ### export — 2f9e95133d201767cdec7e1fd1136c26d291609c, 2026-11-12, runs 95ee0233-5733-43f1-9e33-1e0f2e5a87c5 (A, on, synthetic server headers), 9faec4db-1ea6-4355-9adf-25e47a0d8a27 (B, on, concurrent), 93358de1-b9a6-4c27-98eb-ebe5c15f5d90 (C, switch unset), c48cf62c-905c-45a2-85cb-b4031e1ff0c2 (D, OTEL off, switch true), 1c108a5f-affa-40a7-a1c5-afb40757db76 (E, both off), 76a83fdf-8d0b-4127-bc16-e894ddee6211 (M, `maybe`)
 
 **Stale.** Superseded by the 1b2b896 run below, and no longer on the branch after the rebase onto `main` at
