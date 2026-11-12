@@ -143,11 +143,13 @@ feature's claims concern browser telemetry, which behaves the same however the s
    trace ID. V-005 holds if there is none, or if each new one is in a different trace that starts with a new server
    render, as when the application reloads a restored protected page. It is violated if any new document-load record
    joins the original document's trace.
-7. **Harness facts (V-013, V-014, V-015).** In two sharing tabs, record tab B's locally known deadline and freeze tab B
-   so it stops receiving coordination updates. Type in tab A so the session renews, and advance time past tab B's
-   recorded deadline while the session stays valid. Resume tab B so it conceals at once and then restores after the
-   server confirms the session. If the setup cannot keep tab B's deadline stale, record V-013's concealment pair as not
-   established. Then log out from tab A by keyboard, and let the signed-out notice take focus. Record, from Playwright, the
+7. **Harness facts (V-013, V-014, V-015).** In two sharing tabs, make tab B's resume see a reason to doubt its session
+   while the session stays valid: a current-session hint naming another session, which the application normally writes
+   when another session loads in this browser. Then deliver a visibility change to tab B so it conceals at once and
+   restores after the server confirms. Do not move tab B's clock, because browser record timestamps follow it. (This
+   replaces an earlier trigger that froze tab B and advanced time past its deadline. Playwright Chromium delivers no
+   freeze or resume events, moving the clock future-dates the browser records so the trace store cannot find them, and a
+   visible tab B adopts the renewal without concealing.) Then log out from tab A by keyboard, and let the signed-out notice take focus. Record, from Playwright, the
    order of visible transitions and focus moves. Record from Tempo each browser record of a UI transition, message send,
    message receipt, and focus move, with its values, and compare their order with Playwright's.
 8. **Forbidden data (V-016).** In a journey that types the probe string, follows a link carrying the probe query value
