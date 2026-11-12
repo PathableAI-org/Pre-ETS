@@ -23,6 +23,7 @@
     "**/next-env.d.ts",
     "**/.fallow/**",
     ".agents/skills/speckit-*/**",
+    ".claude/skills/speckit-*/**",
     ".specify/presets/*/.composed/**",
     "**/pnpm-lock.yaml"
   ],
