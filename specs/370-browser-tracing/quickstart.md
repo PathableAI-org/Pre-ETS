@@ -292,3 +292,29 @@ Each slice appends one block in this form:
   refused startup with "Expected a valid value" at OIDC_CLIENT_SECRETS_JSON, without echoing the value.
 - Forbidden data: none from the slice. #377 (resource detectors) is pre-existing.
 - Cleanup: keys remaining under `preets:verify:<run>:` = 0 (all six runs).
+
+### config — c1105929059ad0cb59b193b4aca946e3d6d0a054, 2026-11-12, runs e0327d9b-1b48-4f19-94bc-07b3dcda4349 (on), 7590e2e4-3418-4f8f-9c13-4a99022f7c95 (unset), fe6613aa-422c-4a26-899e-c6bac64e4e54 (OTEL off, switch true), 5ac6ea93-8938-460a-a365-f2c2c85e262d (both off), 7dc00b23-c269-4d3b-8d6f-16533e75390b (maybe), ad2cb1e5-5d1c-4c95-8454-0c0e7c089533 (malformed client-secret map)
+
+- Collector image: sha256:4c8056c9c05fcb3c8fd93800e85334bfd79b4d0271b47a54a121a64af41fe1fe. Ports: 3471–3476. Switch
+  settings: on + synthetic headers + synthetic OIDC_CLIENT_SECRETS_JSON marker; OTEL on/switch unset;
+  OTEL_SDK_DISABLED=true/switch true; both off; switch `maybe`; malformed OIDC_CLIENT_SECRETS_JSON.
+- Session source: prepared-session fixture (tenant `springfield`, subject `preets-verify-<run>`).
+  Fixture-backed results cite L-fixture: they establish nothing about authentication, the sign-in callback, or
+  session issuance.
+- V-007: established. Module test `tests/lib/config.test.ts` 68/68; the `maybe` instance refused startup
+  (ConfigError at BROWSER_TRACING_ENABLED). Session source none.
+- V-009: established. Step 3. Session source prepared-session fixture. Each document's single
+  `preets-browser-tracing` meta had exactly endpoint, serviceInstanceId, serviceName and serviceVersion, and no header
+  name or value, with collector headers configured. Limitation: L-fixture.
+- V-004 (part): established. Step 3. Session source prepared-session fixture. The meta traceparent matched the server
+  span `render route (app)` in injected trace d7e6c63a3c0584e91c2f4c56e5554ae2 (ec0adcbe22074ec2), uninjected trace
+  7d074a6520aa4c89b6f85227ad8060ae (29958e4628bafbd4), and participant trace 7400406f2d4924b1a1c95abdf6577285
+  (d2ba91a168544516). Limitation: L-fixture.
+- V-008 (part): established. Step 2 (document only). Session source prepared-session fixture. The three off instances
+  had 0 tracing metas, 0 collector requests, and 0 non-harness traceparents; the probe found nothing initialized; and
+  there were 0 webjs records. The on control rendered both metas. Limitation: L-fixture.
+- T-008: present once for the header run, absent for the unset run, and carrying no header data.
+- Client secret: the synthetic marker appeared in no startup output, Loki line, or exported span. A malformed map
+  refused startup with "Expected a valid value" at OIDC_CLIENT_SECRETS_JSON, without echoing the value.
+- Forbidden data: none from the slice. #377 (resource detectors) is pre-existing.
+- Cleanup: keys remaining under `preets:verify:<run>:` = 0 (all six runs).
