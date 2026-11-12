@@ -69,7 +69,7 @@ verification; record actual execution and limitations through the requirements r
 The existing [dashboard feature](../../../tests/bdd/requirements/tenant-context.feature) exercises HTTP reachability
 under tenant configuration. A slice targeting reachability can be described as follows; this is an illustrative
 description, not a migration of that feature or proof of the full
-[tenant-selection requirement](../../requirements/tenant-resolution.md#preets-tenant-003).
+[tenant-selection requirement](../../requirements/tenant/PREETS-TENANT-003.md).
 
 ```gherkin
 @preets-tenant-003 @partial

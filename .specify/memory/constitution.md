@@ -1,24 +1,14 @@
 <!--
 Sync Impact Report
-Version change: 1.2.0 → 1.3.0 (MINOR: materially expanded verification and observability guidance)
-Reason: Implementation pull requests grew too large to review, and runtime behavior was verified without
-telemetry designed for it. Verification now drives the telemetry the product emits, and a verification
-agent reports on each implementation slice.
-Modified principles:
-- I. Evidence-Grounded Specification: verification.md also states the distinguishing observation and its
-  evidence channel.
-- V. Meaningful Behavioral Tests: claims whose approved evidence channel is server or browser telemetry
-  get a telemetry contract, and its instrumentation is committed product code; facts observed through other
-  channels need no committed telemetry; forbidden telemetry data is named; durable telemetry assertions
-  remain prohibited.
-Modified sections: Development Workflow and Review steps 3–5 (seven planning phases, slice-grouped tasks,
-per-slice verification; a slice is ready only when its assigned telemetry is usable, its full claims are
-established, and any other result matches a limitation approved in verification.md or plan.md).
-Affected artifacts: docs/engineering/verification-harness.md (new), docs/engineering/git-workflow.md,
-docs/engineering/testing/README.md, docs/observability.md, AGENTS.md, .github review instructions and
-implementation PR template.
-Follow-up: Spec Kit preset templates, commands, and skills (verification channels, telemetry contract,
-implementation slices, verifier skill) are updated in a separate pull request.
+Version change: 1.3.0 → 1.3.1 (PATCH: pointer replacement that preserves every obligation)
+Reason: Agent guidance consolidation. The pre-commit check list was restated here, in AGENTS.md, and in
+docs/engineering/fallow.md. AGENTS.md now owns the operational list, and this workflow step points to it.
+Modified principles: none.
+Modified sections: Development Workflow and Review step 6 references the AGENTS.md "Before committing"
+checks instead of restating them; feature-specific checks, the pre-commit hook protections, and the ban on
+committing generated output remain required through that section.
+Affected artifacts: AGENTS.md, docs/engineering/fallow.md.
+Follow-up: none.
 -->
 
 # Pre-ETS Constitution
@@ -234,11 +224,9 @@ implementation and verification status MUST be established from repository evide
    application, as described in
    [the verification harness](../../docs/engineering/verification-harness.md). For UI, review the
    installed PathAble guidance and report library gaps upstream as required by Principle IV.
-6. Before committing, run `pnpm typecheck`, `pnpm build`, `pnpm lint`, `pnpm format:check`,
-   `pnpm check:unused`, and `pnpm check:health`, plus feature-specific checks. Apply lint fixes
-   before formatting when fixes are needed, then verify both pass. Preserve the root pre-commit
-   hook's staged-file protections and single `pnpm check:changes` audit. Do not commit generated
-   output.
+6. Before committing, run the repository checks in
+   [AGENTS.md](../../AGENTS.md#before-committing), plus feature-specific checks, and preserve the
+   root pre-commit hook that AGENTS.md describes.
 7. Review for acceptance-criteria coverage, meaningful assertions, accessibility, ownership, tenant
    isolation, and unnecessary complexity. Report what was actually tested and any limitations.
    Passing static checks MUST NOT be described as proof of runtime workflows.
@@ -269,4 +257,4 @@ amended date while preserving the original ratification date.
 Plans and pull requests MUST be reviewed against the applicable principles. Any required follow-up
 synchronization MUST be recorded; this constitution workflow modifies only this file.
 
-**Version**: 1.3.0 | **Ratified**: 2026-09-13 | **Last Amended**: 2026-11-10
+**Version**: 1.3.1 | **Ratified**: 2026-09-13 | **Last Amended**: 2026-11-12

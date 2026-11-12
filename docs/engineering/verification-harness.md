@@ -51,9 +51,8 @@ the behavior. Durable tests still do not assert spans, logs, or attributes. The 
 
 ## Implementation slices
 
-The plan divides implementation into slices. Each slice is one stacked pull request and one reviewable decision.
-[Git and pull request workflow](git-workflow.md#implementation-slices) sets the size and independence rules. Each
-slice lists the contracts it implements, the telemetry rows it adds, and the claim IDs it advances. Verification is
+[Git and pull request workflow](git-workflow.md#implementation-slices) defines slices and their size and independence
+rules. Each slice lists the contracts it implements, the telemetry rows it adds, and the claim IDs it advances. Verification is
 per slice, so a later slice does not hide an earlier slice's failure.
 
 ## Sessions and roles
@@ -167,10 +166,9 @@ The implementation session summarizes each final report in the `quickstart.md` e
 revision, conditions, result per claim, and limitations. Record superseded results as stale rather than deleting
 them, as earlier features did.
 
-Committing that summary creates a commit after the verified SHA. Keep it evidence-only: the diff from the verified
-SHA touches only the feature's `quickstart.md` execution results. Such commits need no re-verification, and the
-pull request body names the verified SHA so the reviewer can check the diff. Commit any other change, including a
-change to the run instructions, separately and request verification of the new SHA.
+Committing that summary creates an evidence-only commit after the verified SHA, which needs no new verification
+request under [Gate and escalation](#gate-and-escalation). Commit any other change, including a change to the run
+instructions, separately and request verification of the new SHA.
 
 ## Known limits
 

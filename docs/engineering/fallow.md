@@ -1,7 +1,7 @@
 # Fallow during development
 
 Use Fallow to understand architecture, check a change while it is still cheap to revise, and
-finish with the repository gates. The commands below match the installed Fallow 3.35.0 CLI.
+finish with the repository gates. The commands below match the installed Fallow 3.42.0 CLI.
 Prefer the pnpm scripts when they perform the same check.
 
 Root [`.fallowrc.json`](../../.fallowrc.json) ignores `packages/**`. Run a workspace command with
@@ -57,13 +57,10 @@ frontend-services uses custom layered zones, not a preset, with `requireAllFiles
 The direction is host adapter → runtime → service → settings. A service that imports a Next
 adapter or the runtime is a boundary violation. A new source file must join a zone, so add a
 new service to the `services` patterns in `.fallowrc.json` with its owner. Do not add
-`allowUnmatched`. ESLint adds the import rules Fallow cannot express:
-
-- Only `src/next.ts` and `src/next/**` import `next/server` or `next/navigation`.
-- Only `src/config.ts`, `src/config/**`, and `src/runtime.ts` read `Config`/`ConfigProvider`.
-
-The zones do not encode the recursive module rule. A sibling importing another module's child
-passes Fallow. Follow the rule in the workspace `AGENTS.md`.
+`allowUnmatched`. ESLint enforces the import rules Fallow cannot express: the Next adapter
+boundary in the [frontend-services guide](../../packages/frontend-services/AGENTS.md) and the
+[`Config` boundary](effect-guidance.md#configuration-is-decoded-once-at-startup). The zones do not
+encode the [module boundary rule](../../AGENTS.md#module-boundaries).
 
 ## During implementation
 
@@ -120,7 +117,7 @@ changeset introduced and reports inherited findings without failing on them. Set
 commit. The pre-commit hook runs `pnpm check:changes` once, after lint-staged, and includes
 unstaged and untracked work.
 
-Also run `pnpm typecheck`, `pnpm build`, `pnpm lint`, and `pnpm format:check`.
+The other checks to run before committing are in [AGENTS.md](../../AGENTS.md#before-committing).
 
 Report every unresolved finding and whether it is pre-existing or introduced.
 `pnpm check:changes` is the attribution check. A finding that appears in a whole-scope command
@@ -145,33 +142,23 @@ Same-zone imports are allowed. `src/lib` and `src/components` are both `shared`,
 imports between them. Read the zone from `fallow guard` for the file you are changing. A
 directory name alone does not grant a permission.
 
-`src/lib` is absent. Effect services for the frontend process live in
-`packages/frontend-services`, not in this zone. The onsite feature lives in
-`src/features`. The public entry `src/features/onsite.ts` owns the private files
-under `src/features/onsite/`. App routes and tests import that entry. Only that
-parent imports its children for external use. Internal sibling imports inside
-the feature remain as they already were. `src/components` and `src/server` are
-absent on purpose. Nothing is shared UI yet, and the Bulletproof `shared` zone
-stays configured for later shared UI. `src/server` stays absent until a server
-module has a real caller that cannot live in `src/app`. Fallow may warn that
+The [frontend guide](../../packages/frontend/AGENTS.md) owns the feature layout and keeps `src/lib`,
+`src/components`, and `src/server` absent on purpose. Fallow may warn that
 `shared` and `server` match no files. That warning is expected until those
 zones have real files. Do not add empty directories or placeholder modules to
 silence it.
 
-`src/instrumentation.ts` and `src/proxy.ts` are the configured `allowUnmatched` files: they have
-no zone, and their imports are unrestricted. `fallow guard` marks other unmatched paths with
+Files outside every zone are unrestricted for imports. `src/instrumentation.ts` and
+`src/proxy.ts` are the configured `allowUnmatched` files: they have no zone, and their imports are
+unrestricted. `fallow guard` marks other unmatched paths with
 `coverage_required`. A reachable file in that state is a boundary-coverage error. Frontend tests
 sit outside the zones; `fallow architecture --boundaries` does not currently report them, so
 leave tests where they are. Boundary violations and boundary-coverage gaps are error severity.
 
 ## Recursive modules
 
-The root [AGENTS.md](../../AGENTS.md) module rule still applies. A public entry such as
-`packages/frontend-services/src/tenant.ts` owns the private modules under `src/tenant/`.
-Only that parent imports its children. Siblings and external tests use the public entry.
-
-Bulletproof does not encode that rule. An import of a private child can stay inside `shared` and
-pass Fallow. Follow the module rule when Fallow reports no boundary violation.
+Neither preset nor custom zones encode the root [module boundaries](../../AGENTS.md#module-boundaries)
+rule, so follow it when Fallow reports no boundary violation.
 
 When a finding disagrees with an established module boundary, or the preset zone does not match
 the intended design, keep the current layout. Explain the conflict and ask for human review
@@ -214,7 +201,8 @@ configuration; these tools do not need duplicate workspace declarations.
 
 Type-aware analysis is enabled in best-effort mode against each scope's `tsconfig.json`. It
 confirms symbol use for Fallow findings and does not replace `pnpm typecheck`. A partial or
-unavailable checker result keeps the finding. `private-type-leaks` is an error.
+unavailable checker result keeps the finding and is not evidence that it can be deleted.
+`private-type-leaks` is an error.
 An exported signature must not reference a same-file type that callers cannot name.
 Export that type, or change the signature so it uses an exported type.
 
@@ -228,8 +216,7 @@ Export that type, or change the signature so it uses an exported type.
 Coding agents must not add `fallow-ignore` comments, `@expected-unused` tags, ignore patterns,
 `allowUnmatched` entries, baselines, or weaker severities or ceilings. Do not restructure code
 only to change an analysis metric. Do not install or rewrite Fallow hooks. The same prohibition
-covers ESLint, TypeScript, and other checks: see the root [AGENTS.md](../../AGENTS.md) and
-[`.cursor/rules/no-check-disable-comments.mdc`](../../.cursor/rules/no-check-disable-comments.mdc).
+covers ESLint, TypeScript, and other checks: see [No check suppressions](../../AGENTS.md#no-check-suppressions).
 `require-suppression-reason` is an error, and Fallow is configured not to suggest inline
 suppressions. Only a human developer may approve an exception. Leave the authorized overrides and
 ignore entries above as they are written.

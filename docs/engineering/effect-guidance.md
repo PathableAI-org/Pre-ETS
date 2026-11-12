@@ -35,16 +35,12 @@ fit an example.
 
 ## Coding boundaries
 
-- Follow the root constitution and workspace ownership in
-  [domain persistence](../domain-persistence.md),
-  [session state](../session-state.md),
-  [authentication](../authentication.md), and
-  [multi-tenancy](../multi-tenancy.md). The Next.js app owns presentation.
-  `packages/frontend-services` owns tenant configuration, OIDC orchestration, and
-  temporary session state for that process. Backend owns business rules, domain
-  authorization, and durable domain records as a stateless RESTful Effect service.
-  Do not move domain persistence into Redis or session drafts into the backend.
-  Do not add Effect workflows to `packages/frontend`.
+- Follow process ownership in the constitution's
+  [Principle II](../../.specify/memory/constitution.md#ii-explicit-ownership-and-authoritative-data) and
+  [Architecture Constraints](../../.specify/memory/constitution.md#architecture-constraints), the workspace guides,
+  and the strategies in [domain persistence](../domain-persistence.md),
+  [session state](../session-state.md), [authentication](../authentication.md), and
+  [multi-tenancy](../multi-tenancy.md).
 - Express effectful business operations as Effects with explicit success, typed error, and
   service requirements. Model expected failures with tagged errors; keep defects
   distinct from recoverable failures.
@@ -66,11 +62,9 @@ fit an example.
 - Compose shared Layers at process boundaries. Preserve resource scope and Layer
   identity; do not mechanically merge sequential provides when one supplies
   dependencies of another.
-- Prefer deterministic test Layers for Effect behavior. Use the already-installed
-  `@effect/vitest` `it.effect` for Effect-returning scenarios; it manages test execution,
-  scope, and test services. Keep ordinary Vitest for pure code and framework adapters.
-  Cover failures and cleanup as well as success. Do not convert test Effects to Promises
-  merely to run an async test. Keep observability verification manual.
+- Write Effect tests with deterministic test Layers and `@effect/vitest` `it.effect`, as
+  [Testing as evidence](testing/README.md#different-boundaries-make-different-claims) describes.
+  Cover failures and cleanup as well as success.
 - Keep runtime startup, disposal, and long-lived execution at the process host
   entrypoint for each workspace. Importing library modules must remain safe
   without starting a runtime.
@@ -220,8 +214,8 @@ bridges. Enabled OTEL requires an endpoint and service name;
 `OTEL_SDK_DISABLED=true` uses `NodeSdk.layerEmpty`. Do not add another export
 pipeline, including `effect/observability` `OtlpTracer`, and do not construct an
 Effect `NodeTracerProvider` when `NodeSdk.layerTracerProvider` already does.
-Inspect live frontend telemetry through the Grafana MCP section of that setup;
-do not add durable tests of span output. GraphQL, CLI, AI, cluster,
+Inspect live frontend telemetry through the Grafana MCP section of that setup.
+GraphQL, CLI, AI, cluster,
 new drivers, and other example modules require an actual task and installed/approved
 dependencies before adoption.
 
@@ -233,16 +227,8 @@ boundary with a public interface and private implementation. A `Context.Service`
 expose its capability to other modules; consumers should generally use that contract
 rather than reach into private helpers. This does not require a service for every file.
 
-Module boundaries are recursive and reflected in the filesystem. A public entry such
-as `lib/tenant.ts` owns child modules in `lib/tenant/`, such as `config.ts`. Only that
-parent imports its children; sibling modules and external tests depend on the parent's
-public interface. Re-export a child capability only when a current consumer needs it.
-Apply the same rule when a child itself decomposes into further modules: sibling
-modules do not reach into one another's descendants.
-
-Build a module or capability when actual behavior needs it. A future integration or
-a synthetic test does not justify introducing an unused provider/service contract.
-For example, add a secrets module only when there is a real secret to read.
+Module boundaries are recursive and reflected in the filesystem, and a module or capability is built only when
+actual behavior needs it; the root [module boundaries](../../AGENTS.md#module-boundaries) state the rule.
 
 Default to small, composable pure functions within a module. Return Effect when an
 operation needs environmental capabilities, meaningful typed failures, asynchronous or
@@ -354,9 +340,9 @@ for the final gate.
 The plugin only reports in an editor or in a manually patched `tsc`. Plain `tsc`
 and `pnpm typecheck` never load it. Before this gate existed, agents never saw these
 diagnostics, so the patterns they flag built up unnoticed. Treat a `lint:effect`
-finding like an ESLint finding. Fix the code. Do not lower a rule in
-`diagnosticSeverity`, set it to `off`, or add an `@effect-diagnostics` comment. The
-root rule against agent suppressions covers those too. Raising a rule's severity,
+finding like an ESLint finding. Fix the code. The root
+[rule against agent suppressions](../../AGENTS.md#no-check-suppressions) covers lowering a rule in
+`diagnosticSeverity`, setting it to `off`, and `@effect-diagnostics` comments. Raising a rule's severity,
 or enabling an opt-in rule after fixing what it reports, makes the gate stronger
 and is encouraged.
 

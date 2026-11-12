@@ -2,9 +2,7 @@
 
 Read the root [AGENTS.md](../../AGENTS.md) and
 [Effect agent guidance](../../docs/engineering/effect-guidance.md) before Effect
-work. Read the local Effect v4 checkout's `LLMS.md` and relevant linked examples/source,
-then check this workspace's installed Effect types. Product pins come from the named
-`effect` catalog in [`pnpm-workspace.yaml`](../../pnpm-workspace.yaml).
+work.
 
 Own the frontend process's Effect workflows: tenant configuration, OIDC orchestration,
 temporary session state, process configuration, observability selection, and the shared
@@ -17,19 +15,19 @@ production build fail to load those modules. The workspace `tsconfig` maps those
 specifiers so NodeNext can typecheck them. Relative imports in this package still use
 `.js`.
 
-Do not import the Next.js app, React components, or `@pathableai/react`. Do not own
+Do not add React UI, and do not import the Next.js app, React components, or
+`@pathableai/react`. Do not own
 durable domain persistence or business authorization. Do not let the backend import
 this package. Importing a module must not start the runtime; only
 `startProductionRuntime` does, and only when the Next host calls it.
 
-Process settings are decoded once: `src/runtime.ts` parses `StartupConfig` from
-`src/config/` and passes plain values to layer factories. Do not read `Config` or
-`ConfigProvider` anywhere else; lint rejects it. See
-[Configuration is decoded once at startup](../../docs/engineering/effect-guidance.md#configuration-is-decoded-once-at-startup).
+Process settings follow
+[Configuration is decoded once at startup](../../docs/engineering/effect-guidance.md#configuration-is-decoded-once-at-startup):
+`src/runtime.ts` parses `StartupConfig` from `src/config/`, and lint rejects a
+`Config` or `ConfigProvider` read anywhere else.
 
-Keep the recursive module rule. A public entry such as `src/tenant.ts` owns
-`src/tenant/`. Only that parent imports its children. Sibling modules and tests use
-the public entry. Re-export a child only when a current consumer needs it.
+The root [module boundaries](../../AGENTS.md#module-boundaries) apply; for example,
+`src/tenant.ts` owns `src/tenant/`.
 
 Next host adapters live in `src/next.ts`, which owns `src/next/` (login, callback,
 cookies, session and tenant reads, and the tenant-failure HTTP mapping). Only that
@@ -40,12 +38,8 @@ This workspace configures custom Fallow boundary zones (`entry`, `next`, `runtim
 `services`, `config`, `shared`, `tests`, `tooling`) with `requireAllFiles`; see
 [frontend-services zones](../../docs/engineering/fallow.md#frontend-services-zones).
 Run `pnpm --filter @pathableai/pre-ets-frontend-services exec fallow architecture --boundaries`
-when adding a module. A new file must join a zone. The zones do not report a sibling
-importing another module's child, so the ownership rules above still apply. Follow the
-root [Fallow workflow](../../docs/engineering/fallow.md) for unused code, complexity, and
-changed-code audits. Do not add a Bulletproof preset here. The Next app owns
-Bulletproof feature folders. This package still must not contain React UI or
-import the Next app.
+when adding a module. A new file must join a zone. Do not add a Bulletproof preset
+here; the Next app owns Bulletproof feature folders.
 
 From the repository root, run:
 

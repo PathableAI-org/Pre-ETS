@@ -13,10 +13,9 @@ authentication, data sources, and persistence are separate delivery boundaries.
 Use Vitest with `TestSchema` from `effect/testing` for meaningful schema
 behavior. These plain async tests do not need `@effect/vitest` or test Layers.
 
-This workspace does not configure Fallow architecture zones. Fallow will not
-report a boundary violation for an import of an application workspace.
-Follow the root [Fallow workflow](../../docs/engineering/fallow.md) for unused
-code, complexity, and changed-code audits.
+This workspace configures no Fallow boundary zones, so Fallow will not report an
+import of an application workspace; see
+[Fallow during development](../../docs/engineering/fallow.md).
 
 From the repository root, run:
 
