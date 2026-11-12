@@ -141,9 +141,12 @@ still accepted for server-only export. A malformed endpoint fails startup with
 `OTEL_EXPORTER_OTLP_ENDPOINT is invalid`, without quoting the value, whatever
 the switch.
 
-Local example, with the observability profile running:
+Local example, with the observability profile running. `start` serves a
+production build, so build first; `dev` takes the same variables and needs no
+build:
 
 ```sh
+pnpm --filter @pathableai/pre-ets-frontend build
 OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318/ \
 OTEL_SERVICE_NAME=pre-ets-frontend \
 BROWSER_TRACING_ENABLED=true \
