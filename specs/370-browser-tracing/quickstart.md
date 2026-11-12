@@ -473,6 +473,41 @@ since 2f9e951. A run requested at 0f49660 was stopped unreported when it was sup
   #377 and #381 are pre-existing.
 - Cleanup: keys remaining under `preets:verify:<run>:` = 0 (all runs).
 
+### export — d98bf5f94364fd8202c977d7762ba1678b12121b, 2026-11-12, runs 18acdddc-6a1e-49c7-b6db-37df15ab6174 (A, on, synthetic server headers), fe217592-7442-47a7-96c0-1d69114d1aea (B, on, concurrent), 727f7f7e-918b-4e3f-bfc9-40efa5dc624e (C, switch unset), ef0bd428-4f67-4e83-a898-5bb4b2b3ee03 (D, OTEL off, switch true), c35f9edc-3573-498a-a403-e682e6255fc2 (E, both off), 7a375fee-1ecd-4ffd-bfe8-9b14152c262c (M, `maybe`)
+
+Current result for this slice, after the stack was rebased onto `main` at `cd77cef`. Export-owned files are unchanged
+from 1b2b896. The runtime is Effect and `@effect/opentelemetry` 4.1.4 and Next 16.4.6, with one version per OpenTelemetry
+package. A run requested at 6176e96 was superseded unreported.
+
+- Collector image: sha256:4c8056c9…. Ports: 3481–3486. Switch settings: as listed per run; `maybe` refused startup.
+  The `docs/docker-compose.md` preflight check returned 204 with the origin allowed. Run window 2026-11-12T12:24:27Z to
+  12:31:08Z.
+- Session source: prepared-session fixture (tenant `springfield`, subject `preets-verify-<run>`). Fixture-backed
+  results cite L-fixture: they establish nothing about authentication, the sign-in callback, or session issuance.
+- V-002: established. Step 5. Each request kind carried a browser `traceparent` that the server continued: activity
+  149dda04…, Server Action a124e026…, status d745f948…, RSC f7db5e81…, logout cdbbcbec…. Limitation: L-fixture.
+- V-003: established. Step 5. The no-cookie sign-in chain reached the identity provider with no `traceparent` on its 9
+  cross-origin requests, and no collector request carried one. The export half is fixture-backed. Limitation:
+  L-fixture.
+- V-004: established. Step 6. The T-001 query returned 7 `documentLoad` records under server spans. Injected trace
+  f6208dc8…: `documentLoad` a45e4c88… is under the render span the meta names. Limitation: L-fixture.
+- V-005: established (option B). Step 6. Back made a new server render (trace 35edee5c…, `documentLoad` da376152…).
+  `{ RUN && name = "documentLoad" } | count() > 1` returned no trace. Limitation: L-fixture.
+- V-006: established. Step 4. A's run filter returned none of B's traces. Limitation: L-fixture.
+- V-008: established. Step 2 (full). C, D, and E: no metas, no initialization, 0 SDK chunk requests, 0 collector
+  requests, 0 `traceparent`, and 0 webjs records. The on control loaded the SDK. Hand-run check. Limitation: L-fixture.
+- V-010: established. Step 4. Export went only to `127.0.0.1:4318/v1/traces`, with no `authorization` or `cookie`.
+  Limitation: L-fixture.
+- V-011: established. Step 4. OPTIONS returned 204 and POST 200 with the app origin allowed; records are in Tempo.
+- V-012: established. Step 9. With the collector aborted (13 aborts), observations, focus, and protected-request
+  statuses matched the switch-off run, with no page errors. Hand-run check. Limitation: L-fixture.
+- V-016 (part, automatic records): established. Step 8. With the probe seeded, 0 webjs spans carried a leak key, an
+  error, a status message, an exception, or the probe. Limitation: L-fixture.
+- T-001, T-002, T-003: present and usable.
+- Forbidden data: none from the slice. Loki had 0 hits for the probe, the secret marker, the token, or the cookie.
+  #377 and #381 are pre-existing.
+- Cleanup: keys remaining under `preets:verify:<run>:` = 0 (all runs).
+
 ### facts — fbcfee176d0c8ce29109960082474cf039ac11c4, 2026-11-12, runs f4b4e41d-9531-4223-95eb-b803bb18f68e (A, on, synthetic server headers and secret map), 8dc91cd0-64a3-420c-b25a-bb67735c4e74 (B, on, concurrent), d4b6a640-fb41-4529-a8d5-da1007ae5b46 (C, switch unset), 5b2c4050-e380-459a-bae9-3dd8dc4cb44a (D, fresh clone from the docs)
 
 **Stale.** Recorded before the stack was rebased onto `main` at `cd77cef`, so this revision is no longer on the
