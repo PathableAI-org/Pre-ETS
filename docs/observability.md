@@ -57,7 +57,7 @@ Outbound HTTP and Redis spans provide additional request evidence. Effect logs
 are exported to Loki, while Effect and Node runtime metrics are exported to
 Prometheus. An empty result is not conclusive application evidence: check that
 OTEL was enabled, the required configuration was accepted, traffic occurred,
-and batch/periodic export had time to complete.
+and batch/periodic export had time to complete and reach the collector.
 
 ## Environment variables
 
@@ -366,8 +366,8 @@ fact is verified instead, for example through a module test or an opaque
 correlation identifier. A forbidden value found in exported telemetry is a
 verification failure for the slice that emitted it.
 
-Durable tests do not assert any of these signals. The verification agent and
-manual inspection observe them.
+Durable tests do not assert any of these signals; see
+[Observe telemetry, do not test it](engineering/testing/README.md#observe-telemetry-do-not-test-it).
 
 Signals already emitted by the session, coordination, and protection flows are
 listed in [Session state](session-state.md#verification-signals). Reference
@@ -451,14 +451,13 @@ deferred. Alerting and SLOs are out of scope.
 Requires the optional observability profile and `uvx`. The server does nothing
 useful until `otel-lgtm` is up and the frontend process was started with OTEL
 enabled, a valid `OTEL_EXPORTER_OTLP_ENDPOINT`, and `OTEL_SERVICE_NAME`.
-`OTEL_SDK_DISABLED=true` starts no exporters. Allow about 30 seconds after a
-request for trace/log batch export and 60 seconds for periodic metrics.
+`OTEL_SDK_DISABLED=true` starts no exporters. Allow for the export delays in
+[Local Grafana / OTLP](#local-grafana--otlp).
 
 The image and digest are the `otel-lgtm` service in `compose.yaml`
-(`grafana/otel-lgtm:0.40.0`). That image includes Tempo, Loki, and Prometheus.
-Enabled OTEL exports all three signals. Empty Loki or Prometheus results are
-not evidence that the application logged nothing or emitted no metrics; check
-configuration, traffic, export timing, and collector delivery.
+(`grafana/otel-lgtm`). That image includes Tempo, Loki, and Prometheus.
+Enabled OTEL exports all three signals. An empty result is inconclusive for the
+reasons in [Verification](#verification).
 
 Pinned package: **`mcp-grafana==2.0.0`**. Unversioned `uvx mcp-grafana` is not
 acceptable. The committed command is read-only (`--disable-write`), disables

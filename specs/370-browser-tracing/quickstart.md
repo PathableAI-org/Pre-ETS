@@ -205,6 +205,8 @@ Each slice appends one block in this form:
 
 ### Slice `config`: verified SHA `aadb76fb6ce51ef072f2147546bff9e9ecfd9426` (2026-11-11)
 
+**Stale.** Superseded by a later run below. This revision is no longer on the branch after the rebase onto `main` at `cd77cef`.
+
 **Conditions**
 
 - The stack's verification session ran in its own worktree, detached at the verified SHA, with a frozen install and a
@@ -246,6 +248,8 @@ Each slice appends one block in this form:
 
 ### config — 5ec050aada3a6c4db61a867eefde7982f0928952, 2026-11-11, runs f8de8186-ce91-4146-a1f2-7d8530d28314 (on), 10429034-7ffd-4366-a1e0-0ab12449a914 (unset), 265b24d7-1e91-493a-928b-63d7f535cb2f (OTEL off, switch true), 07869815-06a9-46e9-ba57-aeb5f09eb153 (both off), c863326a-a0e0-4944-9470-8e142ae1142b (maybe)
 
+**Stale.** Superseded by a later run below. This revision is no longer on the branch after the rebase onto `main` at `cd77cef`.
+
 - Collector image: sha256:4c8056c9c05fcb3c8fd93800e85334bfd79b4d0271b47a54a121a64af41fe1fe. Ports: 3471–3475. Switch
   settings: on+synthetic headers; OTEL on/switch unset; OTEL_SDK_DISABLED=true/switch true; both off; switch `maybe`.
 - Session source: prepared-session fixture (tenant `springfield`, subject `preets-verify-<run>`).
@@ -268,6 +272,8 @@ Each slice appends one block in this form:
 - Cleanup: keys remaining under `preets:verify:<run>:` = 0 (all five runs).
 
 ### config — c395225321f31f5ecb473d3fc9d38f7959b50c33, 2026-11-12, runs bd2da3e5-9cf9-4013-9b60-58b86c1985ba (on), ea544b5e-de7d-4a50-8184-920bd536710c (unset), ec60e788-a9b2-4c47-be56-658a0941b7fe (OTEL off, switch true), 451a4ac5-452b-4500-aeb8-67a1d5529e69 (both off), 0f24a22e-a01e-44dd-9009-0b6978df79da (maybe), 938b90dd-ae13-4653-a8e4-9ef19c151389 (malformed client-secret map)
+
+**Stale.** Superseded by a later run below. This revision is no longer on the branch after the rebase onto `main` at `cd77cef`.
 
 - Collector image: sha256:4c8056c9c05fcb3c8fd93800e85334bfd79b4d0271b47a54a121a64af41fe1fe. Ports: 3471–3476. Switch
   settings: on + synthetic headers + synthetic OIDC_CLIENT_SECRETS_JSON marker; OTEL on/switch unset;
@@ -295,6 +301,8 @@ Each slice appends one block in this form:
 
 ### config — c1105929059ad0cb59b193b4aca946e3d6d0a054, 2026-11-12, runs e0327d9b-1b48-4f19-94bc-07b3dcda4349 (on), 7590e2e4-3418-4f8f-9c13-4a99022f7c95 (unset), fe6613aa-422c-4a26-899e-c6bac64e4e54 (OTEL off, switch true), 5ac6ea93-8938-460a-a365-f2c2c85e262d (both off), 7dc00b23-c269-4d3b-8d6f-16533e75390b (maybe), ad2cb1e5-5d1c-4c95-8454-0c0e7c089533 (malformed client-secret map)
 
+**Stale.** Superseded by a later run below. This revision is no longer on the branch after the rebase onto `main` at `cd77cef`.
+
 - Collector image: sha256:4c8056c9c05fcb3c8fd93800e85334bfd79b4d0271b47a54a121a64af41fe1fe. Ports: 3471–3476. Switch
   settings: on + synthetic headers + synthetic OIDC_CLIENT_SECRETS_JSON marker; OTEL on/switch unset;
   OTEL_SDK_DISABLED=true/switch true; both off; switch `maybe`; malformed OIDC_CLIENT_SECRETS_JSON.
@@ -321,6 +329,8 @@ Each slice appends one block in this form:
 
 ### config — 0c6595d717798edf0be1e81961e3d7476adba7f3, 2026-11-12, runs 1c646672-8347-4f86-b0b3-07b7e4101071 (on), a14e3bcb-42ec-4196-a756-78c192b73450 (unset), 1da3dd6b-8275-453c-86a2-d8a9230b9ab7 (OTEL off, switch true), fd9af5bb-8d3f-4e43-8670-72f40783be41 (both off), 3814a15c-e3a3-490c-8df5-ead90b957ed4 (maybe), eb515ad8-3a67-4ce3-836e-b2db95dbe6a3 (malformed client-secret map)
 
+**Stale.** Recorded before the stack was rebased onto `main` at `cd77cef`, so this revision is no longer on the branch. A fresh run at the rebased head supersedes it.
+
 - Collector image: sha256:4c8056c9c05fcb3c8fd93800e85334bfd79b4d0271b47a54a121a64af41fe1fe. Ports: 3471–3476. Switch
   settings: on + synthetic headers + synthetic OIDC_CLIENT_SECRETS_JSON marker; OTEL on/switch unset;
   OTEL_SDK_DISABLED=true/switch true; both off; switch `maybe`; malformed OIDC_CLIENT_SECRETS_JSON.
@@ -345,7 +355,37 @@ Each slice appends one block in this form:
 - Forbidden data: none from the slice. #377 (resource detectors) is pre-existing.
 - Cleanup: keys remaining under `preets:verify:<run>:` = 0 (all six runs).
 
+### config — 09676afd4301aa03819d5a11b00b60f3ff70a8d9, 2026-11-12, runs d7246097-9368-498a-9855-8add7ab867de (on), 9f571f41-77db-4d58-a996-0f30cd3a13ef (unset), ff261934-e58b-478f-b9e4-b1adf911ab50 (OTEL off, switch true), 12590479-8b03-4548-b18b-c714835fcf66 (both off), cc588faa-d74a-4f12-ac32-2f30f55710b3 (maybe), b2739c84-a792-411c-b290-29836432a8ee (malformed client-secret map)
+
+- Collector image: sha256:4c8056c9c05fcb3c8fd93800e85334bfd79b4d0271b47a54a121a64af41fe1fe. Ports: 3471–3476. Switch
+  settings: on + synthetic headers + synthetic OIDC_CLIENT_SECRETS_JSON marker; OTEL on/switch unset;
+  OTEL_SDK_DISABLED=true/switch true; both off; switch `maybe`; malformed OIDC_CLIENT_SECRETS_JSON. Runtime: Effect
+  4.1.4, Next 16.4.6, Node 26.2.0 (`.node-version` pins 26.13.1; 26.2.0 satisfies `engines >=26`).
+- Session source: prepared-session fixture (tenant `springfield`, subject `preets-verify-<run>`).
+  Fixture-backed results cite L-fixture: they establish nothing about authentication, the sign-in callback, or
+  session issuance.
+- V-007: established. Module test `tests/lib/config.test.ts` 73/73; the `maybe` instance refused startup
+  (ConfigError at BROWSER_TRACING_ENABLED). Session source none.
+- V-009: established. Step 3. Session source prepared-session fixture. Each document's single
+  `preets-browser-tracing` meta had exactly endpoint, serviceInstanceId, serviceName and serviceVersion, and no header
+  name or value, with collector headers configured. Limitation: L-fixture.
+- V-004 (part): established. Step 3. Session source prepared-session fixture. The meta traceparent matched the server
+  span `render route (app)` in injected trace 5ad044c77f6321a44afa2f9b0dd6df49 (976ba1dfcc68a6c2), uninjected trace
+  aaef8015d5c4c45b5531a6bc79a3e85b (231d6f94e2482d38), and participant trace 3f01d06aac0e191a5934315f108d9ea3
+  (73aa15b9d61cc980). Limitation: L-fixture.
+- V-008 (part): established. Step 2 (document only). Session source prepared-session fixture. The three off instances
+  had 0 tracing metas, 0 collector requests, and 0 non-harness traceparents; the probe found nothing initialized; and
+  there were 0 webjs records. The on control rendered both metas. Limitation: L-fixture.
+- T-008: present once for the header run, absent for the unset run, and carrying no header data.
+- Client secret: the synthetic marker appeared in no startup output, Loki line, or exported span. A malformed map
+  refused startup with "Expected a valid value" at OIDC_CLIENT_SECRETS_JSON, without echoing the value.
+- Forbidden data: none from the slice. #377 (resource detectors) is pre-existing.
+- Cleanup: keys remaining under `preets:verify:<run>:` = 0 (all six runs).
+
 ### export — 2f9e95133d201767cdec7e1fd1136c26d291609c, 2026-11-12, runs 95ee0233-5733-43f1-9e33-1e0f2e5a87c5 (A, on, synthetic server headers), 9faec4db-1ea6-4355-9adf-25e47a0d8a27 (B, on, concurrent), 93358de1-b9a6-4c27-98eb-ebe5c15f5d90 (C, switch unset), c48cf62c-905c-45a2-85cb-b4031e1ff0c2 (D, OTEL off, switch true), 1c108a5f-affa-40a7-a1c5-afb40757db76 (E, both off), 76a83fdf-8d0b-4127-bc16-e894ddee6211 (M, `maybe`)
+
+**Stale.** Superseded by the 1b2b896 run below, and no longer on the branch after the rebase onto `main` at
+`cd77cef`.
 
 - Collector image: sha256:4c8056c9…. Ports: 3481–3486. Switch settings: as listed per run; `maybe` refused startup.
   The `docs/docker-compose.md` preflight check returned 204 with the origin allowed. Run window 2026-11-12T00:23:40Z to
@@ -391,6 +431,9 @@ Each slice appends one block in this form:
 
 ### export — 1b2b896ea15616814b0e26dfbd5f82238296fa29, 2026-11-12, runs 88633591-9632-45ec-ac5e-81be88f03f69 (A, on, synthetic server headers and secret map), 2df68789-09d8-4e72-a004-55c19e1793ac (B, on, concurrent), 49e91eb0-070c-45bb-b2de-1196521f31aa (C, switch unset), 82025719-05f7-4ac1-9a12-f547e311e627 (D, OTEL off, switch true), 454dc28c-c18d-46dc-9d9c-b3fb8b3ffee9 (E, both off), cf0d46c0-093b-4003-ad3b-a530ba826aaa (M, `maybe`)
 
+**Stale.** Recorded before the stack was rebased onto `main` at `cd77cef`, so this revision is no longer on the
+branch. A run at 6176e96 was requested and is superseded unreported. A fresh run at the rebased head supersedes it.
+
 This block supersedes the 2f9e951 `export` block above, which is now stale: the slice was rebased onto the config
 review fix c395225, and the step-7 correction (spec 5da5ad5, plan 43a9c7b) was merged. Export-owned files are unchanged
 since 2f9e951. A run requested at 0f49660 was stopped unreported when it was superseded.
@@ -431,6 +474,10 @@ since 2f9e951. A run requested at 0f49660 was stopped unreported when it was sup
 - Cleanup: keys remaining under `preets:verify:<run>:` = 0 (all runs).
 
 ### facts — fbcfee176d0c8ce29109960082474cf039ac11c4, 2026-11-12, runs f4b4e41d-9531-4223-95eb-b803bb18f68e (A, on, synthetic server headers and secret map), 8dc91cd0-64a3-420c-b25a-bb67735c4e74 (B, on, concurrent), d4b6a640-fb41-4529-a8d5-da1007ae5b46 (C, switch unset), 5b2c4050-e380-459a-bae9-3dd8dc4cb44a (D, fresh clone from the docs)
+
+**Stale.** Recorded before the stack was rebased onto `main` at `cd77cef`, so this revision is no longer on the
+branch. A fresh run at the rebased head supersedes it. A whole-slice request at 6bddac9 never ran: the rebase
+superseded it first.
 
 This block replaces the round-1 report at a73e1f3, which was not recorded. That run established V-001 and V-013–V-016
 and found V-017 violated: the documented `start` example lacked a build step. 8a09348 added that step, and fbcfee1

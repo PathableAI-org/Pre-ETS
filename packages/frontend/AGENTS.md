@@ -37,10 +37,8 @@ That directory is absent because nothing is shared UI yet. The Bulletproof
 `shared` zone stays configured for later shared UI. `src/server` stays absent
 until a server module has a real caller that cannot live in `src/app`.
 
-When creating or editing UI that uses `@pathableai/react`, locate the installed
-`@pathableai/react` package and read
-`agent-guidance/pathable-react/SKILL.md` before making changes. Read only the
-linked reference relevant to the task.
+Before creating or editing UI that uses `@pathableai/react`, read its installed
+guidance as the [root routing table](../../AGENTS.md#where-guidance-lives) says.
 
 ## Fallow boundaries
 
@@ -52,18 +50,12 @@ modules, imports, or source layout. Inspect the files you will change:
 pnpm --filter @pathableai/pre-ets-frontend exec fallow guard src/features/onsite/visit-state.ts
 ```
 
-Follow the zone and allowed directions that command reports.
-
-A directory name does not by itself grant a permission. Files outside every
-zone are unrestricted for imports. `src/instrumentation.ts` and `src/proxy.ts`
-are the configured unmatched exemptions. `fallow guard` reports when a
-reachable file with no zone fails boundary coverage.
-
-The recursive module rule in the root [AGENTS.md](../../AGENTS.md) still
-applies. Bulletproof allows same-zone imports, so an import of a private child
-can pass Fallow and still violate that rule. When a finding is a preset
-mismatch, keep the current layout, explain the conflict, and ask for human
-review.
+Follow the zone and allowed directions that command reports. The zone table and
+unmatched exemptions are in
+[Frontend Bulletproof zones](../../docs/engineering/fallow.md#frontend-bulletproof-zones).
+The root [module boundaries](../../AGENTS.md#module-boundaries) still apply where
+Bulletproof allows an import; handle a preset mismatch as
+[Recursive modules](../../docs/engineering/fallow.md#recursive-modules) describes.
 
 From the repository root, run:
 

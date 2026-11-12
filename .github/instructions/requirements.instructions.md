@@ -29,7 +29,9 @@ do not create another trigger or automation. Findings are advisory; human PR rev
 - Protect confidential partner/client identities under the guide's public-source rule, including identifying URLs,
   filenames, quotations, and abbreviations. Do not demand private source links or invent attribution.
 
-For BDD references, follow `docs/engineering/testing/requirements-bdd.md`: assertions derive from requirement versions already in current `origin/main`, not new or strengthened PR-only promises. Requirement-ID tags identify evidence; feature-level `@partial` describes intermediate scope, not requirement verification status. Do not demand complete BDD coverage or equate tag removal with runtime verification.
+For BDD references, check against `docs/engineering/testing/requirements-bdd.md`: assertions from current
+`origin/main` requirements only, tags as evidence, and `@partial` as scope rather than verification status. Do not
+demand complete BDD coverage or equate tag removal with runtime verification.
 
 ## Evidence changes
 

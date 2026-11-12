@@ -31,20 +31,16 @@ Review the implementation against the approved specification and engineering pla
   data class from the
   [verification telemetry conventions](../../docs/observability.md#verification-telemetry-conventions), and durable
   tests that assert telemetry output.
-- For a delivery-issue implementation slice, check that the pull request names its slice from `plan.md` and
-  summarizes a verification report for that slice's claims, as described in
-  [the verification harness](../../docs/engineering/verification-harness.md). Flag a missing or unusable assigned
-  telemetry row, a full claim that is not `established`, and a `not established` or `blocked` result that does not
-  match a limitation already approved in `verification.md` or `plan.md`; the slice cannot create that exception.
-  Check that the pull request names the verified SHA and that the diff from it to the head touches only the
-  feature's `quickstart.md` execution results; flag any other change after the verified SHA as unverified. Flag a
-  slice well over 15 hand-written files without a stated reason. A single pull request that the
-  [Git workflow](../../docs/engineering/git-workflow.md#implementation-slices) exempts from the stack, such as a
-  dependency update or a fix inside an approved contract, needs no slice or verification report; check that it
-  says why the stack does not apply.
+- For a delivery-issue implementation slice, check the pull request against the
+  [verification gate](../../docs/engineering/verification-harness.md#gate-and-escalation): it names its `plan.md`
+  slice and the verified SHA and summarizes that slice's verification report. Flag a missing or unusable assigned
+  telemetry row, a full claim that is not `established`, a `not established` or `blocked` result without an
+  approved limitation (the slice cannot create one), any change after the verified SHA other than `quickstart.md`
+  execution results, and a slice well over 15 hand-written files without a stated reason. A single pull request
+  that the [Git workflow](../../docs/engineering/git-workflow.md#implementation-slices) exempts from the stack
+  needs no slice or verification report; check that it says why the stack does not apply.
 - A planned `quickstart.md` procedure is not defective because it has not yet been executed. On an implementation
   review, identify evidence the pull request claims but does not show.
 - Do not treat a Copilot suggestion as approval to change an accepted requirement, delivery slice, or public contract.
-- Flag any path under `specs/` outside this pull request's single `specs/{number}-{slug}/` directory. This phase
-  may update that feature's `tasks.md` and `quickstart.md`. Other feature directories are historic. Current
-  behavior belongs in `docs/`.
+- This phase may update its own feature's `tasks.md` and `quickstart.md`. The
+  [Spec Kit artifact scope](spec-artifacts.instructions.md) lens checks every other `specs/` path.

@@ -69,7 +69,7 @@ verification; record actual execution and limitations through the requirements r
 The existing [dashboard feature](../../../tests/bdd/requirements/tenant-context.feature) exercises HTTP reachability
 under tenant configuration. A slice targeting reachability can be described as follows; this is an illustrative
 description, not a migration of that feature or proof of the full
-[tenant-selection requirement](../../requirements/tenant-resolution.md#preets-tenant-003).
+[tenant-selection requirement](../../requirements/tenant/PREETS-TENANT-003.md).
 
 ```gherkin
 @preets-tenant-003 @partial
@@ -120,6 +120,6 @@ Use these cases when reviewing changes to this discipline:
 - `$requirements-bdd-scaffold` reuses steps and scaffolds missing bindings in the active suite.
 - `$requirements-bdd-review` reviews scenarios and step evidence without editing by default.
 
-These repository-local skills live in [.agents/skills](../../../.agents/skills). The former Spec Kit BDD skills
-are retired redirects. The [historical migration ledger](../../../features/TRACEABILITY.md) remains historical;
+These repository-local skills live in [.agents/skills](../../../.agents/skills). The Spec Kit BDD extension and
+its skills are no longer installed. The [historical migration ledger](../../../features/TRACEABILITY.md) remains historical;
 these workflows do not regenerate it or introduce a separate traceability matrix.

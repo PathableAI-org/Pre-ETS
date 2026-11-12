@@ -13,6 +13,9 @@
         ],
         "codex": [
           "speckit.analyze"
+        ],
+        "claude": [
+          "speckit.analyze"
         ]
       },
       "registered_skills": {
@@ -20,6 +23,9 @@
           "speckit-analyze"
         ],
         "codex": [
+          "speckit-analyze"
+        ],
+        "claude": [
           "speckit-analyze"
         ]
       },
@@ -40,10 +46,28 @@
           "speckit.implement",
           "speckit.constitution",
           "speckit.checklist"
+        ],
+        "claude": [
+          "speckit.specify",
+          "speckit.clarify",
+          "speckit.plan",
+          "speckit.tasks",
+          "speckit.implement",
+          "speckit.constitution",
+          "speckit.checklist"
         ]
       },
       "registered_skills": {
         "codex": [
+          "speckit-specify",
+          "speckit-clarify",
+          "speckit-plan",
+          "speckit-tasks",
+          "speckit-implement",
+          "speckit-constitution",
+          "speckit-checklist"
+        ],
+        "claude": [
           "speckit-specify",
           "speckit-clarify",
           "speckit-plan",

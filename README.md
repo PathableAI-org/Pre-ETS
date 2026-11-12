@@ -498,9 +498,15 @@ The repository includes Spec Kit 1.2.3 with one root workflow in `.specify/`.
 The project constitution is [`.specify/memory/constitution.md`](.specify/memory/constitution.md).
 Read it before specifying, planning, implementing, or reviewing a feature.
 
-Core skills are installed for Codex in `.agents/skills`. The installed assess, BDD,
-critique, and Git extensions also provide skills; `.specify/extensions.yml` records
-their workflow hooks.
+Core skills are installed for Claude Code, the default integration, in `.claude/skills` and
+for Codex in `.agents/skills`. The installed assess, critique, and Git extensions also
+provide skills; `.specify/extensions.yml` records their workflow hooks. Spec Kit
+registers presets and extensions only for the default integration, so after changing
+them, refresh the Codex copies with `specify integration use codex` followed by
+`specify integration use claude`, then review the diff: in Spec Kit 1.3.2 that round
+trip also clears the executable bit on `.specify/scripts/bash/*.sh`. Repository-owned
+skills live only in `.agents/skills`; each has a relative symlink in `.claude/skills` so
+Claude Code can load it. Add the symlink when adding a repository-owned skill.
 The closed-vocabulary preset extends the analysis command to report
 inconsistent enumerations across feature artifacts.
 
@@ -525,23 +531,25 @@ using exactly one authorized delivery issue. Specification produces `spec.md` an
 implementation slices, and a planned `quickstart.md`. A verification agent checks
 each slice against the running application, as described in the
 [verification harness](docs/engineering/verification-harness.md). The constitution
-defines the required behavioral verification; installing the BDD extension does
-not make Gherkin mandatory for every change.
+defines the required behavioral verification; Gherkin is not mandatory for every
+change, and requirements-backed BDD uses the repository-local `requirements-bdd-*` skills.
 
 Commit shared scripts, templates, preset sources and registry, CLI-generated effective
 skills, workflow overlays, extension configuration, and the constitution. Keep the
 current-feature pointer, local extension overrides, and regenerable preset composition
 caches out of version control.
 
-The [Upgrade Spec Kit workflow](.github/workflows/speckit-upgrade.yml) checks for
-the latest stable release every Monday at 14:00 UTC. It upgrades installed
-integrations and extensions, then opens or refreshes `automation/speckit-upgrade`
-with changes to `.specify/` and `.agents/skills/`. Project behavior belongs in presets,
-workflow overlays, the constitution, and repository guidance rather than direct edits
-to upstream-managed command or template files. The upgrade can regenerate effective
-skills while retaining those project-owned layers. Review the composed diff before
-merging. Use **Run workflow** in GitHub Actions to check immediately or supply a
-specific release tag through `specify_version`.
+The [Upgrade Spec Kit workflow](.github/workflows/speckit-upgrade.yml) checks for the
+latest stable release every Monday at 14:00 UTC. It upgrades installed integrations and
+extensions, then opens or refreshes `automation/speckit-upgrade` with changes to
+`.specify/`, `.agents/skills/`, and `.claude/skills/`. It re-renders presets and
+extensions for every installed integration, so `.agents/skills` keeps the project
+presets without the manual Codex refresh. Project behavior belongs in presets, workflow
+overlays, the constitution, and repository guidance rather than direct edits to
+upstream-managed command or template files. The upgrade can regenerate effective skills
+while retaining those project-owned layers. Review the composed diff before merging. Use
+**Run workflow** in GitHub Actions to check immediately or supply a specific release tag
+through `specify_version`.
 
 ## Durable requirements
 
