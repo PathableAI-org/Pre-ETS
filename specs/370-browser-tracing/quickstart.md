@@ -267,3 +267,47 @@ Each slice appends one block in this form:
 - T-008: present once for the header run, absent for the unset run, and carrying no header data.
 - Forbidden data: none from the slice. #377 (resource detectors) is pre-existing.
 - Cleanup: keys remaining under `preets:verify:<run>:` = 0 (all five runs).
+
+### export — 2f9e95133d201767cdec7e1fd1136c26d291609c, 2026-11-12, runs 95ee0233-5733-43f1-9e33-1e0f2e5a87c5 (A, on, synthetic server headers), 9faec4db-1ea6-4355-9adf-25e47a0d8a27 (B, on, concurrent), 93358de1-b9a6-4c27-98eb-ebe5c15f5d90 (C, switch unset), c48cf62c-905c-45a2-85cb-b4031e1ff0c2 (D, OTEL off, switch true), 1c108a5f-affa-40a7-a1c5-afb40757db76 (E, both off), 76a83fdf-8d0b-4127-bc16-e894ddee6211 (M, `maybe`)
+
+- Collector image: sha256:4c8056c9…. Ports: 3481–3486. Switch settings: as listed per run; `maybe` refused startup.
+  The `docs/docker-compose.md` preflight check returned 204 with the origin allowed. Run window 2026-11-12T00:23:40Z to
+  00:32:30Z.
+- Session source: prepared-session fixture (tenant `springfield`, subject `preets-verify-<run>`), a fresh record per
+  browser context. Fixture-backed results cite L-fixture: they establish nothing about authentication, the sign-in
+  callback, or session issuance.
+- V-002: established. Step 5. After the marker, `traceparent` was on `POST /session/activity` (77916d13…), the Server
+  Action `POST /coordination/roster` (9cd3d83f…), `GET /session/status` (d34b8c7c…), the RSC
+  `GET /coordination/participant?_rsc` from "Open participant page in place" (4bb05fe3…), and `POST /auth/logout`
+  (f40d32ba…). In each, the server span's parent is the browser fetch span. Limitation: L-fixture.
+- V-003: established. Step 5. The 9 cross-origin requests of the no-cookie sign-in chain (`/auth/login`, then the
+  identity provider) and all 12 collector requests carried no `traceparent`. The export half is fixture-backed.
+  Limitation: L-fixture.
+- V-004: established. Step 6. The T-001 query returned 7 `documentLoad` traces under server render spans. Injected
+  trace 6c45c9aa…: `documentLoad` 3e98439a… is a child of the meta's `render route (app) /coordination/roster` span
+  48c82c57…. T-002 held in 8 of 8 traces. Query caveat: `>>` omits traces whose root is a never-exported harness
+  parent; fetch those traces directly. Limitation: L-fixture.
+- V-005: established (option B). Step 6. Back made a new server render (trace 18dd67f7…) whose `documentLoad`
+  d9da10b5… is in that trace. `{ RUN && name = "documentLoad" } | count() > 1` returned no trace. Headless Chromium
+  did not restore from bfcache, so the guard's `pageshow persisted` path was not exercised. Limitation: L-fixture.
+- V-006: established. Step 4. A and B ran concurrently. A's run filter returned none of B's traces, and B's records
+  carried `pre-ets-frontend`, the SHA, and B's instance ID. Limitation: L-fixture.
+- V-008: established. Step 2 (full). C, D, and E each loaded the roster and logged out: 0 metas, probe not
+  initialized, 0 SDK chunk requests, 0 collector requests, 0 `traceparent`, and 0 webjs records after 1 minute. The
+  on control A loaded the chunk and set the marker. Hand-run check. Limitation: L-fixture.
+- V-010: established. Step 4. All 12 export requests (6 POST, 6 OPTIONS) went to `127.0.0.1:4318/v1/traces`, none to
+  the app origin, and none carried `authorization` or `cookie`, with server collector headers configured on A.
+  Limitation: L-fixture.
+- V-011: established. Step 4. Every OPTIONS returned 204 and every POST 200, with the app origin allowed. Records are
+  in Tempo.
+- V-012: established. Step 9. A with exports aborted matched C (switch unset) in visible outcomes, focus (Log out, then
+  the signed-out heading), and every protected-request status. Neither run had page errors. The only difference was
+  Chromium's console log of the aborted exports. Hand-run check. Limitation: L-fixture.
+- V-016 (part, automatic records): established. Step 8. With the probe typed and carried in a query string and
+  fragment, every webjs span of six journey traces had only allow-listed names, attributes, and resource values,
+  event names without attributes, no status description, and `url.path` without query or fragment. Limitation:
+  L-fixture.
+- T-001, T-002, T-003: present and usable (T-001 query caveat above; T-003 `network_error` not exercised).
+- Forbidden data: none from the slice. Pre-existing, not this slice: #377, and the probe query string in the
+  existing server spans' `url.query` and `http.target` (trace 6bdc455f…), referred for a human decision.
+- Cleanup: keys remaining under `preets:verify:<run>:` = 0 (all six runs).
