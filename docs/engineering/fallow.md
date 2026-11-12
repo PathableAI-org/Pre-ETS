@@ -148,9 +148,9 @@ The [frontend guide](../../packages/frontend/AGENTS.md) owns the feature layout 
 zones have real files. Do not add empty directories or placeholder modules to
 silence it.
 
-Files outside every zone are unrestricted for imports. `src/instrumentation.ts` and
-`src/proxy.ts` are the configured `allowUnmatched` files: they have no zone, and their imports are
-unrestricted. `fallow guard` marks other unmatched paths with
+Files outside every zone are unrestricted for imports. `src/instrumentation.ts`,
+`src/instrumentation-client.ts`, and `src/proxy.ts` are the configured `allowUnmatched` files: Next
+requires them at the `src/` root, they have no zone, and their imports are unrestricted. `fallow guard` marks other unmatched paths with
 `coverage_required`. A reachable file in that state is a boundary-coverage error. Frontend tests
 sit outside the zones; `fallow architecture --boundaries` does not currently report them, so
 leave tests where they are. Boundary violations and boundary-coverage gaps are error severity.
