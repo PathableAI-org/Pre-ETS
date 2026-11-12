@@ -378,3 +378,52 @@ since 2f9e951. A run requested at 0f49660 was stopped unreported when it was sup
 - Forbidden data: none from the slice. Loki had 0 hits for the probe, the secret marker, the token, or the cookie.
   #377 and #381 are pre-existing.
 - Cleanup: keys remaining under `preets:verify:<run>:` = 0 (all runs).
+
+### facts — fbcfee176d0c8ce29109960082474cf039ac11c4, 2026-11-12, runs f4b4e41d-9531-4223-95eb-b803bb18f68e (A, on, synthetic server headers and secret map), 8dc91cd0-64a3-420c-b25a-bb67735c4e74 (B, on, concurrent), d4b6a640-fb41-4529-a8d5-da1007ae5b46 (C, switch unset), 5b2c4050-e380-459a-bae9-3dd8dc4cb44a (D, fresh clone from the docs)
+
+This block replaces the round-1 report at a73e1f3, which was not recorded. That run established V-001 and V-013–V-016
+and found V-017 violated: the documented `start` example lacked a build step. 8a09348 added that step, and fbcfee1
+merged export 1b2b896, which carries config c395225 and the rewritten step 7. Facts code is unchanged since a73e1f3.
+The SDK chunk was located by its `v1/traces` literal.
+
+- Ports: 3491–3493 and 3000 (D). Run window 2026-11-12T10:42:04Z to 10:49:03Z. No harness `traceparent` injection;
+  every sampled step waited for the `started` marker.
+- Session source: prepared-session fixture (tenant `springfield`, subject `preets-verify-<run>`). Fixture-backed
+  results cite L-fixture: they establish nothing about authentication, the sign-in callback, or session issuance.
+- V-001: established. Step 4 on A. (a) Server Action 7524a67a…: `Interaction.submit` > `POST` > server. (b) The
+  guard-cancelled submit 9ed46256… has no request child; its replay 74afb0e0… is submit > `POST` > server.
+  (c) e49b28ba…, the same shape. (c2) and (c3), the overlap probes: 2 and 3 submits counted with one request held.
+  Every submit span stands alone, and the POSTs (cce2dfba…, 5228cf04…, ea434753…, 5aa43926…) are roots, as PL-2
+  states. (d) RSC d77e83d3…: `Router.transition` (`push`, `/coordination/participant`) > `GET` > server.
+  (e) Logout dcde89de…: `TabCoordination.transition` `content_shown → logging_out` > `POST /auth/logout` > server >>
+  `logout`. B's traces stayed out of A's run filter. Limitation: L-fixture.
+- V-013: established. Step 7 as rewritten: other-session hint in B, then `visibilitychange`, with no clock control.
+  B went `content_shown → content_concealed` (a3d08bfd…), and the resume chain concealed > `/session/status` > server
+  is in that trace. Then B went `content_concealed → content_shown` (50028b20…). A went `content_shown → logging_out`
+  (8b10d2ef…) and then `logging_out → signed_out`, and B went `content_shown → signed_out`. Span start order matches
+  the order Playwright observed, and every value is in the closed set. Limitation: L-fixture.
+- V-014: established. Step 7. Each send matched its receipt in the other tab by kind and `preets.tab.message.id`:
+  `renewed` 4ffb3f77…, `logout_started` d62401cb… (a child of the `logging_out` transition), and `logged_out`
+  d4a137df…. Limitation: L-fixture.
+- V-015: established. Step 7. `Focus.move` in order: Goal entered (user), Goal left (user), Goal entered (application,
+  from "Focus later"), Goal left (user), `logout_control` entered (user), `logout_control` left (user), and
+  `signed_out_heading` entered (application). This matches Playwright's focus order. Limitation: L-fixture.
+- V-016: established in full. Step 8 with probe `zqprobe8b2bec3c` typed, carried in a query string and fragment, and
+  sent through cross-tab messages and logout. Every webjs attribute value in A is closed-set, and `url.path` holds
+  only plain paths. A run-wide negative query found no leak keys, no error status, no non-UUID message ID, and no span
+  name outside the contract. Limitation: L-fixture.
+- V-017: established. Step 10 in a fresh clone, following only `docs/observability.md` and `docs/docker-compose.md`.
+  The documented build exited 0 and the documented `start` ran. The marker was set, and export from `localhost:3000`
+  returned 200 with that origin allowed. The T-001 query returned 7998ac85…, the trace the page meta names. The
+  fixture session is a step the documentation did not supply. Limitation: L-fixture.
+- Done-when (#368):
+  1. Pass: one trace holds the UI-transition span and the server span it caused, for logout (dcde89de…), Server
+     Action (7524a67a…), and RSC (d77e83d3…).
+  2. Pass: no forbidden data in browser attributes (V-016).
+  3. Pass on C (switch unset): no marker, no OTel globals or metas, 0 SDK chunk requests, 0 collector requests, and
+     0 `traceparent`.
+- T-004, T-005, T-006, T-007, T-009, T-010, T-011: present and usable. Step 7b: `BrowserTracing.buffer` recorded
+  `overflowed` with `preets.tracing.dropped_count` 1748, and the marker appeared afterwards.
+- Forbidden data: none from the slice. Loki had 0 hits for the probe, the secret marker, the token, or the cookie.
+  #377 and #381 are pre-existing.
+- Cleanup: keys remaining under `preets:verify:<run>:` = 0 (runs A–D); the fresh clone is removed.
