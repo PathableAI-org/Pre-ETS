@@ -24,27 +24,19 @@ const queryFreeAttributes = (attributes: Attributes): Attributes => {
   return rest
 }
 
+/**
+ * A view of `span` that overrides only `name` and `attributes`; every other field, including any the SDK adds later,
+ * reads through to the span. A spread copy would lose the SDK span's prototype members (`spanContext()`, `duration`,
+ * `ended`, and the dropped counts).
+ */
 const queryFreeSpan = (span: ReadableSpan): ReadableSpan => {
-  const copy: ReadableSpan = {
+  const overrides: Partial<ReadableSpan> = {
     attributes: queryFreeAttributes(span.attributes),
-    droppedAttributesCount: span.droppedAttributesCount,
-    droppedEventsCount: span.droppedEventsCount,
-    droppedLinksCount: span.droppedLinksCount,
-    duration: span.duration,
-    ended: span.ended,
-    endTime: span.endTime,
-    events: span.events,
-    instrumentationScope: span.instrumentationScope,
-    kind: span.kind,
-    links: span.links,
-    name: withoutQuery(span.name),
-    resource: span.resource,
-    spanContext: () => span.spanContext(),
-    startTime: span.startTime,
-    status: span.status
+    name: withoutQuery(span.name)
   }
-  // ReadableSpan declares `parentSpanContext?: SpanContext` without `| undefined`, so a root span omits the key.
-  return span.parentSpanContext === undefined ? copy : { ...copy, parentSpanContext: span.parentSpanContext }
+  return new Proxy(span, {
+    get: (target, key): unknown => Reflect.get(Reflect.has(overrides, key) ? overrides : target, key)
+  })
 }
 
 /**
