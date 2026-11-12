@@ -498,16 +498,15 @@ The repository includes Spec Kit 1.2.3 with one root workflow in `.specify/`.
 The project constitution is [`.specify/memory/constitution.md`](.specify/memory/constitution.md).
 Read it before specifying, planning, implementing, or reviewing a feature.
 
-Core skills are installed for Codex, the default integration, in `.agents/skills` and
-for Claude Code in `.claude/skills`. The installed assess, critique, and Git extensions
-also provide skills; `.specify/extensions.yml` records their workflow hooks. Spec Kit
-registers presets and extensions only for the active integration, so after changing
-them or upgrading, refresh the Claude Code copies with `specify integration use claude`
-followed by `specify integration use codex`, then review the diff: in Spec Kit 1.3.2 that
-round trip also clears the executable bit on `.specify/scripts/bash/*.sh` and re-renders
-the Codex critique skill. Repository-owned skills live only in `.agents/skills`; each
-has a relative symlink in `.claude/skills` so Claude Code can load it. Add the symlink
-when adding a repository-owned skill.
+Core skills are installed for Claude Code, the default integration, in `.claude/skills` and
+for Codex in `.agents/skills`. The installed assess, critique, and Git extensions also
+provide skills; `.specify/extensions.yml` records their workflow hooks. Spec Kit
+registers presets and extensions only for the default integration, so after changing
+them, refresh the Codex copies with `specify integration use codex` followed by
+`specify integration use claude`, then review the diff: in Spec Kit 1.3.2 that round
+trip also clears the executable bit on `.specify/scripts/bash/*.sh`. Repository-owned
+skills live only in `.agents/skills`; each has a relative symlink in `.claude/skills` so
+Claude Code can load it. Add the symlink when adding a repository-owned skill.
 The closed-vocabulary preset extends the analysis command to report
 inconsistent enumerations across feature artifacts.
 
@@ -543,9 +542,11 @@ caches out of version control.
 The [Upgrade Spec Kit workflow](.github/workflows/speckit-upgrade.yml) checks for
 the latest stable release every Monday at 14:00 UTC. It upgrades installed
 integrations and extensions, then opens or refreshes `automation/speckit-upgrade`
-with changes to `.specify/` and `.agents/skills/`. Project behavior belongs in presets,
-workflow overlays, the constitution, and repository guidance rather than direct edits
-to upstream-managed command or template files. The upgrade can regenerate effective
+with changes to `.specify/`, `.agents/skills/`, and `.claude/skills/`. Because it
+re-renders presets and extensions only for Claude Code, run the Codex refresh above on
+that branch before merging so `.agents/skills` keeps the project presets. Project
+behavior belongs in presets, workflow overlays, the constitution, and repository
+guidance rather than direct edits to upstream-managed command or template files. The upgrade can regenerate effective
 skills while retaining those project-owned layers. Review the composed diff before
 merging. Use **Run workflow** in GitHub Actions to check immediately or supply a
 specific release tag through `specify_version`.

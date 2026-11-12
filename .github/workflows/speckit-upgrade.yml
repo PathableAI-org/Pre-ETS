@@ -25,3 +25,4 @@ jobs:
       add_paths: |
         .specify/
         .agents/skills/
+        .claude/skills/

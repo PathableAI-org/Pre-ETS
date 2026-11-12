@@ -9,6 +9,7 @@ user-invocable: true
 disable-model-invocation: false
 ---
 
+
 ## User Input
 
 ```text
@@ -101,10 +102,10 @@ Run `.specify/scripts/bash/check-prerequisites.sh --json --require-spec --requir
 - PLAN = FEATURE_DIR/plan.md
 - TASKS = FEATURE_DIR/tasks.md
 - CONSTITUTION = `.specify/memory/constitution.md` (if present)
-  If `spec.md`, `plan.md`, or `tasks.md` is missing, STOP with a clear, actionable message naming the
-  prerequisite command to run (`/speckit-specify` for a missing spec, `/speckit-plan` for a missing plan,
-  `/speckit-tasks` for missing tasks). Do not produce partial output.
-  For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot' (or double-quote if possible: "I'm Groot").
+If `spec.md`, `plan.md`, or `tasks.md` is missing, STOP with a clear, actionable message naming the
+prerequisite command to run (`/speckit-specify` for a missing spec, `/speckit-plan` for a missing plan,
+`/speckit-tasks` for missing tasks). Do not produce partial output.
+For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot' (or double-quote if possible: "I'm Groot").
 
 ### 2. Load Artifacts (Progressive Disclosure)
 
@@ -191,8 +192,8 @@ Before appending anything, output a compact, severity-graded summary (no file wr
 
 ## Convergence Findings
 
-| ID | Gap Type | Severity | Source | Evidence                                                                          | Remaining Work              |
-| -- | -------- | -------- | ------ | --------------------------------------------------------------------------------- | --------------------------- |
+| ID | Gap Type | Severity | Source | Evidence | Remaining Work |
+|----|----------|----------|--------|----------|----------------|
 | F1 | missing  | HIGH     | FR-008 | Example: no append-only guard detected in path/to/module.py when writing tasks.md | Add append-only enforcement |
 
 **Summary metrics:**
