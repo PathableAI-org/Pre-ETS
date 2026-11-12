@@ -146,6 +146,11 @@ claim ID, result, cleanup, and limitations, as the verification harness requires
 - If no provider fixture can produce missing or stale evidence, V-005 and V-006 at the application boundary rest on
   module tests, and V-017 uses the same fixture at the callback boundary.
 - Pixels painted before page scripts run on history restoration are outside application control (B5 limitation).
+- V-002, V-010, and V-011 hold only when the previous provider authentication precedes the login by more than the
+  window's lower tolerance or the provider's timestamp resolution. A provider authentication no more than 30 seconds
+  before the transaction's start is inside the window and may be admitted without a new provider step, including the
+  local provider's same-second case (spec edge cases, FR-007). Journeys wait past that resolution before each entry
+  so the provider step is observable.
 - Assistive-technology observation of explicit Log in belongs to #155's and #157's journeys; this feature observes
   keyboard activation only.
 

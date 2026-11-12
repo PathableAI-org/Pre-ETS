@@ -169,6 +169,12 @@ and a new session is established.
 
 - The provider's clock and the application's clock differ: only the fixed 30-second tolerance on each bound absorbs
   the difference. A login whose authentication time falls outside it is denied even if the person did authenticate.
+- The provider authenticated the person shortly before a new login starts: an authentication event no more than 30
+  seconds before the transaction's start is inside the window, so a session may be established without a new
+  provider step. This applies whether the provider skips the step legitimately (the local provider records
+  authentication times in whole seconds and treats a request within the same second as already satisfied) or because
+  it ignores the fresh-authentication request. It is the accepted cost of the clock tolerance in the 2026-11-09 B6
+  decision, and it still requires a real authentication event at the provider within that interval.
 - The user takes longer than the login transaction allows at the provider: the existing transaction lifetime still
   applies, and the authentication time is compared with the consumed transaction's start.
 - Two tabs each start a login without a valid session: each completed login must pass freshness on its own; neither
@@ -200,6 +206,9 @@ and a new session is established.
   session.
 - **FR-007**: A provider or broker that cannot supply fresh authentication-time evidence MUST fail closed through
   FR-004 or FR-005, with no per-tenant opt-out, re-prompt fallback, or substitute evidence from provider metadata.
+  The window's lower tolerance is the accepted exception: a provider that skips the requested authentication step is
+  still admitted when its last authentication event lies no more than 30 seconds before the login transaction's start,
+  because that event is inside the window FR-003 defines.
 - **FR-008**: The application MUST evaluate the authentication time issued by the tenant's configured issuer and MUST
   NOT accept a redirect, a new application session identifier, or a re-prompt request alone as freshness evidence.
 - **FR-009**: The application MUST NOT require a particular authentication mechanism, such as a password, from the
@@ -233,8 +242,9 @@ and a new session is established.
 
 ### Measurable Outcomes
 
-- **SC-001**: In every exercised first-time visit and post-expiration entry with an existing provider SSO session, the
-  provider performs an authentication step before a session is established.
+- **SC-001**: In every exercised first-time visit and post-expiration entry with an existing provider SSO session whose
+  last authentication precedes the login by more than the provider's timestamp resolution, the provider performs an
+  authentication step before a session is established.
 - **SC-002**: Every exercised login whose authentication time lies inside the window establishes a session; every
   exercised login with missing evidence or an authentication time outside either bound establishes none, including
   values just inside and just outside each bound.
