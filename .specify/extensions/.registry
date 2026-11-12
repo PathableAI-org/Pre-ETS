@@ -13,6 +13,9 @@
         ],
         "codex": [
           "speckit.critique.run"
+        ],
+        "claude": [
+          "speckit.critique.run"
         ]
       },
       "registered_skills": [
@@ -36,6 +39,13 @@
           "speckit.assess.define",
           "speckit.assess.shape",
           "speckit.assess.decide"
+        ],
+        "claude": [
+          "speckit.assess.intake",
+          "speckit.assess.research",
+          "speckit.assess.define",
+          "speckit.assess.shape",
+          "speckit.assess.decide"
         ]
       },
       "registered_skills": [],
@@ -52,6 +62,13 @@
       "priority": 10,
       "registered_commands": {
         "codex": [
+          "speckit.git.feature",
+          "speckit.git.validate",
+          "speckit.git.remote",
+          "speckit.git.initialize",
+          "speckit.git.commit"
+        ],
+        "claude": [
           "speckit.git.feature",
           "speckit.git.validate",
           "speckit.git.remote",

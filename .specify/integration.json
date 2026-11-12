@@ -3,7 +3,8 @@
   "integration_state_schema": 1,
   "installed_integrations": [
     "cursor-agent",
-    "codex"
+    "codex",
+    "claude"
   ],
   "integration_settings": {
     "cursor-agent": {
@@ -11,6 +12,10 @@
       "invoke_separator": "-"
     },
     "codex": {
+      "script": "sh",
+      "invoke_separator": "-"
+    },
+    "claude": {
       "script": "sh",
       "invoke_separator": "-"
     }

@@ -498,9 +498,16 @@ The repository includes Spec Kit 1.2.3 with one root workflow in `.specify/`.
 The project constitution is [`.specify/memory/constitution.md`](.specify/memory/constitution.md).
 Read it before specifying, planning, implementing, or reviewing a feature.
 
-Core skills are installed for Codex in `.agents/skills`. The installed assess,
-critique, and Git extensions also provide skills; `.specify/extensions.yml` records
-their workflow hooks.
+Core skills are installed for Codex, the default integration, in `.agents/skills` and
+for Claude Code in `.claude/skills`. The installed assess, critique, and Git extensions
+also provide skills; `.specify/extensions.yml` records their workflow hooks. Spec Kit
+registers presets and extensions only for the active integration, so after changing
+them or upgrading, refresh the Claude Code copies with `specify integration use claude`
+followed by `specify integration use codex`, then review the diff: in Spec Kit 1.3.2 that
+round trip also clears the executable bit on `.specify/scripts/bash/*.sh` and re-renders
+the Codex critique skill. Repository-owned skills live only in `.agents/skills`; each
+has a relative symlink in `.claude/skills` so Claude Code can load it. Add the symlink
+when adding a repository-owned skill.
 The closed-vocabulary preset extends the analysis command to report
 inconsistent enumerations across feature artifacts.
 
