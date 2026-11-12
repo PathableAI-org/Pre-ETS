@@ -498,7 +498,7 @@ The repository includes Spec Kit 1.2.3 with one root workflow in `.specify/`.
 The project constitution is [`.specify/memory/constitution.md`](.specify/memory/constitution.md).
 Read it before specifying, planning, implementing, or reviewing a feature.
 
-Core skills are installed for Codex in `.agents/skills`. The installed assess, BDD,
+Core skills are installed for Codex in `.agents/skills`. The installed assess,
 critique, and Git extensions also provide skills; `.specify/extensions.yml` records
 their workflow hooks.
 The closed-vocabulary preset extends the analysis command to report
@@ -525,8 +525,8 @@ using exactly one authorized delivery issue. Specification produces `spec.md` an
 implementation slices, and a planned `quickstart.md`. A verification agent checks
 each slice against the running application, as described in the
 [verification harness](docs/engineering/verification-harness.md). The constitution
-defines the required behavioral verification; installing the BDD extension does
-not make Gherkin mandatory for every change.
+defines the required behavioral verification; Gherkin is not mandatory for every
+change, and requirements-backed BDD uses the repository-local `requirements-bdd-*` skills.
 
 Commit shared scripts, templates, preset sources and registry, CLI-generated effective
 skills, workflow overlays, extension configuration, and the constitution. Keep the

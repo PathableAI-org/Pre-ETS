@@ -20,31 +20,6 @@
       ],
       "installed_at": "2026-09-13T10:30:41.886611+00:00"
     },
-    "bdd": {
-      "version": "1.0.3",
-      "source": "local",
-      "manifest_hash": "sha256:9092d61e8e6ebb0b68f8ee3a27aa81f664bc4e8bae045a828a8f2bfa0eddeb2f",
-      "enabled": true,
-      "priority": 10,
-      "registered_commands": {
-        "cursor-agent": [
-          "speckit.bdd.scenarios",
-          "speckit.bdd.scaffold",
-          "speckit.bdd.verify"
-        ],
-        "codex": [
-          "speckit.bdd.scenarios",
-          "speckit.bdd.scaffold",
-          "speckit.bdd.verify"
-        ]
-      },
-      "registered_skills": [
-        "speckit-bdd-scenarios",
-        "speckit-bdd-scaffold",
-        "speckit-bdd-verify"
-      ],
-      "installed_at": "2026-09-13T10:30:49.093336+00:00"
-    },
     "assess": {
       "version": "1.0.2",
       "source": {
