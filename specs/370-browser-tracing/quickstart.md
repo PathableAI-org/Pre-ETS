@@ -357,6 +357,9 @@ Each slice appends one block in this form:
 
 ### export — 2f9e95133d201767cdec7e1fd1136c26d291609c, 2026-11-12, runs 95ee0233-5733-43f1-9e33-1e0f2e5a87c5 (A, on, synthetic server headers), 9faec4db-1ea6-4355-9adf-25e47a0d8a27 (B, on, concurrent), 93358de1-b9a6-4c27-98eb-ebe5c15f5d90 (C, switch unset), c48cf62c-905c-45a2-85cb-b4031e1ff0c2 (D, OTEL off, switch true), 1c108a5f-affa-40a7-a1c5-afb40757db76 (E, both off), 76a83fdf-8d0b-4127-bc16-e894ddee6211 (M, `maybe`)
 
+**Stale.** Superseded by the 1b2b896 run below, and no longer on the branch after the rebase onto `main` at
+`cd77cef`.
+
 - Collector image: sha256:4c8056c9…. Ports: 3481–3486. Switch settings: as listed per run; `maybe` refused startup.
   The `docs/docker-compose.md` preflight check returned 204 with the origin allowed. Run window 2026-11-12T00:23:40Z to
   00:32:30Z.
@@ -398,7 +401,11 @@ Each slice appends one block in this form:
 - Forbidden data: none from the slice. Pre-existing, not this slice: #377, and the probe query string in the
   existing server spans' `url.query` and `http.target` (trace 6bdc455f…), referred for a human decision.
 - Cleanup: keys remaining under `preets:verify:<run>:` = 0 (all six runs).
+
 ### export — 1b2b896ea15616814b0e26dfbd5f82238296fa29, 2026-11-12, runs 88633591-9632-45ec-ac5e-81be88f03f69 (A, on, synthetic server headers and secret map), 2df68789-09d8-4e72-a004-55c19e1793ac (B, on, concurrent), 49e91eb0-070c-45bb-b2de-1196521f31aa (C, switch unset), 82025719-05f7-4ac1-9a12-f547e311e627 (D, OTEL off, switch true), 454dc28c-c18d-46dc-9d9c-b3fb8b3ffee9 (E, both off), cf0d46c0-093b-4003-ad3b-a530ba826aaa (M, `maybe`)
+
+**Stale.** Recorded before the stack was rebased onto `main` at `cd77cef`, so this revision is no longer on the
+branch. A run at 6176e96 was requested and is superseded unreported. A fresh run at the rebased head supersedes it.
 
 This block supersedes the 2f9e951 `export` block above, which is now stale: the slice was rebased onto the config
 review fix c395225, and the step-7 correction (spec 5da5ad5, plan 43a9c7b) was merged. Export-owned files are unchanged
