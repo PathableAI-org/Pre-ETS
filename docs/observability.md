@@ -277,7 +277,7 @@ enabled, a valid `OTEL_EXPORTER_OTLP_ENDPOINT`, and `OTEL_SERVICE_NAME`.
 request for trace/log batch export and 60 seconds for periodic metrics.
 
 The image and digest are the `otel-lgtm` service in `compose.yaml`
-(`grafana/otel-lgtm:0.37.0`). That image includes Tempo, Loki, and Prometheus.
+(`grafana/otel-lgtm`). That image includes Tempo, Loki, and Prometheus.
 Enabled OTEL exports all three signals. Empty Loki or Prometheus results are
 not evidence that the application logged nothing or emitted no metrics; check
 configuration, traffic, export timing, and collector delivery.

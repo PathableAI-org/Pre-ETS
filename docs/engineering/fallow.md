@@ -1,7 +1,7 @@
 # Fallow during development
 
 Use Fallow to understand architecture, check a change while it is still cheap to revise, and
-finish with the repository gates. The commands below match the installed Fallow 3.35.0 CLI.
+finish with the repository gates. The commands below match the installed Fallow 3.42.0 CLI.
 Prefer the pnpm scripts when they perform the same check.
 
 Root [`.fallowrc.json`](../../.fallowrc.json) ignores `packages/**`. Run a workspace command with
