@@ -191,7 +191,8 @@ events, links, and status descriptions are removed. `resourceFetch` and
 `CORS Preflight` spans are dropped. The resource carries only `service.name`,
 `service.version`, `service.instance.id` (when rendered), and the SDK's
 `telemetry.sdk.*` attributes; `telemetry.sdk.language` is `webjs` for browser
-records and `nodejs` for server records.
+records and `nodejs` for server records. Server records carry the attributes in
+[Server resource attributes](#server-resource-attributes).
 
 | Record                                 | Emitted by                    | Attributes                                                                                                        | Parent                                                                          |
 | -------------------------------------- | ----------------------------- | ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
@@ -313,6 +314,27 @@ Next.js spans, and Effect spans, so the OIDC callback's `code` and `state` are
 never exported. Paths and route templates stay. Server logs and metrics carry
 no request URL. Confirm the absence of query values and the required attributes
 with a manual Tempo sample review.
+
+### Server resource attributes
+
+Every server span, log, and metric carries only these resource attributes:
+
+- `service.name`, from `OTEL_SERVICE_NAME`.
+- `service.version`. Effect spans, logs, and metrics take it from
+  `OTEL_SERVICE_VERSION`. Node SDK signals (HTTP, Redis, and Next.js spans,
+  and Node runtime metrics) take it only from a `service.version` entry in
+  `OTEL_RESOURCE_ATTRIBUTES`, which is why verification sets both.
+- Every `OTEL_RESOURCE_ATTRIBUTES` entry, including `service.instance.id`.
+  Entries are exported as given, so never put personal data or secrets there.
+- `telemetry.sdk.language` (`nodejs`), `telemetry.sdk.name` (`opentelemetry`
+  for Node SDK signals, `@effect/opentelemetry` for Effect signals), and
+  `telemetry.sdk.version`.
+
+The Node SDK runs only its environment resource detector. Host, OS, and
+process attributes such as `host.name`, `host.id`, `process.owner`,
+`process.pid`, `process.command`, `process.command_args`, and
+`process.executable.path` are never exported, and `OTEL_NODE_RESOURCE_DETECTORS`
+has no effect.
 
 ## Verification telemetry conventions
 
@@ -519,6 +541,9 @@ UIDs are `tempo`, `loki`, and `prometheus`.
    `{ resource.service.name = "pre-ets-frontend" }`, then `get_tempo_trace` for
    a returned trace ID. Check that no span carries `url.query` or a query string
    in `url.full`, `http.url`, `http.target`, `next.span_name`, or its name; a query value there is
+   forbidden data. Check that the trace's server resources carry no `host.*`,
+   `os.*`, or `process.*` attribute (see
+   [Server resource attributes](#server-resource-attributes)); one there is
    forbidden data. Do not copy Authorization, Cookie, query values, or collector
    headers into the chat.
 2. Logs: with OTEL enabled, use `query_loki_logs` for exported Effect logs.
@@ -526,7 +551,9 @@ UIDs are `tempo`, `loki`, and `prometheus`.
    not evidence that the app logged nothing.
 3. Metrics: with OTEL enabled, use `query_prometheus` for Effect and Node
    runtime metrics. An empty result alone is not evidence that the app emitted
-   none; allow for the 60-second reader interval.
+   none; allow for the 60-second reader interval. Resource attributes appear as
+   `target_info` labels; check that none is a `host_*`, `os_*`, or `process_*`
+   label.
 
 ### Human verification checklist (SC-006)
 
