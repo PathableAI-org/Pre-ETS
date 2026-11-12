@@ -1,14 +1,55 @@
 # Repository guidance
 
-- Use pnpm from the repository root; keep one root lockfile and private ESM
-  workspaces under `packages/`, named in the `@pathableai` npm scope.
-- Frontend and backend are separate processes. Keep implementation in its owning
-  workspace; introduce shared contracts only when actual requirements need them.
-- When creating or editing UI that uses `@pathableai/react`, locate the
-  installed `@pathableai/react` package and read
-  `agent-guidance/pathable-react/SKILL.md` from that package before making
-  changes. Read only the linked reference relevant to the task.
-- Apply the shared strict TypeScript settings to all code, including non-Effect code.
+Start here. Before a task in the first column below, read its owner. Read the third
+column only when it applies. Each kind of decision has one owning document; other
+documents point to it rather than restating it. The
+[constitution](.specify/memory/constitution.md) owns the principles and governs when
+documents conflict. Cursor reads this file too, so the repository keeps no separate
+Cursor rules.
+
+## Where guidance lives
+
+| Task or decision                                                       | Owner: read before the task                                                                              | Read only when relevant                                                                                                |
+| ---------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Principles, amendments, conflicts between documents                    | [Constitution](.specify/memory/constitution.md)                                                          | [Development Workflow](.specify/memory/constitution.md#development-workflow-and-review) during Spec Kit phases         |
+| Coding conventions, module boundaries, suppressions, final checks      | This file                                                                                                | [README](README.md) for setup and operational commands                                                                 |
+| Changing one workspace                                                 | That workspace's `AGENTS.md` (below)                                                                     |                                                                                                                        |
+| Specifying, planning, or implementing a delivery-issue feature         | [Git and pull request workflow](docs/engineering/git-workflow.md); the `speckit-stack` skill             | [Artifacts](docs/engineering/git-workflow.md#artifacts) before changing anything under `specs/`                        |
+| Planning, implementing, or verifying a feature                         | [Verification harness](docs/engineering/verification-harness.md)                                         | The `verification-harness` skill when acting as the verifier                                                           |
+| Designing or changing tests                                            | [Testing as evidence](docs/engineering/testing/README.md)                                                | [Property-based testing](docs/engineering/testing/property-based-testing.md) for property tests                        |
+| Authoring or reviewing requirements BDD, steps, or helpers             | [Requirements-backed BDD](docs/engineering/testing/requirements-bdd.md); the `requirements-bdd-*` skills | [BDD commands](features/README.md) to run scenarios                                                                    |
+| Authoring or reviewing a requirement                                   | [Durable requirements](docs/requirements/README.md)                                                      | The `requirements-author` and `requirements-review` skills                                                             |
+| Delivery planning and issue publication                                | [Delivery planning](docs/delivery/README.md)                                                             | The `delivery-plan`, `delivery-review`, and `delivery-issues` skills                                                   |
+| Effect code in an Effect workspace                                     | [Effect guidance](docs/engineering/effect-guidance.md) and the workspace `AGENTS.md`                     | Only the local Effect v4 `LLMS.md` topics the task needs                                                               |
+| New modules, imports, source layout, or app structure; Fallow findings | [Fallow during development](docs/engineering/fallow.md)                                                  | [Module boundaries](#module-boundaries), the rule Fallow does not enforce                                              |
+| Telemetry runtime, local Grafana, Grafana MCP                          | [Observability](docs/observability.md)                                                                   | [Verification telemetry conventions](docs/observability.md#verification-telemetry-conventions) for telemetry contracts |
+| UI that uses `@pathableai/react`                                       | The installed package's `agent-guidance/pathable-react/SKILL.md`                                         | Only the linked reference relevant to the task                                                                         |
+| Tenancy, authentication, sessions, domain persistence, local services  | That area's strategy (below)                                                                             |                                                                                                                        |
+| Copilot pull request review                                            | The lenses in [`.github/instructions/`](.github/instructions/)                                           | Each names what to check and links its owner                                                                           |
+
+Workspace guides: [frontend](packages/frontend/AGENTS.md),
+[frontend-services](packages/frontend-services/AGENTS.md),
+[backend](packages/backend/AGENTS.md), and [domain](packages/domain/AGENTS.md); the
+Effect workspaces are the last three and any future workspace extending
+`tsconfig.effect.json`. Strategies: [multi-tenancy](docs/multi-tenancy.md),
+[authentication](docs/authentication.md), [session state](docs/session-state.md),
+[domain persistence](docs/domain-persistence.md), and
+[local services](docs/docker-compose.md). The `@pathableai/react` rule comes from
+[Principle IV](.specify/memory/constitution.md#iv-accessible-server-rendered-ui). Use
+the named skills for those workflows.
+
+An agent implementing one feature slice therefore reads this file, the workspace
+guide, the Git workflow, the verification harness, Testing as evidence, and the owner
+for the kind of code it changes.
+
+## Coding conventions
+
+- Repository layout, separate frontend and backend processes, and shared contracts
+  follow [Architecture Constraints](.specify/memory/constitution.md#architecture-constraints)
+  and [Principle II](.specify/memory/constitution.md#ii-explicit-ownership-and-authoritative-data).
+  Keep implementation in its owning workspace.
+- Strict TypeScript applies to all code, including non-Effect code
+  ([Principle VI](.specify/memory/constitution.md#vi-simplicity-and-verifiable-quality)).
   `exactOptionalPropertyTypes` is on, so type an optional property you own as
   `readonly x?: T | undefined` and pass a possibly-undefined value directly. Do not
   spread `x === undefined ? {} : { x }` or branch to build two object shapes; lint
@@ -16,6 +57,9 @@
   `undefined`, and say why in a comment.
 - Let TypeScript infer local types. Annotate exported signatures and values whose
   inferred type would be wrong, not every intermediate `const`.
+- `specs/{number}-{slug}/` is a feature's historic Spec Kit record. A pull request
+  changes `specs/` only inside its own feature directory, and current behavior goes in
+  `docs/`; see [Artifacts](docs/engineering/git-workflow.md#artifacts).
 
 ## Module boundaries
 
@@ -30,149 +74,65 @@
   headers, and host handling) for an existing one. Reuse it through its owner's public
   entry, or move it to the one module that should own it. Do not copy it.
 - Introduce modules and capabilities for actual behavior, not speculative future
-  consumers. In particular, defer a secrets module/provider contract until there is
-  a real secret to read.
-- The frontend Bulletproof preset does not enforce this ownership rule. A same-zone
-  import can pass Fallow and still violate it. Follow this rule, and use the
+  consumers. A future integration or a synthetic test does not justify an unused
+  provider or service contract. In particular, defer a secrets module/provider
+  contract until there is a real secret to read.
+- Fallow zones do not enforce this ownership rule. The frontend Bulletproof preset
+  allows same-zone imports, and the frontend-services zones do not see a sibling
+  importing another module's child, so such an import can pass Fallow and still
+  violate this rule. Follow this rule, and use the
   [Fallow workflow](docs/engineering/fallow.md) before changing module layout.
 
-## Fallow
+## No check suppressions
 
-Use Fallow while designing and editing, not only as a final gate. The detailed
-command reference is [Fallow during development](docs/engineering/fallow.md).
+Coding agents MUST NOT disable ESLint, Fallow, TypeScript, or any other check via
+comments or suppressions (`eslint-disable`, `@ts-ignore`, `@ts-expect-error`,
+`@ts-nocheck`, `fallow-ignore`, `@effect-diagnostics`, ignore directives, and
+similar). Lowering an Effect language-service rule in `diagnosticSeverity` is a
+suppression too. Do not add Fallow ignore patterns, baselines, `allowUnmatched`
+entries, or weaker complexity thresholds to accommodate new code. Always fix the
+underlying error or warning; a pre-commit hook failure is a signal to fix code, not
+to silence the checker. Only human developers may disable a check; if an agent
+believes a finding truly needs a disable, it must stop and ask the user.
 
-- Before a change that introduces modules, modifies imports, reorganizes source
-  files, or changes application structure, inspect the owning workspace's zones
-  with `fallow guard` on the files you will change. Skip that inspection for an
-  ordinary localized edit.
-- While editing, run the workspace-scoped Fallow command for a boundary, cycle,
-  unused-code, complexity, or duplication risk as soon as the edit can introduce
-  it. Structural duplication uses semantic mode and is included in
-  `pnpm check:changes`. Model-based similar-code is an advisory review, not a
-  completion check. Prefer a targeted command over repeating `pnpm check:unused`,
-  `pnpm check:health`, or `pnpm check:changes`.
-- Before completing work, run `pnpm check:unused` and `pnpm check:health` for
-  every scope, then `pnpm check:changes` for findings introduced since the base.
-  The first two are whole-scope checks. `check:changes` is the new-only audit
-  and is also what the pre-commit hook runs.
-- Report unresolved findings, including whether they are pre-existing or
-  introduced. Fix an introduced violation; fix a complexity finding by changing the
-  representation, not by extracting single-use helpers (see the
-  [Fallow guide](docs/engineering/fallow.md#complexity-dead-code-and-type-aware-analysis)).
-  Ask for human review when a finding
-  looks like a false positive or a legitimate exception.
+## Tooling and configuration
 
-## Testing guidance
-
-Before designing or changing tests, read [Testing as evidence](docs/engineering/testing/README.md).
-For property tests, also read [Property-based testing](docs/engineering/testing/property-based-testing.md).
-Choose evidence for a named expectation and the boundary responsible for it; do not add tests solely for coverage.
-
-Runtime telemetry is part of the verification harness. When a claim's approved evidence channel
-in `verification.md` is server or browser telemetry, the plan's `contracts/telemetry.md` puts it
-in a span, log, or metric that follows the [verification telemetry conventions](docs/observability.md#verification-telemetry-conventions),
-and a verification agent inspects real exported data for each implementation slice. Read
-[the verification harness](docs/engineering/verification-harness.md) before planning, implementing,
-or verifying a feature. Otherwise verify observability manually or with temporary agent probes.
-When the local Grafana stack is running, use the Grafana MCP server in
-[docs/observability.md](docs/observability.md) to inspect exported frontend traces. An empty Loki or
-Prometheus result is not application evidence. Never emit a forbidden data class. Do not retain
-durable tests of log output, spans, attributes, telemetry payloads, or exporter behavior. Keep
-durable tests focused on application outcomes.
-
-Before authoring or reviewing requirements BDD, step definitions, or supporting helpers, read
-[Requirements-backed BDD](docs/engineering/testing/requirements-bdd.md). Inspect the referenced requirements
-in current `origin/main`; report unavailable baseline access rather than assuming approval. Every scenario
-must carry or inherit requirement-ID tags. Keep assertions within those promises and use feature-level
-`@partial` for intermediate evidence. Use the repository's `requirements-bdd-author`,
-`requirements-bdd-scaffold`, and `requirements-bdd-review` skills for those workflows.
-
-## Git and pull requests
-
-Before specifying, planning, or implementing a delivery-issue feature, read
-[Git and pull request workflow](docs/engineering/git-workflow.md) and use the
-`speckit-stack` skill. Requirements, delivery plans, and Spec Kit keep their
-existing authority. The workflow decides how that work is branched, reviewed,
-and merged.
-
-`specs/{number}-{slug}/` is that feature's historic Spec Kit record. A pull request
-may modify `specs/` only inside the feature directory it belongs to. When later work
-changes behavior, record the current behavior in `docs/`. Do not edit another
-feature's specification, plan, or supporting Spec Kit files to catch them up.
-
-## Effect workspace routing
-
-Before designing or modifying Effect code in `packages/frontend-services`,
-`packages/backend`, `packages/domain`, or a future workspace extending
-`tsconfig.effect.json`, read
-[Effect agent guidance](docs/engineering/effect-guidance.md) and the target
-workspace's `AGENTS.md`: [frontend-services](packages/frontend-services/AGENTS.md),
-[backend](packages/backend/AGENTS.md), [domain](packages/domain/AGENTS.md). The
-Next.js app in [frontend](packages/frontend/AGENTS.md) is not an Effect workspace.
-This explicit routing also applies when an
-agent starts at the repository root. Locate the available Effect v4 checkout,
-read its `LLMS.md`, then only the linked examples/source relevant to the task.
-The local discovery path and source precedence are in the Effect guide. Verify
-APIs against the target workspace's installed declarations; a local checkout may
-be ahead of the product pins. Use external documentation only to fill local gaps.
-
-These Effect conventions apply to Effect workflows, not every file in the repository.
-Keep pure TypeScript, React/UI, Next.js adapters, and root tooling idiomatic to their
-own boundaries. Do not add Effect dependencies, services, or wrappers merely to
-imitate library examples. Reusable Effect generators use `Effect.fn` for useful
-tracing boundaries or `Effect.fnUntraced` otherwise; inline programs use `Effect.gen`.
-
-Product Effect pins are coordinated in the named `effect` catalog in
-[`pnpm-workspace.yaml`](pnpm-workspace.yaml), including `@effect/platform-node`.
-Existing product ownership still applies: the Next.js app owns presentation and
-calls `@pathableai/pre-ets-frontend-services` for tenant configuration, OIDC, and
-temporary session state; backend owns the Effect REST domain layer. Do not import
-`effect` from `packages/frontend`. See
-[effect-guidance](docs/engineering/effect-guidance.md) and
-[domain persistence](docs/domain-persistence.md).
-
-- Prefer direct package scripts and README instructions over custom wrappers.
+- [Principle VI](.specify/memory/constitution.md#vi-simplicity-and-verifiable-quality)
+  governs scope, new dependencies, and wrappers. Do not add application frameworks,
+  publication, client workflows, or extra tools beyond the requested task. Keep
+  machine-local configuration and credentials out.
 - Keep each new tool setup in its own focused commit with its configuration,
   lockfile updates, documentation, and validation.
-- Run the available checks before committing; do not commit generated output.
-- Do not add application frameworks, publication, client workflows, or extra tools
-  beyond the requested task. Keep machine-local configuration and credentials out.
 - Each workspace owns an `eslint.config.js` importing the root config. Keep shared
   rules at the root and workspace-specific rules in that workspace. The root config
   includes the Effect conventions in `eslint.effect.js`, so every workspace
-  inherits them. Root linting
-  checks top-level files, then delegates to workspace lint scripts.
-- Validate with `pnpm typecheck`, `pnpm build`, and `pnpm lint`. In Effect
-  workspaces `lint` includes `lint:effect`, the Effect language-service
-  diagnostics that `tsc` does not report; run it while editing Effect code.
-- Before committing, run `pnpm check:unused`, `pnpm check:health`, and
-  `pnpm check:changes`, as described in [Fallow](docs/engineering/fallow.md).
-  Investigate findings rather than adding suppressions. Type-aware analysis is
-  enabled in best-effort mode against each scope's `tsconfig.json`. It does not
-  replace `tsc`. A partial or unavailable checker result keeps the finding and
-  is not evidence that it can be deleted. `private-type-leaks` is an error:
-  an exported signature must name an exported type.
-- Coding agents MUST NOT disable ESLint, Fallow, TypeScript, or any other check
-  via comments or suppressions (`eslint-disable`, `@ts-ignore`,
-  `@ts-expect-error`, `fallow-ignore`, `@effect-diagnostics`, ignore
-  directives, and similar). Lowering an Effect language-service rule in
-  `diagnosticSeverity` is a suppression too. Do not
-  add Fallow ignore patterns, baselines, `allowUnmatched` entries, or weaker
-  complexity thresholds to accommodate new code. Always fix the underlying
-  error or warning. Only human developers may disable a check; if an agent
-  believes a finding truly needs a disable, it must stop and ask the user.
+  inherits them. Root linting checks top-level files, then delegates to workspace
+  lint scripts.
 - Each workspace owns a `dprint.json` inheriting the root settings. Root formatting
   scripts process top-level files, `.github`, and `docs`, then delegate to each
   workspace. Keep shared formatting policy at the root and sorting in
   ESLint/Perfectionist.
-- Run `pnpm format:check` before committing. Apply lint fixes before
-  `pnpm format:write`, then verify lint and formatting both pass.
 - Husky runs lint-staged once at the root. Each workspace extends the root
   `lint-staged.config.js`; keep its tasks limited to the supplied staged filenames.
-  Preserve default backup and partial-staging protections.
-- After lint-staged, the pre-commit hook runs `pnpm check:changes` once at the
-  root. This Fallow audit gates new findings against the automatically resolved
-  base and includes unstaged/untracked work. Whole-scope `pnpm check:unused` and
-  `pnpm check:health` remain required before completing work. Keep `prepare`
-  limited to Husky; do not install or rewrite Fallow hooks during dependency
-  installation.
+  Preserve default backup and partial-staging protections. After lint-staged, the
+  pre-commit hook runs `pnpm check:changes` once at the root. Keep `prepare` limited
+  to Husky; do not install or rewrite Fallow hooks during dependency installation.
+
+## Before committing
+
+Run from the repository root, plus any feature-specific checks, and investigate
+findings rather than adding suppressions:
+
+1. `pnpm typecheck`, `pnpm build`, and `pnpm lint`. In Effect workspaces `lint`
+   includes `lint:effect`, the Effect language-service diagnostics that `tsc` does not
+   report; run it while editing Effect code.
+2. `pnpm format:check`. Apply lint fixes before `pnpm format:write`, then verify lint
+   and formatting both pass.
+3. `pnpm check:unused` and `pnpm check:health` for every scope, then
+   `pnpm check:changes` for findings introduced since the base. The pre-commit hook
+   also runs `check:changes`, but the two whole-scope checks remain required before
+   completing work. Report and resolve findings as
+   [Fallow during development](docs/engineering/fallow.md#responding-to-a-finding)
+   describes.
+
+Do not commit generated output.
