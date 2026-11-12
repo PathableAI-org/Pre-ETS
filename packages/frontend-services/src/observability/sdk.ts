@@ -15,20 +15,7 @@ import { Effect } from "effect"
 import type { OtelEnabled } from "../config.js"
 
 import { OtelSdkError } from "./error.js"
-
-/** Query parameters redacted from HTTP spans, including the OIDC callback's `code` and `state`. */
-const redactedQueryParams = [
-  "sig",
-  "Signature",
-  "AWSAccessKeyId",
-  "X-Goog-Signature",
-  "X-Amz-Signature",
-  "X-Amz-Credential",
-  "X-Amz-Security-Token",
-  "api_key",
-  "code",
-  "state"
-]
+import { QueryFreeSpanProcessor } from "./sdk/query-free-spans.js"
 
 /**
  * Builds the OTLP pipeline and starts the global Node SDK. Every OpenTelemetry constructor and `start` is
@@ -41,7 +28,9 @@ export const makeNodeSdkConfiguration = (
     catch: (cause) => new OtelSdkError({ cause }),
     try: () => {
       const url = (signal: "logs" | "metrics" | "traces") => `${settings.endpoint.toString()}v1/${signal}`
-      const spanProcessor = new BatchSpanProcessor(new OTLPTraceExporter({ url: url("traces") }))
+      const spanProcessor = new QueryFreeSpanProcessor(
+        new BatchSpanProcessor(new OTLPTraceExporter({ url: url("traces") }))
+      )
       const logRecordProcessor = new BatchLogRecordProcessor({ exporter: new OTLPLogExporter({ url: url("logs") }) })
       // A metric reader binds to exactly one producer, so the global NodeSDK MeterProvider and the Effect metrics
       // bridge each get their own reader and exporter.
@@ -51,7 +40,7 @@ export const makeNodeSdkConfiguration = (
       const metricReader = makeMetricReader()
       new otelSdk.NodeSDK({
         instrumentations: [
-          new HttpInstrumentation({ redactedQueryParams, redactedQueryParamsServer: redactedQueryParams }),
+          new HttpInstrumentation(),
           new RedisInstrumentation(),
           new RuntimeNodeInstrumentation()
         ],
