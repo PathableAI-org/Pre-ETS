@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, Schema } from "effect"
+import { Context, Effect, Layer, Redacted, Schema } from "effect"
 import * as oidc from "openid-client"
 
 export interface ResolvedClientAuthentication {
@@ -37,7 +37,7 @@ export class ClientCredentials extends Context.Service<ClientCredentials, {
   ) => Effect.Effect<ResolvedClientAuthentication, ClientCredentialUnavailable>
 }>()("ClientCredentials") {
   /** `secrets` maps a tenant's non-secret `clientSecretRef` to its client secret. */
-  static readonly layer = (secrets: Readonly<Record<string, string>>) =>
+  static readonly layer = (secrets: Readonly<Record<string, Redacted.Redacted>>) =>
     Layer.succeed(ClientCredentials, {
       resolve: Effect.fnUntraced(function*(request: ClientAuthenticationRequest) {
         if (request.clientAuth === "public") {
@@ -45,7 +45,7 @@ export class ClientCredentials extends Context.Service<ClientCredentials, {
         }
         const secret = Object.hasOwn(secrets, request.clientSecretRef) ? secrets[request.clientSecretRef] : undefined
         if (secret === undefined) return yield* new ClientCredentialUnavailable({})
-        return { method: confidentialAuthentication(secret), mode: "confidential" } as const
+        return { method: confidentialAuthentication(Redacted.value(secret)), mode: "confidential" } as const
       })
     })
 }

@@ -1,5 +1,6 @@
 import { assert, it } from "@effect/vitest"
-import { Cause, Config, ConfigProvider, Duration, Effect, Exit, Option, Schema } from "effect"
+import { Cause, Config, ConfigProvider, Duration, Effect, Exit, Option, Redacted, Schema } from "effect"
+import { inspect } from "node:util"
 import { describe } from "vitest"
 
 import { type OtelSettings, StartupConfig } from "../../src/config.ts"
@@ -420,6 +421,18 @@ describe("StartupConfig authentication [PREETS-SESSION-002]", () => {
       assert.isTrue(Exit.isSuccess(exit))
       if (Exit.isSuccess(exit)) {
         assert.strictEqual(Duration.toSeconds(exit.value.authentication.transactions.ttl), Number(ttl))
+      }
+    }))
+
+  it.effect("keeps a decoded client secret redacted", () =>
+    Effect.gen(function*() {
+      const secret = "controlled-client-secret"
+      const exit = yield* startupWith({ OIDC_CLIENT_SECRETS_JSON: JSON.stringify({ alpha: secret }) })
+      assert.isTrue(Exit.isSuccess(exit))
+      if (Exit.isSuccess(exit)) {
+        const { clientSecrets } = exit.value.authentication
+        assert.notInclude(`${inspect(clientSecrets)} ${JSON.stringify(clientSecrets)}`, secret)
+        assert.strictEqual(clientSecrets.alpha && Redacted.value(clientSecrets.alpha), secret)
       }
     }))
 
