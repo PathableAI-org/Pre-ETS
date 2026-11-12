@@ -1,4 +1,4 @@
-import { Duration, Effect, Layer } from "effect"
+import { Duration, Effect, Layer, Record, Redacted } from "effect"
 import * as Redis from "effect/persistence/Redis"
 
 import type { AuthenticationSettings } from "../../src/config.ts"
@@ -14,7 +14,7 @@ export const authenticationSettings = (overrides: {
 } = {}): AuthenticationSettings => ({
   allowInsecureLoopback: false,
   callbackOrigins: { alpha: new URL(overrides.callback ?? "https://alpha.example.test") },
-  clientSecrets: overrides.clientSecrets ?? {},
+  clientSecrets: Record.map(overrides.clientSecrets ?? {}, (secret) => Redacted.make(secret)),
   transactions: {
     prefix: overrides.prefix ?? "test:authentication",
     ttl: Duration.seconds(overrides.ttlSeconds ?? 600)

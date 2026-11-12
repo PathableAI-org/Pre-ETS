@@ -1,8 +1,9 @@
 import { assert, it } from "@effect/vitest"
-import { Cause, Config, ConfigProvider, Duration, Effect, Exit, Option } from "effect"
+import { Cause, Config, ConfigProvider, Duration, Effect, Exit, Option, Redacted, Schema } from "effect"
+import { inspect } from "node:util"
 import { describe } from "vitest"
 
-import { StartupConfig } from "../../src/config.ts"
+import { type OtelSettings, StartupConfig } from "../../src/config.ts"
 
 const BaseConfigProvider = ConfigProvider.fromUnknown({
   BASE_HOSTNAME: "example.test",
@@ -423,12 +424,41 @@ describe("StartupConfig authentication [PREETS-SESSION-002]", () => {
       }
     }))
 
+  it.effect("keeps a decoded client secret redacted", () =>
+    Effect.gen(function*() {
+      const secret = "controlled-client-secret"
+      const exit = yield* startupWith({ OIDC_CLIENT_SECRETS_JSON: JSON.stringify({ alpha: secret }) })
+      assert.isTrue(Exit.isSuccess(exit))
+      if (Exit.isSuccess(exit)) {
+        const { clientSecrets } = exit.value.authentication
+        assert.notInclude(`${inspect(clientSecrets)} ${JSON.stringify(clientSecrets)}`, secret)
+        assert.strictEqual(clientSecrets.alpha && Redacted.value(clientSecrets.alpha), secret)
+      }
+    }))
+
   it.effect("rejects malformed credential JSON without echoing it", () =>
     Effect.gen(function*() {
       const raw = "{controlled-invalid-secret-map"
       const exit = yield* startupWith({ OIDC_CLIENT_SECRETS_JSON: raw })
       assert.isTrue(configError(exit))
       assert.notInclude(failureText(exit), raw)
+    }))
+
+  it.effect.each(
+    [
+      ["\"controlled-shape-secret\"", "controlled-shape-secret"],
+      ["[\"controlled-shape-secret\"]", "controlled-shape-secret"],
+      ["{\"alpha\":7319246}", "7319246"],
+      ["{\"alpha\":[\"controlled-shape-secret\"]}", "controlled-shape-secret"],
+      ["{\"alpha\":\"\"}", "alpha"]
+    ] as const
+  )("rejects wrong-shape credential JSON %s without echoing it", ([raw, marker]) =>
+    Effect.gen(function*() {
+      const exit = yield* startupWith({ OIDC_CLIENT_SECRETS_JSON: raw })
+      assert.isTrue(configError(exit))
+      const text = failureText(exit)
+      assert.include(text, "OIDC_CLIENT_SECRETS_JSON")
+      assert.notInclude(text, marker)
     }))
 
   it.effect("rejects malformed callback configuration", () =>
@@ -440,5 +470,144 @@ describe("StartupConfig authentication [PREETS-SESSION-002]", () => {
     Effect.gen(function*() {
       const exit = yield* startupWith({ OIDC_CALLBACK_ORIGINS_JSON: JSON.stringify({ alpha: "https://a.test/path" }) })
       assert.isTrue(configError(exit))
+    }))
+})
+
+const otelOn = {
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://127.0.0.1:4318/",
+  OTEL_SDK_DISABLED: false,
+  OTEL_SERVICE_NAME: "pre-ets-frontend"
+}
+
+const browserTracingOf = (exit: Exit.Exit<{ readonly otel: OtelSettings }, unknown>) =>
+  Exit.isSuccess(exit) && !exit.value.otel.disabled ? exit.value.otel.browserTracing : undefined
+
+const endpointRefusal =
+  "BROWSER_TRACING_ENABLED requires an OTEL_EXPORTER_OTLP_ENDPOINT without credentials, query, or fragment"
+
+const trueLiterals = ["true", "yes", "on", "1", "y"] as const
+const falseLiterals = ["false", "no", "off", "0", "n"] as const
+
+describe("StartupConfig browser tracing switch (V-007)", () => {
+  it.effect.each(
+    [
+      ["OTEL on, switch unset", otelOn, false],
+      ["OTEL on, switch true", { ...otelOn, BROWSER_TRACING_ENABLED: "true" }, true],
+      ["OTEL on, switch false", { ...otelOn, BROWSER_TRACING_ENABLED: "false" }, false],
+      ["OTEL off, switch unset", {}, false],
+      ["OTEL off, switch true", { BROWSER_TRACING_ENABLED: "true" }, false],
+      ["OTEL off, switch false", { BROWSER_TRACING_ENABLED: "false" }, false]
+    ] as const
+  )("%s starts with browser tracing on: %s", ([, overrides, on]) =>
+    Effect.gen(function*() {
+      const exit = yield* startupWith(overrides)
+      assert.isTrue(Exit.isSuccess(exit))
+      assert.strictEqual(browserTracingOf(exit) !== undefined, on)
+    }))
+
+  it.effect.each([["OTEL on", otelOn], ["OTEL off", {}]] as const)(
+    "%s refuses startup on an unrecognized switch value",
+    ([, overrides]) =>
+      Effect.gen(function*() {
+        const exit = yield* startupWith({ ...overrides, BROWSER_TRACING_ENABLED: "maybe" })
+        assert.isTrue(configError(exit))
+        assert.include(failureText(exit), "BROWSER_TRACING_ENABLED")
+      })
+  )
+
+  it.effect.prop(
+    "browser tracing is on if and only if OTEL is on and the switch decodes to true",
+    [Schema.Boolean, Schema.Literals(["unset", ...trueLiterals, ...falseLiterals])],
+    ([otelEnabled, switchValue]) =>
+      Effect.gen(function*() {
+        const exit = yield* startupWith({
+          ...(otelEnabled ? otelOn : {}),
+          ...(switchValue === "unset" ? {} : { BROWSER_TRACING_ENABLED: switchValue })
+        })
+        assert.isTrue(Exit.isSuccess(exit))
+        const expected = otelEnabled && (trueLiterals as readonly string[]).includes(switchValue)
+        assert.strictEqual(browserTracingOf(exit) !== undefined, expected)
+      })
+  )
+})
+
+describe("StartupConfig browser tracing settings (V-009)", () => {
+  const on = { ...otelOn, BROWSER_TRACING_ENABLED: "true" }
+
+  it.effect("carries exactly the server's endpoint, name, version, and run identifier, and no headers", () =>
+    Effect.gen(function*() {
+      const exit = yield* startupWith({
+        ...on,
+        OTEL_EXPORTER_OTLP_HEADERS: "Authorization=Bearer synthetic-collector-token",
+        OTEL_RESOURCE_ATTRIBUTES: "service.version=abc123,service.instance.id=run%2D1",
+        OTEL_SERVICE_VERSION: "abc123"
+      })
+      const settings = browserTracingOf(exit)
+      assert.deepStrictEqual(
+        settings === undefined ? undefined : { ...settings, endpoint: settings.endpoint.href },
+        {
+          endpoint: "http://127.0.0.1:4318/",
+          serviceInstanceId: "run-1",
+          serviceName: "pre-ets-frontend",
+          serviceVersion: "abc123"
+        }
+      )
+    }))
+
+  it.effect.each(["service.instance.id=run-1,broken", "service.instance.id=run-1,a=b=c", "service.instance.id=%E0"])(
+    "starts without a run identifier when the resource attribute list %s is malformed",
+    (attributes) =>
+      Effect.gen(function*() {
+        const exit = yield* startupWith({ ...on, OTEL_RESOURCE_ATTRIBUTES: attributes })
+        assert.isTrue(Exit.isSuccess(exit))
+        assert.isDefined(browserTracingOf(exit))
+        assert.isUndefined(browserTracingOf(exit)?.serviceInstanceId)
+      })
+  )
+
+  it.effect.each(["true", "false"])(
+    "refuses a malformed credential-bearing endpoint without echoing it (switch %s)",
+    (switchValue) =>
+      Effect.gen(function*() {
+        const raw = "http://user:secret@[bad"
+        const exit = yield* startupWith({
+          ...otelOn,
+          BROWSER_TRACING_ENABLED: switchValue,
+          OTEL_EXPORTER_OTLP_ENDPOINT: raw
+        })
+        assert.isTrue(configError(exit))
+        const text = failureText(exit)
+        assert.include(text, "OTEL_EXPORTER_OTLP_ENDPOINT")
+        assert.notInclude(text, "secret")
+        assert.notInclude(text, "[bad")
+      })
+  )
+
+  it.effect.each(
+    [
+      ["http://user:secret@127.0.0.1:4318/", "secret"],
+      ["http://127.0.0.1:4318/?api_key=synthetic-key", "synthetic-key"],
+      ["http://127.0.0.1:4318/#x", "#x"],
+      ["ftp://127.0.0.1:4318/", "ftp:"]
+    ] as const
+  )("refuses endpoint %s when the switch is on, without echoing it", ([endpoint, secret]) =>
+    Effect.gen(function*() {
+      const exit = yield* startupWith({ ...on, OTEL_EXPORTER_OTLP_ENDPOINT: endpoint })
+      assert.isTrue(configError(exit))
+      const text = failureText(exit)
+      assert.include(text, endpointRefusal)
+      assert.notInclude(text, secret)
+      assert.notInclude(text, "127.0.0.1")
+    }))
+
+  it.effect.each([
+    "http://user:secret@127.0.0.1:4318/",
+    "http://127.0.0.1:4318/?api_key=synthetic-key",
+    "http://127.0.0.1:4318/#x"
+  ])("accepts endpoint %s for server-only export when the switch is off", (endpoint) =>
+    Effect.gen(function*() {
+      const exit = yield* startupWith({ ...otelOn, OTEL_EXPORTER_OTLP_ENDPOINT: endpoint })
+      assert.isTrue(Exit.isSuccess(exit))
+      assert.isUndefined(browserTracingOf(exit))
     }))
 })
