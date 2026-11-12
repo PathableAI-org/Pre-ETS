@@ -14,6 +14,8 @@ import {
   Textarea
 } from "@pathableai/react"
 
+import { focusTargetProps, moveFocus } from "../../shared/browser-tracing.ts"
+
 const PROGRAMMATIC_FOCUS_DELAY_MILLISECONDS = 2_000
 const GOAL_INPUT = "participant-goal"
 
@@ -24,7 +26,7 @@ const GOAL_INPUT = "participant-goal"
 export function ParticipantFixture() {
   const focusLater = () => {
     setTimeout(() => {
-      document.getElementById(GOAL_INPUT)?.focus()
+      moveFocus(document.getElementById(GOAL_INPUT), "participant_goal")
     }, PROGRAMMATIC_FOCUS_DELAY_MILLISECONDS)
   }
   return (
@@ -34,7 +36,7 @@ export function ParticipantFixture() {
       <Link href="/coordination/roster">Open roster page</Link>
       <FormGroup>
         <Label htmlFor={GOAL_INPUT}>Goal</Label>
-        <Input id={GOAL_INPUT} type="text" />
+        <Input id={GOAL_INPUT} type="text" {...focusTargetProps("participant_goal")} />
       </FormGroup>
       <FormGroup>
         <Label htmlFor="participant-setting">Setting</Label>

@@ -2,6 +2,9 @@ import type { BrowserTracingConfig, BrowserTracingDocument } from "@pathableai/p
 
 import { createElement, Fragment, type ReactNode } from "react"
 
+import type { Fact, FactScope } from "./browser-tracing/facts.ts"
+import type { CausedRequest, SdkStartup } from "./browser-tracing/sdk.ts"
+
 /** The one server-to-browser contract: the four configuration values, as JSON in this meta element's `content`. */
 const CONFIG_META_NAME = "preets-browser-tracing"
 
@@ -40,21 +43,265 @@ const CONFIG_CHECKS: Readonly<Record<keyof BrowserTracingConfig, (value: unknown
 const isConfig = (value: object): value is BrowserTracingConfig =>
   Object.entries(CONFIG_CHECKS).every(([key, check]) => check(Reflect.get(value, key)))
 
+export type FocusTarget = "logout_control" | "participant_goal" | "signed_out_heading"
+
+/** Cross-tab message kinds: the coordination message `type` with `_` for `-`. */
+export type TabMessageKind =
+  | "communicated"
+  | "logged_out"
+  | "logout_failed"
+  | "logout_started"
+  | "pending"
+  | "renewed"
+  | "session_current"
+  | "window_query"
+
+/** Runs `task` synchronously with the record's span as the active context. A plain call when nothing was recorded. */
+export interface TraceScope {
+  readonly run: <A>(task: () => A) => A
+}
+
+/** UI states of the session coordinator, derived from its `(view, concealed)` (telemetry contract closed sets). */
+export type UiState =
+  | "content_concealed"
+  | "content_shown"
+  | "logging_out"
+  | "logging_out_concealed"
+  | "logout_failed"
+  | "signed_out"
+
+/** Facts kept while the SDK loads; later ones are only counted (T-011). */
+const BUFFER_LIMIT = 256
+/** Without registration by then, the facade turns off and drops the buffer (plan PL-1). */
+const PENDING_LIMIT_MILLISECONDS = 10_000
+/** How long an unclaimed cause, or an ambiguous slot, lasts (research D16). */
+const CAUSE_LIFETIME_MILLISECONDS = 5_000
+const FOCUS_ATTRIBUTE = "data-preets-focus"
+const FOCUS_TARGETS: ReadonlySet<string> = new Set<FocusTarget>([
+  "logout_control",
+  "participant_goal",
+  "signed_out_heading"
+])
+const NAVIGATION_TYPES: ReadonlySet<string> = new Set(["push", "replace", "traverse"])
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+
+/** `off` records nothing; `pending` buffers facts; `started` has the SDK's live recorder. */
+let phase: "off" | "pending" | "started" = "off"
+let recorder: ((fact: Fact) => FactScope) | undefined
+let buffered: Fact[] = []
+let dropped = 0
+/** The focus target `moveFocus` is moving to, while it runs. */
+let applicationFocus: FocusTarget | undefined
+
+/** One pending cause per request kind; a second interaction before it is claimed makes the slot ambiguous (D16). */
+type CauseSlot =
+  | { readonly _tag: "ambiguous"; readonly expires: number }
+  | { readonly _tag: "empty" }
+  | { readonly _tag: "held"; readonly expires: number; readonly key: unknown; readonly scope: FactScope }
+
+const EMPTY_SLOT: CauseSlot = { _tag: "empty" }
+const causes: Record<CausedRequest["kind"], CauseSlot> = { action: EMPTY_SLOT, router: EMPTY_SLOT }
+
+const CURRENT_SCOPE: TraceScope = { run: (task) => task() }
+
+/**
+ * Records a fact: a span once the SDK runs, a buffered fact while it loads, nothing when off. Answers the span's scope
+ * only when a span was created. Never throws.
+ */
+const record = (fact: Omit<Fact, "startTime">): FactScope | undefined => {
+  try {
+    const timed = { ...fact, startTime: performance.now() }
+    if (recorder !== undefined) return recorder(timed)
+    if (phase !== "pending") return undefined
+    if (buffered.length < BUFFER_LIMIT) buffered.push(timed)
+    else dropped += 1
+  } catch {
+    // Telemetry never changes the page.
+  }
+  return undefined
+}
+
+const scopeOf = (scope: FactScope | undefined): TraceScope => scope === undefined ? CURRENT_SCOPE : { run: scope }
+
+const slotLive = (slot: CauseSlot, now: number) => slot._tag !== "empty" && slot.expires > now
+
+/** Holds `scope` as the cause for `kind`, or makes the slot ambiguous when another cause is still pending. */
+const fillCause = (kind: CausedRequest["kind"], key: unknown, scope: FactScope | undefined) => {
+  if (scope === undefined) return
+  const now = Date.now()
+  const expires = now + CAUSE_LIFETIME_MILLISECONDS
+  causes[kind] = slotLive(causes[kind], now) ? { _tag: "ambiguous", expires } : { _tag: "held", expires, key, scope }
+}
+
+/** Claims an unexpired, unambiguous cause once; a router cause only for its destination path (D16). */
+const claimCause = (request: CausedRequest): FactScope | undefined => {
+  const slot = causes[request.kind]
+  if (slot._tag !== "held" || slot.expires <= Date.now()) return undefined
+  if (request.kind === "router" && slot.key !== request.path) return undefined
+  causes[request.kind] = EMPTY_SLOT
+  return slot.scope
+}
+
+const stopTracing = () => {
+  phase = "off"
+  buffered = []
+  dropped = 0
+}
+
+/** Registers the SDK while still pending; it replays the buffer and answers the live recorder. */
+const register = (
+  startSdk: (config: BrowserTracingConfig, startup: SdkStartup) => (fact: Fact) => FactScope,
+  config: BrowserTracingConfig
+) => {
+  if (phase !== "pending") return
+  const startup: SdkStartup = { buffered, claimCause, dropped }
+  buffered = []
+  dropped = 0
+  recorder = startSdk(config, startup)
+  phase = "started"
+}
+
+const focusTargetOf = (target: EventTarget | null): string | undefined => {
+  const value = target instanceof Element ? target.getAttribute(FOCUS_ATTRIBUTE) : null
+  return value !== null && FOCUS_TARGETS.has(value) ? value : undefined
+}
+
+/** T-007: focus entering or leaving a marked target; `application` only while `moveFocus` runs. */
+const recordFocus = (event: FocusEvent) => {
+  const target = focusTargetOf(event.target)
+  if (target === undefined) return
+  record({
+    attributes: {
+      "preets.focus.cause": applicationFocus === undefined ? "user" : "application",
+      "preets.focus.change": event.type === "focusin" ? "entered" : "left",
+      "preets.focus.target": target,
+      "preets.outcome": "moved"
+    },
+    name: "Focus.move",
+    root: true
+  })
+}
+
+/** T-009: every form submit, including `requestSubmit` replays; it becomes the pending Server Action cause. */
+const recordSubmit = (event: SubmitEvent) => {
+  const scope = record({
+    attributes: { "preets.interaction.kind": "form_submit", "preets.outcome": "submitted" },
+    name: "Interaction.submit",
+    root: false
+  })
+  fillCause("action", event, scope)
+}
+
+/** Capture-phase listeners; `submit` on `window` runs before the coordinator's guard on `document`. */
+const listen = () => {
+  window.addEventListener("submit", recordSubmit, { capture: true })
+  document.addEventListener("focusin", recordFocus, { capture: true })
+  document.addEventListener("focusout", recordFocus, { capture: true })
+}
+
+/** Next's App Router hook, re-exported by `instrumentation-client.ts` (T-010; research D16). */
+export function onRouterTransitionStart(url: string, navigationType: "push" | "replace" | "traverse"): void {
+  try {
+    const path = new URL(url, location.href).pathname
+    const scope = record({
+      attributes: {
+        "preets.navigation.type": NAVIGATION_TYPES.has(navigationType) ? navigationType : undefined,
+        "preets.outcome": "started",
+        "url.path": path
+      },
+      name: "Router.transition",
+      root: false
+    })
+    fillCause("router", path, scope)
+  } catch {
+    // Telemetry never changes the page.
+  }
+}
+
 /**
  * Reads the rendered configuration synchronously. Without it, nothing is loaded and nothing is requested (FR-003).
- * With it, the SDK chunk is imported lazily and started. Never throws; a failure leaves the page untouched (FR-009).
+ * With it, the facade buffers facts and installs the focus and submit listeners, then lazily imports and starts the
+ * SDK, which replays the buffer. Never throws; a failure leaves the page untouched (FR-009).
  */
 export function startBrowserTracing(): void {
   try {
     const config = readConfig()
     if (config === undefined) return
+    phase = "pending"
+    listen()
+    setTimeout(() => {
+      if (phase === "pending") stopTracing()
+    }, PENDING_LIMIT_MILLISECONDS)
     import("./browser-tracing/sdk.ts").then((sdk) => {
-      sdk.startSdk(config)
-    }).catch(() => undefined)
+      register(sdk.startSdk, config)
+    }).catch(stopTracing)
   } catch {
-    // Telemetry never changes the page.
+    stopTracing()
   }
 }
+
+/** T-004. `from` is `undefined` for the coordinator's first state, recorded as `mounted`. */
+export const recordUiTransition = (from: UiState | undefined, to: UiState): TraceScope =>
+  scopeOf(record({
+    attributes: { "preets.outcome": "applied", "preets.ui.from_state": from ?? "mounted", "preets.ui.to_state": to },
+    name: "TabCoordination.transition",
+    root: false
+  }))
+
+/** T-005. Answers the send's telemetry-only UUID to carry as `telemetryId`, or `undefined` when tracing is off. */
+export const recordTabMessageSend = (kind: TabMessageKind): string | undefined => {
+  if (phase === "off") return undefined
+  try {
+    const telemetryId = crypto.randomUUID()
+    record({
+      attributes: {
+        "preets.outcome": "sent",
+        "preets.tab.message.direction": "send",
+        "preets.tab.message.id": telemetryId,
+        "preets.tab.message.kind": kind
+      },
+      name: "TabChannel.send",
+      root: false
+    })
+    return telemetryId
+  } catch {
+    return undefined
+  }
+}
+
+/** T-006. Records the carried `telemetryId` only when it is a canonical UUID. */
+export const recordTabMessageReceipt = (kind: TabMessageKind, telemetryId: unknown): TraceScope =>
+  scopeOf(record({
+    attributes: {
+      "preets.outcome": "received",
+      "preets.tab.message.direction": "receive",
+      "preets.tab.message.id": typeof telemetryId === "string" && UUID.test(telemetryId) ? telemetryId : undefined,
+      "preets.tab.message.kind": kind
+    },
+    name: "TabChannel.receive",
+    root: false
+  }))
+
+/** Withdraws the Server Action cause of the cancelled `event` only; an ambiguous slot stays ambiguous (D16). */
+export const withdrawSubmitCause = (event: SubmitEvent): void => {
+  const slot = causes.action
+  if (slot._tag === "held" && slot.key === event) causes.action = EMPTY_SLOT
+}
+
+/** Moves focus to `element`, so the focus record names the application as the cause. */
+export const moveFocus = (element: HTMLElement | null, target: FocusTarget): void => {
+  applicationFocus = target
+  try {
+    element?.focus()
+  } finally {
+    applicationFocus = undefined
+  }
+}
+
+/** The attribute that identifies a focus target to the focus recorder. */
+export const focusTargetProps = (target: FocusTarget): { readonly "data-preets-focus": FocusTarget } => ({
+  [FOCUS_ATTRIBUTE]: target
+})
 
 /** The rendered configuration, or `undefined` when it is absent or not the four expected values. */
 function readConfig(): BrowserTracingConfig | undefined {

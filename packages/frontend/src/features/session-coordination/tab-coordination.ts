@@ -1,5 +1,6 @@
 import type { InPageSessionActivity, SessionCoordinationSnapshot } from "@pathableai/pre-ets-frontend-services"
 
+import { recordUiTransition, type TraceScope, type UiState, withdrawSubmitCause } from "../../shared/browser-tracing.ts"
 import { classifySessionActivity } from "./activity-classification.ts"
 import {
   ACTIVITY_WINDOW_MILLISECONDS,
@@ -66,6 +67,17 @@ const listenAll = (listeners: readonly Listener[]) => {
     for (const [target, type, handler, capture] of listeners) target.removeEventListener(type, handler, { capture })
   }
 }
+
+/** The recorded UI state of each view, unconcealed and concealed (telemetry contract closed sets). */
+const UI_STATES: Readonly<Record<TabView, readonly [shown: UiState, concealed: UiState]>> = {
+  active: ["content_shown", "content_concealed"],
+  ended: ["signed_out", "signed_out"],
+  "logging-out": ["logging_out", "logging_out_concealed"],
+  "logout-failed": ["logout_failed", "logout_failed"]
+}
+
+/** No transition was recorded: work runs in whatever scope is already active. */
+const CURRENT_SCOPE: TraceScope = { run: (task) => task() }
 
 const EMPTY_WINDOW: ActivityWindowRecord = {
   lastCommunicatedAt: undefined,
@@ -206,6 +218,8 @@ export class TabCoordination {
   #sharedWindow = false
   readonly #tag: string
   readonly #timers = new Map<TimerName, ReturnType<typeof setTimeout>>()
+  /** The last recorded UI state; `undefined` until the first publish, which records `mounted → …`. */
+  #uiState: UiState | undefined
 
   #view: TabView = "active"
 
@@ -235,14 +249,17 @@ export class TabCoordination {
   /** Logout is sent at once with `keepalive` and never enters the activity window (FR-009, research D8). */
   async logout(): Promise<void> {
     if (this.#view === "ended" || this.#view === "logging-out") return
-    this.#setView("logging-out")
+    const transition = this.#setView("logging-out")
     const attemptId = crypto.randomUUID()
     // On the Redis clock, which the store's atomic check and attempt resolution also use (R34).
     const notAfter = Date.now() + (this.#redisClock?.offset ?? this.#serverOffset) + LOGOUT_ATTEMPT_MILLISECONDS
     this.#ownAttempt = attemptId
-    addPendingLogout(this.#tag, { attemptId, notAfter })
-    this.#channel?.post({ attemptId, coordinationTag: this.#tag, notAfter, type: "logout-started" })
-    const outcome = await sendLogout(this.#tag, notAfter)
+    // The broadcast and the request start inside the transition's scope, so both are its children (research D5).
+    const outcome = await transition.run(() => {
+      addPendingLogout(this.#tag, { attemptId, notAfter })
+      this.#channel?.post({ attemptId, coordinationTag: this.#tag, notAfter, type: "logout-started" })
+      return sendLogout(this.#tag, notAfter)
+    })
     if (outcome === "refused") {
       this.#logoutRefused()
       this.#guard(this.confirm())
@@ -394,16 +411,18 @@ export class TabCoordination {
    * Temporary concealment, applied to the DOM at once so nothing stays visible or focusable until React commits.
    * It applies over a logout in progress too.
    */
-  #conceal() {
-    if (this.#view === "ended" || !this.#live()) return
+  #conceal(): TraceScope {
+    if (this.#view === "ended" || !this.#live()) return CURRENT_SCOPE
     if (!this.#concealed) this.#concealedSince = Date.now()
     this.#concealed = true
-    this.#publish()
+    return this.#publish()
   }
 
+  /** The confirmation starts inside the concealment's scope, so its request is the transition's child (D5). */
   #concealAndConfirm() {
-    this.#conceal()
-    this.#guard(this.confirm())
+    this.#conceal().run(() => {
+      this.#guard(this.confirm())
+    })
   }
 
   /** Holds a submission whose hint names another session, confirms, and replays it if this session is current (R15). */
@@ -445,6 +464,7 @@ export class TabCoordination {
     this.#view = "ended"
     this.#hideContent(true)
     this.#notify({ concealed: true, endedHere, view: "ended" })
+    this.#transition()
   }
 
   /**
@@ -569,8 +589,11 @@ export class TabCoordination {
     this.#channel?.post({ coordinationTag: this.#tag, type })
   }
 
-  /** Applies `hidden` and `inert` synchronously, then lets React render the same state. */
-  #publish() {
+  /**
+   * Applies `hidden` and `inert` synchronously, then lets React render the same state. Answers the scope of the UI
+   * transition it recorded, or the current scope when the UI state did not change.
+   */
+  #publish(): TraceScope {
     const concealed = this.#concealed || this.#view === "logout-failed"
     this.#hideContent(concealed)
     this.#notify({
@@ -580,6 +603,7 @@ export class TabCoordination {
       view: this.#view,
       warningLeadMinutes: this.#held?.warningLeadMinutes
     })
+    return this.#transition()
   }
 
   #readWindow() {
@@ -629,10 +653,13 @@ export class TabCoordination {
     if (this.#replayEnded()) return
     this.#replayPendingLogouts()
     const hint = readCurrentHint()
-    // A hint naming another session conceals temporarily and confirms; it never ends the tab (R14).
-    if (hint !== undefined && hint !== this.#tag) this.#conceal()
-    if (Date.now() >= this.#deadline) this.#conceal()
-    this.#guard(this.confirm())
+    // A hint naming another session, or a passed deadline, conceals temporarily and confirms; it never ends the tab
+    // (R14). The confirmation starts inside the concealment's scope (research D5).
+    const overdue = (hint !== undefined && hint !== this.#tag) || Date.now() >= this.#deadline
+    const transition = overdue ? this.#conceal() : CURRENT_SCOPE
+    transition.run(() => {
+      this.#guard(this.confirm())
+    })
   }
 
   /** Ends temporary concealment after the server confirmed this session. */
@@ -677,10 +704,10 @@ export class TabCoordination {
     )
   }
 
-  #setView(view: Exclude<TabView, "ended">) {
-    if (this.#view === "ended" || !this.#live()) return
+  #setView(view: Exclude<TabView, "ended">): TraceScope {
+    if (this.#view === "ended" || !this.#live()) return CURRENT_SCOPE
     this.#view = view
-    this.#publish()
+    return this.#publish()
   }
 
   #stopTimer(name: TimerName) {
@@ -713,6 +740,8 @@ export class TabCoordination {
     }
     if ((this.#hintOverride ?? readCurrentHint() ?? this.#tag) === this.#tag) return
     event.preventDefault()
+    // The cancelled submission causes no request; its confirmed replay, if any, does (research D16).
+    withdrawSubmitCause(event)
     this.#guard(this.#confirmThenReplay(form, event.submitter))
   }
 
@@ -720,6 +749,15 @@ export class TabCoordination {
   #trackAttempt(attemptId: string, notAfter: number) {
     this.#attempts.set(attemptId, notAfter)
     if (!this.#timers.has("logout-watch")) this.#watchLogout()
+  }
+
+  /** Records the UI state when it changed and answers that record's scope; otherwise the current scope (T-004). */
+  #transition(): TraceScope {
+    const to = UI_STATES[this.#view][this.#concealed ? 1 : 0]
+    if (to === this.#uiState) return CURRENT_SCOPE
+    const from = this.#uiState
+    this.#uiState = to
+    return recordUiTransition(from, to)
   }
 
   /**

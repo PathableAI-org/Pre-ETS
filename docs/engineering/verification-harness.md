@@ -25,8 +25,11 @@ The specification names facts, not spans. "The authoritative deadline before and
 Evidence channels are:
 
 - **Server telemetry**: traces, logs, or metrics exported by the server process.
-- **Browser telemetry**: traces exported by the browser, once browser tracing exists. Until then, plan the browser
-  fact through browser interaction and record the gap.
+- **Browser telemetry**: traces exported by the browser when `BROWSER_TRACING_ENABLED=true` (see
+  [Browser tracing switch](../observability.md#browser-tracing-switch)). Protected documents continue the server trace,
+  same-origin requests carry the browser's `traceparent`, and the session coordinator records UI transitions, cross-tab
+  sends and receipts, focus moves, form submits, and router transitions as closed-set spans
+  ([Browser harness facts](../observability.md#browser-harness-facts)). Public documents run no browser tracing.
 - **Browser interaction**: what Playwright observes in the page, such as roles, names, focus, and navigation.
 - **Assistive technology**: a manual check with a screen reader or other assistive technology.
 - **Module test**: public-interface examples, properties, or integration tests.
@@ -101,8 +104,12 @@ The verification session owns its environment:
   process at the same revision cannot establish or violate a claim for this run.
 - Synthetic tenants and fixtures from the repository. No real client records or credentials.
 
-For browser journeys, Playwright adds a W3C `traceparent` header that the verifier generates for each step. Server
-spans continue that trace, so each browser step maps to a known trace ID without browser tracing.
+For browser journeys without browser tracing, Playwright adds a W3C `traceparent` header that the verifier generates
+for each step. Server spans continue that trace, so each browser step maps to a known trace ID. With browser tracing,
+set `BROWSER_TRACING_ENABLED=true` and keep `service.instance.id=<run-uuid>` in `OTEL_RESOURCE_ATTRIBUTES`, so the page
+exports under the same run filter. Turn the harness's own `traceparent` injection off for the steps that sample browser
+context. Wait for `<html data-preets-browser-tracing="started">` before a sampled step, and keep the page open about
+30 seconds after the last step so the batch exports.
 
 ### Observation
 
@@ -173,6 +180,13 @@ instructions, separately and request verification of the new SHA.
 ## Known limits
 
 - Claims that need a real tenant login stay `blocked` until a feature provides one, as in #155.
-- Browser telemetry does not exist yet. Plan browser facts through browser interaction until it does.
+- Browser telemetry records only the closed-set facts in [Browser harness facts](../observability.md#browser-harness-facts).
+  Plan anything else a person perceives, such as text, names, and what is visible, through browser interaction.
+- Browser telemetry cannot record its own absence. Show that a page sends no context or loads no tracing code through
+  browser interaction.
+- A request sent before the readiness marker carries no browser context, and a fact recorded before it is replayed as
+  a root span. Two form submits, or two router transitions, within 5 seconds leave both requests unparented. Sample
+  one interaction of each kind at a time.
+- Only documents under the protected `(app)` layout run browser tracing.
 - Assistive-technology observations remain a person's manual check. The verifier can report what the accessibility
   tree exposes, which does not establish what a screen reader announces.

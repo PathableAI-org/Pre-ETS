@@ -190,18 +190,28 @@ roster fixture gains a client-navigation stimulus for the RSC request kind.
 
 **Claims**: V-001, V-013, V-014, V-015, V-016, V-017 (closes #368). **Telemetry**: T-004–T-007, T-009–T-011.
 
-- [ ] T023 [US5] Create `packages/frontend/src/shared/browser-tracing/facts.ts` and add the recorders, buffer, closed
+- [x] T023 [US5] Create `packages/frontend/src/shared/browser-tracing/facts.ts` and add the recorders, buffer, closed
       sets, `moveFocus`, `focusTargetProps`, `withdrawSubmitCause`, and `onRouterTransitionStart` to the facade
       (contracts/modules.md; research D8, D16).
-- [ ] T024 [US1] Add buffer replay and the cause wrapper to `browser-tracing/sdk.ts` and re-export
+- [x] T024 [US1] Add buffer replay and the cause wrapper to `browser-tracing/sdk.ts` and re-export
       `onRouterTransitionStart` from `instrumentation-client.ts` (research D4, D16).
-- [ ] T025 [US5] Record transitions, sends, receipts, and focus in `tab-coordination.ts`, `tab-channel.ts`,
+- [x] T025 [US5] Record transitions, sends, receipts, and focus in `tab-coordination.ts`, `tab-channel.ts`,
       `signed-out-notice.tsx`, `logout-control.tsx`, and `coordination-fixtures/participant.tsx`.
-- [ ] T026 [US5] Add the `telemetryId` parse example to `packages/frontend/tests/unit/session-coordination.test.ts`.
-- [ ] T027 [P] [US5] Document signals T-004–T-011 and queries in `docs/observability.md`, and the browser channel and
+- [x] T026 [US5] Add the `telemetryId` parse example to `packages/frontend/tests/unit/session-coordination.test.ts`.
+- [x] T027 [P] [US5] Document signals T-004–T-011 and queries in `docs/observability.md`, and the browser channel and
       Known limits in `docs/engineering/verification-harness.md`.
-- [ ] T028 Run checks, push, request verification for quickstart steps 4, 7, 7b, 8, 10, record results in
+- [x] T028 Run checks, push, request verification for quickstart steps 4, 7, 7b, 8, 10, record results in
       `quickstart.md`; only this pull request may say `Closes #368`.
+
+Notes recorded while implementing slice `facts`:
+
+- Research D16's open check holds. Next 16.4.5 calls the global `fetch` at request time for both kinds:
+  `segment-cache/fetch.js` for RSC requests and `server-action-reducer.js` for Server Actions. So the SDK wraps
+  `window.fetch` around the instrumented one.
+- The router cause is claimed only by a request with `RSC: 1` and no `Next-Router-Prefetch`. A prefetch of the
+  destination is not caused by the transition.
+- The live recorder comes from the lazy SDK module. The main bundle therefore loads no `@opentelemetry/*` code when
+  tracing is off.
 
 ---
 

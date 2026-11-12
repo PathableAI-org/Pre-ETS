@@ -10,6 +10,7 @@ import {
 } from "../../src/features/session-coordination/activity-window.ts"
 import { calibrateClockOffset } from "../../src/features/session-coordination/clock-offset.ts"
 import { adoptSnapshot } from "../../src/features/session-coordination/snapshot-order.ts"
+import { openTabChannel, type TabMessage } from "../../src/features/session-coordination/tab-channel.ts"
 
 const WINDOW = 60_000
 
@@ -378,5 +379,31 @@ describe("applyCommunication (research D5, R32, R36) [PREETS-SESSION-009]", () =
       pendingLatest: undefined,
       pendingSince: undefined
     })
+  })
+})
+
+describe("openTabChannel (research D8) [PREETS-SESSION-010]", () => {
+  it("accepts a well-formed message that carries the telemetry-only telemetryId field, without that field", async () => {
+    let channel: ReturnType<typeof openTabChannel> | undefined
+    const received = new Promise<TabMessage>((resolve) => {
+      channel = openTabChannel(resolve)
+    })
+    // Another tab of the same origin, posting on the coordination channel name.
+    const otherTab = new BroadcastChannel("preets-session-coordination")
+    otherTab.postMessage({
+      attemptId: "attempt-1",
+      coordinationTag: "tag-a",
+      notAfter: 1_000,
+      telemetryId: "0b5d3c1e-8f4a-4c2b-9d6e-1a2b3c4d5e6f",
+      type: "logout-started"
+    })
+    await expect(received).resolves.toStrictEqual({
+      attemptId: "attempt-1",
+      coordinationTag: "tag-a",
+      notAfter: 1_000,
+      type: "logout-started"
+    })
+    otherTab.close()
+    channel?.close()
   })
 })

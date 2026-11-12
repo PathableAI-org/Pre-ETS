@@ -141,9 +141,12 @@ still accepted for server-only export. A malformed endpoint fails startup with
 an error that names `OTEL_EXPORTER_OTLP_ENDPOINT` without quoting the value,
 whatever the switch.
 
-Local example, with the observability profile running:
+Local example, with the observability profile running. `start` serves a
+production build, so build first; `dev` takes the same variables and needs no
+build:
 
 ```sh
+pnpm --filter @pathableai/pre-ets-frontend build
 OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318/ \
 OTEL_SERVICE_NAME=pre-ets-frontend \
 BROWSER_TRACING_ENABLED=true \
@@ -179,7 +182,8 @@ open that long before querying; records from a page that closes first may be
 lost. A collector that is down or rejects export never changes the page.
 
 Every span passes an export filter before it leaves the page. Only the record
-names below (and the later harness records) are exported. Attributes are kept
+names below and the harness records in [Browser harness facts](#browser-harness-facts)
+are exported. Attributes are kept
 only from the contract's allow list; `url.full` becomes `url.path`, a pathname
 with no origin, query string, or fragment. Event attributes, `exception`
 events, links, and status descriptions are removed. `resourceFetch` and
@@ -201,6 +205,69 @@ Example TraceQL, after the run filter
 ```text
 { RUN && resource.telemetry.sdk.language = "nodejs" && kind = server } >> { RUN && resource.telemetry.sdk.language = "webjs" && name = "documentLoad" }
 { RUN && resource.telemetry.sdk.language = "webjs" && kind = client && span.url.path = "/session/status" } > { RUN && resource.telemetry.sdk.language = "nodejs" && kind = server }
+```
+
+### Browser harness facts
+
+While browser tracing runs, the session coordinator and the coordination
+fixtures record harness facts through the shared facade
+(`packages/frontend/src/shared/browser-tracing.ts`). Each fact is a
+zero-duration span with closed-set attributes only. No recorder accepts page
+text, accessible names, form values, message contents, or any other free text.
+
+| Record                       | Emitted when                                                 | Attributes                                                                                                                                                   | Parent and correlation                                                                                         |
+| ---------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------- |
+| `TabCoordination.transition` | The coordinator publishes a different UI state               | `preets.outcome` = `applied`; `preets.ui.from_state` (`mounted` first); `preets.ui.to_state`                                                                 | The active scope (a receipt, when a message caused it). A logout or status confirmation it starts is its child |
+| `TabChannel.send`            | A tab posts a cross-tab message                              | `preets.outcome` = `sent`; `preets.tab.message.kind`; `preets.tab.message.direction` = `send`; `preets.tab.message.id`                                       | The active scope. Every receipt of the send carries the same `preets.tab.message.id`                           |
+| `TabChannel.receive`         | A tab receives a well-formed cross-tab message               | `preets.outcome` = `received`; `preets.tab.message.kind`; `preets.tab.message.direction` = `receive`; `preets.tab.message.id` (when the send carried a UUID) | The active scope. Transitions the receipt causes are its children                                              |
+| `Focus.move`                 | Focus enters or leaves a marked target (`data-preets-focus`) | `preets.outcome` = `moved`; `preets.focus.target`; `preets.focus.change` (`entered`, `left`); `preets.focus.cause` (`application`, `user`)                   | Root; order by start time                                                                                      |
+| `Interaction.submit`         | Any form submit, including a confirmed replay                | `preets.outcome` = `submitted`; `preets.interaction.kind` = `form_submit`                                                                                    | The parent of the Server Action `POST` it causes                                                               |
+| `Router.transition`          | Next starts an App Router navigation                         | `preets.outcome` = `started`; `preets.navigation.type` (`push`, `replace`, `traverse`); `url.path` (destination pathname)                                    | The parent of the RSC `GET` to that path                                                                       |
+| `BrowserTracing.buffer`      | The SDK registers after more than 256 facts were buffered    | `preets.outcome` = `overflowed`; `preets.tracing.dropped_count`                                                                                              | Root. Its presence makes a missing fact on that page inconclusive                                              |
+
+The closed sets:
+
+- UI states: `content_shown`, `content_concealed`, `logging_out`,
+  `logging_out_concealed`, `logout_failed`, `signed_out`.
+- Message kinds: the coordination message types with `_` for `-`:
+  `communicated`, `logged_out`, `logout_failed`, `logout_started`, `pending`,
+  `renewed`, `session_current`, and `window_query`.
+- Focus targets: `logout_control`, `participant_goal`, `signed_out_heading`.
+
+`preets.focus.cause` is `application` only for a move the code makes through
+`moveFocus`. Focus on the signed-out heading and the participant fixture's
+"Focus later" move are `application`. Every other change, such as a keyboard
+move, is `user`.
+
+The cross-tab match identifier is a UUID that the facade generates for each send.
+It is used only for telemetry and is carried in the posted message's `telemetryId`
+field. It is never derived from message contents. Without browser tracing, messages
+carry no `telemetryId`. Coordination ignores the field, so a traced tab and an
+untraced tab still coordinate.
+
+Facts recorded before the SDK registers are buffered, up to 256. When the SDK
+registers, they are replayed as root spans with their original start times. If
+the SDK has not registered within 10 seconds, the page records no browser
+telemetry. Requests sent before the readiness marker are never parented.
+
+Server Actions and RSC navigations start outside any synchronous scope, so the
+SDK wraps `fetch` to parent them on their interaction. A `submit` holds the
+pending cause for the next same-origin request carrying `Next-Action`. A router
+transition holds the cause for the next non-prefetch `RSC: 1` request to its
+destination path. A cause is claimed once and lasts 5 seconds. Two
+interactions of one kind within that time leave both requests unparented.
+Only the presence of Next's own headers is read, never their values or the
+request body.
+
+Example TraceQL, written with `RUN` as above:
+
+```text
+{ RUN && name = "TabCoordination.transition" && span.preets.ui.to_state = "logging_out" } >> { RUN && resource.telemetry.sdk.language = "nodejs" && name = "logout" }
+{ RUN && name = "Interaction.submit" } > { RUN && kind = client && span.http.request.method = "POST" } > { RUN && resource.telemetry.sdk.language = "nodejs" && kind = server }
+{ RUN && name = "Router.transition" } > { RUN && kind = client && span.http.request.method = "GET" } > { RUN && resource.telemetry.sdk.language = "nodejs" && kind = server }
+{ RUN && name = "TabCoordination.transition" } | select(span.preets.ui.from_state, span.preets.ui.to_state)
+{ RUN && name = "TabChannel.receive" && span.preets.tab.message.id = "<id from a TabChannel.send>" } | select(span.preets.tab.message.kind)
+{ RUN && name = "Focus.move" } | select(span.preets.focus.target, span.preets.focus.change, span.preets.focus.cause)
 ```
 
 ### Startup and export policy
