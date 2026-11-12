@@ -398,3 +398,43 @@ Each slice appends one block in this form:
 - Forbidden data: none from the slice. Pre-existing, not this slice: #377, and the probe query string in the
   existing server spans' `url.query` and `http.target` (trace 6bdc455f…), referred for a human decision.
 - Cleanup: keys remaining under `preets:verify:<run>:` = 0 (all six runs).
+### export — 1b2b896ea15616814b0e26dfbd5f82238296fa29, 2026-11-12, runs 88633591-9632-45ec-ac5e-81be88f03f69 (A, on, synthetic server headers and secret map), 2df68789-09d8-4e72-a004-55c19e1793ac (B, on, concurrent), 49e91eb0-070c-45bb-b2de-1196521f31aa (C, switch unset), 82025719-05f7-4ac1-9a12-f547e311e627 (D, OTEL off, switch true), 454dc28c-c18d-46dc-9d9c-b3fb8b3ffee9 (E, both off), cf0d46c0-093b-4003-ad3b-a530ba826aaa (M, `maybe`)
+
+This block supersedes the 2f9e951 `export` block above, which is now stale: the slice was rebased onto the config
+review fix c395225, and the step-7 correction (spec 5da5ad5, plan 43a9c7b) was merged. Export-owned files are unchanged
+since 2f9e951. A run requested at 0f49660 was stopped unreported when it was superseded.
+
+- Collector image: sha256:4c8056c9…. Ports: 3481–3486. Switch settings: as listed per run; `maybe` refused startup.
+  The `docs/docker-compose.md` preflight check returned 204 with the origin allowed. Run window 2026-11-12T10:33:51Z to
+  10:40:43Z.
+- Session source: prepared-session fixture (tenant `springfield`, subject `preets-verify-<run>`). Fixture-backed
+  results cite L-fixture: they establish nothing about authentication, the sign-in callback, or session issuance.
+- V-002: established. Step 5. Each request kind carried a browser `traceparent` that the server continued in the same
+  trace: activity e40cef21…, Server Action ad4fe64b…, status adf98747…, RSC c3580ac7…, logout 6077f076….
+  Limitation: L-fixture.
+- V-003: established. Step 5. The no-cookie sign-in chain reached the identity provider with no `traceparent` on its 9
+  cross-origin requests, and no collector request carried one. The export half is fixture-backed. Limitation:
+  L-fixture.
+- V-004: established. Step 6. The T-001 query returned 7 `documentLoad` records under server spans. Injected trace
+  1d892d8e…: `documentLoad` 0b2ef478… is under the render span the meta names. The `>>` caveat for injected roots
+  applies. Limitation: L-fixture.
+- V-005: established (option B). Step 6. Back after the `Link` made a new server render (trace 794afd99…,
+  `documentLoad` 07f5dae8…). `{ RUN && name = "documentLoad" } | count() > 1` returned no trace. The bfcache restore
+  path was not exercised. Limitation: L-fixture.
+- V-006: established. Step 4. A's run filter returned none of B's traces. Limitation: L-fixture.
+- V-008: established. Step 2 (full). C, D, and E: no metas, no initialization, 0 SDK chunk requests, 0 collector
+  requests, 0 `traceparent`, and 0 webjs records. The on control loaded the chunk and set the marker. Hand-run check.
+  Limitation: L-fixture.
+- V-010: established. Step 4. Export went only to `127.0.0.1:4318/v1/traces`, with no `authorization` or `cookie`,
+  with server collector headers configured on A. Limitation: L-fixture.
+- V-011: established. Step 4. OPTIONS returned 204 and POST 200 with the app origin allowed; records are in Tempo.
+- V-012: established. Step 9. A with all 12 exports aborted matched C (switch unset) in every visible observation,
+  focus check, and protected-request status. Neither had page errors. A logged Chromium's console lines for the aborted
+  exports. Hand-run check. Limitation: L-fixture.
+- V-016 (part, automatic records): established. Step 8. Webjs `url.path` held only plain paths, outcomes only
+  `loaded`, `fetched`, and `responded`. No webjs span in A or B carried `url.full`, `url.query`, `http.target`, a user
+  agent, `session.id`, an error status, a status message, or an exception. Limitation: L-fixture.
+- T-001, T-002, T-003: present and usable.
+- Forbidden data: none from the slice. Loki had 0 hits for the probe, the secret marker, the token, or the cookie.
+  #377 and #381 are pre-existing.
+- Cleanup: keys remaining under `preets:verify:<run>:` = 0 (all runs).
