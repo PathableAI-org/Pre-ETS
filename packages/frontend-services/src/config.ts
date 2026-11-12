@@ -2,7 +2,7 @@
  * Process settings. Startup decodes `StartupConfig` once from the environment and passes the plain values to layer
  * factories; no other module reads `Config` or `ConfigProvider`.
  */
-import { Config, Effect, Schema, SchemaIssue } from "effect"
+import { Config, Redacted, Schema } from "effect"
 
 import { authenticationConfig } from "./config/authentication.js"
 import { otelConfig } from "./config/otel.js"
@@ -13,21 +13,13 @@ export type { BrowserTracingSettings, OtelEnabled, OtelSettings } from "./config
 
 /**
  * Decodes a setting whose supplied value must never appear in an error: a secret, or a setting whose contract
- * forbids echoing it. The failure names the setting and drops the schema issue, which would quote the input. This is
- * the config module's one redacting helper; the child recipes receive it as an argument.
+ * forbids echoing it. Decoding goes through `Schema.Redacted`, as `Config.Redacted` does, so a failure names the
+ * setting and never quotes the input; the decoded value is then unwrapped. A setting that must stay hidden after
+ * startup decodes to `Redacted` itself (`Schema.RedactedFromValue`). This is the config module's one redacting
+ * helper; the child recipes receive it as an argument.
  */
 const withoutEcho = <A>(name: string, codec: Schema.Codec<A, string>): Config.Config<A> =>
-  Config.String(name).pipe(
-    Config.mapEffect((raw) =>
-      Schema.decodeUnknownEffect(codec)(raw).pipe(
-        Effect.mapError(() =>
-          new Config.ConfigError(
-            new Schema.SchemaError(new SchemaIssue.InvalidValue({ message: `${name} is invalid` }))
-          )
-        )
-      )
-    )
-  )
+  Config.schema(Schema.Redacted(codec), name).pipe(Config.map(Redacted.value))
 export type { StaticTenantResolution, TenantResolutionSettings } from "./config/tenant-resolution.js"
 
 /** NODE_ENV. Absent means development; any other unsupported value fails startup. */

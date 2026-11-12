@@ -1,4 +1,4 @@
-import { Config, Duration, Schema, SchemaTransformation } from "effect"
+import { Config, Duration, type Redacted, Schema, SchemaTransformation } from "effect"
 
 import { isLoopbackHostname } from "../request-host.js"
 
@@ -17,7 +17,8 @@ export const permittedUrl = (allowInsecureLoopback: boolean) =>
 export interface AuthenticationSettings {
   readonly allowInsecureLoopback: boolean
   readonly callbackOrigins: Readonly<Record<string, URL>>
-  readonly clientSecrets: Readonly<Record<string, string>>
+  /** Client secrets stay `Redacted` until the OIDC client authenticates with one. */
+  readonly clientSecrets: Readonly<Record<string, Redacted.Redacted>>
   readonly transactions: TransactionStoreSettings
 }
 
@@ -38,12 +39,16 @@ const callbackOrigins = (allowInsecureLoopback: boolean) => {
 const clientSecrets = (withoutEcho: <A>(name: string, codec: Schema.Codec<A, string>) => Config.Config<A>) =>
   withoutEcho(
     "OIDC_CLIENT_SECRETS_JSON",
-    Schema.fromJsonString(Schema.Record(Schema.NonEmptyString, Schema.NonEmptyString))
+    Schema.fromJsonString(Schema.Record(Schema.NonEmptyString, Schema.RedactedFromValue(Schema.NonEmptyString)))
   ).pipe(Config.withDefault({}))
 
 /** A base-10 integer from 1 through 600: configuration may shorten the transaction lifetime, never extend it. */
 const TransactionTtlSeconds = Schema.String.pipe(
-  Schema.check(Schema.isPattern(/^[1-9][0-9]{0,2}$/)),
+  Schema.check(
+    Schema.isPattern(/^[1-9][0-9]{0,2}$/, {
+      message: "Expected a whole number of seconds without sign or leading zero"
+    })
+  ),
   Schema.decodeTo(
     Schema.Int.pipe(Schema.check(Schema.isBetween({ maximum: 600, minimum: 1 }))),
     SchemaTransformation.numberFromString
