@@ -200,7 +200,7 @@ roster fixture gains a client-navigation stimulus for the RSC request kind.
 - [x] T026 [US5] Add the `telemetryId` parse example to `packages/frontend/tests/unit/session-coordination.test.ts`.
 - [x] T027 [P] [US5] Document signals T-004–T-011 and queries in `docs/observability.md`, and the browser channel and
       Known limits in `docs/engineering/verification-harness.md`.
-- [ ] T028 Run checks, push, request verification for quickstart steps 4, 7, 7b, 8, 10, record results in
+- [x] T028 Run checks, push, request verification for quickstart steps 4, 7, 7b, 8, 10, record results in
       `quickstart.md`; only this pull request may say `Closes #368`.
 
 Notes recorded while implementing slice `facts`:
