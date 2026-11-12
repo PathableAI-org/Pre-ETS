@@ -560,3 +560,43 @@ The SDK chunk was located by its `v1/traces` literal.
 - Forbidden data: none from the slice. Loki had 0 hits for the probe, the secret marker, the token, or the cookie.
   #377 and #381 are pre-existing.
 - Cleanup: keys remaining under `preets:verify:<run>:` = 0 (runs A–D); the fresh clone is removed.
+
+### facts — 8b4fd35a5f14a4031a805111a7542cee90a33cf4, 2026-11-12, runs ed6a70a8-e443-429e-9304-8f3a6c2630b1 (A, on), 098b648d-a7d7-43c4-8422-d0512d85b154 (B, on, concurrent), aefc8b41-d20c-4b4f-9169-6e59a3dba972 (C, switch unset), 671b6ef9-c675-4bea-87fd-b67ef3ddaa45 (D, step 10 fresh clone)
+
+- Collector image: sha256:4c8056c9c05fcb3c8fd93800e85334bfd79b4d0271b47a54a121a64af41fe1fe. Ports 3491–3493, 3000.
+  A has synthetic server headers and a synthetic OIDC_CLIENT_SECRETS_JSON marker. Runtime: Effect 4.1.4, Next 16.4.6,
+  Node 26.2.0 (`.node-version` pins 26.13.1; 26.2.0 satisfies `engines >=26`). SDK chunk 2oqkadwxw1xxv.js.
+- Session source: prepared-session fixture (tenant `springfield`, subject `preets-verify-<run>`). Limitation:
+  L-fixture throughout. These results establish nothing about authentication, the sign-in callback, or session issuance.
+- V-001: established. Step 4.
+  - (a) 7d987cec…: submit > POST > server.
+  - (b) lone cancelled submit 41fe6385…, replay 32520bd0….
+  - (c) 6ebd3136….
+  - (c2) 2 lone submits, root POSTs a351f2e1…/ea6a2b84….
+  - (c3) 3 lone submits, root POSTs 64de1c0a…/c8917d7b….
+  - (d) 1445dd6e…: Router.transition > GET > server.
+  - (e) 25c594d4…: TabCoordination.transition > POST /auth/logout > server >> logout.
+  - Run B's traces are absent from A's queries.
+- V-013: established. Step 7 as rewritten (hint plus visibilitychange, no clock control).
+  - B concealed (509aa1dc…, resume path concealed > /session/status > server matches), then shown (92e055ac…).
+  - A content_shown→logging_out (f1d3a3b0…), then logging_out→signed_out.
+  - B content_shown→signed_out, never entering logging_out.
+  - Order matches Playwright.
+- V-014: established. Every TabChannel.send matches a receive by kind and UUID: session_current, renewed ×2,
+  pending ×5, logout_started 069f5cce… (child of A's logging_out transition), logged_out cecc9cb6….
+- V-015: established. Focus.move: goal entered/user, left/user, entered/application, left/user; logout_control
+  entered/user, left/user; signed_out_heading entered/application. Matches Playwright.
+- V-016: established. Step 8, probe zqprobeb8136abd.
+  - webjs url.path: 5 plain paths. Kinds and outcomes all from the closed sets.
+  - Negative query over A and B: 0 spans with url.full/http.url/url.query/http.target/user_agent/http.host/session.id/
+    tenant alias/error/status message/exception/probe/non-UUID message ID/non-allow-listed name.
+  - Loki: 0 lines for the probe, marker, token or cookie.
+- V-017: established. Step 10.
+  - Fresh clone, frozen install, `.env.local` from the example, documented build (exit 0) and documented start on :3000.
+  - Marker set. Export got POST 200 with ACAO http://localhost:3000.
+  - T-001: 77709f0a…, documentLoad under the server render, matching the meta.
+- Done-when: (1) logout 25c594d4…, Server Action 7d987cec…, RSC 1445dd6e…; (2) no forbidden browser data;
+  (3) switch unset: no metas, marker or OTel globals; 0 SDK chunk requests; 0 collector requests; 0 traceparent.
+- T-011: overflowed, dropped_count 1748 (7269402d…).
+- Forbidden data: none from the slice. #377 and #381 are pre-existing.
+- Cleanup: keys remaining under `preets:verify:<run>:` = 0 (runs A–D).
