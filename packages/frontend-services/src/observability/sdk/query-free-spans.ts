@@ -1,8 +1,11 @@
 import type { Attributes, Context } from "@opentelemetry/api"
 import type { ReadableSpan, Span, SpanProcessor } from "@opentelemetry/sdk-trace-base"
 
-/** Attributes whose value is a URL or request target that may end in a query string. */
-const urlAttributeKeys = ["http.target", "http.url", "url.full"]
+/**
+ * Attributes whose value is, or contains, a URL or request target that may carry a query string. Next.js copies
+ * every span name into `next.span_name`, so a fetch span's copy names the full URL.
+ */
+const urlAttributeKeys = ["http.target", "http.url", "next.span_name", "url.full"]
 
 /** The query attribute itself; dropped entirely. */
 const queryAttributeKey = "url.query"

@@ -307,8 +307,8 @@ put secrets on `Effect.withSpan` attributes.
 
 Query strings are not exported. Before any span reaches the exporter, the
 server span processor drops `url.query`, cuts the query from `url.full`,
-`http.url`, and `http.target`, and cuts it from span names (Next.js names its
-fetch spans after the full URL). This covers incoming and outgoing HTTP spans,
+`http.url`, and `http.target`, and cuts it from span names and `next.span_name`
+(Next.js names its fetch spans after the full URL). This covers incoming and outgoing HTTP spans,
 Next.js spans, and Effect spans, so the OIDC callback's `code` and `state` are
 never exported. Paths and route templates stay. Server logs and metrics carry
 no request URL. Confirm the absence of query values and the required attributes
@@ -518,7 +518,7 @@ UIDs are `tempo`, `loki`, and `prometheus`.
 1. Traces: `search_tempo_traces` with
    `{ resource.service.name = "pre-ets-frontend" }`, then `get_tempo_trace` for
    a returned trace ID. Check that no span carries `url.query` or a query string
-   in `url.full`, `http.url`, `http.target`, or its name; a query value there is
+   in `url.full`, `http.url`, `http.target`, `next.span_name`, or its name; a query value there is
    forbidden data. Do not copy Authorization, Cookie, query values, or collector
    headers into the chat.
 2. Logs: with OTEL enabled, use `query_loki_logs` for exported Effect logs.
