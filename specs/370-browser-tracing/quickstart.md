@@ -189,7 +189,7 @@ as a step the documentation did not supply.
 
 ## Execution results
 
-None yet. Each slice appends one block in this form:
+Each slice appends one block in this form:
 
 ```md
 ### <slice> — <sha>, <date>, run <run>
@@ -202,3 +202,155 @@ None yet. Each slice appends one block in this form:
   record counts, and conditions. For a fixture-backed claim: "Limitation: L-fixture."
 - Cleanup: keys remaining under `preets:verify:<run>:` = 0.
 ```
+
+### Slice `config`: verified SHA `aadb76fb6ce51ef072f2147546bff9e9ecfd9426` (2026-11-11)
+
+**Stale.** Superseded by a later run below. This revision is no longer on the branch after the rebase onto `main` at `cd77cef`.
+
+**Conditions**
+
+- The stack's verification session ran in its own worktree, detached at the verified SHA, with a frozen install and a
+  production build.
+- Five `next start` instances ran on ports 3471–3475, each with its own run UUID.
+  - Instances:
+    - both on, with synthetic collector headers (step 3)
+    - OTEL on with the switch unset
+    - `OTEL_SDK_DISABLED=true` with the switch `true`
+    - both off
+    - OTEL on with the switch `maybe`
+  - Every instance used static tenant `springfield` from `fixtures/tenant-config`, the shared `otel-lgtm` stack, and
+    `preets:verify:<run>:` key prefixes.
+- Run window: 2026-11-11T20:05:25Z–20:07:02Z.
+- Steps 2 (document only) and 3 were run.
+- No real application session could be established: `CallbackFreshness` is fail-closed until #158. No prepared
+  session was substituted.
+
+**Results**
+
+| Claim        | Result      | Observation                                                                                                                                                                                                                                                                    | Limitation                                                                                                                                    |
+| ------------ | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| V-007        | established | The `tests/lib/config.test.ts` examples all pass: every OTEL × switch combination, the property that tracing is on iff both are on, and an unrecognized value refusing startup. At runtime, the `maybe` instance failed startup on `BROWSER_TRACING_ENABLED` and never served. | Module-test channel only                                                                                                                      |
+| V-009        | blocked     | `/coordination/roster` redirected to login (`protectRequest` outcome `redirected_login`), so no protected document rendered its configuration. The module test asserts the decoded four values with headers configured, as supporting evidence only.                           | verification.md: steps needing a real application session are `blocked`. The gate question for a full claim was escalated to the orchestrator |
+| V-004 (part) | blocked     | The server continued the injected trace (one trace ID across the request spans), but no protected document rendered a `traceparent` meta to compare.                                                                                                                           | Same                                                                                                                                          |
+| V-008 (part) | blocked     | In all four modes, the reachable documents (redirects, empty 401 responses, public pages) carried no tracing meta. There were 0 collector requests and 0 `webjs` records. This does not discriminate, because PL-3 gives the on control the same result.                       | Same; PL-3                                                                                                                                    |
+
+**Telemetry**
+
+- T-008 is present and usable. There was exactly one warning, for the run with collector headers, with
+  `service.version` equal to the SHA. There was none for the switch-unset run.
+- The T-008 line carries no header name or value.
+
+**Forbidden data**
+
+- None from this slice. No synthetic header, bearer, or authorization value appears in Loki for any run.
+- Pre-existing and outside this slice: the Node SDK resource detectors export `process.owner`, `host.name`, and
+  `process.command_args`. This was referred to a person.
+
+### config — 5ec050aada3a6c4db61a867eefde7982f0928952, 2026-11-11, runs f8de8186-ce91-4146-a1f2-7d8530d28314 (on), 10429034-7ffd-4366-a1e0-0ab12449a914 (unset), 265b24d7-1e91-493a-928b-63d7f535cb2f (OTEL off, switch true), 07869815-06a9-46e9-ba57-aeb5f09eb153 (both off), c863326a-a0e0-4944-9470-8e142ae1142b (maybe)
+
+**Stale.** Superseded by a later run below. This revision is no longer on the branch after the rebase onto `main` at `cd77cef`.
+
+- Collector image: sha256:4c8056c9c05fcb3c8fd93800e85334bfd79b4d0271b47a54a121a64af41fe1fe. Ports: 3471–3475. Switch
+  settings: on+synthetic headers; OTEL on/switch unset; OTEL_SDK_DISABLED=true/switch true; both off; switch `maybe`.
+- Session source: prepared-session fixture (tenant `springfield`, subject `preets-verify-<run>`).
+  Fixture-backed results cite L-fixture: they establish nothing about authentication, the sign-in callback, or
+  session issuance.
+- V-007: established. Module test `tests/lib/config.test.ts` 67/67; the `maybe` instance refused startup. Session
+  source none.
+- V-009: established. Step 3. Session source prepared-session fixture. Each document's single
+  `preets-browser-tracing` meta had exactly endpoint, serviceInstanceId, serviceName and serviceVersion, and no
+  header name or value, with collector headers configured. Limitation: L-fixture.
+- V-004 (part): established. Step 3. Session source prepared-session fixture. The meta traceparent matched server
+  span `render route (app) /coordination/roster` 418c7934bd6c3cf1 in injected trace
+  7b297445b90f3c8543a49e502a0f06c7, and the server spans in uninjected trace 94398a76be69ca31565030a77677acbd and
+  participant trace 338f3623e75982ca6d31bc700268cc98. Limitation: L-fixture.
+- V-008 (part): established. Step 2 (document only). Session source prepared-session fixture. The three off
+  instances had 0 tracing metas, 0 collector requests, and 0 non-harness traceparents; the probe found nothing
+  initialized; and there were 0 webjs records. The on control rendered both metas. Limitation: L-fixture.
+- T-008: present once for the header run, absent for the unset run, and carrying no header data.
+- Forbidden data: none from the slice. #377 (resource detectors) is pre-existing.
+- Cleanup: keys remaining under `preets:verify:<run>:` = 0 (all five runs).
+
+### config — c395225321f31f5ecb473d3fc9d38f7959b50c33, 2026-11-12, runs bd2da3e5-9cf9-4013-9b60-58b86c1985ba (on), ea544b5e-de7d-4a50-8184-920bd536710c (unset), ec60e788-a9b2-4c47-be56-658a0941b7fe (OTEL off, switch true), 451a4ac5-452b-4500-aeb8-67a1d5529e69 (both off), 0f24a22e-a01e-44dd-9009-0b6978df79da (maybe), 938b90dd-ae13-4653-a8e4-9ef19c151389 (malformed client-secret map)
+
+**Stale.** Superseded by a later run below. This revision is no longer on the branch after the rebase onto `main` at `cd77cef`.
+
+- Collector image: sha256:4c8056c9c05fcb3c8fd93800e85334bfd79b4d0271b47a54a121a64af41fe1fe. Ports: 3471–3476. Switch
+  settings: on + synthetic headers + synthetic OIDC_CLIENT_SECRETS_JSON marker; OTEL on/switch unset;
+  OTEL_SDK_DISABLED=true/switch true; both off; switch `maybe`; malformed OIDC_CLIENT_SECRETS_JSON.
+- Session source: prepared-session fixture (tenant `springfield`, subject `preets-verify-<run>`).
+  Fixture-backed results cite L-fixture: they establish nothing about authentication, the sign-in callback, or
+  session issuance.
+- V-007: established. Module test `tests/lib/config.test.ts` 68/68; the `maybe` instance refused startup
+  (ConfigError at BROWSER_TRACING_ENABLED). Session source none.
+- V-009: established. Step 3. Session source prepared-session fixture. Each document's single
+  `preets-browser-tracing` meta had exactly endpoint, serviceInstanceId, serviceName and serviceVersion, and no header
+  name or value, with collector headers configured. Limitation: L-fixture.
+- V-004 (part): established. Step 3. Session source prepared-session fixture. The meta traceparent matched the server
+  span `render route (app)` in injected trace 4d425c1d400dc3175013d0a9d46d9690 (123f56a33190caf1), uninjected trace
+  2bcd2fb2ea30eb158abd6d98e86f6190 (078946a7ad3fadaf), and participant trace fcbd571d8ba4c111d5497d801535cbd3
+  (0c2c274f86e9f0cb). Limitation: L-fixture.
+- V-008 (part): established. Step 2 (document only). Session source prepared-session fixture. The three off instances
+  had 0 tracing metas, 0 collector requests, and 0 non-harness traceparents; the probe found nothing initialized; and
+  there were 0 webjs records. The on control rendered both metas. Limitation: L-fixture.
+- T-008: present once for the header run, absent for the unset run, and carrying no header data.
+- Client secret: the synthetic marker appeared in no startup output, Loki line, or exported span. A malformed map
+  refused startup with "Expected a valid value" at OIDC_CLIENT_SECRETS_JSON, without echoing the value.
+- Forbidden data: none from the slice. #377 (resource detectors) is pre-existing.
+- Cleanup: keys remaining under `preets:verify:<run>:` = 0 (all six runs).
+
+### config — c1105929059ad0cb59b193b4aca946e3d6d0a054, 2026-11-12, runs e0327d9b-1b48-4f19-94bc-07b3dcda4349 (on), 7590e2e4-3418-4f8f-9c13-4a99022f7c95 (unset), fe6613aa-422c-4a26-899e-c6bac64e4e54 (OTEL off, switch true), 5ac6ea93-8938-460a-a365-f2c2c85e262d (both off), 7dc00b23-c269-4d3b-8d6f-16533e75390b (maybe), ad2cb1e5-5d1c-4c95-8454-0c0e7c089533 (malformed client-secret map)
+
+**Stale.** Superseded by a later run below. This revision is no longer on the branch after the rebase onto `main` at `cd77cef`.
+
+- Collector image: sha256:4c8056c9c05fcb3c8fd93800e85334bfd79b4d0271b47a54a121a64af41fe1fe. Ports: 3471–3476. Switch
+  settings: on + synthetic headers + synthetic OIDC_CLIENT_SECRETS_JSON marker; OTEL on/switch unset;
+  OTEL_SDK_DISABLED=true/switch true; both off; switch `maybe`; malformed OIDC_CLIENT_SECRETS_JSON.
+- Session source: prepared-session fixture (tenant `springfield`, subject `preets-verify-<run>`).
+  Fixture-backed results cite L-fixture: they establish nothing about authentication, the sign-in callback, or
+  session issuance.
+- V-007: established. Module test `tests/lib/config.test.ts` 68/68; the `maybe` instance refused startup
+  (ConfigError at BROWSER_TRACING_ENABLED). Session source none.
+- V-009: established. Step 3. Session source prepared-session fixture. Each document's single
+  `preets-browser-tracing` meta had exactly endpoint, serviceInstanceId, serviceName and serviceVersion, and no header
+  name or value, with collector headers configured. Limitation: L-fixture.
+- V-004 (part): established. Step 3. Session source prepared-session fixture. The meta traceparent matched the server
+  span `render route (app)` in injected trace d7e6c63a3c0584e91c2f4c56e5554ae2 (ec0adcbe22074ec2), uninjected trace
+  7d074a6520aa4c89b6f85227ad8060ae (29958e4628bafbd4), and participant trace 7400406f2d4924b1a1c95abdf6577285
+  (d2ba91a168544516). Limitation: L-fixture.
+- V-008 (part): established. Step 2 (document only). Session source prepared-session fixture. The three off instances
+  had 0 tracing metas, 0 collector requests, and 0 non-harness traceparents; the probe found nothing initialized; and
+  there were 0 webjs records. The on control rendered both metas. Limitation: L-fixture.
+- T-008: present once for the header run, absent for the unset run, and carrying no header data.
+- Client secret: the synthetic marker appeared in no startup output, Loki line, or exported span. A malformed map
+  refused startup with "Expected a valid value" at OIDC_CLIENT_SECRETS_JSON, without echoing the value.
+- Forbidden data: none from the slice. #377 (resource detectors) is pre-existing.
+- Cleanup: keys remaining under `preets:verify:<run>:` = 0 (all six runs).
+
+### config — 0c6595d717798edf0be1e81961e3d7476adba7f3, 2026-11-12, runs 1c646672-8347-4f86-b0b3-07b7e4101071 (on), a14e3bcb-42ec-4196-a756-78c192b73450 (unset), 1da3dd6b-8275-453c-86a2-d8a9230b9ab7 (OTEL off, switch true), fd9af5bb-8d3f-4e43-8670-72f40783be41 (both off), 3814a15c-e3a3-490c-8df5-ead90b957ed4 (maybe), eb515ad8-3a67-4ce3-836e-b2db95dbe6a3 (malformed client-secret map)
+
+**Stale.** Recorded before the stack was rebased onto `main` at `cd77cef`, so this revision is no longer on the branch. A fresh run at the rebased head supersedes it.
+
+- Collector image: sha256:4c8056c9c05fcb3c8fd93800e85334bfd79b4d0271b47a54a121a64af41fe1fe. Ports: 3471–3476. Switch
+  settings: on + synthetic headers + synthetic OIDC_CLIENT_SECRETS_JSON marker; OTEL on/switch unset;
+  OTEL_SDK_DISABLED=true/switch true; both off; switch `maybe`; malformed OIDC_CLIENT_SECRETS_JSON.
+- Session source: prepared-session fixture (tenant `springfield`, subject `preets-verify-<run>`).
+  Fixture-backed results cite L-fixture: they establish nothing about authentication, the sign-in callback, or
+  session issuance.
+- V-007: established. Module test `tests/lib/config.test.ts` 73/73, including the five wrong-shape client-secret
+  examples; the `maybe` instance refused startup (ConfigError at BROWSER_TRACING_ENABLED). Session source none.
+- V-009: established. Step 3. Session source prepared-session fixture. Each document's single
+  `preets-browser-tracing` meta had exactly endpoint, serviceInstanceId, serviceName and serviceVersion, and no header
+  name or value, with collector headers configured. Limitation: L-fixture.
+- V-004 (part): established. Step 3. Session source prepared-session fixture. The meta traceparent matched the server
+  span `render route (app)` in injected trace 1783ab18beeb5766e222e11fb11a6bf4 (fa2fe0f9a973c961), uninjected trace
+  d2a27f60756a8b3d4800fe9da6790ab8 (cd3c19b5a2a4766d), and participant trace c29d8322c422a92a8dbd5607262bc972
+  (7ec10913d46f9e3d). Limitation: L-fixture.
+- V-008 (part): established. Step 2 (document only). Session source prepared-session fixture. The three off instances
+  had 0 tracing metas, 0 collector requests, and 0 non-harness traceparents; the probe found nothing initialized; and
+  there were 0 webjs records. The on control rendered both metas. Limitation: L-fixture.
+- T-008: present once for the header run, absent for the unset run, and carrying no header data.
+- Client secret: the synthetic marker appeared in no startup output, Loki line, or exported span. A malformed map
+  refused startup with "Expected a valid value" at OIDC_CLIENT_SECRETS_JSON, without echoing the value.
+- Forbidden data: none from the slice. #377 (resource detectors) is pre-existing.
+- Cleanup: keys remaining under `preets:verify:<run>:` = 0 (all six runs).
