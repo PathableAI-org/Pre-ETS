@@ -2,6 +2,7 @@ import "server-only"
 import { Clock, Context, Duration, Effect, Layer, Option, Schema } from "effect"
 
 import { ClientCredentials } from "./authentication/credentials.js"
+import { FRESHNESS_TOLERANCE, freshnessPosition } from "./authentication/freshness.js"
 import { OidcProvider } from "./authentication/provider.js"
 import {
   AuthenticationTransactions,
@@ -9,11 +10,12 @@ import {
   makeBrowserCorrelation
 } from "./authentication/transaction.js"
 import { type AuthenticationSettings, permittedUrl } from "./config.js"
+import { annotateOutcome } from "./observability.js"
 import { parseRequestHost, type RequestHost } from "./request-host.js"
 import { type TenantAlias, TenantConfigService, type TenantFailure, TenantNotFound, TenantReadError } from "./tenant.js"
 
+/** A validated identity whose authentication event was confirmed fresh. */
 export interface TrustedIdentity {
-  readonly authenticatedAt: number
   readonly issuer: string
   readonly subject: string
   readonly tenantAlias: TenantAlias
@@ -48,6 +50,11 @@ class UntrustedHost extends Schema.TaggedError<UntrustedHost>()("UntrustedHost",
 /** Safe expected denial of an untrusted or no-longer-recoverable callback. */
 export class AuthenticationDenied extends Schema.TaggedError<AuthenticationDenied>()("AuthenticationDenied", {}) {}
 
+/** The provider's authentication time was absent, or outside the freshness window. */
+export class AuthenticationNotFresh extends Schema.TaggedError<AuthenticationNotFresh>()("AuthenticationNotFresh", {
+  evidence: Schema.Literals(["missing", "stale"])
+}) {}
+
 export class AuthenticationService extends Context.Service<AuthenticationService, AuthenticationServiceShape>()(
   "AuthenticationService"
 ) {
@@ -68,7 +75,13 @@ export class CallbackExpectedFailure extends Schema.TaggedError<CallbackExpected
   "CallbackExpectedFailure",
   {
     correlationDisposition: Schema.Literals(["clear", "preserve"]),
-    reason: Schema.Union([AuthenticationDenied, AuthenticationUnavailable, TenantNotFound, TenantReadError])
+    reason: Schema.Union([
+      AuthenticationDenied,
+      AuthenticationNotFresh,
+      AuthenticationUnavailable,
+      TenantNotFound,
+      TenantReadError
+    ])
   }
 ) {}
 
@@ -147,6 +160,24 @@ const attemptMatches = (attempt: AttemptBindings, expected: AttemptBindings): bo
   attempt.redirectUri === expected.redirectUri &&
   attempt.state === expected.state &&
   attempt.tenantAlias === expected.tenantAlias
+
+const completionOutcome = (reason: CallbackExpectedFailure["reason"]): string => {
+  switch (reason._tag) {
+    case "AuthenticationDenied":
+      return "denied"
+    case "AuthenticationNotFresh":
+      return `not_fresh_${reason.evidence}`
+    case "AuthenticationUnavailable":
+      return "unavailable"
+    case "TenantNotFound":
+    case "TenantReadError":
+      return "tenant_failure"
+  }
+}
+
+/** Sets the closed-set completion outcome on the `AuthenticationService.complete` span for every failure. */
+const annotateCompletionFailure = <A, R>(effect: Effect.Effect<A, CallbackExpectedFailure, R>) =>
+  effect.pipe(Effect.tapError((failure) => annotateOutcome(completionOutcome(failure.reason))))
 
 const exactCallback = (origin: URL): { readonly authority: string; readonly redirectUri: string } => ({
   authority: origin.origin,
@@ -227,10 +258,13 @@ const authenticationServiceLayer = (settings: AuthenticationSettings) => {
             callbackFailure(failure._tag === "UntrustedHost" ? denied() : failure, "preserve")
           )
         )
+        yield* Effect.annotateCurrentSpan("preets.tenant.alias", target.alias)
         return { ...target, correlation, shape: shape.value }
       })
 
       const complete = Effect.fn("AuthenticationService.complete")(function*(input: CompleteAuthenticationInput) {
+        // The instant the provider's return reached the application bounds the freshness window above.
+        const callbackAt = yield* Clock.currentTimeMillis
         const qualified = yield* qualifyCallback(input)
 
         const attempt = yield* transactions.consume({
@@ -251,6 +285,11 @@ const authenticationServiceLayer = (settings: AuthenticationSettings) => {
             )
           })
         )
+
+        yield* Effect.annotateCurrentSpan({
+          "preets.authentication.callback_ms": callbackAt,
+          "preets.authentication.transaction_started_ms": attempt.createdAt
+        })
 
         const configuredIssuer = yield* decodeUrl(qualified.config.oidc.issuer).pipe(
           Effect.mapError(() => callbackFailure(unavailable(), "clear"))
@@ -285,13 +324,31 @@ const authenticationServiceLayer = (settings: AuthenticationSettings) => {
         }).pipe(
           Effect.mapError(() => callbackFailure(unavailable(), "clear"))
         )
-        return {
-          authenticatedAt: identity.authenticatedAt,
-          issuer: identity.issuer,
-          subject: identity.subject,
-          tenantAlias: qualified.alias
+
+        const position = freshnessPosition({
+          authTimeSeconds: identity.authenticatedAt,
+          callbackAtMs: callbackAt,
+          startedAtMs: attempt.createdAt
+        })
+        const freshness = position === "inside" ? "confirmed" : position === "missing" ? "missing" : "stale"
+        yield* Effect.annotateCurrentSpan({
+          "preets.authentication.freshness": freshness,
+          "preets.authentication.freshness_position": position,
+          "preets.authentication.freshness_tolerance_ms": Duration.toMillis(FRESHNESS_TOLERANCE)
+        })
+        if (freshness !== "confirmed") {
+          yield* Effect.logWarning("Authentication freshness denied").pipe(
+            Effect.annotateLogs({
+              "preets.authentication.freshness": freshness,
+              "preets.tenant.alias": qualified.alias
+            })
+          )
+          return yield* callbackFailure(new AuthenticationNotFresh({ evidence: freshness }), "clear")
         }
-      })
+
+        yield* annotateOutcome("confirmed")
+        return { issuer: identity.issuer, subject: identity.subject, tenantAlias: qualified.alias }
+      }, annotateCompletionFailure)
 
       return AuthenticationService.of({ complete, prepare })
     })

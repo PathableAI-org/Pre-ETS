@@ -6,10 +6,11 @@ Feature: Default entry-point protection
   resources obtain no protected content, and a well-formed direct invocation of the protected
   reference Server Action is denied with 401 without performing its operation or starting
   login. Tenant failure keeps its 404 or 500 ahead of protection. Fresh browser entry is
-  bounded request-level evidence that the authorization request carries max_age=0; it does
-  not establish auth_time validation or a confirmed fresh event (#158). Admission of a real
-  session, cross-instance recognition, tenant mismatch with a real session, public static
-  assets (finding F-1) and Server Action recovery content (#157) remain incomplete.
+  bounded request-level evidence that the authorization request carries max_age=0;
+  confirmation of a fresh event and admission of the resulting session are observed in the
+  callback feature (#158). Cross-instance recognition, tenant mismatch with a real session,
+  public static assets (finding F-1) and Server Action recovery content (#157) remain
+  incomplete here.
 
   @preets-session-004
   Scenario Outline: A protected page navigation leads to the tenant provider
@@ -94,7 +95,7 @@ Feature: Default entry-point protection
   @preets-session-013
   Scenario: Fresh entry without a valid session starts tenant sign-in
     The max_age=0 observation is bounded request-level evidence for the selected freshness request only;
-    it does not establish auth_time validation, which #158 owns.
+    auth_time confirmation is observed through the callback.
 
     Given production tenant sites for Springfield and Shelbyville
     And host resolution uses base hostname "localhost"

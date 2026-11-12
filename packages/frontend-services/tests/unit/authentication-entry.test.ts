@@ -7,9 +7,13 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, describe, expect, vi } from "vitest"
 
-import { AuthenticationDenied, AuthenticationService, CallbackExpectedFailure } from "../../src/authentication.ts"
+import {
+  AuthenticationDenied,
+  AuthenticationNotFresh,
+  AuthenticationService,
+  CallbackExpectedFailure
+} from "../../src/authentication.ts"
 import { createCallbackHandler } from "../../src/next.ts"
-import { CallbackFreshness } from "../../src/next.ts"
 import { createLoginHandler } from "../../src/next.ts"
 import { SessionService } from "../../src/session.ts"
 import { TenantAlias, TenantConfigService } from "../../src/tenant.ts"
@@ -51,7 +55,7 @@ afterEach(() => {
 
 const routeSessionLayer = Layer.succeed(SessionService, {
   establish: (): never => {
-    throw new Error("establish must remain unused without a confirmed result")
+    throw new Error("establish must remain unused without a fresh trusted identity")
   },
   invalidate: (): never => {
     throw new Error("invalidate must remain unused by authentication entry")
@@ -69,18 +73,17 @@ const routeSessionLayer = Layer.succeed(SessionService, {
 
 const routeTenantLayer = Layer.succeed(TenantConfigService, {
   getAlias: (): never => {
-    throw new Error("getAlias must remain unused for an unconfirmed result")
+    throw new Error("getAlias must remain unused without a fresh trusted identity")
   },
   getConfigFromAlias: (): never => {
-    throw new Error("getConfigFromAlias must remain unused for an unconfirmed result")
+    throw new Error("getConfigFromAlias must remain unused without a fresh trusted identity")
   },
   getConfigFromHost: (): never => {
-    throw new Error("getConfigFromHost must remain unused for an unconfirmed result")
+    throw new Error("getConfigFromHost must remain unused without a fresh trusted identity")
   }
 })
 
 const trustedIdentity = {
-  authenticatedAt: 1_700_000_000,
   issuer: "https://provider.test/",
   subject: "subject-1",
   tenantAlias: alias
@@ -89,7 +92,6 @@ const trustedIdentity = {
 const routeRuntime = (
   service: AuthenticationService["Service"],
   provided: {
-    readonly confirmed?: boolean
     readonly session: Layer.Layer<SessionService, unknown>
     readonly tenant: Layer.Layer<TenantConfigService, unknown>
   } = { session: routeSessionLayer, tenant: routeTenantLayer }
@@ -98,10 +100,6 @@ const routeRuntime = (
     Effect.runPromise(
       program.pipe(
         Effect.provideService(AuthenticationService, service),
-        // Without `confirmed`, the production default (fail closed) applies.
-        provided.confirmed === true
-          ? Effect.provideService(CallbackFreshness, { confirmed: () => true })
-          : (effect) => effect,
         Effect.provide(Layer.mergeAll(provided.session, provided.tenant))
       )
     )
@@ -287,40 +285,50 @@ describe("authentication Route Handlers [PREETS-SESSION-003, PREETS-SESSION-013]
     expect(prepare).toHaveBeenCalledTimes(1)
   })
 
-  it("treats a trusted handoff without freshness confirmation as the safe return, clearing correlation without a session cookie", async () => {
-    const complete = vi.fn((_input: {
-      readonly correlation?: string | undefined
-      readonly host: string
-      readonly query: readonly (readonly [string, string])[]
-    }) => Effect.succeed(trustedIdentity))
-    routeRuntime({ complete, prepare: () => Effect.die("prepare must remain unused") })
-    const correlation = "B".repeat(43)
-    const request = new NextRequest("https://alpha.example.test/auth/callback?code=secret-code&state=state-1", {
-      headers: {
-        cookie: `oidc-correlation=${correlation}`,
-        host: "alpha.example.test"
-      }
-    })
+  it.each(["missing", "stale"] as const)(
+    "treats %s freshness evidence as the safe return, clearing correlation without a session cookie",
+    async (evidence) => {
+      const complete = vi.fn((_input: {
+        readonly correlation?: string | undefined
+        readonly host: string
+        readonly query: readonly (readonly [string, string])[]
+      }) =>
+        Effect.fail(
+          new CallbackExpectedFailure({
+            correlationDisposition: "clear",
+            reason: new AuthenticationNotFresh({ evidence })
+          })
+        )
+      )
+      routeRuntime({ complete, prepare: () => Effect.die("prepare must remain unused") })
+      const correlation = "B".repeat(43)
+      const request = new NextRequest("https://alpha.example.test/auth/callback?code=secret-code&state=state-1", {
+        headers: {
+          cookie: `oidc-correlation=${correlation}`,
+          host: "alpha.example.test"
+        }
+      })
 
-    const response = await callback(request)
+      const response = await callback(request)
 
-    expect(response.status).toBe(200)
-    expect(await response.text()).toContain("authentication-return")
-    expect(response.headers.get("cache-control")).toBe("private, no-store")
-    const cookie = response.headers.get("set-cookie") ?? ""
-    expect(cookie).toContain("oidc-correlation=")
-    expect(cookie).toContain("Max-Age=0")
-    expect(cookie).not.toContain("pathable-session")
-    expect([...response.headers.values()].join(" ")).not.toContain("secret-code")
-    expect(complete).toHaveBeenCalledTimes(1)
-    expect(complete.mock.calls[0]?.[0]).toEqual({
-      correlation,
-      host: "alpha.example.test",
-      query: [["code", "secret-code"], ["state", "state-1"]]
-    })
-  })
+      expect(response.status).toBe(200)
+      expect(await response.text()).toContain("authentication-return")
+      expect(response.headers.get("cache-control")).toBe("private, no-store")
+      const cookie = response.headers.get("set-cookie") ?? ""
+      expect(cookie).toContain("oidc-correlation=")
+      expect(cookie).toContain("Max-Age=0")
+      expect(cookie).not.toContain("pathable-session")
+      expect([...response.headers.values()].join(" ")).not.toContain("secret-code")
+      expect(complete).toHaveBeenCalledTimes(1)
+      expect(complete.mock.calls[0]?.[0]).toEqual({
+        correlation,
+        host: "alpha.example.test",
+        query: [["code", "secret-code"], ["state", "state-1"]]
+      })
+    }
+  )
 
-  it("navigates to the application entry with one host-only session cookie after a freshness-confirmed establishment", async () => {
+  it("navigates to the application entry with one host-only session cookie after a fresh trusted identity", async () => {
     const directory = await mkdtemp(join(tmpdir(), "preets-session-callback-"))
     try {
       await writeFile(
@@ -336,7 +344,7 @@ describe("authentication Route Handlers [PREETS-SESSION-003, PREETS-SESSION-013]
         .pipe(Layer.provide(NodeServices.layer))
       routeRuntime(
         { complete: () => Effect.succeed(trustedIdentity), prepare: () => Effect.die("prepare must remain unused") },
-        { confirmed: true, session: sessionWorld, tenant }
+        { session: sessionWorld, tenant }
       )
       const correlation = `oidc-correlation=${"B".repeat(43)}`
       const secureRequest = new NextRequest("https://alpha.example.test/auth/callback?code=secret-code&state=state-1", {
@@ -397,7 +405,7 @@ describe("authentication Route Handlers [PREETS-SESSION-003, PREETS-SESSION-013]
     expect(response.headers.get("location")).toBeNull()
   })
 
-  it("preserves correlation for a premature callback and clears it after the unconfirmed return", async () => {
+  it("preserves correlation for a premature callback and clears it after a stale return", async () => {
     const complete = vi.fn()
       .mockReturnValueOnce(
         Effect.fail(
@@ -407,7 +415,14 @@ describe("authentication Route Handlers [PREETS-SESSION-003, PREETS-SESSION-013]
           })
         )
       )
-      .mockReturnValueOnce(Effect.succeed(trustedIdentity))
+      .mockReturnValueOnce(
+        Effect.fail(
+          new CallbackExpectedFailure({
+            correlationDisposition: "clear",
+            reason: new AuthenticationNotFresh({ evidence: "stale" })
+          })
+        )
+      )
     routeRuntime({ complete, prepare: () => Effect.die("prepare must remain unused") })
     const cookie = `oidc-correlation=${"C".repeat(43)}`
 

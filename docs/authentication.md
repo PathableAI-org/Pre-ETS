@@ -31,20 +31,28 @@ The callback independently resolves the tenant and exact registered authority, q
 the correlation/state tuple, and consumes it once with Redis `GETDEL`. `openid-client`
 then performs code exchange and issuer, audience, signature, state, nonce, and ID-token
 validation with non-repudiation checks enabled. A successful callback requires nonempty
-`sub` and integer `auth_time`.
+`sub`; a present `auth_time` must be an integer, or the token is invalid.
 
-A trusted identity is not itself authority to establish a session: the callback must also
-confirm that the authentication event is fresh. That freshness comparison and clock
-tolerance are unresolved ([#158](https://github.com/PathableAI-org/Pre-ETS/issues/158)), so
-the callback currently treats every trusted result as unconfirmed. It returns the safe
-"No authentication could be established" page with a cleared correlation cookie and issues
-no `pathable-session`. Once freshness is confirmed, the callback derives the tenant's
-effective session policy, establishes a Redis-backed session through `SessionService`, and
-only then writes the host-only `pathable-session` cookie alongside the cleared correlation
-cookie, answering 303 to `/` with `Cache-Control: private, no-store` so the browser leaves
-the provider and its next request presents the new session. This branch stays unreachable
-in the running application until #158 supplies freshness confirmation. Establishment or
-tenant failure fails closed to the same safe page with no session cookie. See [session-state.md](./session-state.md) for the session contract.
+A validated identity is not itself authority to establish a session: `AuthenticationService.complete`
+also confirms that the authentication event is fresh
+([#158](https://github.com/PathableAI-org/Pre-ETS/issues/158), B6 decision of 2026-11-09).
+Every login requests `max_age=0`. The ID token's `auth_time`, as the exact millisecond instant
+its whole seconds denote, must lie in `[attempt start − 30 s, callback time + 30 s]`, both bounds
+inclusive. The attempt start is the consumed transaction's creation time, and the callback time
+is when the provider's return reached the application. The 30-second tolerance is one fixed
+application-wide value with no per-tenant setting, re-prompt fallback, or substitute evidence.
+A missing `auth_time` is denied as missing evidence, and one outside the window as stale
+(`AuthenticationNotFresh`). Both have already consumed the transaction, return the safe
+"No authentication could be established" page with a cleared correlation cookie, and issue no
+`pathable-session`. A provider that ignores `max_age=0` or omits `auth_time` therefore fails
+closed. Once freshness is confirmed, the callback derives the tenant's effective session policy,
+establishes a Redis-backed session through `SessionService`, and only then writes the host-only
+`pathable-session` cookie alongside the cleared correlation cookie, answering 303 to `/` with
+`Cache-Control: private, no-store` so the browser leaves the provider and its next request
+presents the new session. Establishment or tenant failure fails closed to the same safe page
+with no session cookie. Freshness denials log `Authentication freshness denied` with the tenant
+alias and the `missing` or `stale` category only; see
+[session-state.md](./session-state.md#authentication-completion-signals). See [session-state.md](./session-state.md) for the session contract.
 
 Unqualified input and qualified lookup misses preserve correlation so the original valid
 return can still complete. Actual consumption and ambiguous in-flight consumption clear
@@ -137,10 +145,9 @@ registered authority to prove cross-instance recovery.
 See the [verification guide](../specs/007-initiate-tenant-oidc/quickstart.md).
 
 Only the tracked Keycloak provider is executed by repository BDD. Microsoft, broker
-chains, a real confidential-provider round trip, and `auth_time` age/tolerance policy are
-not established here. #218 implements the session handoff behind the unresolved freshness
-confirmation; #219/#154 retain later enforcement/application integration; #158 owns the
-freshness comparison and tolerance that gate live establishment.
+chains, and a real confidential-provider round trip are not established here. The freshness
+window is evidenced at the service boundary with controlled ID tokens; the real-provider
+journeys belong to #158.
 
 ## Configuration for OIDC consumers
 

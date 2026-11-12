@@ -17,7 +17,6 @@ export {
   type LogoutRequestBody,
   type SessionActivityRequestBody
 } from "./next/coordination.js"
-export { CallbackFreshness } from "./next/freshness.js"
 export { PRIVATE_NO_STORE } from "./next/handler.js"
 export { createLoginHandler } from "./next/login.js"
 export { createProtectionProxy, type ProtectionResponses } from "./next/protection.js"

@@ -5,7 +5,6 @@ import { AuthenticationService, type CallbackExpectedFailure, type TrustedIdenti
 import { SessionService, SessionServiceUnavailable } from "../session.js"
 import { effectiveSessionPolicy, TenantConfigService } from "../tenant.js"
 import { clearCorrelation, CORRELATION_COOKIE, setSessionCookie } from "./cookies.js"
-import { CallbackFreshness } from "./freshness.js"
 import { PRIVATE_NO_STORE, toNext } from "./handler.js"
 import { type TenantFailureResponse, tenantFailureStatus } from "./tenant-failure.js"
 
@@ -20,6 +19,7 @@ const responseForReason = (
 ): Promise<NextResponse> => {
   switch (reason._tag) {
     case "AuthenticationDenied":
+    case "AuthenticationNotFresh":
     case "AuthenticationUnavailable":
       return responses.authenticationReturn()
     case "TenantNotFound":
@@ -28,7 +28,7 @@ const responseForReason = (
   }
 }
 
-/** Failed or ambiguous establishment, and unconfirmed trusted completion, both fail closed with no session cookie. */
+/** Failed or ambiguous establishment fails closed with no session cookie. */
 const failClosedAfterTrustedResult = (responses: CallbackResponses, request: NextRequest) =>
   Effect.promise(responses.authenticationReturn).pipe(Effect.map((response) => clearCorrelation(response, request)))
 
@@ -54,17 +54,10 @@ const establishSession = Effect.fn("establishSession")(function*(
   return setSessionCookie(clearCorrelation(response, request), request, established.reference)
 })
 
-const respondToTrustedIdentity = Effect.fnUntraced(function*(
-  responses: CallbackResponses,
-  request: NextRequest,
-  identity: TrustedIdentity
-) {
-  const freshness = yield* CallbackFreshness
-  if (!freshness.confirmed(identity)) return yield* failClosedAfterTrustedResult(responses, request)
-  return yield* establishSession(request, identity).pipe(
+const respondToTrustedIdentity = (responses: CallbackResponses, request: NextRequest, identity: TrustedIdentity) =>
+  establishSession(request, identity).pipe(
     Effect.catchTag("SessionServiceUnavailable", () => failClosedAfterTrustedResult(responses, request))
   )
-})
 
 const completeAuthentication = Effect.fn("completeAuthentication")(
   function*(_responses: CallbackResponses, request: NextRequest) {

@@ -26,13 +26,11 @@ idle budget. The browser holds only the reference in a host-only `pathable-sessi
 (`HttpOnly`, `SameSite=Lax`, `Path=/`, no `Domain`, the existing loopback `Secure` rule) and
 never receives identity, policy, tokens, or the record itself.
 
-Session establishment runs after the callback has validated a trusted identity **and** that
-authentication event has been confirmed fresh. The freshness comparison and clock tolerance
-are not chosen here ([#158](https://github.com/PathableAI-org/Pre-ETS/issues/158)), so the
-current callback treats a trusted but unconfirmed identity as the safe return and creates no
-session or cookie. Confirmed-fresh establishment, the shared-reader capability, and the
-fail-closed outcome vocabulary are implemented but live establishment is blocked on that
-unresolved policy.
+Session establishment runs only after the callback has validated the identity **and**
+confirmed that its authentication event is fresh under the B6 window
+([authentication.md](./authentication.md), [#158](https://github.com/PathableAI-org/Pre-ETS/issues/158)).
+Every login without a valid session therefore produces a new session reference; an earlier
+expired or removed session is never revived, whether or not its record still exists.
 
 `/` resolves the tenant under the configured mode and then reads the session. A resolved
 tenant with no usable session redirects to `/auth/login`. A host-mode invalid host or
@@ -109,10 +107,7 @@ designated above.
 Known gaps: `/_next/static/**` is publicly served and `/favicon.ico`, metadata routes, and
 `/_next/image` answer 401 without a session until the public-asset decision is made.
 Expired- or missing-session recovery content and Server Action 401 recovery belong to
-[#157](https://github.com/PathableAI-org/Pre-ETS/issues/157). The callback cannot establish a
-session until freshness confirmation exists
-([#158](https://github.com/PathableAI-org/Pre-ETS/issues/158)), so admission of a real session
-is not yet observable in the running application.
+[#157](https://github.com/PathableAI-org/Pre-ETS/issues/157).
 
 ## Cross-tab activity and logout coordination
 
@@ -223,8 +218,7 @@ Authentication never starts on its own. The same notice stands in for expiration
 other refusal, or a usable status observed after `notAfter`), the tab broadcasts `logout-failed` with
 its `attemptId`, which resolves that attempt in the other tabs, hides content, and offers Log out again. Logout ends the application session only; see
 [authentication](./authentication.md#application-logout). Coordination and logout need JavaScript;
-without it the gate and idle expiry still enforce access. Live multi-tab behavior is not yet
-observable in the running application until [#158](https://github.com/PathableAI-org/Pre-ETS/issues/158).
+without it the gate and idle expiry still enforce access.
 
 Independent session clients read identical state from the same record without creator
 affinity. This is not independently running protected HTTP recognition, and it does not
@@ -278,6 +272,26 @@ The session-service span under each adapter span carries the session facts for t
 appears only on `logout`. A request the gate denies never reaches its handler. For example, activity after expiry or
 logout shows only on the `protectRequest` span and its session-service child.
 
+### Authentication completion signals
+
+`AuthenticationService.complete` sets `preets.outcome` to `confirmed`, `not_fresh_missing`, `not_fresh_stale`,
+`denied`, `unavailable`, or `tenant_failure`. It also carries:
+
+- `preets.tenant.alias` once the tenant resolved.
+- `preets.authentication.transaction_started_ms` and `preets.authentication.callback_ms` once the attempt was
+  consumed.
+- Once a provider identity was validated:
+  - `preets.authentication.freshness`: `confirmed`, `missing`, or `stale`.
+  - `preets.authentication.freshness_position`: `inside`, `before_window`, `after_window`, or `missing`.
+  - `preets.authentication.freshness_tolerance_ms`.
+
+`denied` covers unqualified, mismatched, replayed, and provider-error returns. `unavailable` covers provider,
+credential, store, and invalid-token failures, including a malformed `auth_time`. A freshness denial also logs the
+fixed warning `Authentication freshness denied` with only `preets.tenant.alias` and
+`preets.authentication.freshness`. A confirmed completion is followed in the same trace by
+`SessionService.establish`. Neither signal carries the raw `auth_time`, subject, issuer, tokens, code, state, nonce,
+or PKCE verifier.
+
 ### Tenant configuration log
 
 A rejected tenant configuration keeps the fixed message `Tenant configuration request failed`, with its existing
@@ -294,10 +308,12 @@ Filter every query by the run's `service.version` and `service.instance.id`:
 { resource.service.instance.id = "<run-uuid>" && name = "SessionService.refreshForTenant" && span.preets.outcome = "renewed" }
 { resource.service.instance.id = "<run-uuid>" && name = "protectRequest" } | select(span.preets.outcome, span.preets.protection.entry)
 { resource.service.instance.id = "<run-uuid>" && name = "SessionService.invalidate" && span.preets.outcome = "rejected_late" }
+{ resource.service.instance.id = "<run-uuid>" && name = "AuthenticationService.complete" } | select(span.preets.outcome, span.preets.authentication.freshness_position)
 ```
 
 ```text
 {service_name="pre-ets-frontend", service_instance_id="<run-uuid>"} |= "Tenant configuration request failed" | service_version="<sha>"
+{service_name="pre-ets-frontend", service_instance_id="<run-uuid>"} |= "Authentication freshness denied" | service_version="<sha>"
 ```
 
 In Loki, `service_instance_id` is an index label, but `service_version` is structured metadata, so it filters after
