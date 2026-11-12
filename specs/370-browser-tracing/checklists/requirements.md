@@ -63,5 +63,9 @@
 - Correction, 2026-11-11 (maintainer-approved): `verification.md` permits a prepared-session fixture for claims that
   assert nothing about login, callback, or session issuance (V-001–V-006, V-008–V-017), with approved limitation
   L-fixture. Feature 163's precedent against prepared sessions concerned session behavior itself.
+- Correction, 2026-11-12 (maintainer-approved): procedure step 7 triggers V-013's concealment with a current-session
+  hint naming another session plus a visibility change, instead of freezing tab B and advancing its clock. The clock
+  approach future-dates browser records and Playwright Chromium delivers no freeze or resume events. V-013's required
+  observation is unchanged.
 - `verification.md` records planned evidence only. No browser, collector, or trace-store procedure was executed during
   specification.
