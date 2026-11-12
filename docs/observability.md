@@ -138,8 +138,8 @@ endpoint fails startup with
 `BROWSER_TRACING_ENABLED requires an OTEL_EXPORTER_OTLP_ENDPOINT without credentials, query, or fragment`.
 That message never quotes the URL. With the switch off, such an endpoint is
 still accepted for server-only export. A malformed endpoint fails startup with
-`OTEL_EXPORTER_OTLP_ENDPOINT is invalid`, without quoting the value, whatever
-the switch.
+an error that names `OTEL_EXPORTER_OTLP_ENDPOINT` without quoting the value,
+whatever the switch.
 
 Local example, with the observability profile running:
 
