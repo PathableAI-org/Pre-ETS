@@ -22,7 +22,10 @@ interface SignedInVisitor {
   /** The application entry the visitor opened in a further context, once a step has opened it. */
   entry?: OpenEntry | undefined
   readonly host: string
-  readonly signedInAt: number
+  /** When a request last renewed the session: sign-in, then each opened protected page. */
+  renewedAt: number
+  /** A second tab of the entry's browser context, sharing its session, once a step has opened it. */
+  second?: Page | undefined
 }
 
 const visitors = new WeakMap<AppWorld, SignedInVisitor>()
@@ -77,7 +80,7 @@ Given("the visitor has signed in at {string} through the provider", async functi
   const session = (await context.cookies(`http://${host}/`)).find((cookie) => cookie.name === "pathable-session")
   assert.ok(session, "expected an application session after signing in")
   this.cookie = session.value
-  visitors.set(this, { browser: owned.browser, close: owned.close, host, signedInAt })
+  visitors.set(this, { browser: owned.browser, close: owned.close, host, renewedAt: signedInAt })
   await context.close()
 })
 
@@ -97,13 +100,13 @@ When("the visitor's session record is removed by logging out in another browser"
   await other.close()
 })
 
-/** Real elapsed time past the scenario tenant's idle timeout, counted from establishment, plus a margin. */
+/** Real elapsed time past the scenario tenant's idle timeout, counted from the latest renewal, plus a margin. */
 When("the session's idle deadline passes without activity", { timeout: 7 * 60_000 }, async function(this: AppWorld) {
   const visitor = visitorOf(this)
   const file = path.join(this.directory, "springfield.json")
   const { idleTimeoutMinutes } = JSON.parse(await fs.readFile(file, "utf8")) as { idleTimeoutMinutes?: number }
   assert.ok(idleTimeoutMinutes !== undefined, "expected a scenario idle timeout")
-  const deadline = visitor.signedInAt + idleTimeoutMinutes * 60_000
+  const deadline = visitor.renewedAt + idleTimeoutMinutes * 60_000
   await delay(Math.max(0, deadline + 5_000 - Date.now()))
 })
 
@@ -153,6 +156,13 @@ Then("the response is the recovery document explaining {string}", function(this:
   assert.equal(assertRecoveryDocument(this), heading)
 })
 
+/** Exactly `text/plain`: Next's client reads the body as the rejection only for that type (research D3, L-4). */
+Then("the response is the action denial token {string}", function(this: AppWorld, token: string) {
+  assert.ok(this.response, "expected an HTTP response")
+  assert.equal(this.response.headers["content-type"], "text/plain")
+  assert.equal(this.response.body, token)
+})
+
 Then("the response is a recovery document with a Log in again link", function(this: AppWorld) {
   assert.ok(RECOVERY_HEADINGS.includes(assertRecoveryDocument(this)), "expected a session-end explanation")
 })
@@ -169,20 +179,67 @@ Then("the response reveals no session reference, identity, or tenant", function(
  * A new browser context of the visitor's browser that presents the visitor's session, with scripts enabled or
  * disabled, opened on the application entry and showing the protected reference form.
  */
+const openEntry = async (world: AppWorld, host: string, options: {
+  readonly scripts: boolean
+  readonly suspendTimers: boolean
+}) => {
+  const visitor = visitorOf(world)
+  assert.ok(world.cookie, "expected the visitor's session reference")
+  const context = await visitor.browser.newContext({ javaScriptEnabled: options.scripts })
+  await context.addCookies([{ name: "pathable-session", url: `http://${host}/`, value: world.cookie }])
+  const page = await context.newPage()
+  if (options.suspendTimers) await page.clock.install()
+  await page.goto(`http://${host}/`)
+  await page.getByRole("button", { name: "Record reference operation" }).waitFor({ state: "visible" })
+  visitor.renewedAt = Date.now()
+  // Timers stop from here on; the tab's clock stands still until a step sets it (research D13).
+  if (options.suspendTimers) await page.clock.pauseAt(Date.now() + 1_000)
+  visitor.entry = { page }
+}
+
 Given(
   "the visitor opens the application entry at {string} with scripts {word}",
   async function(this: AppWorld, host: string, scripts: string) {
     assert.ok(scripts === "enabled" || scripts === "disabled", "expected scripts enabled or disabled")
-    const visitor = visitorOf(this)
-    assert.ok(this.cookie, "expected the visitor's session reference")
-    const context = await visitor.browser.newContext({ javaScriptEnabled: scripts === "enabled" })
-    await context.addCookies([{ name: "pathable-session", url: `http://${host}/`, value: this.cookie }])
-    const page = await context.newPage()
-    await page.goto(`http://${host}/`)
-    await page.getByRole("button", { name: "Record reference operation" }).waitFor({ state: "visible" })
-    visitor.entry = { page }
+    await openEntry(this, host, { scripts: scripts === "enabled", suspendTimers: false })
   }
 )
+
+/** Scripts run, but the page's timers are paused under Playwright's clock right after it loads. */
+Given(
+  "the visitor opens the application entry at {string} with its timers suspended",
+  async function(this: AppWorld, host: string) {
+    await openEntry(this, host, { scripts: true, suspendTimers: true })
+  }
+)
+
+/** The tab's clock jumps to wall time while every timer stays paused, as after a suspended device wakes. */
+When("the tab's clock is set to the current time without running its timers", async function(this: AppWorld) {
+  await entryOf(this).page.clock.setSystemTime(Date.now())
+})
+
+/** Another tab in the entry's browser context: it shares the session and the cross-tab channel. */
+Given("the visitor opens a second tab on the application entry", async function(this: AppWorld) {
+  const visitor = visitorOf(this)
+  const { page } = entryOf(this)
+  const second = await page.context().newPage()
+  await second.goto(page.url())
+  await second.getByRole("button", { name: "Record reference operation" }).waitFor({ state: "visible" })
+  visitor.renewedAt = Date.now()
+  visitor.second = second
+})
+
+const secondTabOf = (world: AppWorld): Page => {
+  const { second } = visitorOf(world)
+  assert.ok(second, "expected a second tab")
+  return second
+}
+
+When("the visitor logs out in the second tab", async function(this: AppWorld) {
+  const second = secondTabOf(this)
+  await second.getByRole("button", { name: "Log out" }).click()
+  await second.getByRole("heading", { name: "You are signed out" }).waitFor({ state: "visible" })
+})
 
 /**
  * Focuses the reference form's submit button and presses Enter, keeping the response to the form's `POST`: the
@@ -277,30 +334,63 @@ Given("the visitor's activity reports reach the server {int} seconds late", asyn
   })
 })
 
-/**
- * Records every text the page's live status regions show from now on, so a short-lived announcement that later
- * content replaces is still observed.
- */
-When("the visitor's page records its status announcements", async function(this: AppWorld) {
-  await entryOf(this).page.evaluate(() => {
-    const seen: string[] = []
-    Object.assign(window, { statusAnnouncements: seen })
-    const record = () => {
-      for (const region of document.querySelectorAll("[role=status]")) {
-        const text = region.textContent.trim()
-        if (text !== "" && !seen.includes(text)) seen.push(text)
-      }
-    }
-    new MutationObserver(record).observe(document.body, { characterData: true, childList: true, subtree: true })
-  })
-})
-
 Then(
-  "the page announced {string} and then shows the signed-out notice",
-  async function(this: AppWorld, message: string) {
-    const { page } = entryOf(this)
-    await page.getByRole("heading", { name: "You are signed out" }).waitFor({ state: "visible" })
-    const seen = await page.evaluate(() => (window as unknown as { statusAnnouncements: string[] }).statusAnnouncements)
-    assert.ok(seen.includes(message), `expected the status "${message}"; saw ${JSON.stringify(seen)}`)
+  "the form submission was answered with the action denial token {string}",
+  async function(this: AppWorld, token: string) {
+    const { submission } = entryOf(this)
+    assert.ok(submission, "expected a form submission")
+    assert.equal(submission.headers()["content-type"], "text/plain")
+    assert.equal(await submission.text(), token)
   }
 )
+
+/** Protected text the reference page renders; none of it may remain once recovery replaced the content. */
+const PROTECTED_TEXT = /Reference session|Record reference operation|springfield|Log out/i
+
+/**
+ * Recovery replaced the header and protected content: one top-level heading with the explanation, the Log in again
+ * link, and no earlier protected text or control left in the document, visible or not.
+ */
+Then(
+  "the tab shows recovery explaining {string} in place of its content",
+  async function(this: AppWorld, heading: string) {
+    const { page } = entryOf(this)
+    await page.getByRole("heading", { level: 1, name: heading }).waitFor({ state: "visible" })
+    assert.deepEqual(await page.getByRole("heading", { level: 1 }).allTextContents(), [heading])
+    await page.getByRole("link", { name: "Log in again" }).waitFor({ state: "visible" })
+    // Every element's text, hidden or not. Inline scripts are excluded: they hold Next's serialized render data,
+    // which is never displayed, focusable, or exposed to assistive technology.
+    const text = await page.evaluate(() => {
+      const body = document.body.cloneNode(true)
+      if (!(body instanceof HTMLElement)) return ""
+      for (const script of body.querySelectorAll("script")) script.remove()
+      return body.textContent
+    })
+    assert.doesNotMatch(text, PROTECTED_TEXT)
+    const tree = await page.locator("body").ariaSnapshot()
+    assert.doesNotMatch(tree, PROTECTED_TEXT)
+    assert.equal(await page.locator("form, button").count(), 0, "a protected control remains in the document")
+  }
+)
+
+Then("focus is on the recovery heading", async function(this: AppWorld) {
+  const focused = await entryOf(this).page.evaluate(() => ({
+    level: document.activeElement?.tagName,
+    target: document.activeElement?.getAttribute("data-preets-focus")
+  }))
+  assert.deepEqual(focused, { level: "H1", target: "recovery_heading" })
+})
+
+Then("the second tab still shows its protected content", async function(this: AppWorld) {
+  const second = secondTabOf(this)
+  assert.ok(await second.getByRole("button", { name: "Record reference operation" }).isVisible())
+  assert.ok(await second.getByRole("heading", { name: "Reference session" }).isVisible())
+  assert.equal(await second.getByRole("heading", { name: /Your session/ }).count(), 0)
+})
+
+Then("the first tab shows the signed-out notice and no recovery content", async function(this: AppWorld) {
+  const { page } = entryOf(this)
+  await page.getByRole("heading", { name: "You are signed out" }).waitFor({ state: "visible" })
+  assert.equal(await page.getByRole("heading", { name: /Your session/ }).count(), 0)
+  assert.equal(await page.getByRole("button", { name: "Record reference operation" }).count(), 0)
+})
