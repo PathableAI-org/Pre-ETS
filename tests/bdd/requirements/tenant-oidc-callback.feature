@@ -3,8 +3,10 @@
 Feature: Validate the selected tenant OIDC callback
   This slice recovers one tenant-bound provider attempt across frontend instances.
   A real provider return whose authentication event is confirmed fresh establishes a
-  tenant-bound session that admits the application entry; untrusted, mismatched,
-  replayed, expired, and denied returns establish none. Tenant-mismatch denial with a
+  tenant-bound session that admits the application entry; a return whose provider reports
+  a stale authentication time, a return after the visitor cancels at the provider, and
+  untrusted, mismatched, replayed, expired, and denied returns, establish none, and after a
+  stale, cancelled, or denied return a new login can begin. Tenant-mismatch denial with a
   real bound session and expired-session action denial remain without end-to-end
   evidence here.
 
@@ -18,6 +20,39 @@ Feature: Validate the selected tenant OIDC callback
     And the response is not cacheable
     And the response contains no protected application content
     And the established session admits the application entry at "springfield.localhost:3000"
+
+  @preets-session-013
+  Scenario: A real provider return with a stale authentication time establishes no session
+    Given production tenant sites for Springfield and Shelbyville
+    And a Stale tenant whose provider always reports an old authentication time
+    And host resolution uses base hostname "localhost"
+    When the visitor completes real provider sign-in across two application instances at "stale.localhost:3000"
+    Then the response status is 200
+    And the response is not cacheable
+    And the response has no redirect
+    And the response contains no protected application content
+    And the response clears recoverable correlation and issues no application session
+    When a visitor requests the document at "stale.localhost:3000"
+    Then the response delegates to the same-origin login
+    When a visitor requests "/auth/login" at "stale.localhost:3000"
+    Then initiation uses the independently configured "stale" tenant
+    And the authorization request asks for fresh authentication
+
+  @preets-session-013
+  Scenario: Cancelling at the real provider establishes no session and a new login can begin
+    Given production tenant sites for Springfield and Shelbyville
+    And a Consent tenant whose provider asks the visitor to grant access
+    And host resolution uses base hostname "localhost"
+    When the visitor signs in and then cancels at the real provider at "consent.localhost:3000"
+    Then the response status is 200
+    And the response has no redirect
+    And the response contains no protected application content
+    And the response clears recoverable correlation and issues no application session
+    When a visitor requests the document at "consent.localhost:3000"
+    Then the response delegates to the same-origin login
+    When a visitor requests "/auth/login" at "consent.localhost:3000"
+    Then initiation uses the independently configured "consent" tenant
+    And the authorization request asks for fresh authentication
 
   @preets-session-002
   Scenario: A wrong-state callback preserves the original valid provider return
@@ -67,3 +102,5 @@ Feature: Validate the selected tenant OIDC callback
     And the response contains no protected application content
     And the response clears recoverable correlation and issues no application session
     And the response does not re-emit controlled provider callback data
+    When a visitor requests the document at "springfield.localhost:3000"
+    Then the response delegates to the same-origin login

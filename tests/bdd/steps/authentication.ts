@@ -9,7 +9,7 @@ import { setTimeout as delay } from "node:timers/promises"
 
 import type { AppWorld } from "../support/world.ts"
 
-import { applicationBrowser } from "../support/browser.ts"
+import { applicationBrowser, signInAtProvider as signIn } from "../support/browser.ts"
 import { requestInstance, requestSite, startSecondSite, startSite } from "../support/server.ts"
 
 type RecordedResponse = NonNullable<AppWorld["response"]>
@@ -30,12 +30,6 @@ const recordBrowserResponse = async (response: {
     headers: await response.allHeaders(),
     status
   }
-}
-
-const signIn = async (page: Page): Promise<void> => {
-  await page.getByRole("textbox", { name: /username|email/i }).fill("demo")
-  await page.getByRole("textbox", { exact: true, name: "Password" }).fill("demo")
-  await page.getByRole("button", { name: /sign in/i }).click({ noWaitAfter: true })
 }
 
 const waitForCapturedCallback = async (
@@ -252,6 +246,30 @@ When("the visitor completes real provider sign-in across two application instanc
     const callbackResponse = page.waitForResponse((response) => new URL(response.url()).pathname === "/auth/callback")
     await signIn(page)
     this.response = await recordBrowserResponse(await callbackResponse)
+  } finally {
+    await owned.close()
+  }
+})
+
+When("the visitor signs in and then cancels at the real provider at {string}", async function(
+  this: AppWorld,
+  host: string
+) {
+  await startSite(this)
+  const owned = await applicationBrowser(this.port, [host])
+  try {
+    const context = await owned.browser.newContext()
+    const page = await context.newPage()
+    await page.goto(`http://${host}/`)
+    await signIn(page)
+    // The provider's grant page offers to decline; declining returns the visitor to the application.
+    const decline = page.getByRole("button", { name: "No" })
+    await decline.waitFor({ state: "visible" })
+    const callbackResponse = page.waitForResponse((response) => new URL(response.url()).pathname === "/auth/callback")
+    await decline.click({ noWaitAfter: true })
+    const response = await callbackResponse
+    assert.equal(new URL(response.url()).searchParams.get("error"), "access_denied")
+    this.response = await recordBrowserResponse(response)
   } finally {
     await owned.close()
   }

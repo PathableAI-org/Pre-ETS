@@ -74,6 +74,69 @@
         "pkce.code.challenge.method": "S256",
         "post.logout.redirect.uris": "http://shelbyville.localhost:3000/*"
       }
+    },
+    {
+      "clientId": "consent-web",
+      "name": "Consent fixture",
+      "description": "Test fixture: the provider asks the visitor to grant access after signing in, so a visitor can cancel at the provider.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "consentRequired": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "frontchannelLogout": true,
+      "fullScopeAllowed": true,
+      "redirectUris": [
+        "http://consent.localhost:3000/auth/callback"
+      ],
+      "webOrigins": [
+        "http://consent.localhost:3000"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      }
+    },
+    {
+      "clientId": "stale-auth-time-web",
+      "name": "Stale authentication time fixture",
+      "description": "Test fixture: every ID token reports an authentication time in 2001, so freshness is always stale.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "frontchannelLogout": true,
+      "fullScopeAllowed": true,
+      "redirectUris": [
+        "http://stale.localhost:3000/auth/callback"
+      ],
+      "webOrigins": [
+        "http://stale.localhost:3000"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      },
+      "protocolMappers": [
+        {
+          "name": "stale auth_time",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-hardcoded-claim-mapper",
+          "consentRequired": false,
+          "config": {
+            "claim.name": "auth_time",
+            "claim.value": "1000000000",
+            "jsonType.label": "long",
+            "id.token.claim": "true",
+            "access.token.claim": "false",
+            "userinfo.token.claim": "false"
+          }
+        }
+      ]
     }
   ]
 }

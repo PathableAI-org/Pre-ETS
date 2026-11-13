@@ -17,6 +17,26 @@ Given("production tenant sites for Springfield and Shelbyville", async function(
   await fs.access(path.join(this.directory, "springfield.json"))
   await fs.access(path.join(this.directory, "shelbyville.json"))
 })
+/** Adds a scenario-owned tenant on one of the tracked provider's fixture clients, sharing Springfield's issuer. */
+const addFixtureTenant = async (world: AppWorld, alias: string, displayName: string, clientId: string) => {
+  assert.ok(world.ownedDirectory, "expected scenario-owned tenant sites")
+  const springfield = JSON.parse(await fs.readFile(path.join(world.directory, "springfield.json"), "utf8")) as {
+    oidc: { issuer: string }
+  }
+  await fs.writeFile(
+    path.join(world.directory, `${alias}.json`),
+    JSON.stringify({ displayName, oidc: { clientAuth: "public", clientId, issuer: springfield.oidc.issuer } })
+  )
+  world.callbackOrigins = { ...world.callbackOrigins, [alias]: `http://${alias}.localhost:3000` }
+}
+/** The `stale-auth-time-web` client's ID tokens always report an authentication time in 2001. */
+Given("a Stale tenant whose provider always reports an old authentication time", async function(this: AppWorld) {
+  await addFixtureTenant(this, "stale", "Stale", "stale-auth-time-web")
+})
+/** The `consent-web` client asks the visitor to grant access after signing in, so the visitor can cancel there. */
+Given("a Consent tenant whose provider asks the visitor to grant access", async function(this: AppWorld) {
+  await addFixtureTenant(this, "consent", "Consent", "consent-web")
+})
 Given("host resolution uses base hostname {string}", function(this: AppWorld, baseHostname: string) {
   this.baseHostname = baseHostname
 })
