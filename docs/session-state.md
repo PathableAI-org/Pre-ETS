@@ -134,8 +134,8 @@ designated above.
 
 Known gaps: `/_next/static/**` is publicly served and `/favicon.ico`, metadata routes, and
 `/_next/image` answer 401 without a session until the public-asset decision is made.
-The expiration modal belongs to [#157](https://github.com/PathableAI-org/Pre-ETS/issues/157)'s
-later slices.
+What happens after Log in from recovery or the expiration modal is evidenced by
+[#157](https://github.com/PathableAI-org/Pre-ETS/issues/157)'s last slice.
 
 ## Cross-tab activity and logout coordination
 
@@ -194,7 +194,8 @@ due, so a stale timer reschedules. Tabs share renewed deadlines, coalesced activ
 `BroadcastChannel("preets-session-coordination")`, ignoring other tags, and adopt a snapshot only
 when its revision is higher than the one they hold; equal revisions are ignored. Two more records support replay:
 `preets-session-current:v1`, the tag of the most recently mounted protected document, and
-one `preets-session-ended:v1:<tag>` → `{ endedAt }` key per tag the server confirmed ended, pruned
+one `preets-session-ended:v1:<tag>` → `{ cause, endedAt }` key per tag the server confirmed ended
+(`cause` is `expired` or `ended`), pruned
 after 24 hours. Messages and records hold
 only tags, times, the warning lead, and an activity kind.
 
@@ -215,13 +216,32 @@ only if this tab's session is still current. When storage cannot hold the hint, 
 is kept in memory as this tab's hint. The coordinator's header carries `data-session-deadline` (the
 held local deadline) and `data-session-warning-lead` for evidence; they hold no protected content.
 
-A tab confirms with `GET /session/status` before acting on its local deadline and on resume. Past
-its deadline on resume it first hides content, setting `hidden` and `inert` on the DOM at once
-rather than waiting for React to render. Concealment also applies while a logout is in progress,
+A tab confirms with `GET /session/status` before acting on its local deadline and on resume. At
+its local deadline, and past it on resume, it first hides content ("Checking your session…"),
+setting `hidden` and `inert` on the DOM at once rather than waiting for React to render. This
+temporary concealment is not the expired state. Concealment also applies while a logout is in progress,
 which keeps its busy state. A usable answer reveals content when its read started after
 concealment began, even if a newer renewal from another tab was adopted meanwhile. An unanswered or failed
-confirmation (1.5 seconds) hides content and retries. A page entering the back-forward cache is
-hidden first, and the history guard reloads it on restore. Server Action forms confirm after
+confirmation (1.5 seconds) hides content and retries. When the server still holds the session past
+the tab's local deadline, as when the local estimate runs slightly early, the tab confirms again
+when the server's own deadline arrives (at least 250 ms, at most 5 seconds later). A page entering
+the back-forward cache is hidden first, and the history guard reloads it on restore.
+
+A 401 or 409 confirmation with known expiration (the tab observed no logout of its session, and the
+held deadline is at or before the later of its server-clock estimate and the response's `Date`
+header) shows the expiration modal ([#157](https://github.com/PathableAI-org/Pre-ETS/issues/157)):
+the header and protected content are unmounted, and the `@pathableai/react` `Modal` shows "Your
+session expired", the same explanation as recovery, and a "Log in again" link to `/`, which takes
+focus. Nothing closes it. The library modal always renders a close control, and Escape calls its
+`onClose`; both do nothing here until the library offers a non-dismissible modal
+([#400](https://github.com/PathableAI-org/Pre-ETS/issues/400)). The tab records its tag as ended
+with `cause: "expired"`, so every sharing tab shows the modal too, unless it observed a logout of
+the session (a logout message, or an unresolved logout attempt), in which case it shows the
+signed-out notice. Without known expiration the tab ends as below with `cause: "ended"`. A record
+without a cause, written by an older tab, reads as `ended`. The expired view, like the signed-out
+notice, is final for that document: a later message changes nothing. On `pagehide` into the
+back-forward cache the modal is hidden at once, so a restored page shows neither the modal nor
+content before the history guard reloads it into fresh entry. Server Action forms confirm after
 they settle, so other tabs learn of the gate's renewal.
 
 Every protected page has a Log out button. Each attempt gets an `attemptId` and is written to its
@@ -241,8 +261,7 @@ because the server may have ended the session and lost or failed the reply (a 50
 applied delete): the initiating tab hides content and confirms, the other tabs keep watching, and
 the status answer decides. A 401 or a different tag ends every tab as above; a usable status
 observed after `notAfter` means logout did not complete.
-Authentication never starts on its own. The same notice stands in for expiration until
-[#157](https://github.com/PathableAI-org/Pre-ETS/issues/157). If logout fails (a definitive 403 or
+Authentication never starts on its own. Expiration shows the expiration modal instead (above). If logout fails (a definitive 403 or
 other refusal, or a usable status observed after `notAfter`), the tab broadcasts `logout-failed` with
 its `attemptId`, which resolves that attempt in the other tabs, hides content, and offers Log out again. Logout ends the application session only; see
 [authentication](./authentication.md#application-logout). Coordination and logout need JavaScript;

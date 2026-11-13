@@ -162,16 +162,25 @@ side). Lands T-002, T-004 (`recovery_heading`), T-005 (`action_recovery`).
 Advances V-009–V-018, V-023, V-024 (modal part). Lands T-003, T-004 (`expiration_log_in`), T-005
 (`expiration_modal`).
 
-- [ ] T028 Deadline concealment (cause `deadline`), `Ended` with D7 enters `expired`, resume path (cause `resume`),
-      and `pagehide` hides the modal in `tab-coordination.ts` and `coordinator.tsx`.
-- [ ] T029 Ended record `cause` in `tab-channel.ts`; a missing cause reads as `ended`; peers adopt `expired` unless a
+- [x] T028 Deadline concealment (cause `deadline`), `Ended` with D7 enters `expired`, resume path (cause `resume`),
+      and `pagehide` hides the modal in `tab-coordination.ts` and `coordinator.tsx`. Also: a `Usable` answer past the
+      local deadline re-confirms at the server's own deadline (250 ms to 5 s), so a slightly early local estimate
+      keeps the B5 2-second bound instead of waiting a full 5-second retry. The A3 submission hold still applies
+      only to activity reports; deadline and resume confirmations are never held.
+- [x] T029 Ended record `cause` in `tab-channel.ts`; a missing cause reads as `ended`; peers adopt `expired` unless a
       logout was observed (FR-019).
-- [ ] T030 `expiration-modal.tsx` (new): library `Modal`, no-op `onClose`, `initialFocusRef` on Log in (L-1, #400).
-- [ ] T031 Browser facts (T-003, `expiration_log_in`, `expiration_modal`) and export-filter allow-lists.
-- [ ] T032 Controller examples and the Fast-Check D7 property in `session-coordination.test.ts`.
-- [ ] T033 BDD `expiration-protection.feature` with `steps/expiration.ts`, the 5-minute tenant step in
-      `steps/tenant.ts`, and lifecycle and clock helpers in `support/browser.ts` (quickstart §B).
-- [ ] T034 `docs/observability.md`, `docs/session-state.md` (the expired view replaces the stand-in).
+- [x] T030 `expiration-modal.tsx` (new): library `Modal`, no-op `onClose`, `initialFocusRef` on Log in (L-1, #400).
+      The library `Link` takes no ref, so the link is found inside a wrapper in a layout effect, which also moves
+      focus through `moveFocus` before the library's own focus effect. `LOG_IN_HREF` is now exported through
+      `shared/session-recovery.ts` for this consumer.
+- [x] T031 Browser facts (T-003, `expiration_log_in`, `expiration_modal`) and export-filter allow-lists.
+- [x] T032 Controller examples and the Fast-Check D7 property in `session-coordination.test.ts`.
+- [x] T033 BDD `expiration-protection.feature` with `steps/expiration.ts` and lifecycle and clock helpers in
+      `support/browser.ts` (quickstart §B). The 5-minute tenant step already exists (A1,
+      `steps/expired-recovery.ts`), so `steps/tenant.ts` is unchanged. Headless Chromium ignores CDP
+      `Page.setWebLifecycleState` for visible pages, so suspension is emulated with Playwright's clock and a
+      hidden-then-visible visibility change.
+- [x] T034 `docs/observability.md`, `docs/session-state.md` (the expired view replaces the stand-in).
 - [ ] T035 Checks, draft pull request, verification of §B, results recorded.
 
 ## Slice C — Fresh Log in from both entry points (`383-expired-content-recovery-impl-c`)
