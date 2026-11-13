@@ -146,10 +146,9 @@ side). Lands T-002, T-004 (`recovery_heading`), T-005 (`action_recovery`).
 - [x] T024 Browser facts in `fe/src/shared/browser-tracing.ts` and `export-filter.ts` (T-002, T-004, T-005);
       `docs/observability.md`; current behavior in `docs/session-state.md`. The SDK flushes its batch on `pagehide`; the
       `Interaction.login` record is made just before the navigation and was otherwise lost (verifier run `ed737dfe`).
-      Deviation: the T-002 transition is recorded after the status read resolves, so it is a root span correlated by
-      order (submit, gate denial, transition, `Focus.move`), not a child of the `sessionStatus` read as the telemetry
-      contract's correlation column says. The activity-in-flight `pending` message can precede the transition; it
-      changes no other tab.
+      The T-002 transition is recorded after the status read resolves, so it is a root span correlated by order
+      (submit, gate denial, transition, `Focus.move`). The engineering plan (#401) corrects T-002's correlation column
+      to say so. The activity-in-flight `pending` message can precede the transition; it changes no other tab.
 - [x] T025 `fe/tests/unit/session-coordination.test.ts` controller examples (no record, no message, cause by D7).
 - [x] T026 BDD: known expiration with suspended timers, unknown cause, sharing tab untouched (quickstart §A3). The
       A1 fetch-action scenario now expects the `session-unavailable` token, and A2's scripts-enabled scenario became
