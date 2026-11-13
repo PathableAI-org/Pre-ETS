@@ -100,7 +100,10 @@ document, with focus moved to its heading. The explanation says "expired" when t
 logout of its session (no logout message or record, and no unresolved logout attempt) and the
 session's held deadline is at or before the later of the tab's server-clock estimate and the
 status response's `Date` header. That also holds when the tab's timers were suspended past the
-deadline. Otherwise it says the session is no longer available. Recovery writes no ended record
+deadline. Otherwise it says the session is no longer available. The submission is also activity,
+and its activity report may find the session ended first. For 5 seconds after a protected
+submission leaves the tab, such an answer waits for the action's own outcome instead of ending
+the tab; if no outcome arrives by then, a confirmation ends the tab as usual. Recovery writes no ended record
 and posts no cross-tab message, so other tabs keep their state until their own confirmation or
 deadline. The tab then stops coordinating. A usable answer leaves the page and the form shows "The
 operation was not performed."; an undetermined answer hides content and retries, as for any

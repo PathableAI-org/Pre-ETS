@@ -60,6 +60,11 @@ export interface TabViewState {
 type TimerName = "confirm" | "flush" | "logout-watch" | "near-deadline" | "retry"
 
 const CONFIRMATION_RETRY_MILLISECONDS = 5_000
+/**
+ * How long after a protected submission leaves this tab an `Ended` activity answer waits for the action's own outcome,
+ * so a denied action shows recovery in this tab only (#157 FR-003, FR-008). A settled action answers sooner.
+ */
+const SUBMISSION_SETTLE_MILLISECONDS = 5_000
 /** Watch reads start on a fixed one-second cadence and each gives up after one second, keeping FR-015's 2-second bound. */
 const LOGOUT_WATCH_INTERVAL_MILLISECONDS = 1_000
 /** A logout attempt is refused by the server after `notAfter`, this far ahead on the server clock (R21). */
@@ -168,6 +173,8 @@ export class TabCoordination {
   /** The confirmed tag when storage could not hold it; used as this tab's hint (R19). */
   #hintOverride: string | undefined
   readonly #initial: SessionCoordinationSnapshot
+  /** When a protected submission last left this tab (#157). */
+  #lastSubmission = Number.NEGATIVE_INFINITY
   /** This tab's logout had no definitive answer; confirmation decides its outcome (R18). */
   #logoutUnresolved = false
   /** The window for this tab's tag when storage or locks are unavailable (R24). */
@@ -358,6 +365,26 @@ export class TabCoordination {
   }
 
   /**
+   * Converts the held server-clock deadline with the current offset and schedules confirmation and the near-deadline
+   * flush; snapshot age never extends it (R29).
+   */
+  /**
+   * An activity report found the session ended. While a protected submission of this tab is settling, its outcome
+   * decides instead: a denial enters recovery in this tab only, and a settled action confirms. If neither comes, a
+   * confirmation at the end of the settle window ends the tab as before (#157 research D6, FR-008).
+   */
+  #activityEnded() {
+    const settledBy = this.#lastSubmission + SUBMISSION_SETTLE_MILLISECONDS
+    if (Date.now() >= settledBy) {
+      this.#endConfirmed()
+      return
+    }
+    this.#schedule("retry", settledBy, () => {
+      this.#guard(this.confirm())
+    })
+  }
+
+  /**
    * Adopts a snapshot of this tab's session when its store observation is later than the held one (research D6).
    * Answers whether it was adopted.
    */
@@ -382,10 +409,6 @@ export class TabCoordination {
     return true
   }
 
-  /**
-   * Converts the held server-clock deadline with the current offset and schedules confirmation and the near-deadline
-   * flush; snapshot age never extends it (R29).
-   */
   #applyDeadline() {
     if (this.#held === undefined) return
     this.#deadline = this.#held.idleDeadlineEpochMilliseconds - this.#serverOffset
@@ -753,7 +776,7 @@ export class TabCoordination {
           this.#calibrate(outcome)
           this.#adoptSnapshot(outcome.snapshot, true)
         }
-        if (outcome._tag === "Ended") this.#endConfirmed()
+        if (outcome._tag === "Ended") this.#activityEnded()
       })
     )
   }
@@ -801,9 +824,13 @@ export class TabCoordination {
     const replay = this.#confirmedReplay
     if (replay?.form === form && replay.submitter === event.submitter) {
       this.#confirmedReplay = undefined
+      this.#lastSubmission = Date.now()
       return
     }
-    if ((this.#hintOverride ?? readCurrentHint() ?? this.#tag) === this.#tag) return
+    if ((this.#hintOverride ?? readCurrentHint() ?? this.#tag) === this.#tag) {
+      this.#lastSubmission = Date.now()
+      return
+    }
     event.preventDefault()
     // The cancelled submission causes no request; its confirmed replay, if any, does (research D16).
     withdrawSubmitCause(event)

@@ -179,7 +179,9 @@ origins ([Docker Compose](docker-compose.md#browser-export-and-cors)). A
 collector that requires headers is not supported for browser export.
 
 Spans are batched and exported about 30 seconds after they end. Keep the page
-open that long before querying; records from a page that closes first may be
+open that long before querying. On `pagehide` the page flushes its batch with
+`keepalive` requests, so records made just before a navigation, such as a Log in
+activation, are sent; records from a page that closes abruptly may still be
 lost. A collector that is down or rejects export never changes the page.
 
 Every span passes an export filter before it leaves the page. Only the record
