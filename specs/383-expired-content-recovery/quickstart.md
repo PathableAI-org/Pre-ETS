@@ -157,8 +157,8 @@ BDD (scripts enabled, browser tracing on for the verifier):
    explanation, and Log in reachability and activation (V-007).
 
 Telemetry (§Telemetry queries): T-002 shows `recovery_expired` for case 1 and `recovery_unavailable` for case 2, with
-cause `action_denied`, under the denied submit's confirmation. No `TabChannel.send` comes from A1 between the submit
-and the transition. T-004 shows `recovery_heading` `entered` / `application`. No `prepareAuthentication` appears
+cause `action_denied`, as a root span that follows the denied submit and its T-001 denial in start-time order and
+precedes the T-004 move. No `TabChannel.send` comes from A1 between the submit and the transition. T-004 shows `recovery_heading` `entered` / `application`. No `prepareAuthentication` appears
 before a T-005 `action_recovery`. Inspect the accessibility tree and page text for protected values (V-024).
 
 ## §B — Expiration modal across tabs (slice B)
