@@ -31,7 +31,7 @@ services:
       start_period: 30s
 
   postgres:
-    image: postgres:18.6
+    image: postgres:18.7
     ports:
       - "127.0.0.1:5432:5432"
     volumes:
@@ -48,7 +48,7 @@ services:
       start_period: 10s
 
   flyway:
-    image: redgate/flyway:13.12.1
+    image: redgate/flyway:13.12.2
     profiles: ["tools"]
     depends_on:
       postgres:
@@ -67,7 +67,7 @@ services:
   # Optional local OTLP + Grafana (Tempo). Opt-in only — default `docker compose up`
   # for redis/keycloak does not start this service.
   otel-lgtm:
-    image: grafana/otel-lgtm:0.40.0@sha256:72e05804790e6e0d8c0b70a6d5ff1f721ef7b203463374631e99aa3429bd0cf6
+    image: grafana/otel-lgtm:0.41.0@sha256:2e3290657f2f2a256c7a9175f097424a3ac5b54840741ace433e108e109348b6
     profiles: ["observability"]
     ports:
       - "127.0.0.1:3300:3000"
