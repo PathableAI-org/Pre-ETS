@@ -8,7 +8,7 @@ import { setTimeout as delay } from "node:timers/promises"
 
 import type { AppWorld } from "../support/world.ts"
 
-import { applicationBrowser, signInAtProvider } from "../support/browser.ts"
+import { applicationBrowser, documentText, signInAtProvider } from "../support/browser.ts"
 import { multipartBody, serverActionId } from "../support/server-actions.ts"
 import { FETCH_METADATA, requestSiteWith, startSite } from "../support/server.ts"
 
@@ -348,15 +348,7 @@ Then(
     await page.getByRole("heading", { level: 1, name: heading }).waitFor({ state: "visible" })
     assert.deepEqual(await page.getByRole("heading", { level: 1 }).allTextContents(), [heading])
     await page.getByRole("link", { name: "Log in again" }).waitFor({ state: "visible" })
-    // Every element's text, hidden or not. Inline scripts are excluded: they hold Next's serialized render data,
-    // which is never displayed, focusable, or exposed to assistive technology.
-    const text = await page.evaluate(() => {
-      const body = document.body.cloneNode(true)
-      if (!(body instanceof HTMLElement)) return ""
-      for (const script of body.querySelectorAll("script")) script.remove()
-      return body.textContent
-    })
-    assert.doesNotMatch(text, PROTECTED_TEXT)
+    assert.doesNotMatch(await documentText(page), PROTECTED_TEXT)
     const tree = await page.locator("body").ariaSnapshot()
     assert.doesNotMatch(tree, PROTECTED_TEXT)
     assert.equal(await page.locator("form, button").count(), 0, "a protected control remains in the document")

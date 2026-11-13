@@ -67,7 +67,7 @@ Feature: Expired content concealed behind a blocking expiration modal
     And another browser sharing the visitor's session has opened tab "Suspended" with its timers suspended
     When another browser sharing the visitor's session opens tab "Renewing" 30 seconds before the deadline of tab "S1"
     And the idle deadline of tabs "S1", "S2", and "Suspended" passes
-    Then no expiration modal appeared in tabs "S1", "S2", and "Renewing"
+    Then tabs "S1", "S2", and "Renewing" still show their protected content
     When tab "Suspended" resumes
     Then tab "Suspended" hid its protected content at once on resuming
     And tab "Suspended" shows its protected content again without the expiration modal

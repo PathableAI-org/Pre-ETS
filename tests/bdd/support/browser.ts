@@ -10,6 +10,18 @@ export const signInAtProvider = async (page: Page): Promise<void> => {
 }
 
 /**
+ * Every element's text, hidden or not. Inline scripts are excluded: they hold Next's serialized render data, which is
+ * never displayed, focusable, or exposed to assistive technology.
+ */
+export const documentText = (page: Page): Promise<string> =>
+  page.evaluate(() => {
+    const body = document.body.cloneNode(true)
+    if (!(body instanceof HTMLElement)) return ""
+    for (const script of body.querySelectorAll("script")) script.remove()
+    return body.textContent
+  })
+
+/**
  * Stops the page's timers under Playwright's clock: installed before the page loads, paused right after it, so no
  * timer fires while its clock stands still (research D13). The page keeps receiving events.
  */

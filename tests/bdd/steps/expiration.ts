@@ -6,7 +6,14 @@ import { setTimeout as delay } from "node:timers/promises"
 
 import type { AppWorld } from "../support/world.ts"
 
-import { applicationBrowser, resumeAt, signInAtProvider, suspendTimers, watchForDialogs } from "../support/browser.ts"
+import {
+  applicationBrowser,
+  documentText,
+  resumeAt,
+  signInAtProvider,
+  suspendTimers,
+  watchForDialogs
+} from "../support/browser.ts"
 import { startSite } from "../support/server.ts"
 
 const PROVIDER_ORIGIN = "http://127.0.0.1:8080"
@@ -302,15 +309,6 @@ Then(
   }
 )
 
-/** Every element's text outside inline scripts, which hold Next's serialized render data and are never displayed. */
-const documentText = (page: Page) =>
-  page.evaluate(() => {
-    const body = document.body.cloneNode(true)
-    if (!(body instanceof HTMLElement)) return ""
-    for (const script of body.querySelectorAll("script")) script.remove()
-    return body.textContent
-  })
-
 /** No protected text remains in the document or its accessibility tree, and no protected control remains. */
 const assertNoProtectedContent = async (page: Page, name: string) => {
   assert.doesNotMatch(await documentText(page), PROTECTED_TEXT, `tab "${name}" still holds protected text`)
@@ -322,11 +320,12 @@ Then("tabs {} hold no protected content", async function(this: AppWorld, list: s
   for (const name of namesOf(list)) await assertNoProtectedContent(tabOf(this, name).page, name)
 })
 
+/** Each tab shows its protected content, and no dialog was ever in its document. */
 Then("tabs {} still show their protected content", async function(this: AppWorld, list: string) {
   for (const name of namesOf(list)) {
     const { page } = tabOf(this, name)
     assert.ok(await page.getByRole("button", { name: PROTECTED_CONTROL }).isVisible(), `tab "${name}" lost content`)
-    assert.equal(await page.evaluate(() => globalThis.window.preetsDialogSeen === true), false)
+    assert.equal(await page.evaluate(() => globalThis.window.preetsDialogSeen === true), false, `modal in "${name}"`)
   }
 })
 
@@ -560,12 +559,4 @@ Then("tab {string} shows its protected content again without the expiration moda
   const { page } = tabOf(this, name)
   await page.getByRole("button", { name: PROTECTED_CONTROL }).waitFor({ state: "visible" })
   assert.equal(await page.evaluate(() => globalThis.window.preetsDialogSeen === true), false)
-})
-
-Then("no expiration modal appeared in tabs {}", async function(this: AppWorld, list: string) {
-  for (const name of namesOf(list)) {
-    const { page } = tabOf(this, name)
-    assert.equal(await page.evaluate(() => globalThis.window.preetsDialogSeen === true), false, `modal in "${name}"`)
-    assert.ok(await page.getByRole("button", { name: PROTECTED_CONTROL }).isVisible(), `tab "${name}" lost content`)
-  }
 })
