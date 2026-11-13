@@ -23,54 +23,58 @@ V-024 (response part). `Contributes to #157`.
 
 ### Baseline
 
-- [ ] T001 Confirm the installed facts the slice relies on: `NoUsableSession` has no cause today; the gate returns an
+- [x] T001 Confirm the installed facts the slice relies on: `NoUsableSession` has no cause today; the gate returns an
       empty 401 for every denied application request (research F1, F2); `forbiddenDocumentResponse` renders through
       `react-dom/server.edge` (research D1).
 
 ### Server-observed expiry (FR-004, research D2)
 
-- [ ] T002 In `fs/src/session.ts`, add `readonly expired?: true | undefined` to `NoUsableSession` and return a
+- [x] T002 In `fs/src/session.ts`, add `readonly expired?: true | undefined` to `NoUsableSession` and return a
       flagged value from `exposeOutcome` (store `Expired`) and `exposeIfStillUsable` (decoded record at or past its
       deadline). Missing, no-reference, malformed, and invalidated outcomes stay unflagged.
-- [ ] T003 In `fs/tests/lib/session.test.ts`, examples with `TestClock`: a record read after its deadline but before
+- [x] T003 In `fs/tests/lib/session.test.ts`, examples with `TestClock`: a record read after its deadline but before
       eviction is `{ _tag: "NoUsableSession", expired: true }`; a missing record and an absent reference carry no
       flag.
 
 ### Gate transport, cause, and T-001 (FR-001, FR-002, FR-006, research D1)
 
-- [ ] T004 In `fs/src/next/protection.ts`, export `SessionEndCause = "expired" | "unknown"` and add the required
+- [x] T004 In `fs/src/next/protection.ts`, export `SessionEndCause = "expired" | "unknown"` and add the required
       `ProtectionResponses.recoveryDocument({ cause })`. `classify` records the candidate transport: `fetch` with
       `next-action`, `document` for a candidate navigation without it, otherwise `none`. A denied `document`
       candidate gets the host document re-wrapped to 401 and `private, no-store`; every other denial keeps the empty
       401. Annotate `preets.protection.server_action` on every gated request and `preets.protection.denial_cause` on a
       denied candidate (contracts/telemetry.md T-001). Export `SessionEndCause` through `fs/src/next.ts` and
       `fs/src/index.ts`.
-- [ ] T005 In `fs/tests/unit/protection.test.ts`: the transport table (candidate × `next-action` × Fetch Metadata)
+- [x] T005 In `fs/tests/unit/protection.test.ts`: the transport table (candidate × `next-action` × Fetch Metadata)
       decides between the recovery document and the empty 401; a host that returns another status and cache header
       is re-wrapped to 401 `private, no-store` with no cookie or `location`; `cause` is `expired` only when the read
       returned `expired: true`; a host rejection rejects rather than passing through.
 
 ### Host recovery document (FR-004, FR-006, FR-020, FR-025, research D11, D12)
 
-- [ ] T006 Create `fe/src/features/session-recovery.ts` with `sessionEndCopy`, `LOG_IN_HREF = "/"`, and
-      `SessionEndNotice`, and its private `fe/src/features/session-recovery/session-end-notice.tsx`
-      (server-renderable heading, explanation, and the library `Link` "Log in again" to `/`; research D12 copy).
-- [ ] T007 In `fe/src/features/access-responses/presentation.tsx` add `recoveryDocumentResponse` (self-contained
+- [x] T006 Create `fe/src/shared/session-recovery.ts` exporting `sessionEndCopy` and `SessionEndNotice`, and its
+      private `fe/src/shared/session-recovery/session-end-notice.tsx` (server-renderable heading, explanation, and the
+      library `Link` "Log in again" to `LOG_IN_HREF = "/"`; research D12 copy). Placement: the plan named
+      `features/session-recovery`, but Fallow's Bulletproof preset rejects one feature importing another
+      (`features/access-responses → features`), and the frontend guide reserves the `shared` zone for shared UI.
+      The module has the planned public contract in `src/shared/`. `LOG_IN_HREF` stays private until a consumer
+      outside the module needs it (A3 or B).
+- [x] T007 In `fe/src/features/access-responses/presentation.tsx` add `recoveryDocumentResponse` (self-contained
       document like the 403 document: charset, viewport, title, one `h1`), export it from
       `fe/src/features/access-responses.ts`, and wire it in `fe/src/proxy.ts`.
-- [ ] T008 In `fe/tests/unit/proxy.test.ts`, render both causes: `text/html`, one `h1` with the cause's heading, the
+- [x] T008 In `fe/tests/unit/proxy.test.ts`, render both causes: `text/html`, one `h1` with the cause's heading, the
       Log in link to `/`, title and metadata, and no tenant or session values.
 
 ### Feature evidence and documentation
 
-- [ ] T009 Create `tests/bdd/requirements/expired-content-recovery.feature` (`@partial @preets-session-007`) and
+- [x] T009 Create `tests/bdd/requirements/expired-content-recovery.feature` (`@partial @preets-session-007`) and
       `tests/bdd/steps/expired-recovery.ts`: a real session signed in through the tracked provider, its record removed
       by logging out in a second browser context holding a copy of the cookie, then the reference action posted as a
       fetch action (empty 401) and as a no-script navigation (401 recovery document, "no longer available"); and a
       5-minute tenant whose session's deadline passes before the navigation `POST` arrives (in-flight case). Each
       asserts no receipt, no login delegation, no application or correlation cookie, no protected content, and no
       session reference or tenant value in the response (quickstart §A1).
-- [ ] T010 Document the T-001 attributes in `docs/session-state.md` (verification signals).
+- [x] T010 Document the T-001 attributes in `docs/session-state.md` (verification signals).
 - [ ] T011 Run the A1 checks, push, open the draft pull request, and request verification of quickstart §A1 and the
       module evidence. Record the final report in [quickstart.md](quickstart.md#execution-results) and the pull
       request body.
