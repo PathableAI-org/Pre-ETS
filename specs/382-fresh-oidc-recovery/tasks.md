@@ -37,8 +37,10 @@ mapping, T-001, and T-002. Advances V-004, V-005, V-006, V-008, V-009, V-016, an
 - [x] T004 [US3] In the same file, Fast-Check properties with `@fast-check/vitest` over generated start times,
       callback delays, and `auth_time` offsets, through `it.effect.prop` with Schema inputs: success holds iff
       `startedAt − 30 000 ≤ auth_time × 1 000 ≤ callbackAt + 30 000`, and otherwise the result is
-      `AuthenticationNotFresh`/`stale`. Tokens with arbitrary or absent `amr`/`acr` never change the outcome. Tenant
-      independence (V-008) rests on code inspection: no tenant field reaches `authentication/freshness.ts`. Use 60 runs for RSA cost.
+      `AuthenticationNotFresh`/`stale`. Tokens with arbitrary or absent `amr`/`acr` never change the outcome. A second
+      property generates tenant files in both client-auth modes with arbitrary valid optional fields (display name,
+      connection, idle timeout, warning lead) and shows the outcome depends only on the times (V-008). Use 60 runs
+      each for RSA cost.
       This covers V-004, V-008, and V-009.
 - [x] T005 [US3] In `fs/tests/lib/authentication.test.ts`: - Change the "missing auth_time" row to expect `AuthenticationNotFresh`/`missing` with `clear`. - Keep the "non-integer auth_time" row as `AuthenticationUnavailable` (research D4). - Drop `authenticatedAt` from the expected trusted identity.
 - [x] T006 [US3] In `fs/tests/unit/authentication-entry.test.ts` and `fs/tests/unit/authentication-entry-failures.test.ts`: - Remove every `CallbackFreshness` import and provision. - Drop `authenticatedAt` from stubbed identities. - Add examples where a stubbed `AuthenticationService` fails with `AuthenticationNotFresh` (both categories,

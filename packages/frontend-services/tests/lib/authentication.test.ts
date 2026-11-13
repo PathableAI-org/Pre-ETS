@@ -15,6 +15,14 @@ import {
 import { TenantConfigService } from "../../src/tenant.ts"
 import { authenticationSettings, makeMemoryRedis } from "../helpers/authentication.ts"
 
+/** Optional tenant fields beyond the OIDC client; JSON omits an undefined value, so absent settings stay absent. */
+interface TenantSettings {
+  readonly connection?: string | undefined
+  readonly displayName?: string | undefined
+  readonly idleTimeoutMinutes?: number | undefined
+  readonly warningLeadMinutes?: number | undefined
+}
+
 interface WorldOptions {
   readonly callback?: string | undefined
   readonly clientAuth?: "confidential" | "public" | undefined
@@ -23,23 +31,28 @@ interface WorldOptions {
   readonly issuers?: readonly string[] | undefined
   readonly redis?: ReturnType<typeof makeMemoryRedis> | undefined
   readonly secretRef?: string | undefined
+  readonly tenantSettings?: TenantSettings | undefined
 }
 
 const tenantFile = (options: WorldOptions, issuer: string) =>
   JSON.stringify({
-    displayName: "Alpha",
+    displayName: options.tenantSettings?.displayName ?? "Alpha",
+    idleTimeoutMinutes: options.tenantSettings?.idleTimeoutMinutes,
     oidc: options.clientAuth === "confidential" ?
       {
         clientAuth: "confidential",
         clientId: "alpha-client",
         clientSecretRef: options.secretRef ?? "alpha-secret",
+        connection: options.tenantSettings?.connection,
         issuer
       } :
       {
         clientAuth: "public",
         clientId: "alpha-client",
+        connection: options.tenantSettings?.connection,
         issuer
-      }
+      },
+    warningLeadMinutes: options.tenantSettings?.warningLeadMinutes
   })
 
 const withWorld = <A, E, R>(program: Effect.Effect<A, E, AuthenticationService | R>, options: WorldOptions = {}) => {
@@ -902,6 +915,7 @@ interface FreshnessCase {
   readonly delayMs: number
   readonly extraClaims?: Readonly<Record<string, unknown>> | undefined
   readonly startedAtMs: number
+  readonly world?: undefined | WorldOptions
 }
 
 const freshnessClaims = (input: FreshnessCase): Readonly<Record<string, unknown>> => ({
@@ -914,23 +928,26 @@ const completeWithFreshness = (input: FreshnessCase) => {
   let nonce = ""
   return withFetch(
     completionTransport(() => nonce, freshnessClaims(input)),
-    withWorld(Effect.gen(function*() {
-      const authentication = yield* AuthenticationService
-      yield* TestClock.setTime(input.startedAtMs)
-      const prepared = yield* authentication.prepare({ host: "alpha.example.test" })
-      const destination = new URL(prepared.destination)
-      nonce = destination.searchParams.get("nonce") ?? ""
-      const query: readonly (readonly [string, string])[] = [
-        ["code", "controlled-code"],
-        ["state", destination.searchParams.get("state") ?? ""]
-      ]
-      yield* TestClock.adjust(input.delayMs)
-      const callback = { correlation: prepared.correlation, host: "alpha.example.test", query }
-      const result = yield* authentication.complete(callback).pipe(Effect.result)
-      const replay = yield* authentication.complete(callback).pipe(Effect.result)
-      const retry = yield* authentication.prepare({ host: "alpha.example.test" }).pipe(Effect.result)
-      return { replay, result, retry }
-    }))
+    withWorld(
+      Effect.gen(function*() {
+        const authentication = yield* AuthenticationService
+        yield* TestClock.setTime(input.startedAtMs)
+        const prepared = yield* authentication.prepare({ host: "alpha.example.test" })
+        const destination = new URL(prepared.destination)
+        nonce = destination.searchParams.get("nonce") ?? ""
+        const query: readonly (readonly [string, string])[] = [
+          ["code", "controlled-code"],
+          ["state", destination.searchParams.get("state") ?? ""]
+        ]
+        yield* TestClock.adjust(input.delayMs)
+        const callback = { correlation: prepared.correlation, host: "alpha.example.test", query }
+        const result = yield* authentication.complete(callback).pipe(Effect.result)
+        const replay = yield* authentication.complete(callback).pipe(Effect.result)
+        const retry = yield* authentication.prepare({ host: "alpha.example.test" }).pipe(Effect.result)
+        return { replay, result, retry }
+      }),
+      input.world
+    )
   )
 }
 
@@ -1016,6 +1033,42 @@ describe("AuthenticationService freshness confirmation [PREETS-SESSION-013]", ()
         const authTime = Math.floor(startedAtMs / 1_000) + offsetSeconds
         const extraClaims = mechanism === "absent" ? {} : { acr: `urn:test:${mechanism}`, amr: [mechanism] }
         const outcome = yield* completeWithFreshness({ authTime, delayMs, extraClaims, startedAtMs })
+        const fresh = startedAtMs - TOLERANCE_MS <= authTime * 1_000 &&
+          authTime * 1_000 <= startedAtMs + delayMs + TOLERANCE_MS
+        if (fresh) expect(Result.isSuccess(outcome.result)).toBe(true)
+        else expectNotFresh(outcome, "stale")
+      }),
+    { arbitrary: { runs: 60 } }
+  )
+
+  const ClientAuth = Schema.Literals(["confidential", "public"])
+  const Timeout = Schema.UndefinedOr(Schema.Int.pipe(Schema.check(Schema.isBetween({ maximum: 30, minimum: 5 }))))
+  const Lead = Schema.UndefinedOr(Schema.Int.pipe(Schema.check(Schema.isBetween({ maximum: 29, minimum: 0 }))))
+  const Connection = Schema.UndefinedOr(Schema.String)
+
+  it.effect.prop(
+    "confirms exactly the inclusive window, whatever tenant settings and client authentication the tenant has",
+    [Start, Delay, Offset, ClientAuth, Timeout, Lead, Connection, Schema.String],
+    ([startedAtMs, delayMs, offsetSeconds, clientAuth, idleTimeoutMinutes, lead, connection, displayName]) =>
+      Effect.gen(function*() {
+        // A warning lead must be below the effective idle timeout, or the tenant file is rejected before login.
+        const warningLeadMinutes = lead === undefined ? undefined : lead % (idleTimeoutMinutes ?? 30)
+        const authTime = Math.floor(startedAtMs / 1_000) + offsetSeconds
+        const outcome = yield* completeWithFreshness({
+          authTime,
+          delayMs,
+          startedAtMs,
+          world: {
+            clientAuth,
+            clientSecrets: confidentialOptions.clientSecrets,
+            tenantSettings: {
+              connection,
+              displayName,
+              idleTimeoutMinutes,
+              warningLeadMinutes
+            }
+          }
+        })
         const fresh = startedAtMs - TOLERANCE_MS <= authTime * 1_000 &&
           authTime * 1_000 <= startedAtMs + delayMs + TOLERANCE_MS
         if (fresh) expect(Result.isSuccess(outcome.result)).toBe(true)
