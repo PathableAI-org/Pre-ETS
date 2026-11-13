@@ -222,9 +222,10 @@ setting `hidden` and `inert` on the DOM at once rather than waiting for React to
 temporary concealment is not the expired state. Concealment also applies while a logout is in progress,
 which keeps its busy state. A usable answer reveals content when its read started after
 concealment began, even if a newer renewal from another tab was adopted meanwhile. An unanswered or failed
-confirmation (1.5 seconds) hides content and retries. When the server still holds the session past
-the tab's local deadline, as when the local estimate runs slightly early, the tab confirms again
-when the server's own deadline arrives (at least 250 ms, at most 5 seconds later). A page entering
+confirmation (1.5 seconds) hides content and retries. When the deadline check is answered as still usable,
+as when the local estimate runs slightly early or the timer fires before the tab's clock reaches its
+local deadline under load, the tab confirms again when the server's own deadline arrives (at least
+250 ms, at most 5 seconds later). A page entering
 the back-forward cache is hidden first, and the history guard reloads it on restore.
 
 A 401 or 409 confirmation with known expiration (the tab observed no logout of its session, and the
