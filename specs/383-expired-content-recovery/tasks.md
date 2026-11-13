@@ -163,9 +163,10 @@ Advances V-009–V-018, V-023, V-024 (modal part). Lands T-003, T-004 (`expirati
 (`expiration_modal`).
 
 - [x] T028 Deadline concealment (cause `deadline`), `Ended` with D7 enters `expired`, resume path (cause `resume`),
-      and `pagehide` hides the modal in `tab-coordination.ts` and `coordinator.tsx`. Also: a `Usable` answer past the
-      local deadline re-confirms at the server's own deadline (250 ms to 5 s), so a slightly early local estimate
-      keeps the B5 2-second bound instead of waiting a full 5-second retry. The A3 submission hold still applies
+      and `pagehide` hides the modal in `tab-coordination.ts` and `coordinator.tsx`. Also: a `Usable` answer with no
+      deadline timer pending re-confirms at the server's own deadline (250 ms to 5 s), so an early local estimate,
+      or a deadline timer that fires before the tab's clock reaches it under load, keeps the B5 2-second bound. The
+      first version required the clock to be past the local deadline and stalled under load (seen in slice C's run). The A3 submission hold still applies
       only to activity reports; deadline and resume confirmations are never held.
 - [x] T029 Ended record `cause` in `tab-channel.ts`; a missing cause reads as `ended`; peers adopt `expired` unless a
       logout was observed (FR-019).
