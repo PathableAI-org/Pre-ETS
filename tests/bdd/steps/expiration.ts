@@ -54,6 +54,8 @@ interface Tab {
   readonly protectedDocuments: string[]
   /** `pageshow` events from the back/forward cache, and whether each found a dialog in the restored document. */
   readonly restored: boolean[]
+  /** Each session status answer the tab received, with its status and when it arrived on the test's clock. */
+  readonly statusAnswers: { readonly at: number; readonly status: number }[]
 }
 
 const scenarios = new WeakMap<AppWorld, Expiration>()
@@ -109,16 +111,21 @@ const readDeadline = async (page: Page): Promise<number> => {
   return deadline
 }
 
-/** Opens a named tab at `host` in `context`, optionally with its timers suspended from load. */
+/** Playwright's clock in a tab: `installed` keeps real time but can be set; `suspended` also stops timers after load. */
+interface TabClock {
+  readonly clock?: "installed" | "suspended" | undefined
+}
+
+/** Opens a named tab at `host` in `context`, optionally under Playwright's clock. */
 const openTab = async (
   scenario: Expiration,
   context: BrowserContext,
   name: string,
   host: string,
-  options: { readonly suspended: boolean } = { suspended: false }
+  options: TabClock = {}
 ): Promise<Tab> => {
   const page = await context.newPage()
-  const tab: Tab = { deadline: Number.NaN, host, page, protectedDocuments: [], restored: [] }
+  const tab: Tab = { deadline: Number.NaN, host, page, protectedDocuments: [], restored: [], statusAnswers: [] }
   scenario.tabs.set(name, tab)
   page.on("response", (response) => {
     const url = new URL(response.url())
@@ -126,10 +133,14 @@ const openTab = async (
       tab.protectedDocuments.push(url.pathname)
     }
   })
-  if (options.suspended) await suspendTimers.beforeLoad(page)
+  page.on("response", (response) => {
+    if (new URL(response.url()).pathname !== "/session/status") return
+    tab.statusAnswers.push({ at: Date.now(), status: response.status() })
+  })
+  if (options.clock !== undefined) await suspendTimers.beforeLoad(page)
   await page.goto(`http://${host}/`)
   tab.deadline = await readDeadline(page)
-  if (options.suspended) await suspendTimers.afterLoad(page)
+  if (options.clock === "suspended") await suspendTimers.afterLoad(page)
   return tab
 }
 
@@ -155,7 +166,7 @@ const signInAndOpen = async (
   contextName: string,
   host: string,
   names: readonly string[],
-  options: { readonly suspended: boolean } = { suspended: false }
+  options: TabClock = {}
 ) => {
   const scenario = await scenarioOf(world)
   const context = scenario.contexts.get(contextName) ?? await newContext(scenario)
@@ -201,7 +212,7 @@ Given(
 Given(
   "the visitor has signed in at {string} and opened tab {string} with its timers suspended",
   async function(this: AppWorld, host: string, name: string) {
-    await signInAndOpen(this, "visitor", host, [name], { suspended: true })
+    await signInAndOpen(this, "visitor", host, [name], { clock: "suspended" })
   }
 )
 
@@ -215,20 +226,16 @@ Given(
 Given(
   "another browser has signed in at {string} and opened tab {string} with its timers suspended",
   async function(this: AppWorld, host: string, name: string) {
-    await signInAndOpen(this, `other:${name}`, host, [name], { suspended: true })
+    await signInAndOpen(this, `other:${name}`, host, [name], { clock: "suspended" })
   }
 )
 
-/**
- * Another browser presents a copy of the visitor's session and opens a tab with its timers suspended. It shares the
- * session with the visitor's tabs but receives none of their cross-tab messages, as a suspended tab would not.
- */
 /**
  * Another browser presents a copy of the visitor's session and opens a tab. It shares the session with the visitor's
  * tabs but exchanges no cross-tab messages with them: its renewals reach them only through the server, and theirs
  * never reach it, as for a suspended tab.
  */
-const openSharingTab = async (world: AppWorld, name: string, options: { readonly suspended: boolean }) => {
+const openSharingTab = async (world: AppWorld, name: string, options: TabClock) => {
   const scenario = await scenarioOf(world)
   const visitor = scenario.contexts.get("visitor")
   assert.ok(visitor, "expected the visitor to have signed in")
@@ -243,7 +250,7 @@ const openSharingTab = async (world: AppWorld, name: string, options: { readonly
 Given(
   "another browser sharing the visitor's session has opened tab {string} with its timers suspended",
   async function(this: AppWorld, name: string) {
-    await openSharingTab(this, name, { suspended: true })
+    await openSharingTab(this, name, { clock: "suspended" })
   }
 )
 
@@ -253,7 +260,7 @@ When(
   { timeout: 7 * 60_000 },
   async function(this: AppWorld, name: string, other: string) {
     await untilBefore(tabOf(this, other).deadline, 30_000)
-    await openSharingTab(this, name, { suspended: false })
+    await openSharingTab(this, name, {})
   }
 )
 
@@ -559,4 +566,58 @@ Then("tab {string} shows its protected content again without the expiration moda
   const { page } = tabOf(this, name)
   await page.getByRole("button", { name: PROTECTED_CONTROL }).waitFor({ state: "visible" })
   assert.equal(await page.evaluate(() => globalThis.window.preetsDialogSeen === true), false)
+})
+
+Given(
+  "the visitor has signed in at {string} and opened tab {string} under a settable clock",
+  async function(this: AppWorld, host: string, name: string) {
+    await signInAndOpen(this, "visitor", host, [name], { clock: "installed" })
+  }
+)
+
+When("the visitor types in tab {string}", async function(this: AppWorld, name: string) {
+  await typeIn(tabOf(this, name))
+})
+
+/**
+ * The tab's clock runs `lead` seconds ahead while a second tab opens, renews the session, and broadcasts it. The tab
+ * adopts the renewal and schedules its deadline check from its fast clock, so the check is due `lead` seconds early in
+ * real time. The second tab closes and the clock returns to the current time; the check stays early, and when it fires
+ * the tab's clock still reads before its local deadline, as when a timer outruns a loaded wall clock.
+ */
+When(
+  "tab {string} schedules its deadline check from a clock {int} seconds fast, then the clock is corrected",
+  async function(this: AppWorld, name: string, lead: number) {
+    const scenario = await scenarioOf(this)
+    const tab = tabOf(this, name)
+    const before = await readDeadline(tab.page)
+    await tab.page.clock.setSystemTime(Date.now() + lead * 1_000)
+    const renewing = await openTab(scenario, tab.page.context(), `${name} renewal`, tab.host)
+    await tab.page.waitForFunction(
+      (held) => document.querySelector("header")?.getAttribute("data-session-deadline") !== String(held),
+      before,
+      { polling: 50, timeout: 5_000 }
+    )
+    // The renewing tab's clock is unskewed, so its deadline is the session's on the test's clock.
+    tab.deadline = renewing.deadline
+    await renewing.page.close()
+    scenario.tabs.delete(`${name} renewal`)
+    await tab.page.clock.setSystemTime(Date.now())
+  }
+)
+
+Then(
+  "tab {string} had a session check answered as still valid before its deadline",
+  function(this: AppWorld, name: string) {
+    const tab = tabOf(this, name)
+    const early = tab.statusAnswers.filter((answer) => answer.status === 200 && answer.at < tab.deadline)
+    assert.ok(
+      early.length > 0,
+      `expected tab "${name}" to confirm early; answers: ${JSON.stringify(tab.statusAnswers)}`
+    )
+  }
+)
+
+When("tab {string} reaches its deadline", { timeout: 7 * 60_000 }, async function(this: AppWorld, name: string) {
+  await untilBefore(tabOf(this, name).deadline, 0)
 })

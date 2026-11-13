@@ -14,7 +14,9 @@ Feature: Expired content concealed behind a blocking expiration modal
   session stays valid: crossing its local deadline after another browser renewed the session
   keeps its content. A suspended tab that returns past its deadline hides its content at once and
   shows its content again when the session was renewed meanwhile, or the modal within two seconds
-  when it expired, also when the tab's clock lags behind the server.
+  when it expired, also when the tab's clock lags behind the server. A tab whose deadline check
+  reaches the server while the session is still valid checks again and shows the modal within
+  two seconds of the deadline.
   Suspension is emulated with Playwright's clock and a visibility change; pixels painted before
   scripts run and assistive-technology announcements are not established here. The library modal
   shows an inert close control until a non-dismissible mode exists (#400). What happens after Log
@@ -85,3 +87,15 @@ Feature: Expired content concealed behind a blocking expiration modal
     And tab "Suspended" shows the expiration modal within 2 seconds of resuming
     When tab "Lagging" resumes with its clock held 60 seconds before its deadline
     Then tab "Lagging" shows the expiration modal within 2 seconds of resuming
+
+  Scenario: A tab whose deadline check reaches the server early still shows the expiration modal within two seconds
+    The tab's deadline check is scheduled from a clock that runs three seconds fast, so it reaches
+    the server while the session is still valid, and the tab's own clock still reads before its
+    deadline when the answer arrives. A timer outrunning a loaded wall clock does the same.
+
+    Given the visitor has signed in at "springfield.localhost:3000" and opened tab "Early" under a settable clock
+    When the visitor types in tab "Early"
+    And tab "Early" schedules its deadline check from a clock 3 seconds fast, then the clock is corrected
+    And tab "Early" reaches its deadline
+    Then tabs "Early" each show the expiration modal within 2 seconds of their deadline
+    And tab "Early" had a session check answered as still valid before its deadline
