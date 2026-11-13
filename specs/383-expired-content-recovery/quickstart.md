@@ -362,3 +362,56 @@ ordered submit → T-001 denial → transition → `Focus.move`, as the correcte
 judged by browser interaction. No instrumentation was missing or unusable. No forbidden data was observed.
 
 **Cleanup:** owned keys deleted, the app stopped, and the scratch tenant removed.
+
+### Slice B — `66edb65dc5bf56e8c92a82eb2fd8217b21d95985` (2026-11-13)
+
+**Runs:**
+
+- Full BDD: `c7cd2d07-90e7-4eab-869f-756b1faeff3c`.
+- Probe 1: `1c58c26f-5d33-4495-878d-120e0854e247`.
+- Probe 2: `6beedf81-b1f4-48b0-8479-d6133501a736`.
+- Follow-up probe: `a211313c-1429-4173-88c5-30fda784c78e`.
+- Resume probe: `958d68e8-c589-4372-bf8e-7d78140f0a1c`.
+
+Browser tracing was on for every probe.
+
+**Conditions:** a detached verifier worktree and a production build. Local Redis, the tracked Keycloak realm, and
+otel-lgtm ran with OTEL enabled and the harness `service.version` and `service.instance.id`. `BROWSER_TRACING_ENABLED`
+was `true`, and Springfield used a 5-minute scratch tenant. The default flow had no delays. Suspension was emulated with
+Playwright's clock and a hidden→visible visibility change. Headless Chromium ignores CDP freezing for visible pages.
+
+**Module evidence:** frontend-services `test` 491/491, `test:integration` 42/42, and frontend `test:unit` 107/107. The
+frontend unit tests include the D7 property and the expiry controller examples.
+
+**BDD:** the full suite passed, 85 scenarios and 1319 steps. That includes the three `expiration-protection.feature`
+scenarios and every regression scenario.
+
+| Claim         | Result                                   | Observation                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| ------------- | ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| V-009         | established                              | Three sharing tabs recorded `content_concealed` (cause `deadline`) at `server_time_ms − deadline_ms` = +3 ms and `expired` at +19 to +21 ms. Another browser's session expired at +23 ms.                                                                                                                                                                                                                                               |
+| V-010         | established                              | Another browser renewed the session 1.6 s after the tab's last renewal. The tab concealed at its local deadline and showed its content again 28 ms later with the server deadline. It expired at the true deadline (+16.8 ms) and was never expired while the session was valid. In the second check, a control activation in a sharing tab 15 s before the deadline kept both tabs from concealing or expiring.                        |
+| V-011         | established                              | Escape, an outside click, and the close button all left the modal up. `window.find` found no protected text, and the DOM and accessibility tree held no protected labels. The inert close button is limitation L-1 (#400). After an outside click, focus is on `body`, and Tab returns into the modal.                                                                                                                                  |
+| V-012         | established                              | A click where the protected control had been left the URL and the modal unchanged. The entry page has no in-page links. A scripted router push from the console is not reachable by a user. It led to fresh entry, with no modal and no protected content.                                                                                                                                                                              |
+| V-013         | browser part established; AT outstanding | After 30 Tab and 30 Shift+Tab presses, focus never left the dialog. Its only two stops were "Log in again" and "Close modal", both with focus visible. The dialog has `aria-modal="true"`, and the accessibility tree shows only the dialog. The screen-reader checks (§B.6) were not executed and are left for a person.                                                                                                               |
+| V-014         | browser part established; AT outstanding | When the modal appears, focus is on "Log in again" (`expiration_log_in`), with focus visible and a solid outline. T-004 records `entered`/`application`, and Enter opens the provider. The announcement (§B.6) is left for a person.                                                                                                                                                                                                    |
+| V-015         | established                              | Refresh, back, and forward from an expired tab led to the provider's authentication page, with no modal, no protected text, and no restored protected content. Pre-script paint (B5) is a limitation.                                                                                                                                                                                                                                   |
+| V-016         | established                              | **Expired while suspended:** the content was hidden at once on return, and the modal appeared at +109 ms (`resume`). **Renewed elsewhere while suspended:** the content was hidden at once and shown again at +107 ms with the new deadline. **Clock held 60 s behind:** the content was not hidden at once, which is correct before the local deadline. The modal appeared at +105 ms on the `Date`-header basis. Freeze was emulated. |
+| V-017         | established                              | A tab that observed logout stayed on "You are signed out" for 5 minutes past its former deadline, and no dialog ever appeared.                                                                                                                                                                                                                                                                                                          |
+| V-023         | established                              | After the visitor's session expired, a Shelbyville tab in the same context kept its content. So did another browser with its own active Springfield session.                                                                                                                                                                                                                                                                            |
+| V-018 (modal) | established                              | The modal's heading, explanation, and Log in action are identical to A3's expired recovery. Unknown recovery claims no cause.                                                                                                                                                                                                                                                                                                           |
+| V-024 (modal) | established                              | The dialog holds only the heading, the explanation, the close button, and Log in. No protected or identity text is in the DOM or the accessibility tree.                                                                                                                                                                                                                                                                                |
+
+**Submission hold:** submissions 994, 395, and 144 ms before the deadline were admitted with status 200, and no tab
+concealed. Deadline confirmations concealed within milliseconds, so the hold did not delay them.
+
+**Telemetry:**
+
+- T-003 is present. All three causes were observed: `deadline`, `resume`, and `peer`. `deadline_ms` matches the
+  `SessionService` deadlines.
+- T-004 `expiration_log_in` is present.
+- T-005 is present: two `Interaction.login` with `expiration_modal`, each followed by the next document.
+
+The BDD resume scenarios export no browser telemetry, because of the paused clock and early browser close. The resume
+probe recorded it instead. No instrumentation was missing or unusable, and no forbidden data was observed.
+
+**Cleanup:** the verifier's keys were deleted, its ports stopped, and the scratch tenants removed.

@@ -181,7 +181,7 @@ Advances V-009–V-018, V-023, V-024 (modal part). Lands T-003, T-004 (`expirati
       `Page.setWebLifecycleState` for visible pages, so suspension is emulated with Playwright's clock and a
       hidden-then-visible visibility change.
 - [x] T034 `docs/observability.md`, `docs/session-state.md` (the expired view replaces the stand-in).
-- [ ] T035 Checks, draft pull request, verification of §B, results recorded.
+- [x] T035 Checks, draft pull request, verification of §B, results recorded.
 
 ## Slice C — Fresh Log in from both entry points (`383-expired-content-recovery-impl-c`)
 
