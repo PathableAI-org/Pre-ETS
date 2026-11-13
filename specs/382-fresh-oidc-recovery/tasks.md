@@ -119,6 +119,11 @@ V-005/V-006/V-017 for the real stale case if research D9 succeeds.
       different session cookie - the old reference is denied after the new login - cancel or a provider error leaves no session, and `/` starts login - keyboard Log in from the signed-out notice leads to the provider form and a new session
 - [x] T023 [US3] If T021 kept the stale client, add its scenario and tenant fixture: safe page, no session, and a new
       login can start.
+- [x] T023a [US1] [US3] Close evidence gaps found in review: - The journey browser keeps Chromium's back-forward cache, which Playwright turns off by default. It records
+      `pageshow` events with `persisted`, so a protected page restored from history fails the "no protected content"
+      step. - A forward history entry after logout in another page joins the back, refresh, and new-page entries. - A tracked `consent-web` client and Consent tenant let the visitor sign in and then decline at Keycloak's
+      grant page. That is a real cancellation at the provider, and the next `/` starts login again (V-007). - The stale and controlled-denial scenarios now also show that the next `/` delegates to login. The stale and
+      cancel scenarios also show that a new authorization request starts (V-006, V-007).
 - [ ] T024 Run the checks from T017, commit, push, and submit the draft pull request with `Contributes to #158`.
 - [ ] T025 Request verification for slice S2 with the claims above and quickstart §3 and §4 (all steps, including
       natural expiry with a scratch five-minute tenant).

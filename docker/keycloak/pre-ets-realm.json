@@ -76,6 +76,30 @@
       }
     },
     {
+      "clientId": "consent-web",
+      "name": "Consent fixture",
+      "description": "Test fixture: the provider asks the visitor to grant access after signing in, so a visitor can cancel at the provider.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "consentRequired": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "frontchannelLogout": true,
+      "fullScopeAllowed": true,
+      "redirectUris": [
+        "http://consent.localhost:3000/auth/callback"
+      ],
+      "webOrigins": [
+        "http://consent.localhost:3000"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      }
+    },
+    {
       "clientId": "stale-auth-time-web",
       "name": "Stale authentication time fixture",
       "description": "Test fixture: every ID token reports an authentication time in 2001, so freshness is always stale.",

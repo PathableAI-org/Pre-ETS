@@ -41,7 +41,8 @@ scenario's resources. The registered `http://springfield.localhost:3000` and
 `example.test` request Hosts. Success scenarios require the tracked real Keycloak clients and Redis: a fresh
 provider return establishes a stored session that admits the application entry. Diagnostics, raw root routing and
 tenant rejection need no reachable provider. The stale-freshness scenario uses the realm's
-`stale-auth-time-web` client; Keycloak imports the realm only on first boot, so recreate an older local
+`stale-auth-time-web` client and the provider-cancel scenario its `consent-web` client; Keycloak imports the realm
+only on first boot, so recreate an older local
 container (`docker compose up -d --force-recreate keycloak`) after the realm file changes.
 
 | Command             | Evidence                                                                              |

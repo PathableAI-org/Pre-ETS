@@ -258,7 +258,8 @@ export async function applicationBrowser(
   port: number,
   authorities: readonly string[],
   callbackPort?: number,
-  interceptCallback = false
+  interceptCallback = false,
+  historyCache = false
 ): Promise<{
   browser: Browser
   callbacks: { readonly cookie: string; readonly url: string }[]
@@ -298,6 +299,9 @@ export async function applicationBrowser(
   }
   try {
     const browser = await chromium.launch({
+      // Playwright turns off Chromium's back-forward cache by default; a history journey restores the browser's own
+      // policy so a cached protected page could be shown.
+      ignoreDefaultArgs: historyCache ? ["--disable-back-forward-cache"] : [],
       proxy: { server: `http://127.0.0.1:${String(proxyPort)}` }
     })
     return {

@@ -251,6 +251,30 @@ When("the visitor completes real provider sign-in across two application instanc
   }
 })
 
+When("the visitor signs in and then cancels at the real provider at {string}", async function(
+  this: AppWorld,
+  host: string
+) {
+  await startSite(this)
+  const owned = await applicationBrowser(this.port, [host])
+  try {
+    const context = await owned.browser.newContext()
+    const page = await context.newPage()
+    await page.goto(`http://${host}/`)
+    await signIn(page)
+    // The provider's grant page offers to decline; declining returns the visitor to the application.
+    const decline = page.getByRole("button", { name: "No" })
+    await decline.waitFor({ state: "visible" })
+    const callbackResponse = page.waitForResponse((response) => new URL(response.url()).pathname === "/auth/callback")
+    await decline.click({ noWaitAfter: true })
+    const response = await callbackResponse
+    assert.equal(new URL(response.url()).searchParams.get("error"), "access_denied")
+    this.response = await recordBrowserResponse(response)
+  } finally {
+    await owned.close()
+  }
+})
+
 When("the visitor submits a matching controlled provider denial at {string}", async function(
   this: AppWorld,
   host: string

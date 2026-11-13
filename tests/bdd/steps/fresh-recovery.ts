@@ -13,9 +13,17 @@ import { requestInstance, startSite } from "../support/server.ts"
 const PROVIDER_ORIGIN = "http://127.0.0.1:8080"
 const PROVIDER_ACCOUNT = `${PROVIDER_ORIGIN}/realms/pre-ets/account`
 
+declare global {
+  interface Window {
+    /** Exposed by the journey: reports each `pageshow` and whether the page came from the back-forward cache. */
+    preetsPageShown?: (persisted: boolean) => Promise<void>
+  }
+}
+
 /**
  * One visitor's browser across the steps of a scenario: a context that already holds a provider single sign-on
- * session, the page in front, every authorization request sent, and protected documents served since a mark.
+ * session, the page in front, every authorization request sent, and protected documents served or restored from the
+ * back-forward cache since a mark.
  */
 interface Journey {
   readonly authorizationRequests: URL[]
@@ -26,6 +34,7 @@ interface Journey {
   page: Page
   protectedDocumentsSinceMark: string[]
   rememberedSession: string | undefined
+  restoredDocumentsSinceMark: string[]
 }
 
 const journeys = new WeakMap<AppWorld, Journey>()
@@ -61,7 +70,7 @@ Given("the visitor holds a provider single sign-on session for {string}", async 
   host: string
 ) {
   await startSite(this)
-  const owned = await applicationBrowser(this.port, [host])
+  const owned = await applicationBrowser(this.port, [host], undefined, false, true)
   const context = await owned.browser.newContext()
   const journey: Journey = {
     authorizationRequests: [],
@@ -71,9 +80,20 @@ Given("the visitor holds a provider single sign-on session for {string}", async 
     host,
     page: await context.newPage(),
     protectedDocumentsSinceMark: [],
-    rememberedSession: undefined
+    rememberedSession: undefined,
+    restoredDocumentsSinceMark: []
   }
   journeys.set(this, journey)
+  // A page restored from the back-forward cache sends no request, so its `pageshow` event is the only signal.
+  await context.exposeBinding("preetsPageShown", ({ page }, persisted: boolean) => {
+    const url = new URL(page.url())
+    if (persisted && url.host === journey.host) journey.restoredDocumentsSinceMark.push(url.pathname)
+  })
+  await context.addInitScript(() => {
+    globalThis.addEventListener("pageshow", (event) => {
+      void globalThis.window.preetsPageShown?.(event.persisted)
+    })
+  })
   context.on("request", (request) => {
     const url = new URL(request.url())
     if (url.origin === PROVIDER_ORIGIN && url.pathname.endsWith("/protocol/openid-connect/auth")) {
@@ -111,6 +131,10 @@ When("the visitor navigates back in history", async function(this: AppWorld) {
   await journeyOf(this).page.goBack()
 })
 
+When("the visitor navigates forward in history", async function(this: AppWorld) {
+  await journeyOf(this).page.goForward()
+})
+
 When("the visitor authenticates at the provider", async function(this: AppWorld) {
   const journey = journeyOf(this)
   // With a provider session held, the provider re-authenticates the known user with a password-only form.
@@ -135,6 +159,7 @@ When("the visitor remembers the current application session", async function(thi
   assert.ok(journey.rememberedSession, "expected an application session to remember")
   journey.authorizationsAtMark = journey.authorizationRequests.length
   journey.protectedDocumentsSinceMark = []
+  journey.restoredDocumentsSinceMark = []
 })
 
 When("the visitor logs out", async function(this: AppWorld) {
@@ -142,6 +167,18 @@ When("the visitor logs out", async function(this: AppWorld) {
   await journey.page.getByRole("button", { name: "Log out" }).click()
   await journey.page.getByRole("heading", { name: "You are signed out" }).waitFor({ state: "visible" })
   journey.protectedDocumentsSinceMark = []
+  journey.restoredDocumentsSinceMark = []
+})
+
+When("the visitor logs out in another page", async function(this: AppWorld) {
+  const journey = journeyOf(this)
+  const other = await journey.context.newPage()
+  await other.goto(`http://${journey.host}/`)
+  await other.getByRole("button", { name: "Log out" }).click()
+  await other.getByRole("heading", { name: "You are signed out" }).waitFor({ state: "visible" })
+  await other.close()
+  journey.protectedDocumentsSinceMark = []
+  journey.restoredDocumentsSinceMark = []
 })
 
 When("the visitor activates Log in on the signed-out notice with the keyboard", async function(this: AppWorld) {
@@ -160,7 +197,9 @@ Then("the provider asks the visitor to authenticate", async function(this: AppWo
 })
 
 Then("no protected content was served before the provider asked", function(this: AppWorld) {
-  assert.deepEqual(journeyOf(this).protectedDocumentsSinceMark, [])
+  const journey = journeyOf(this)
+  assert.deepEqual(journey.protectedDocumentsSinceMark, [])
+  assert.deepEqual(journey.restoredDocumentsSinceMark, [])
 })
 
 Then("the protected application is shown", async function(this: AppWorld) {
