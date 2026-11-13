@@ -524,13 +524,15 @@ logs, or metric labels.
 
 ### Slice C — `1da252c` implementation run (2026-11-13, before verification)
 ### Slice C — `a92ca38` implementation run (2026-11-13, before verification)
+### Slice C — `2f91645` implementation run (2026-11-13, before verification)
 
-Recorded by the implementation session; the verifier's report supersedes it. The C test commit is
-`a92ca38` on B `2a9b22a1772c24e6a16457bc3ad394fd713794ac`, whose code equals the re-verified `7ad9159` (B's
-early-deadline re-confirmation, `410582e`). The same test commit was `1da252c` before B's results commit. The procedure
-first ran at `bfdd8d5` on B `66edb65`; after the restack it ran again in full at `6a1ec0c` (run
-`d1b62b21-a363-4244-ad54-8d36d4cb9cbb`) with the same outcome for every step: modal 39–85 ms after the deadline, 7
-T-005 (3 `action_recovery`, 4 `expiration_modal`), 2 `denied` completions, and 6 `expired` transitions.
+Recorded by the implementation session; the verifier's report supersedes it. The C test commit is `2f91645` on B's final
+head `e9382be1dd7360053c2e663d006fd8d9ef72c80b`. At that revision the C scenarios passed (BDD run
+`9277c462-5bde-4a15-8ff6-34e8e419e463`, 4 pickles, 113 steps) and the procedure ran again in full (run
+`2837393e-6cfb-42b3-a04b-891737ed0401`) with the same outcome for every step: modal 71–90 ms after the deadline. The
+earlier runs below, at `bfdd8d5` on B `66edb65` and at `6a1ec0c` on B `7ad9159` (run
+`d1b62b21-a363-4244-ad54-8d36d4cb9cbb`), had the same outcomes. The local stack restarted before the final run, so
+telemetry for the earlier runs may no longer be queryable.
 
 **Runs:** manual `c11fe41d-f0c5-43d6-80f9-8b4daab4e44b` (procedure steps 1–12, browser tracing on); BDD
 `72696e01-de48-4aa5-a81c-d907c0bff58d` (scenario 1), `f68b1b20-ea50-4df6-9afb-59dbabb9cc10` (scenario 3), and
