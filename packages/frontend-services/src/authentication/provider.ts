@@ -21,7 +21,8 @@ interface PreparedProviderAuthentication {
 }
 
 interface ProviderIdentity {
-  readonly authenticatedAt: number
+  /** The ID token's `auth_time` in seconds, or undefined when the provider supplied none. */
+  readonly authenticatedAt: number | undefined
   readonly issuer: string
   readonly subject: string
 }
@@ -52,9 +53,12 @@ interface DiscoveryKey {
   readonly issuer: string
 }
 
-/** The ID token claims this application relies on. Other claims are ignored. */
+/**
+ * The ID token claims this application relies on. Other claims are ignored. An absent `auth_time` is decoded so the
+ * caller can deny it as missing freshness evidence; a present but malformed one stays an invalid token.
+ */
 const IdentityClaims = Schema.Struct({
-  auth_time: Schema.Int,
+  auth_time: Schema.optionalKey(Schema.Int),
   sub: Schema.String.pipe(Schema.check(Schema.isPattern(/\S/)))
 })
 

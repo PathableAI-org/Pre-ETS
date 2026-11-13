@@ -23,7 +23,7 @@ const idToken = (nonce: string): string => {
   const input = `${encoded({ alg: "RS256", kid: "redis-integration-key", typ: "JWT" })}.${
     encoded({
       aud: "alpha-client",
-      auth_time: 1_700_000_000,
+      auth_time: Math.floor(Date.now() / 1_000),
       exp: Math.floor(Date.now() / 1_000) + 300,
       iat: Math.floor(Date.now() / 1_000),
       iss: "https://provider.test",

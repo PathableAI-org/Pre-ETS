@@ -13,7 +13,6 @@ import {
   CallbackExpectedFailure
 } from "../../src/authentication.ts"
 import { createCallbackHandler } from "../../src/next.ts"
-import { CallbackFreshness } from "../../src/next.ts"
 import { createLoginHandler } from "../../src/next.ts"
 import { SessionService, SessionServiceUnavailable } from "../../src/session.ts"
 import { TenantAlias, TenantConfigService, TenantNotFound, TenantReadError } from "../../src/tenant.ts"
@@ -143,7 +142,6 @@ describe("callback expected-failure mapping [PREETS-SESSION-002]", () => {
 describe("callback session-establishment failure mapping [PREETS-SESSION-003]", () => {
   const alias = Schema.decodeSync(TenantAlias)("alpha")
   const identity = {
-    authenticatedAt: 1_700_000_000,
     issuer: "https://provider.test/",
     subject: "subject-1",
     tenantAlias: alias
@@ -154,7 +152,7 @@ describe("callback session-establishment failure mapping [PREETS-SESSION-003]", 
       Layer.provide(NodeServices.layer)
     )
 
-  const runConfirmed = (
+  const runTrusted = (
     layers: {
       readonly session: Layer.Layer<SessionService, unknown>
       readonly tenant: Layer.Layer<TenantConfigService, unknown>
@@ -166,7 +164,6 @@ describe("callback session-establishment failure mapping [PREETS-SESSION-003]", 
           complete: () => Effect.succeed(identity),
           prepare: () => Effect.die("prepare must remain unused")
         }),
-        Effect.provideService(CallbackFreshness, { confirmed: () => true }),
         Effect.provide(Layer.mergeAll(layers.session, layers.tenant))
       ))
     )
@@ -185,10 +182,10 @@ describe("callback session-establishment failure mapping [PREETS-SESSION-003]", 
     expect(cookies).not.toContain("pathable-session")
   }
 
-  it("returns the safe page when tenant lookup fails after a confirmed trusted result", async () => {
+  it("returns the safe page when tenant lookup fails after a fresh trusted identity", async () => {
     const missingDirectory = join(tmpdir(), "preets-missing-tenant-config")
     const establish = vi.fn(() => Effect.die("establish must remain unused"))
-    runConfirmed({
+    runTrusted({
       session: Layer.succeed(SessionService, {
         establish,
         invalidate: () => Effect.die("invalidate must remain unused"),
@@ -206,7 +203,7 @@ describe("callback session-establishment failure mapping [PREETS-SESSION-003]", 
     expect(establish).not.toHaveBeenCalled()
   })
 
-  it("returns the safe page when establishment fails after a confirmed trusted result", async () => {
+  it("returns the safe page when establishment fails after a fresh trusted identity", async () => {
     const directory = await mkdtemp(join(tmpdir(), "preets-session-failure-"))
     const establish = vi.fn(() => Effect.fail(new SessionServiceUnavailable({})))
     try {
@@ -219,7 +216,7 @@ describe("callback session-establishment failure mapping [PREETS-SESSION-003]", 
           warningLeadMinutes: 5
         })
       )
-      runConfirmed({
+      runTrusted({
         session: Layer.succeed(SessionService, {
           establish,
           invalidate: () => Effect.die("invalidate must remain unused"),

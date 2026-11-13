@@ -7,12 +7,21 @@ import { vi } from "vitest"
 
 import {
   AuthenticationDenied,
+  AuthenticationNotFresh,
   AuthenticationService,
   AuthenticationUnavailable,
   CallbackExpectedFailure
 } from "../../src/authentication.ts"
 import { TenantConfigService } from "../../src/tenant.ts"
 import { authenticationSettings, makeMemoryRedis } from "../helpers/authentication.ts"
+
+/** Optional tenant fields beyond the OIDC client; JSON omits an undefined value, so absent settings stay absent. */
+interface TenantSettings {
+  readonly connection?: string | undefined
+  readonly displayName?: string | undefined
+  readonly idleTimeoutMinutes?: number | undefined
+  readonly warningLeadMinutes?: number | undefined
+}
 
 interface WorldOptions {
   readonly callback?: string | undefined
@@ -22,23 +31,28 @@ interface WorldOptions {
   readonly issuers?: readonly string[] | undefined
   readonly redis?: ReturnType<typeof makeMemoryRedis> | undefined
   readonly secretRef?: string | undefined
+  readonly tenantSettings?: TenantSettings | undefined
 }
 
 const tenantFile = (options: WorldOptions, issuer: string) =>
   JSON.stringify({
-    displayName: "Alpha",
+    displayName: options.tenantSettings?.displayName ?? "Alpha",
+    idleTimeoutMinutes: options.tenantSettings?.idleTimeoutMinutes,
     oidc: options.clientAuth === "confidential" ?
       {
         clientAuth: "confidential",
         clientId: "alpha-client",
         clientSecretRef: options.secretRef ?? "alpha-secret",
+        connection: options.tenantSettings?.connection,
         issuer
       } :
       {
         clientAuth: "public",
         clientId: "alpha-client",
+        connection: options.tenantSettings?.connection,
         issuer
-      }
+      },
+    warningLeadMinutes: options.tenantSettings?.warningLeadMinutes
   })
 
 const withWorld = <A, E, R>(program: Effect.Effect<A, E, AuthenticationService | R>, options: WorldOptions = {}) => {
@@ -110,7 +124,8 @@ const idToken = (
   const header = encoded({ alg: "RS256", kid: "test-signing-key", typ: "JWT" })
   const payload = encoded({
     aud: "alpha-client",
-    auth_time: 1_700_000_000,
+    // The test clock starts at the epoch, so an authentication at time zero is fresh for an attempt made then.
+    auth_time: 0,
     exp: Math.floor(Date.now() / 1_000) + 300,
     iat: Math.floor(Date.now() / 1_000),
     iss: "https://provider.test",
@@ -204,7 +219,7 @@ const expectConfidentialWire = (
 const expectCallbackFailure = (
   result: Result.Result<unknown, unknown>,
   disposition: "clear" | "preserve",
-  reason: typeof AuthenticationDenied | typeof AuthenticationUnavailable
+  reason: typeof AuthenticationDenied | typeof AuthenticationNotFresh | typeof AuthenticationUnavailable
 ) => {
   expect(Result.isFailure(result)).toBe(true)
   if (!Result.isFailure(result)) return
@@ -400,7 +415,6 @@ describe("AuthenticationService completion [PREETS-SESSION-002]", () => {
           query: [["code", "controlled-code"], ["state", state]]
         })
         expect(identity).toEqual({
-          authenticatedAt: 1_700_000_000,
           issuer: "https://provider.test/",
           subject: "subject-1",
           tenantAlias: "alpha"
@@ -573,7 +587,6 @@ describe("AuthenticationService completion [PREETS-SESSION-002]", () => {
   })
 
   it.effect.each([
-    { claims: { auth_time: undefined }, label: "missing auth_time" },
     { claims: { auth_time: "not-an-integer" }, label: "non-integer auth_time" },
     { claims: { sub: "" }, label: "empty subject" },
     { claims: { nonce: "wrong-nonce" }, label: "nonce mismatch" },
@@ -890,4 +903,177 @@ describe("AuthenticationService provider discovery reuse", () => {
       }))
     )
   })
+})
+
+/** An arbitrary, plausible epoch instant in milliseconds for the transaction start. */
+const BASE_TIME = 1_700_000_000_000
+
+interface FreshnessCase {
+  /** `auth_time` in seconds, or undefined to omit the claim. */
+  readonly authTime: number | undefined
+  /** Milliseconds between `prepare` and the callback. */
+  readonly delayMs: number
+  readonly extraClaims?: Readonly<Record<string, unknown>> | undefined
+  readonly startedAtMs: number
+  readonly world?: undefined | WorldOptions
+}
+
+const freshnessClaims = (input: FreshnessCase): Readonly<Record<string, unknown>> => ({
+  ...input.extraClaims,
+  auth_time: input.authTime
+})
+
+/** Prepares at `startedAtMs`, returns at `startedAtMs + delayMs`, and completes with the controlled `auth_time`. */
+const completeWithFreshness = (input: FreshnessCase) => {
+  let nonce = ""
+  return withFetch(
+    completionTransport(() => nonce, freshnessClaims(input)),
+    withWorld(
+      Effect.gen(function*() {
+        const authentication = yield* AuthenticationService
+        yield* TestClock.setTime(input.startedAtMs)
+        const prepared = yield* authentication.prepare({ host: "alpha.example.test" })
+        const destination = new URL(prepared.destination)
+        nonce = destination.searchParams.get("nonce") ?? ""
+        const query: readonly (readonly [string, string])[] = [
+          ["code", "controlled-code"],
+          ["state", destination.searchParams.get("state") ?? ""]
+        ]
+        yield* TestClock.adjust(input.delayMs)
+        const callback = { correlation: prepared.correlation, host: "alpha.example.test", query }
+        const result = yield* authentication.complete(callback).pipe(Effect.result)
+        const replay = yield* authentication.complete(callback).pipe(Effect.result)
+        const retry = yield* authentication.prepare({ host: "alpha.example.test" }).pipe(Effect.result)
+        return { replay, result, retry }
+      }),
+      input.world
+    )
+  )
+}
+
+const expectNotFresh = (
+  outcome: Effect.Success<ReturnType<typeof completeWithFreshness>>,
+  evidence: "missing" | "stale"
+) => {
+  expectCallbackFailure(outcome.result, "clear", AuthenticationNotFresh)
+  if (Result.isFailure(outcome.result) && Schema.is(CallbackExpectedFailure)(outcome.result.failure)) {
+    expect(outcome.result.failure.reason).toEqual(new AuthenticationNotFresh({ evidence }))
+  }
+  // The transaction was consumed: the same return is now an unknown attempt, and a new login can begin.
+  expectCallbackFailure(outcome.replay, "preserve", AuthenticationDenied)
+  expect(Result.isSuccess(outcome.retry)).toBe(true)
+}
+
+const TOLERANCE_MS = 30_000
+const DELAY_MS = 120_000
+const startSeconds = BASE_TIME / 1_000
+const callbackSeconds = (BASE_TIME + DELAY_MS) / 1_000
+
+describe("AuthenticationService freshness confirmation [PREETS-SESSION-013]", () => {
+  it.effect.each([
+    { authTime: startSeconds - TOLERANCE_MS / 1_000, label: "exactly at the transaction start minus the tolerance" },
+    { authTime: startSeconds + 60, label: "between the transaction start and the callback" },
+    { authTime: callbackSeconds + TOLERANCE_MS / 1_000, label: "exactly at the callback time plus the tolerance" }
+  ])("confirms an authentication time $label", ({ authTime }) =>
+    Effect.gen(function*() {
+      const outcome = yield* completeWithFreshness({ authTime, delayMs: DELAY_MS, startedAtMs: BASE_TIME })
+      expect(Result.isSuccess(outcome.result)).toBe(true)
+      if (Result.isSuccess(outcome.result)) {
+        expect(outcome.result.success).toEqual({
+          issuer: "https://provider.test/",
+          subject: "subject-1",
+          tenantAlias: "alpha"
+        })
+      }
+    }))
+
+  it.effect.each([
+    { authTime: startSeconds - TOLERANCE_MS / 1_000 - 1, label: "one second before the lower bound" },
+    { authTime: callbackSeconds + TOLERANCE_MS / 1_000 + 1, label: "one second after the upper bound" },
+    { authTime: callbackSeconds + 86_400, label: "a day in the future" },
+    { authTime: startSeconds - 86_400, label: "a day before the transaction" }
+  ])("denies $label as stale after consuming the transaction", ({ authTime }) =>
+    Effect.gen(function*() {
+      expectNotFresh(yield* completeWithFreshness({ authTime, delayMs: DELAY_MS, startedAtMs: BASE_TIME }), "stale")
+    }))
+
+  it.effect("denies a missing authentication time as missing evidence after consuming the transaction", () =>
+    Effect.gen(function*() {
+      expectNotFresh(
+        yield* completeWithFreshness({ authTime: undefined, delayMs: DELAY_MS, startedAtMs: BASE_TIME }),
+        "missing"
+      )
+    }))
+
+  it.effect("does not measure the window from the callback time alone", () =>
+    Effect.gen(function*() {
+      // Within the attempt lifetime before the callback, so a window counted back from the callback would admit it,
+      // but a minute before the transaction began.
+      const outcome = yield* completeWithFreshness({
+        authTime: startSeconds - 60,
+        delayMs: 9 * 60_000,
+        startedAtMs: BASE_TIME
+      })
+      expectNotFresh(outcome, "stale")
+    }))
+
+  const Start = Schema.Int.pipe(
+    Schema.check(Schema.isBetween({ maximum: 2_000_000_000_000, minimum: 1_000_000_000_000 }))
+  )
+  // Below the ten-minute attempt lifetime, so the attempt is still recoverable at the callback.
+  const Delay = Schema.Int.pipe(Schema.check(Schema.isBetween({ maximum: 590_000, minimum: 0 })))
+  const Offset = Schema.Int.pipe(Schema.check(Schema.isBetween({ maximum: 700, minimum: -100 })))
+  const Mechanism = Schema.Literals(["absent", "pwd", "otp", "hwk"])
+
+  it.effect.prop(
+    "confirms exactly the inclusive window, whatever authentication mechanism is reported",
+    [Start, Delay, Offset, Mechanism],
+    ([startedAtMs, delayMs, offsetSeconds, mechanism]) =>
+      Effect.gen(function*() {
+        const authTime = Math.floor(startedAtMs / 1_000) + offsetSeconds
+        const extraClaims = mechanism === "absent" ? {} : { acr: `urn:test:${mechanism}`, amr: [mechanism] }
+        const outcome = yield* completeWithFreshness({ authTime, delayMs, extraClaims, startedAtMs })
+        const fresh = startedAtMs - TOLERANCE_MS <= authTime * 1_000 &&
+          authTime * 1_000 <= startedAtMs + delayMs + TOLERANCE_MS
+        if (fresh) expect(Result.isSuccess(outcome.result)).toBe(true)
+        else expectNotFresh(outcome, "stale")
+      }),
+    { arbitrary: { runs: 60 } }
+  )
+
+  const ClientAuth = Schema.Literals(["confidential", "public"])
+  const Timeout = Schema.UndefinedOr(Schema.Int.pipe(Schema.check(Schema.isBetween({ maximum: 30, minimum: 5 }))))
+  const Lead = Schema.UndefinedOr(Schema.Int.pipe(Schema.check(Schema.isBetween({ maximum: 29, minimum: 0 }))))
+  const Connection = Schema.UndefinedOr(Schema.String)
+
+  it.effect.prop(
+    "confirms exactly the inclusive window, whatever tenant settings and client authentication the tenant has",
+    [Start, Delay, Offset, ClientAuth, Timeout, Lead, Connection, Schema.String],
+    ([startedAtMs, delayMs, offsetSeconds, clientAuth, idleTimeoutMinutes, lead, connection, displayName]) =>
+      Effect.gen(function*() {
+        // A warning lead must be below the effective idle timeout, or the tenant file is rejected before login.
+        const warningLeadMinutes = lead === undefined ? undefined : lead % (idleTimeoutMinutes ?? 30)
+        const authTime = Math.floor(startedAtMs / 1_000) + offsetSeconds
+        const outcome = yield* completeWithFreshness({
+          authTime,
+          delayMs,
+          startedAtMs,
+          world: {
+            clientAuth,
+            clientSecrets: confidentialOptions.clientSecrets,
+            tenantSettings: {
+              connection,
+              displayName,
+              idleTimeoutMinutes,
+              warningLeadMinutes
+            }
+          }
+        })
+        const fresh = startedAtMs - TOLERANCE_MS <= authTime * 1_000 &&
+          authTime * 1_000 <= startedAtMs + delayMs + TOLERANCE_MS
+        if (fresh) expect(Result.isSuccess(outcome.result)).toBe(true)
+        else expectNotFresh(outcome, "stale")
+      }),
+    { arbitrary: { runs: 60 } }
+  )
 })

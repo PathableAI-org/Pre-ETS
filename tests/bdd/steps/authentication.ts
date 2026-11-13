@@ -23,8 +23,10 @@ const recordBrowserResponse = async (response: {
   text: () => Promise<string>
 }): Promise<RecordedResponse> => {
   const status = response.status()
+  // A redirect or empty response has no readable body in the browser.
+  const bodyless = status === 204 || (status >= 300 && status < 400)
   return {
-    body: status === 204 ? "" : await response.text(),
+    body: bodyless ? "" : await response.text(),
     headers: await response.allHeaders(),
     status
   }
@@ -358,8 +360,43 @@ When("the visitor submits the captured provider return after it expires at {stri
   )
 })
 
+/** The `pathable-session` cookie headers the recorded response issued. */
+const sessionCookieHeaders = (world: AppWorld): string[] =>
+  (world.response?.headers["set-cookie"] ?? "").split("\n").filter((cookie) => cookie.startsWith("pathable-session="))
+
+/** The one issued `pathable-session` cookie as a request `Cookie` value, without its attributes. */
+const issuedSessionCookie = (world: AppWorld): string => {
+  const [header] = sessionCookieHeaders(world)
+  assert.ok(header, "expected one application session cookie")
+  return header.split(";", 1)[0] ?? ""
+}
+
+const hostOnlySessionAttributes = [/^pathable-session=[^;]+;/, /HttpOnly/i, /SameSite=Lax/i, /Path=\//i]
+
+Then("the response establishes a session and navigates to the application entry", function(this: AppWorld) {
+  const response = this.response
+  assert.ok(response, "expected an HTTP response")
+  assert.equal(response.status, 303)
+  assert.equal(response.headers.location, "/")
+  const [session, ...others] = sessionCookieHeaders(this)
+  assert.ok(session, "expected one application session cookie")
+  assert.equal(others.length, 0)
+  for (const attribute of hostOnlySessionAttributes) assert.match(session, attribute)
+  assert.doesNotMatch(session, /(?:^|;\s*)Domain=/i)
+  assert.ok(clearsCorrelation(response), "expected the recoverable correlation to be cleared")
+})
+
+Then("the established session admits the application entry at {string}", async function(
+  this: AppWorld,
+  host: string
+) {
+  const admitted = await requestInstance(this, this.port, host, "/", true, issuedSessionCookie(this))
+  assert.equal(admitted.status, 200)
+  assert.match(admitted.body, /Reference session/)
+})
+
 Then("exactly one raced callback consumes the return and replay does not", function(this: AppWorld) {
-  assert.deepEqual(this.callbackRaceResponses.map((response) => response.status).sort(), [200, 200])
+  assert.deepEqual(this.callbackRaceResponses.map((response) => response.status).sort(), [200, 303])
   assert.equal(this.callbackRaceResponses.filter(clearsCorrelation).length, 1)
   assert.equal(this.replayResponse?.status, 200)
   assert.ok(this.replayResponse)

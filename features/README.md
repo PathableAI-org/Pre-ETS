@@ -38,9 +38,9 @@ pnpm test:bdd
 temporary tenant directory and explicit callback origins/loopback permission. Cleanup removes only that
 scenario's resources. The registered `http://springfield.localhost:3000` and
 `http://shelbyville.localhost:3000` callback origins do not follow Next's random transport port or logical
-`example.test` request Hosts. Success scenarios require the tracked real Keycloak clients. They stop at
-provider arrival; callback validation, recoverable correlation, stored sessions and verified freshness remain
-incomplete. Diagnostics, raw root routing and tenant rejection need no reachable provider.
+`example.test` request Hosts. Success scenarios require the tracked real Keycloak clients and Redis: a fresh
+provider return establishes a stored session that admits the application entry. Diagnostics, raw root routing and
+tenant rejection need no reachable provider.
 
 | Command             | Evidence                                                                              |
 | ------------------- | ------------------------------------------------------------------------------------- |
