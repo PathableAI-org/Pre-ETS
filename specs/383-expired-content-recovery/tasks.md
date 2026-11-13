@@ -134,19 +134,27 @@ side). Lands T-002, T-004 (`recovery_heading`), T-005 (`action_recovery`).
       The predicate is the private `session-coordination/known-expiration.ts`, so B's property test reaches it
       without a test-only export (check:unused). "Observed a logout" is an unresolved logout attempt of the tag, this
       tab's or another's; a received logout message or record has already ended the tab. Entering recovery stops the
-      controller (listeners, channel, reads, timers), so nothing later changes the view.
+      controller (listeners, channel, reads, timers), so nothing later changes the view. The submission is also
+      activity, and its refused activity report usually arrived before the action's 401 (verifier run `b7c10e61`):
+      for 5 seconds after a protected submission leaves the tab, an `Ended` activity answer waits for the action's
+      outcome, and without one a confirmation ends the tab as before.
 - [x] T022 `SessionConfirmationProvider` gains `deny`; the form boundary calls `deny(readActionDenial(error))`. `deny`
       reads the status itself, so the boundary no longer starts a separate confirmation.
 - [x] T023 Coordinator `recovery` view renders `SessionEndNotice` (add `headingProps`, `headingRef`, `onLogIn`), moves
       focus to the heading (`recovery_heading`), and records `Interaction.login` (`action_recovery`). The status
       region announces nothing in recovery; the focus move announces the heading.
 - [x] T024 Browser facts in `fe/src/shared/browser-tracing.ts` and `export-filter.ts` (T-002, T-004, T-005);
-      `docs/observability.md`; current behavior in `docs/session-state.md`.
+      `docs/observability.md`; current behavior in `docs/session-state.md`. The SDK flushes its batch on `pagehide`; the
+      `Interaction.login` record is made just before the navigation and was otherwise lost (verifier run `ed737dfe`).
+      Deviation: the T-002 transition is recorded after the status read resolves, so it is a root span correlated by
+      order (submit, gate denial, transition, `Focus.move`), not a child of the `sessionStatus` read as the telemetry
+      contract's correlation column says. The activity-in-flight `pending` message can precede the transition; it
+      changes no other tab.
 - [x] T025 `fe/tests/unit/session-coordination.test.ts` controller examples (no record, no message, cause by D7).
 - [x] T026 BDD: known expiration with suspended timers, unknown cause, sharing tab untouched (quickstart §A3). The
       A1 fetch-action scenario now expects the `session-unavailable` token, and A2's scripts-enabled scenario became
       the unknown-cause recovery scenario with a second tab. A logout observed in a second tab shows the signed-out
-      notice (case 3). The page-text check excludes inline scripts: Next's serialized render data stays in the
+      notice (case 3). The scenarios no longer delay activity reports. The page-text check excludes inline scripts: Next's serialized render data stays in the
       document but is never displayed, focusable, or exposed to assistive technology.
 - [ ] T027 Checks, draft pull request, verification of §A3, results recorded.
 
