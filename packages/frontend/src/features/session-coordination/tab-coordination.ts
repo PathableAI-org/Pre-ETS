@@ -100,6 +100,9 @@ type ExpiryCause = Extract<TransitionCause, "deadline" | "peer" | "resume">
 /** States whose transitions carry the concealment cause and server-clock timing (#157 T-003). */
 const TIMED_STATES: ReadonlySet<UiState> = new Set<UiState>(["content_concealed", "content_shown"])
 
+/** B5: confirmed expiry is shown within this bound of the authoritative deadline. */
+const EXPIRY_BOUND_MILLISECONDS = 2_000
+
 /** The minimum wait before re-confirming a session the server still holds past this tab's local deadline. */
 const NEAR_DEADLINE_RETRY_MILLISECONDS = 250
 
@@ -567,8 +570,14 @@ export class TabCoordination {
    * The server answered 401 or a different session: record it so tabs that missed it can replay it. While this tab's
    * own logout is unresolved, that answer is its outcome (R18). With known expiration (#157 research D7) every sharing
    * tab enters `expired`; otherwise it ends (D9).
+   *
+   * The store may end a record a few milliseconds before the deadline this tab holds, and a deadline check may be
+   * answered while every estimate this tab has still reads just before it. Within the B5 bound of the deadline, with no
+   * logout observed, the tab stays concealed and judges known expiration when its estimate reaches the deadline; a
+   * logout observed meanwhile still ends it signed out (FR-019).
    */
   #endConfirmed(cause: ExpiryCause, serverTime: number | undefined) {
+    if (!this.#running()) return
     if (this.#logoutUnresolved) {
       this.#logoutEnded()
       return
@@ -576,6 +585,14 @@ export class TabCoordination {
     if (this.#knownExpiration(serverTime)) {
       recordEnded(this.#tag, "expired")
       this.#expire(cause, serverTime)
+      return
+    }
+    const untilDeadline = this.#untilDeadline(serverTime)
+    if (!this.#logoutObserved() && untilDeadline <= EXPIRY_BOUND_MILLISECONDS) {
+      this.#conceal()
+      this.#schedule("confirm", Date.now() + untilDeadline, () => {
+        this.#endConfirmed(cause, undefined)
+      })
       return
     }
     recordEnded(this.#tag, "ended")
@@ -963,6 +980,16 @@ export class TabCoordination {
     this.#uiState = to
     const cause = TIMED_STATES.has(to) ? this.#concealCause : undefined
     return recordUiTransition(from, to, cause === undefined ? undefined : { cause, timing: this.#timing(undefined) })
+  }
+
+  /**
+   * How long until the held deadline on this tab's best server-time estimate (#157 research D7), never negative;
+   * unbounded without a held deadline.
+   */
+  #untilDeadline(serverTime: number | undefined): number {
+    if (this.#held === undefined) return Number.POSITIVE_INFINITY
+    const estimate = Math.max(this.#serverNow(), serverTime ?? Number.NEGATIVE_INFINITY)
+    return Math.max(0, this.#held.idleDeadlineEpochMilliseconds - estimate)
   }
 
   /**

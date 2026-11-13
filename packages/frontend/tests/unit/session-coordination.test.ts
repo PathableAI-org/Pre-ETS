@@ -721,12 +721,16 @@ describe("TabCoordination expiry (#157 research D7–D10) [PREETS-SESSION-012]",
     expect(latest()?.view).toBe("expired")
   })
 
-  it("re-confirms when the deadline timer fired before the tab's clock reached its local deadline (early estimate)", async () => {
-    // Each answer's server time is the midpoint of its read, so the tab's clock offset stays 0. The read at the
-    // deadline is slower than the first, so it does not replace the held calibration or reschedule the deadline.
+  /**
+   * The deadline timer fires 100 ms before the tab's clock reaches its local deadline, as when a timer outruns a loaded
+   * wall clock, so the deadline check is answered before the held deadline on every estimate the tab has. Each
+   * answer's server time is the midpoint of its read, so the clock offset stays 0, and the read at the deadline is
+   * slower than the first, so it neither replaces the calibration nor reschedules the deadline.
+   */
+  const reachDeadlineEarly = async (atDeadline: StatusAnswer) => {
     const reads = [
       { answer: { snapshot: { ...coordinated, serverTimeEpochMilliseconds: NOW + 10 } }, latency: 20 },
-      { answer: { snapshot: { ...coordinated, serverTimeEpochMilliseconds: DEADLINE - 80 } }, latency: 40 },
+      { answer: atDeadline, latency: 40 },
       { answer: expiredAnswer, latency: 20 }
     ]
     const fetch = vi.fn(() => {
@@ -736,19 +740,61 @@ describe("TabCoordination expiry (#157 research D7–D10) [PREETS-SESSION-012]",
     })
     vi.stubGlobal("fetch", fetch)
     const coordination = start()
-    // An early answer calibrates the clock, as Navigation Timing does in a browser, so a later answer of the same
-    // revision changes neither the offset nor the deadline.
+    // An early answer calibrates the clock, as Navigation Timing does in a browser.
     await coordination.confirm()
-    // The wall clock falls 100 ms behind the timer clock, as under load: the deadline timer fires while `Date.now()`
-    // still reads 100 ms before the local deadline, and the status read is answered before the server's deadline.
     vi.setSystemTime(Date.now() - 100)
-
     await vi.advanceTimersByTimeAsync(DEADLINE - NOW)
+    return fetch
+  }
+
+  it("re-confirms when the early deadline check finds the session still usable", async () => {
+    const fetch = await reachDeadlineEarly({ snapshot: { ...coordinated, serverTimeEpochMilliseconds: DEADLINE - 80 } })
     expect(latest()).toMatchObject({ concealed: false, view: "active" })
+
     await vi.advanceTimersByTimeAsync(2_000)
 
     expect(fetch).toHaveBeenCalledTimes(3)
     expect(latest()?.view).toBe("expired")
+  })
+
+  it("shows the modal when the early deadline check finds the session already ended by its store", async () => {
+    // The store evicted the record a few milliseconds before the computed deadline; the `Date` header has whole seconds.
+    await reachDeadlineEarly({ date: new Date(DEADLINE - 1_000).toUTCString() })
+    expect(latest()).toMatchObject({ concealed: true, view: "active" })
+    expect(recorded()).toBeNull()
+
+    await vi.advanceTimersByTimeAsync(200)
+
+    expect(latest()?.view).toBe("expired")
+    expect(recorded()).toMatchObject({ cause: "expired" })
+  })
+
+  it.each([
+    [
+      "a logout message",
+      async () => {
+        const otherTab = new BroadcastChannel("preets-session-coordination")
+        otherTab.postMessage({ coordinationTag: COORDINATED_TAG, type: "logged-out" })
+        await deliveries()
+        otherTab.close()
+      }
+    ],
+    [
+      "a logout record",
+      async () => {
+        harness.storage.setItem(ENDED_KEY, JSON.stringify({ cause: "ended", endedAt: NOW }))
+        storageEvent()
+        await deliveries()
+      }
+    ]
+  ])("lets %s observed while it waits for the deadline end the tab signed out (FR-019)", async (_label, observe) => {
+    await reachDeadlineEarly({ date: new Date(DEADLINE - 1_000).toUTCString() })
+    await observe()
+
+    await vi.advanceTimersByTimeAsync(200)
+
+    expect(latest()?.view).toBe("ended")
+    expect(harness.states.some((state) => state.view === "expired")).toBe(false)
   })
 
   it("ends with the signed-out view when the server ended the session before its deadline", async () => {
