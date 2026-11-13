@@ -514,16 +514,16 @@ export class TabCoordination {
   }
 
   /**
-   * The server still holds the session past this tab's local deadline, as when the local estimate runs slightly early
-   * or an equal revision adopted nothing: confirm again when the server's own deadline arrives, so confirmed expiry
-   * stays within the 2-second bound (B5) instead of waiting a full retry.
+   * After a usable answer with no deadline timer pending, the deadline timer has fired and nothing rescheduled it: the
+   * local estimate ran early, or the timer fired before this tab's clock reached the local deadline, as under load. Either
+   * way the server still holds the session, so confirm again when the server's own deadline arrives (250 ms to 5 s),
+   * keeping confirmed expiry within the 2-second bound (B5) instead of never confirming again.
    */
   #confirmAtServerDeadline(snapshot: SessionCoordinationSnapshot) {
-    const now = Date.now()
-    if (snapshot.coordinationTag !== this.#tag || now < this.#deadline || this.#timers.has("confirm")) return
+    if (snapshot.coordinationTag !== this.#tag || this.#timers.has("confirm")) return
     const remaining = snapshot.idleDeadlineEpochMilliseconds - snapshot.serverTimeEpochMilliseconds
     const wait = Math.min(Math.max(remaining, NEAR_DEADLINE_RETRY_MILLISECONDS), CONFIRMATION_RETRY_MILLISECONDS)
-    this.#schedule("confirm", now + wait, () => {
+    this.#schedule("confirm", Date.now() + wait, () => {
       this.#concealAndConfirm("deadline")
     })
   }

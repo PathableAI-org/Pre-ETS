@@ -721,6 +721,36 @@ describe("TabCoordination expiry (#157 research D7–D10) [PREETS-SESSION-012]",
     expect(latest()?.view).toBe("expired")
   })
 
+  it("re-confirms when the deadline timer fired before the tab's clock reached its local deadline (early estimate)", async () => {
+    // Each answer's server time is the midpoint of its read, so the tab's clock offset stays 0. The read at the
+    // deadline is slower than the first, so it does not replace the held calibration or reschedule the deadline.
+    const reads = [
+      { answer: { snapshot: { ...coordinated, serverTimeEpochMilliseconds: NOW + 10 } }, latency: 20 },
+      { answer: { snapshot: { ...coordinated, serverTimeEpochMilliseconds: DEADLINE - 80 } }, latency: 40 },
+      { answer: expiredAnswer, latency: 20 }
+    ]
+    const fetch = vi.fn(() => {
+      const read = reads[Math.min(fetch.mock.calls.length - 1, reads.length - 1)] ?? reads[2]
+      vi.setSystemTime(Date.now() + (read?.latency ?? 0))
+      return Promise.resolve(statusResponse(read?.answer ?? expiredAnswer))
+    })
+    vi.stubGlobal("fetch", fetch)
+    const coordination = start()
+    // An early answer calibrates the clock, as Navigation Timing does in a browser, so a later answer of the same
+    // revision changes neither the offset nor the deadline.
+    await coordination.confirm()
+    // The wall clock falls 100 ms behind the timer clock, as under load: the deadline timer fires while `Date.now()`
+    // still reads 100 ms before the local deadline, and the status read is answered before the server's deadline.
+    vi.setSystemTime(Date.now() - 100)
+
+    await vi.advanceTimersByTimeAsync(DEADLINE - NOW)
+    expect(latest()).toMatchObject({ concealed: false, view: "active" })
+    await vi.advanceTimersByTimeAsync(2_000)
+
+    expect(fetch).toHaveBeenCalledTimes(3)
+    expect(latest()?.view).toBe("expired")
+  })
+
   it("ends with the signed-out view when the server ended the session before its deadline", async () => {
     statusAnswers({ date: new Date(NOW + 1_000).toUTCString() })
     const coordination = start()
