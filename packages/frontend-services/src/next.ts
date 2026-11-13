@@ -19,7 +19,7 @@ export {
 } from "./next/coordination.js"
 export { PRIVATE_NO_STORE } from "./next/handler.js"
 export { createLoginHandler } from "./next/login.js"
-export { createProtectionProxy, type ProtectionResponses } from "./next/protection.js"
+export { createProtectionProxy, type ProtectionResponses, type SessionEndCause } from "./next/protection.js"
 export {
   readSessionRequest,
   type ReadSessionRequestInput,

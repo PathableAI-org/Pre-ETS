@@ -108,6 +108,7 @@ const install = (
 
 const forbiddenBody = "forbidden-document"
 const tenantFailureBody = "missing-tenant"
+const recoveryBody = (cause: string) => `recovery-document:${cause}`
 
 const responses: ProtectionResponses = {
   forbiddenDocument: (request) =>
@@ -115,6 +116,19 @@ const responses: ProtectionResponses = {
       new NextResponse(forbiddenBody, {
         headers: { "x-forbidden-for": request.nextUrl.pathname },
         status: 403
+      })
+    ),
+  // A host that answers with the wrong status and caching, a cookie, and a redirect: the gate must override them.
+  recoveryDocument: ({ cause }) =>
+    Promise.resolve(
+      new NextResponse(recoveryBody(cause), {
+        headers: {
+          "cache-control": "public, max-age=600",
+          "content-type": "text/html; charset=utf-8",
+          location: "/elsewhere",
+          "set-cookie": "pathable-session=leaked; Path=/"
+        },
+        status: 200
       })
     ),
   tenantFailure: (status) => Promise.resolve(new NextResponse(status === 404 ? tenantFailureBody : null, { status }))
@@ -150,6 +164,17 @@ const expectEmptyDenial = async (response: Response, status: number) => {
   expect(await response.text()).toBe("")
 }
 
+/** The host's recovery document, re-wrapped by the gate: 401, private, no cookie, no redirect, host body and type. */
+const expectRecoveryDocument = async (response: Response, cause: string) => {
+  expect(response.status).toBe(401)
+  expect(passedThrough(response)).toBe(false)
+  expect(response.headers.get("cache-control")).toBe("private, no-store")
+  expect(response.headers.get("content-type")).toBe("text/html; charset=utf-8")
+  expect(response.headers.get("location")).toBeNull()
+  expect(response.headers.getSetCookie()).toEqual([])
+  expect(await response.text()).toBe(recoveryBody(cause))
+}
+
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"] })
   vi.setSystemTime(NOW)
@@ -179,6 +204,12 @@ const decodesWithoutNewSeparator = (rawSegment: string) => {
  */
 const invokesServerAction = (incoming: NextRequest) =>
   getServerActionRequestMetadata(incoming).isPossibleServerAction || incoming.headers.has("next-action")
+
+/** Fetch Metadata's navigation signal, stated independently: the mode decides when present, else the destination. */
+const isNavigation = (headers: Headers) => {
+  const mode = headers.get("sec-fetch-mode")
+  return mode === null ? headers.get("sec-fetch-dest") === "document" : mode === "navigate"
+}
 
 /**
  * Independent statement of the closed designation, evaluated segment by segment on the pathname the gate receives.
@@ -322,22 +353,24 @@ describe("createProtectionProxy designation [PREETS-SESSION-001]", () => {
 
   it.each([
     { headers: { ...rscFetch, "next-action": "0123456789abcdef" }, method: "POST", name: "an action header" },
-    { headers: { ...navigation, "next-action": "0123456789abcdef" }, method: "GET", name: "an action header on GET" },
-    {
-      headers: { ...navigation, "content-type": "multipart/form-data; boundary=----x" },
-      method: "POST",
-      name: "a multipart body"
-    },
-    {
-      headers: { ...navigation, "content-type": "application/x-www-form-urlencoded" },
-      method: "POST",
-      name: "a form-urlencoded body"
-    }
+    { headers: { ...navigation, "next-action": "0123456789abcdef" }, method: "GET", name: "an action header on GET" }
   ])("protects a Server Action candidate under /_test: $name", async (row) => {
     install(sessionDouble(() => Effect.succeed(noUsableSession)))
 
     for (const path of ["/_test", "/_test/x"]) {
       await expectEmptyDenial(await protect(request(path, { headers: row.headers, method: row.method })), 401)
+    }
+  })
+
+  it.each([
+    { contentType: "multipart/form-data; boundary=----x", name: "a multipart body" },
+    { contentType: "application/x-www-form-urlencoded", name: "a form-urlencoded body" }
+  ])("protects a no-script Server Action submission under /_test with the recovery document: $name", async (row) => {
+    install(sessionDouble(() => Effect.succeed(noUsableSession)))
+
+    for (const path of ["/_test", "/_test/x"]) {
+      const headers = { ...navigation, "content-type": row.contentType }
+      await expectRecoveryDocument(await protect(request(path, { headers, method: "POST" })), "unknown")
     }
   })
 
@@ -578,6 +611,62 @@ describe("createProtectionProxy renewal [PREETS-SESSION-005]", () => {
   })
 })
 
+describe("createProtectionProxy denied Server Actions [PREETS-SESSION-007]", () => {
+  /** Bodies Next decodes as a Server Action without the header (its installed `isPossibleServerAction`). */
+  const formContentType = fc.constantFrom("multipart/form-data; boundary=x", "application/x-www-form-urlencoded")
+
+  it.prop([pathname, formContentType, headerSubset], { numRuns: 300 })(
+    "answers every denied candidate with 401 and no login, and only a no-script navigation with the recovery document",
+    async (path, contentType, headers) => {
+      install(sessionDouble(() => Effect.succeed(noUsableSession)))
+      const incoming = request(path, {
+        cookie: reference,
+        headers: { ...headers, "content-type": contentType },
+        method: "POST"
+      })
+
+      const response = await protect(incoming)
+
+      const noScript = !incoming.headers.has("next-action") && isNavigation(incoming.headers)
+      if (noScript) await expectRecoveryDocument(response, "unknown")
+      else await expectEmptyDenial(response, 401)
+    }
+  )
+
+  it.each([
+    { cause: "expired", session: { _tag: "NoUsableSession", expired: true } as const },
+    { cause: "unknown", session: noUsableSession }
+  ])("explains a no-script submission as $cause from what the session read observed", async (row) => {
+    install(sessionDouble(() => Effect.succeed(row.session)))
+    const headers = { ...navigation, "content-type": "application/x-www-form-urlencoded" }
+
+    await expectRecoveryDocument(await protect(request("/", { cookie: reference, headers, method: "POST" })), row.cause)
+  })
+
+  it.each([
+    { headers: { ...rscFetch, "content-type": "multipart/form-data; boundary=x", "next-action": "a" }, name: "fetch" },
+    { headers: { ...rscFetch, "content-type": "multipart/form-data; boundary=x" }, name: "non-navigation form" },
+    { headers: { "content-type": "application/x-www-form-urlencoded" }, name: "metadata-less form" }
+  ])("keeps the empty 401 for a denied $name candidate, even when the server observed expiry", async (row) => {
+    install(sessionDouble(() => Effect.succeed({ _tag: "NoUsableSession", expired: true })))
+
+    await expectEmptyDenial(
+      await protect(request("/", { cookie: reference, headers: row.headers, method: "POST" })),
+      401
+    )
+  })
+
+  it("admits a no-script submission with a usable session without consulting the recovery document", async () => {
+    install(sessionDouble(() => Effect.succeed(usableSession)))
+    const headers = { ...navigation, "content-type": "application/x-www-form-urlencoded" }
+
+    const response = await protect(request("/", { cookie: reference, headers, method: "POST" }))
+
+    expect(passedThrough(response)).toBe(true)
+    expect(recorded.refreshes).toEqual([])
+  })
+})
+
 describe("createProtectionProxy defects", () => {
   it("rejects rather than passing through when the forbidden document factory throws", async () => {
     install(sessionDouble(() => Effect.fail(new SessionTenantMismatch({}))))
@@ -587,6 +676,17 @@ describe("createProtectionProxy defects", () => {
     })
 
     await expect(failing(request("/", { cookie: reference, headers: navigation }))).rejects.toBeDefined()
+  })
+
+  it("rejects rather than passing through when the recovery document factory throws", async () => {
+    install(sessionDouble(() => Effect.succeed(noUsableSession)))
+    const failing = createProtectionProxy({
+      ...responses,
+      recoveryDocument: () => Promise.reject(new Error("factory failed"))
+    })
+    const headers = { ...navigation, "content-type": "application/x-www-form-urlencoded" }
+
+    await expect(failing(request("/", { cookie: reference, headers, method: "POST" }))).rejects.toBeDefined()
   })
 
   it("rejects rather than passing through when the tenant failure factory throws", async () => {

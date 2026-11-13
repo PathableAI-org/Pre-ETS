@@ -24,6 +24,7 @@ export {
   SESSION_COOKIE,
   type SessionActivityRequestBody,
   type SessionCoordinationSnapshot,
+  type SessionEndCause,
   tenantConfigResponse,
   type TenantFailureResponse
 } from "./next.js"
