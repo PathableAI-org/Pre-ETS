@@ -144,12 +144,18 @@ const openTab = async (
   return tab
 }
 
-/** Signs in through the application at `host`; with a provider session already held, only the password is asked. */
+/**
+ * Signs in through the application at `host`. With a provider session already held, only the password is asked, or
+ * nothing at all: the provider records authentication in whole seconds, so a sign-in within the same second as the
+ * previous one already satisfies the fresh-authentication request and returns straight to the application.
+ */
 const signIn = async (page: Page, host: string) => {
   await page.goto(`http://${host}/`)
   const username = page.getByRole("textbox", { name: /username|email/i })
   const password = page.getByRole("textbox", { exact: true, name: "Password" })
-  await password.waitFor({ state: "visible" })
+  const logOut = page.getByRole("button", { name: "Log out" })
+  await password.or(logOut).first().waitFor({ state: "visible" })
+  if (await logOut.isVisible()) return
   if (await username.isVisible()) {
     await signInAtProvider(page)
   } else {
@@ -157,7 +163,7 @@ const signIn = async (page: Page, host: string) => {
     await page.getByRole("button", { name: /sign in/i }).click({ noWaitAfter: true })
   }
   await page.waitForURL((url) => url.host === host)
-  await page.getByRole("button", { name: "Log out" }).waitFor({ state: "visible" })
+  await logOut.waitFor({ state: "visible" })
 }
 
 /** Signs in a named context at `host` and opens the named tabs there; the sign-in page itself is closed. */
