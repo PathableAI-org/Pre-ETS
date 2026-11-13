@@ -523,9 +523,11 @@ logs, or metric labels.
 **Cleanup:** the verifier's keys were deleted, its ports stopped, and the scratch tenants removed.
 
 ### Slice C — `1da252c` implementation run (2026-11-13, before verification)
+### Slice C — `a92ca38` implementation run (2026-11-13, before verification)
 
 Recorded by the implementation session; the verifier's report supersedes it. The C test commit is
-`1da252c` on B `7ad9159628f7f7d45b07c916c7b798250607a27f` (B's early-deadline re-confirmation, `410582e`). The procedure
+`a92ca38` on B `2a9b22a1772c24e6a16457bc3ad394fd713794ac`, whose code equals the re-verified `7ad9159` (B's
+early-deadline re-confirmation, `410582e`). The same test commit was `1da252c` before B's results commit. The procedure
 first ran at `bfdd8d5` on B `66edb65`; after the restack it ran again in full at `6a1ec0c` (run
 `d1b62b21-a363-4244-ad54-8d36d4cb9cbb`) with the same outcome for every step: modal 39–85 ms after the deadline, 7
 T-005 (3 `action_recovery`, 4 `expiration_modal`), 2 `denied` completions, and 6 `expired` transitions.
@@ -542,7 +544,8 @@ interception and no activity delay, except the provider-answer substitution desc
 **BDD:** `expired-recovery-login.feature` (`@preets-session-013`): 3 scenarios (4 pickles) pass. The
 `@preets-session-012 or @preets-session-013` regression at `bfdd8d5`: 18 scenarios, 379 steps, all passing. At `6a1ec0c` (run `425d2129-e4c6-4bad-be23-756e943dae73`): 18 of 19 pass, including C's three and B's
 new early-deadline scenario. B's first scenario fails at its Shelbyville sign-in, where the provider returns without
-an authentication step; it fails the same way at B's own head `7ad9159` without C, so it is reported to slice B.
+an authentication step; it fails the same way at B's own head `7ad9159` without C. The verifier's full suite at `7ad9159` passed it, so it
+depends on timing in this environment; it is reported to slice B.
 
 **Manual procedure (one composed journey, run `c11fe41d`):**
 
