@@ -247,7 +247,11 @@ When("the visitor logs out in the second tab", async function(this: AppWorld) {
  */
 When("the visitor submits the reference form by keyboard", async function(this: AppWorld) {
   const entry = entryOf(this)
-  const submitted = entry.page.waitForResponse((response) => response.request().method() === "POST")
+  // The form posts to the page itself; the keyboard press also sends an activity report, which is not the submission.
+  const page = new URL(entry.page.url()).pathname
+  const submitted = entry.page.waitForResponse((response) =>
+    response.request().method() === "POST" && new URL(response.url()).pathname === page
+  )
   await entry.page.getByRole("button", { name: "Record reference operation" }).focus()
   await entry.page.keyboard.press("Enter")
   entry.submission = await submitted
@@ -319,20 +323,6 @@ Then(
     await entry
   }
 )
-
-/**
- * The tab's activity reports reach the server late. A keyboard submission is also qualifying activity, and a refused
- * activity report ends the tab by itself; delaying it keeps that concurrent path from deciding the scenario first.
- */
-Given("the visitor's activity reports reach the server {int} seconds late", async function(
-  this: AppWorld,
-  seconds: number
-) {
-  await entryOf(this).page.route("**/session/activity", async (route) => {
-    await delay(seconds * 1000)
-    await route.continue()
-  })
-})
 
 Then(
   "the form submission was answered with the action denial token {string}",

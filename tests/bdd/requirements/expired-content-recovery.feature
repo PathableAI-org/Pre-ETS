@@ -81,13 +81,12 @@ Feature: Expired-content protection for denied Server Actions
     And the browser holds a reference-operation receipt
 
   Scenario: With scripts, a denied submission replaces only that tab's content with recovery
-    The keyboard submission is also activity, and a refused activity report ends the tab by itself,
-    so this scenario delays those reports to observe the denied action's own outcome.
+    The keyboard submission is also activity, and its activity report also finds the session ended.
+    The tab lets the denied action decide, so the report alone neither ends this tab nor any other.
 
     Given the visitor has signed in at "springfield.localhost:3000" through the provider
     And the visitor opens the application entry at "springfield.localhost:3000" with scripts enabled
     And the visitor opens a second tab on the application entry
-    And the visitor's activity reports reach the server 2 seconds late
     And the visitor's session record is removed by logging out in another browser
     When the visitor submits the reference form by keyboard
     Then the form submission is a fetch request answered with status 401
@@ -113,7 +112,6 @@ Feature: Expired-content protection for denied Server Actions
     Given Springfield sessions end after 5 minutes of inactivity
     And the visitor has signed in at "springfield.localhost:3000" through the provider
     And the visitor opens the application entry at "springfield.localhost:3000" with its timers suspended
-    And the visitor's activity reports reach the server 2 seconds late
     When the session's idle deadline passes without activity
     And the tab's clock is set to the current time without running its timers
     And the visitor submits the reference form by keyboard
