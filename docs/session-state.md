@@ -134,8 +134,13 @@ designated above.
 
 Known gaps: `/_next/static/**` is publicly served and `/favicon.ico`, metadata routes, and
 `/_next/image` answer 401 without a session until the public-asset decision is made.
-What happens after Log in from recovery or the expiration modal is evidenced by
-[#157](https://github.com/PathableAI-org/Pre-ETS/issues/157)'s last slice.
+"Log in again" in recovery content and in the expiration modal is a plain link to `/`, so no login
+starts until the visitor activates it. The entry then follows fresh entry: the provider is asked for
+fresh authentication (`max_age=0`) even while it holds a single sign-on session, a new session is
+established, and the earlier reference is never admitted. A cancelled or failed login establishes
+nothing, and Log in can be tried again. A tab still behind the expiration modal stays there when
+another tab logs in; its own Log in loads a new document under the valid session
+([#157](https://github.com/PathableAI-org/Pre-ETS/issues/157)).
 
 ## Cross-tab activity and logout coordination
 

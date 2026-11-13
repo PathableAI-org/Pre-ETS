@@ -14,7 +14,7 @@ import {
   suspendTimers,
   watchForDialogs
 } from "../support/browser.ts"
-import { startSite } from "../support/server.ts"
+import { requestInstance, startSite } from "../support/server.ts"
 
 const PROVIDER_ORIGIN = "http://127.0.0.1:8080"
 const SPRINGFIELD = "springfield.localhost:3000"
@@ -46,14 +46,22 @@ interface Expiration {
   readonly tabs: Map<string, Tab>
 }
 
-/** One open tab: its page, its own local deadline as last read, and protected documents served since a mark. */
+/**
+ * One open tab: its page, its own local deadline as last read, the application session it opened with, and since a
+ * mark, protected documents served and login traffic (the application's login route and any provider request).
+ */
 interface Tab {
   deadline: number
+  /** Settles once a failed login's last document has loaded, after a step arranged that failure. */
+  failedLogin?: Promise<unknown> | undefined
   readonly host: string
+  readonly loginTraffic: URL[]
   readonly page: Page
   readonly protectedDocuments: string[]
   /** `pageshow` events from the back/forward cache, and whether each found a dialog in the restored document. */
   readonly restored: boolean[]
+  /** The application session reference the tab's browser held when the tab opened. */
+  session: string | undefined
   /** Each session status answer the tab received, with its status and when it arrived on the test's clock. */
   readonly statusAnswers: { readonly at: number; readonly status: number }[]
 }
@@ -102,6 +110,10 @@ const newContext = async (scenario: Expiration): Promise<BrowserContext> => {
   return context
 }
 
+/** The application session reference the tab's browser holds for its host, if any. */
+const sessionOf = async (tab: Tab): Promise<string | undefined> =>
+  (await tab.page.context().cookies(`http://${tab.host}/`)).find((cookie) => cookie.name === "pathable-session")?.value
+
 /** Waits for the protected page and reads the tab's held local deadline from its header. */
 const readDeadline = async (page: Page): Promise<number> => {
   await page.getByRole("button", { name: PROTECTED_CONTROL }).waitFor({ state: "visible" })
@@ -125,8 +137,23 @@ const openTab = async (
   options: TabClock = {}
 ): Promise<Tab> => {
   const page = await context.newPage()
-  const tab: Tab = { deadline: Number.NaN, host, page, protectedDocuments: [], restored: [], statusAnswers: [] }
+  const tab: Tab = {
+    deadline: Number.NaN,
+    host,
+    loginTraffic: [],
+    page,
+    protectedDocuments: [],
+    restored: [],
+    session: undefined,
+    statusAnswers: []
+  }
   scenario.tabs.set(name, tab)
+  page.on("request", (request) => {
+    const url = new URL(request.url())
+    if (url.origin === PROVIDER_ORIGIN || (url.host === host && url.pathname.startsWith("/auth/login"))) {
+      tab.loginTraffic.push(url)
+    }
+  })
   page.on("response", (response) => {
     const url = new URL(response.url())
     if (url.host === host && response.request().resourceType() === "document" && response.status() === 200) {
@@ -140,6 +167,7 @@ const openTab = async (
   if (options.clock !== undefined) await suspendTimers.beforeLoad(page)
   await page.goto(`http://${host}/`)
   tab.deadline = await readDeadline(page)
+  tab.session = await sessionOf(tab)
   if (options.clock === "suspended") await suspendTimers.afterLoad(page)
   return tab
 }
@@ -479,12 +507,19 @@ When("the visitor activates {string} by keyboard in tab {string}", async functio
 ) {
   const tab = tabOf(this, name)
   tab.protectedDocuments.length = 0
+  tab.loginTraffic.length = 0
   for (let presses = 0; presses < 3 && (await activeElementOf(tab.page)).name !== link; presses += 1) {
     await tab.page.keyboard.press("Tab")
   }
   assert.deepEqual(await activeElementOf(tab.page), { inDialog: true, name: link, tag: "A" })
   await tab.page.keyboard.press("Enter")
 })
+
+/** The tab is on the provider's page asking the visitor to authenticate. */
+const awaitProviderForm = async (tab: Tab) => {
+  await tab.page.getByRole("textbox", { exact: true, name: "Password" }).waitFor({ state: "visible" })
+  assert.equal(new URL(tab.page.url()).origin, PROVIDER_ORIGIN)
+}
 
 /**
  * Fresh entry (PREETS-SESSION-004): the tab reaches the provider asking the visitor to authenticate, no protected
@@ -494,8 +529,7 @@ Then(
   "tab {string} follows fresh entry to the provider without the modal or protected content",
   async function(this: AppWorld, name: string) {
     const tab = tabOf(this, name)
-    await tab.page.getByRole("textbox", { exact: true, name: "Password" }).waitFor({ state: "visible" })
-    assert.equal(new URL(tab.page.url()).origin, PROVIDER_ORIGIN)
+    await awaitProviderForm(tab)
     assert.deepEqual(tab.protectedDocuments, [])
     assert.ok(!tab.restored.includes(true), "a restored page showed the modal")
   }
@@ -626,4 +660,281 @@ Then(
 
 When("tab {string} reaches its deadline", { timeout: 7 * 60_000 }, async function(this: AppWorld, name: string) {
   await untilBefore(tabOf(this, name).deadline, 0)
+})
+
+/**
+ * Log in from recovery content and the expiration modal (#157 slice C; PREETS-SESSION-013). Each tab's browser
+ * signed in through the application, so it holds a provider single sign-on session that Log in must not reuse.
+ */
+
+Given(
+  "another browser sharing the visitor's session has opened tab {string}",
+  async function(this: AppWorld, name: string) {
+    await openSharingTab(this, name, {})
+  }
+)
+
+/** Starts a new mark for what the tab sends and receives from here on. */
+const mark = (tab: Tab) => {
+  tab.loginTraffic.length = 0
+  tab.protectedDocuments.length = 0
+}
+
+Then("tabs {} show the expiration modal and no protected content", async function(this: AppWorld, list: string) {
+  for (const name of namesOf(list)) {
+    const tab = tabOf(this, name)
+    await tab.page.getByRole("dialog", { name: EXPIRED_COPY.heading }).waitFor({ state: "visible" })
+    await assertNoProtectedContent(tab.page, name)
+    mark(tab)
+  }
+})
+
+/** The tab's clock jumps to wall time while every timer stays paused, as after a suspended device wakes. */
+When(
+  "the clock of tab {string} is set to the current time without running its timers",
+  async function(this: AppWorld, name: string) {
+    await tabOf(this, name).page.clock.setSystemTime(Date.now())
+  }
+)
+
+When("the timers of tab {string} run again", async function(this: AppWorld, name: string) {
+  await tabOf(this, name).page.clock.resume()
+})
+
+/** Focuses the reference form's submit button, presses Enter, and waits for the Server Action's answer. */
+When("the visitor submits the reference form by keyboard in tab {string}", async function(
+  this: AppWorld,
+  name: string
+) {
+  const { page } = tabOf(this, name)
+  const submitted = page.waitForResponse((response) =>
+    response.request().method() === "POST" && new URL(response.url()).pathname === "/"
+  )
+  await page.getByRole("button", { name: PROTECTED_CONTROL }).focus()
+  await page.keyboard.press("Enter")
+  await submitted
+})
+
+/** Recovery replaced the header and content: one heading with the explanation, Log in again, nothing protected. */
+Then(
+  "tab {string} shows recovery explaining {string} in place of its content",
+  async function(this: AppWorld, name: string, heading: string) {
+    const tab = tabOf(this, name)
+    await tab.page.getByRole("heading", { level: 1, name: heading }).waitFor({ state: "visible" })
+    assert.deepEqual(await tab.page.getByRole("heading", { level: 1 }).allTextContents(), [heading])
+    await tab.page.getByRole("link", { name: EXPIRED_COPY.logIn }).waitFor({ state: "visible" })
+    await assertNoProtectedContent(tab.page, name)
+    mark(tab)
+  }
+)
+
+/** The visitor looks at the page and does nothing: no input reaches any tab. */
+When("the visitor waits {int} seconds without acting", async function(this: AppWorld, seconds: number) {
+  await delay(seconds * 1_000)
+})
+
+/** PREETS-SESSION-007 AC1: since the tab showed recovery or the modal, it requested no login route or provider. */
+Then("no login has started in tab(s) {}", function(this: AppWorld, list: string) {
+  for (const name of namesOf(list)) {
+    assert.deepEqual(tabOf(this, name).loginTraffic.map(String), [], `tab "${name}" started a login`)
+  }
+})
+
+/** Recovery moved focus to its heading; Tab reaches the link, and Enter activates it. */
+When(
+  "the visitor activates {string} in the recovery content by keyboard in tab {string}",
+  async function(this: AppWorld, link: string, name: string) {
+    const tab = tabOf(this, name)
+    mark(tab)
+    const target = tab.page.getByRole("link", { name: link })
+    let focused = await target.evaluate((element) => element === document.activeElement)
+    for (let presses = 0; presses < 3 && !focused; presses += 1) {
+      await tab.page.keyboard.press("Tab")
+      focused = await target.evaluate((element) => element === document.activeElement)
+    }
+    assert.ok(focused, `expected Tab to reach "${link}"`)
+    await tab.page.keyboard.press("Enter")
+  }
+)
+
+/** Whether a URL is the provider's endpoint ending in `suffix`. */
+const providerEndpoint = (suffix: string) => (url: URL) =>
+  url.origin === PROVIDER_ORIGIN && url.pathname.endsWith(suffix)
+/** The application's authorization request at the provider. */
+const isAuthorization = providerEndpoint("/protocol/openid-connect/auth")
+/** The visitor's submission of the provider's authentication step. */
+const isAuthentication = providerEndpoint("/login-actions/authenticate")
+
+/** Answers the provider's password-only authentication step for the synthetic user. */
+const submitPassword = async (page: Page) => {
+  await page.getByRole("textbox", { exact: true, name: "Password" }).fill("demo")
+  await page.getByRole("button", { name: /sign in/i }).click({ noWaitAfter: true })
+}
+
+/** The tab shows the protected application at its own host. */
+const awaitApplication = async (tab: Tab) => {
+  await tab.page.getByRole("button", { name: "Log out" }).waitFor({ state: "visible" })
+  assert.equal(new URL(tab.page.url()).host, tab.host)
+}
+
+/**
+ * B6: the application asked the provider for fresh authentication (`max_age=0`), and the provider, despite the
+ * browser's single sign-on session, presents an authentication step instead of returning at once.
+ */
+Then("the provider asks the visitor to authenticate in tab {string}", async function(this: AppWorld, name: string) {
+  const tab = tabOf(this, name)
+  await awaitProviderForm(tab)
+  const authorization = tab.loginTraffic.filter(isAuthorization).at(-1)
+  assert.ok(authorization, "expected the application to start a provider login")
+  assert.equal(authorization.searchParams.get("max_age"), "0")
+})
+
+/** With a provider session held, the provider re-authenticates the known user with a password-only form. */
+When("the visitor authenticates at the provider in tab {string}", async function(this: AppWorld, name: string) {
+  const tab = tabOf(this, name)
+  await submitPassword(tab.page)
+  await tab.page.waitForURL((url) => url.host === tab.host)
+})
+
+/** The protected application, under a session reference other than the one the tab opened with. */
+Then("tab {string} shows the protected application under a new session", async function(
+  this: AppWorld,
+  name: string
+) {
+  const tab = tabOf(this, name)
+  await awaitApplication(tab)
+  const current = await sessionOf(tab)
+  assert.ok(current, "expected a new application session")
+  assert.notEqual(current, tab.session)
+})
+
+/** A raw request presenting a session reference: answered with the login delegation, never protected content. */
+const assertNotAdmitted = async (world: AppWorld, tab: Tab, session: string) => {
+  const { body, headers, status } = await requestInstance(
+    world,
+    world.port,
+    tab.host,
+    "/",
+    true,
+    `pathable-session=${session}`
+  )
+  const delegation = new URL(headers.location ?? "", `http://${tab.host}`).pathname
+  assert.deepEqual({ delegation, status }, { delegation: "/auth/login", status: 307 })
+  assert.doesNotMatch(body, PROTECTED_TEXT)
+}
+
+Then("a request presenting the earlier session of tab {string} is not admitted", async function(
+  this: AppWorld,
+  name: string
+) {
+  const tab = tabOf(this, name)
+  assert.ok(tab.session, "expected the tab to have opened with a session")
+  await assertNotAdmitted(this, tab, tab.session)
+})
+
+/**
+ * FR-024: after another tab's login established a new session in the same browser, this tab, which the visitor has
+ * not touched, still shows the modal and no protected content, and received no protected document. The tabs
+ * exchange messages at once; the observation lasts a few seconds beyond that.
+ */
+Then(
+  "tab {string} still shows the expiration modal and no protected content after the login in tab {string}",
+  async function(this: AppWorld, name: string, other: string) {
+    const tab = tabOf(this, name)
+    assert.notEqual(await sessionOf(tab), tab.session, `expected the login in tab "${other}" to have a new session`)
+    await delay(3_000)
+    await tab.page.getByRole("dialog", { name: EXPIRED_COPY.heading }).waitFor({ state: "visible" })
+    assert.equal(new URL(tab.page.url()).pathname, "/")
+    await assertNoProtectedContent(tab.page, name)
+    assert.deepEqual(tab.protectedDocuments, [])
+  }
+)
+
+/** The tab's content now comes from a document the server rendered under the valid session, with no provider step. */
+Then(
+  "tab {string} shows the protected application from a new document without another provider login",
+  async function(this: AppWorld, name: string) {
+    const tab = tabOf(this, name)
+    await awaitApplication(tab)
+    assert.deepEqual(tab.protectedDocuments, ["/"])
+    assert.deepEqual(tab.loginTraffic.map(String), [])
+  }
+)
+
+/**
+ * Instead of completing the next authentication step submitted in this tab, the provider returns the error it sends
+ * when a visitor declines (`access_denied` with the authorization request's state, as the tracked realm's
+ * cancellation client does). The authorization request itself reached the real provider.
+ */
+const cancelNextAuthentication = async (tab: Tab) => {
+  await tab.page.route(
+    (url) => isAuthentication(url),
+    async (route) => {
+      const authorization = tab.loginTraffic.filter(isAuthorization).at(-1)
+      assert.ok(authorization, "expected a provider login to be in progress")
+      const callback = new URL(authorization.searchParams.get("redirect_uri") ?? "")
+      callback.searchParams.set("error", "access_denied")
+      callback.searchParams.set("state", authorization.searchParams.get("state") ?? "")
+      await route.fulfill({ headers: { location: callback.href }, status: 302 })
+    },
+    { times: 1 }
+  )
+  tab.failedLogin = tab.page.waitForURL((url) => url.host === tab.host && url.pathname === "/auth/callback")
+}
+
+/** The provider stops accepting connections after it asked to authenticate, for the next submission only. */
+const refuseNextAuthentication = async (tab: Tab) => {
+  await tab.page.route((url) => isAuthentication(url), (route) => route.abort("connectionrefused"), { times: 1 })
+  // The browser then shows its own error document instead of anything the provider or the application sent.
+  tab.failedLogin = tab.page.waitForEvent("requestfailed", (request) => isAuthentication(new URL(request.url())))
+    .then(() => tab.page.waitForURL((url) => url.protocol === "chrome-error:"))
+}
+
+When("the visitor will cancel at the next authentication step in tab {string}", async function(
+  this: AppWorld,
+  name: string
+) {
+  await cancelNextAuthentication(tabOf(this, name))
+})
+
+When("the provider will become unreachable at the next authentication step in tab {string}", async function(
+  this: AppWorld,
+  name: string
+) {
+  await refuseNextAuthentication(tabOf(this, name))
+})
+
+/** The visitor answers the provider's authentication step; where the login goes next is for later steps. */
+When("the visitor submits the authentication step at the provider in tab {string}", async function(
+  this: AppWorld,
+  name: string
+) {
+  await submitPassword(tabOf(this, name).page)
+})
+
+/**
+ * PREETS-SESSION-013 AC5: once the failed login ended, the tab displays no protected text or control, no protected
+ * document was served, and any session reference the browser still holds is not admitted.
+ */
+Then(
+  "tab {string} shows no protected content and holds no usable application session",
+  async function(this: AppWorld, name: string) {
+    const tab = tabOf(this, name)
+    assert.ok(tab.failedLogin, "expected a failed login to have been arranged")
+    await tab.failedLogin
+    await tab.page.waitForLoadState()
+    assert.doesNotMatch(await documentText(tab.page), PROTECTED_TEXT, `tab "${name}" shows protected text`)
+    assert.equal(await tab.page.getByRole("button", { name: PROTECTED_CONTROL }).count(), 0)
+    assert.equal(await tab.page.getByRole("button", { name: "Log out" }).count(), 0)
+    assert.deepEqual(tab.protectedDocuments.filter((pathname) => !pathname.startsWith("/auth/")), [])
+    const held = await sessionOf(tab)
+    if (held !== undefined) await assertNotAdmitted(this, tab, held)
+  }
+)
+
+/** Log in again leads to the application entry; the visitor opens it again in the same tab. */
+When("the visitor tries Log in again from tab {string}", async function(this: AppWorld, name: string) {
+  const tab = tabOf(this, name)
+  mark(tab)
+  await tab.page.goto(`http://${tab.host}/`)
 })
