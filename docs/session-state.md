@@ -64,7 +64,7 @@ Next strips Flight headers before the proxy, so they are not used.
 
 The gate resolves the request tenant first, then reads the session for that tenant. Every
 response it returns carries `Cache-Control: private, no-store`; its denials set no cookie
-and have empty bodies, except the recovery document below.
+and have empty bodies, except the denied Server Action answers below.
 
 | Outcome (in order)                | Document entry                           | Application request |
 | --------------------------------- | ---------------------------------------- | ------------------- |
@@ -84,11 +84,27 @@ rewrite would become an external proxy when Next binds `127.0.0.1`
 A denied Server Action candidate starts no login. When it was submitted without scripts, as a
 form-encoded navigation `POST` without `next-action`, the 401 carries the host's recovery
 document instead of an empty body: a self-contained page whose one heading explains that the
-session expired or is no longer available, with a "Log in again" link to `/`. The gate
-supplies the status and headers whatever the host returns. The explanation says "expired" only
-when the session read returned the record past its deadline. Records are evicted at their
-deadline, so a later request is explained as "no longer available"
-([#157](https://github.com/PathableAI-org/Pre-ETS/issues/157)).
+session expired or is no longer available, with a "Log in again" link to `/`. When it carries
+`next-action`, the 401 body is a cause token, `session-expired` or `session-unavailable`, with
+`content-type: text/plain` and no charset. Next's client throws that body as the action's
+rejection message only for exactly that content type. The gate supplies the status and headers
+whatever the host returns. The cause is "expired" only when the session read returned the record
+past its deadline. Records are evicted at their deadline, so a later request is usually explained
+as "no longer available" ([#157](https://github.com/PathableAI-org/Pre-ETS/issues/157)).
+
+In a running tab, a protected action form hands a rejected action to the session coordinator
+with the gate's token, if any. The `session-expired` token enters recovery at once. Otherwise the
+coordinator reads `GET /session/status`. A 401 or 409 replaces that tab's header and protected
+content with recovery content: the same explanation and "Log in again" link as the recovery
+document, with focus moved to its heading. The explanation says "expired" when the tab observed no
+logout of its session (no logout message or record, and no unresolved logout attempt) and the
+session's held deadline is at or before the later of the tab's server-clock estimate and the
+status response's `Date` header. That also holds when the tab's timers were suspended past the
+deadline. Otherwise it says the session is no longer available. Recovery writes no ended record
+and posts no cross-tab message, so other tabs keep their state until their own confirmation or
+deadline. The tab then stops coordinating. A usable answer leaves the page and the form shows "The
+operation was not performed."; an undetermined answer hides content and retries, as for any
+confirmation.
 
 A defect rejects the proxy promise (Next answers 500); nothing passes through on failure.
 A document entry renews a usable session as `deliberate-page-request` through `refreshForTenant`
@@ -103,8 +119,8 @@ idle authority, and a cookie outliving its record names nothing.
 
 `/` and the protected `(app)` layout keep their own `readSessionRequest` check; `runReferenceOperation` and
 `recordFixtureOperation` call `authorizeSessionAction`. The reference
-consumer shows a rejected action invocation as "The operation was not performed." without
-retrying. The root layout renders a history guard that reloads a page restored from the
+consumer shows a rejected action invocation that did not end in recovery as "The operation was
+not performed." without retrying. The root layout renders a history guard that reloads a page restored from the
 back-forward cache and refreshes the route on `popstate`, so history traversal reaches the
 gate.
 
@@ -115,8 +131,8 @@ designated above.
 
 Known gaps: `/_next/static/**` is publicly served and `/favicon.ico`, metadata routes, and
 `/_next/image` answer 401 without a session until the public-asset decision is made.
-In-page recovery after a denied action in a running tab, and the expiration modal, belong to
-[#157](https://github.com/PathableAI-org/Pre-ETS/issues/157)'s later slices.
+The expiration modal belongs to [#157](https://github.com/PathableAI-org/Pre-ETS/issues/157)'s
+later slices.
 
 ## Cross-tab activity and logout coordination
 

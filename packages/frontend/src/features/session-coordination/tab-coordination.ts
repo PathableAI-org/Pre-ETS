@@ -1,4 +1,8 @@
-import type { InPageSessionActivity, SessionCoordinationSnapshot } from "@pathableai/pre-ets-frontend-services"
+import type {
+  InPageSessionActivity,
+  SessionCoordinationSnapshot,
+  SessionEndCause
+} from "@pathableai/pre-ets-frontend-services"
 
 import { recordUiTransition, type TraceScope, type UiState, withdrawSubmitCause } from "../../shared/browser-tracing.ts"
 import { classifySessionActivity } from "./activity-classification.ts"
@@ -10,6 +14,7 @@ import {
   flushActivityCommunication
 } from "./activity-window.ts"
 import { calibrateClockOffset, type ClockOffset, type ClockSample } from "./clock-offset.ts"
+import { knownExpiration } from "./known-expiration.ts"
 import { readSessionStatus, sendActivity, sendLogout, type SessionOutcome } from "./session-endpoints.ts"
 import { adoptSnapshot } from "./snapshot-order.ts"
 import {
@@ -33,9 +38,10 @@ import {
 
 /**
  * Tab states from data-model "Tab coordination states"; `Confirming` keeps its view. Concealment is orthogonal, so a
- * logout in progress keeps its busy state while an unconfirmed session hides the content.
+ * logout in progress keeps its busy state while an unconfirmed session hides the content. `recovery` follows a denied
+ * action in this tab only (#157 research D6).
  */
-export type TabView = "active" | "ended" | "logging-out" | "logout-failed"
+export type TabView = "active" | "ended" | "logging-out" | "logout-failed" | "recovery"
 
 export interface TabViewState {
   /** Protected content is hidden and inert (temporary concealment, or a failed logout). */
@@ -44,6 +50,8 @@ export interface TabViewState {
   readonly deadline?: number | undefined
   /** The session ended by this tab's own logout, so this tab moves focus to the notice. */
   readonly endedHere: boolean
+  /** Why the session ended, as far as this tab knows; set in the `recovery` view. */
+  readonly recovery?: SessionEndCause | undefined
   readonly view: TabView
   /** The held warning lead, exposed beside the deadline. */
   readonly warningLeadMinutes?: number | undefined
@@ -68,12 +76,18 @@ const listenAll = (listeners: readonly Listener[]) => {
   }
 }
 
-/** The recorded UI state of each view, unconcealed and concealed (telemetry contract closed sets). */
-const UI_STATES: Readonly<Record<TabView, readonly [shown: UiState, concealed: UiState]>> = {
+/** The recorded UI state of each running view, unconcealed and concealed (telemetry contract closed sets). */
+const UI_STATES: Readonly<Record<Exclude<TabView, "recovery">, readonly [shown: UiState, concealed: UiState]>> = {
   active: ["content_shown", "content_concealed"],
   ended: ["signed_out", "signed_out"],
   "logging-out": ["logging_out", "logging_out_concealed"],
   "logout-failed": ["logout_failed", "logout_failed"]
+}
+
+/** The recorded UI state of the recovery view by cause (#157 T-002). */
+const RECOVERY_STATES: Readonly<Record<SessionEndCause, UiState>> = {
+  expired: "recovery_expired",
+  unknown: "recovery_unavailable"
 }
 
 /** No transition was recorded: work runs in whatever scope is already active. */
@@ -220,7 +234,6 @@ export class TabCoordination {
   readonly #timers = new Map<TimerName, ReturnType<typeof setTimeout>>()
   /** The last recorded UI state; `undefined` until the first publish, which records `mounted → …`. */
   #uiState: UiState | undefined
-
   #view: TabView = "active"
 
   get #serverOffset() {
@@ -244,6 +257,30 @@ export class TabCoordination {
     const startedAt = Date.now()
     const outcome = await readSessionStatus(this.#cancel.signal, timeout)
     if (this.#live()) this.#applyStatus(outcome, startedAt)
+  }
+
+  /**
+   * A protected action of this tab was rejected (#157 research D6). The gate's `expired` token enters recovery at
+   * once. Otherwise the session status decides: `Ended` enters recovery with the known-expiration cause (research D7),
+   * and any other answer is applied as a confirmation. Recovery writes no ended record and posts no message, so other
+   * tabs keep their state (FR-008). Answers whether the tab now shows recovery. Never throws.
+   */
+  async deny(cause: SessionEndCause | undefined): Promise<boolean> {
+    if (!this.#running()) return false
+    if (cause === "expired") return this.#recover("expired")
+    const startedAt = Date.now()
+    const outcome = await readSessionStatus(this.#cancel.signal)
+    if (!this.#live() || !this.#running()) return false
+    if (outcome._tag !== "Ended") {
+      this.#applyStatus(outcome, startedAt)
+      return false
+    }
+    const expired = knownExpiration({
+      deadline: this.#held?.idleDeadlineEpochMilliseconds,
+      logoutObserved: this.#logoutUnresolved || this.#attempts.size > 0,
+      serverTimes: [Date.now() + this.#serverOffset, outcome.serverTime]
+    })
+    return this.#recover(expired ? "expired" : "unknown")
   }
 
   /** Logout is sent at once with `keepalive` and never enters the activity window (FR-009, research D8). */
@@ -292,6 +329,7 @@ export class TabCoordination {
     this.#clock = initialOffset(applicationClock(this.#initial), timing)
     this.#redisClock = initialOffset(redisClock(this.#initial), timing)
     this.#replayPendingLogouts()
+    this.#stopListening = stopListening
     if (!this.#replayEnded()) {
       // Without readable storage the replay proves nothing, so confirm before trusting the snapshot (R39).
       if (storage) this.#adoptSnapshot(this.#initial, true)
@@ -301,11 +339,7 @@ export class TabCoordination {
       if (!this.#sharedWindow) this.#channel.post({ coordinationTag: this.#tag, type: "window-query" })
     }
     return () => {
-      stopListening()
-      this.#cancel.abort()
-      this.#channel?.close()
-      this.#channel = undefined
-      this.#clearTimers()
+      this.#stop()
     }
   }
 
@@ -619,6 +653,21 @@ export class TabCoordination {
     if (message.type === "session-current") this.#guard(this.confirm())
   }
 
+  /**
+   * Replaces the tab's header and content with recovery and stops coordinating: no record, no message, no further
+   * reads or activity, so nothing here changes another tab (#157 research D6, FR-008). Answers `true`.
+   */
+  #recover(cause: SessionEndCause): true {
+    this.#view = "recovery"
+    this.#hideContent(true)
+    this.#notify({ concealed: true, endedHere: false, recovery: cause, view: "recovery" })
+    const from = this.#uiState
+    this.#uiState = RECOVERY_STATES[cause]
+    recordUiTransition(from, this.#uiState, { cause: "action_denied" })
+    this.#stop()
+    return true
+  }
+
   /** A confirmed-ended tag ends the tab. Answers whether it did. */
   #replayEnded(): boolean {
     if (!isEnded(this.#tag)) return false
@@ -670,6 +719,11 @@ export class TabCoordination {
     this.#publish()
   }
 
+  /** Still coordinating a session that has neither ended nor been replaced by recovery. */
+  #running() {
+    return this.#live() && this.#view !== "ended" && this.#view !== "recovery"
+  }
+
   #schedule(name: TimerName, at: number, task: () => void) {
     this.#stopTimer(name)
     if (!this.#live()) return
@@ -709,6 +763,17 @@ export class TabCoordination {
     this.#view = view
     return this.#publish()
   }
+
+  /** Stops listening, aborts reads in flight, closes the channel, and clears timers. Idempotent. */
+  #stop() {
+    this.#stopListening()
+    this.#cancel.abort()
+    this.#channel?.close()
+    this.#channel = undefined
+    this.#clearTimers()
+  }
+
+  #stopListening: () => void = () => undefined
 
   #stopTimer(name: TimerName) {
     const existing = this.#timers.get(name)
@@ -753,6 +818,8 @@ export class TabCoordination {
 
   /** Records the UI state when it changed and answers that record's scope; otherwise the current scope (T-004). */
   #transition(): TraceScope {
+    // Recovery records its own transition once; a stopped controller publishes nothing later.
+    if (this.#view === "recovery") return CURRENT_SCOPE
     const to = UI_STATES[this.#view][this.#concealed ? 1 : 0]
     if (to === this.#uiState) return CURRENT_SCOPE
     const from = this.#uiState

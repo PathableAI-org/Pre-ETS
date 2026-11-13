@@ -118,3 +118,25 @@ describe("proxy recovery document [PREETS-SESSION-007]", () => {
     expect(body).not.toMatch(/springfield|shelbyville|pathable-session|<form/i)
   })
 })
+
+describe("proxy action denial [PREETS-SESSION-007]", () => {
+  it.each(
+    [
+      { body: "session-expired", cause: "expired" },
+      { body: "session-unavailable", cause: "unknown" }
+    ] as const
+  )("answers a denied fetch action with the exact $cause token as plain text", async (row) => {
+    const actionDenial = gate.responses?.actionDenial
+    if (actionDenial === undefined) throw new Error("proxy did not create the gate")
+
+    const response = await actionDenial({ cause: row.cause })
+
+    expect(response.status).toBe(401)
+    // Exactly `text/plain`: Next's client reads the body as the rejection message only for that content type.
+    expect(response.headers.get("content-type")).toBe("text/plain")
+    expect(response.headers.get("cache-control")).toBe("private, no-store")
+    expect(response.headers.get("location")).toBeNull()
+    expect(response.headers.getSetCookie()).toEqual([])
+    expect(await response.text()).toBe(row.body)
+  })
+})

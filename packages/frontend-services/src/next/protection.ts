@@ -12,6 +12,12 @@ import { type TenantFailureResponse, tenantFailureStatus } from "./tenant-failur
 /** Responses the Next host presents for protection outcomes it owns. */
 export interface ProtectionResponses {
   /**
+   * A denied fetch Server Action (`next-action` present). The body is the host's closed-set `text/plain` token for
+   * `cause`, which Next's client throws as the action's rejection message. The gate sends it with HTTP 401 and
+   * `Cache-Control: private, no-store`, whatever status or cache headers the host sets (#157 research D3).
+   */
+  readonly actionDenial: (input: { readonly cause: SessionEndCause }) => Promise<NextResponse>
+  /**
    * A tenant mismatch on a document entry. The response MUST carry HTTP 403 and the accessible forbidden
    * presentation, and no protected content. The Next app renders it as the response body (no rewrite; research D4).
    * The gate sets `Cache-Control: private, no-store` on the returned response, so it is never cacheable.
@@ -141,8 +147,9 @@ const unauthorizedFromHost = (respond: () => Promise<NextResponse>) =>
   )
 
 /**
- * A denied Server Action candidate starts no login. A no-script submission receives the host's recovery document,
- * whose cause is what the session read observed (#157 research D1, D2); every other denial stays an empty 401.
+ * A denied Server Action candidate starts no login. Its cause is what the session read observed (#157 research D2).
+ * A script submission receives the host's cause token and a no-script submission the host's recovery document
+ * (research D1, D3); every other denial stays an empty 401.
  */
 const denyUnauthenticated = (
   responses: ProtectionResponses,
@@ -154,11 +161,15 @@ const denyUnauthenticated = (
   return Effect.annotateCurrentSpan("preets.protection.denial_cause", cause).pipe(
     Effect.andThen(decided(
       "denied_unauthenticated",
-      classified.serverAction === "document" ?
-        unauthorizedFromHost(() => responses.recoveryDocument({ cause })) :
-        Effect.sync(() => denial(401))
+      hostDenial(responses, classified.serverAction, cause)
     ))
   )
+}
+
+const hostDenial = (responses: ProtectionResponses, transport: ServerActionTransport, cause: SessionEndCause) => {
+  if (transport === "fetch") return unauthorizedFromHost(() => responses.actionDenial({ cause }))
+  if (transport === "document") return unauthorizedFromHost(() => responses.recoveryDocument({ cause }))
+  return Effect.sync(() => denial(401))
 }
 
 const respondToSession = (

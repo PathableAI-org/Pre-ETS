@@ -12,9 +12,12 @@ import type {
  */
 export type LogoutOutcome = "ended" | "not-in-force" | "refused" | "unknown"
 
-/** What the server says about this tab's session. `Ended` covers 401 and a different session in force (409). */
+/**
+ * What the server says about this tab's session. `Ended` covers 401 and a different session in force (409); its
+ * `serverTime` is the response's `Date` header, when readable, as a server-clock reading (#157 research D7).
+ */
 export type SessionOutcome =
-  | { readonly _tag: "Ended" }
+  | { readonly _tag: "Ended"; readonly serverTime?: number | undefined }
   | { readonly _tag: "Undetermined" }
   | {
     readonly _tag: "Usable"
@@ -29,7 +32,6 @@ const LOGOUT_TIMEOUT_MILLISECONDS = 10_000
 
 const isAmbiguous = (status: number) => status === 408 || status >= 500
 
-const ended: SessionOutcome = { _tag: "Ended" }
 const undetermined: SessionOutcome = { _tag: "Undetermined" }
 
 type UnknownRecord = Readonly<Record<string, unknown>>
@@ -57,8 +59,14 @@ const asSnapshot = (value: unknown): SessionCoordinationSnapshot | undefined => 
   }
 }
 
+/** The `Date` header in epoch milliseconds (whole seconds), or `undefined` when it is absent or unparsable. */
+const serverDate = (response: Response): number | undefined => {
+  const time = Date.parse(response.headers.get("date") ?? "")
+  return Number.isNaN(time) ? undefined : time
+}
+
 const outcomeOf = async (response: Response, sentAt: number, receivedAt: number): Promise<SessionOutcome> => {
-  if (response.status === 401 || response.status === 409) return ended
+  if (response.status === 401 || response.status === 409) return { _tag: "Ended", serverTime: serverDate(response) }
   if (!response.ok) return undetermined
   const snapshot = asSnapshot(await response.json().catch(() => undefined))
   return snapshot === undefined ? undetermined : { _tag: "Usable", receivedAt, sentAt, snapshot }

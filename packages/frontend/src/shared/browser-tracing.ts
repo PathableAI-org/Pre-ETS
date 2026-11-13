@@ -43,7 +43,10 @@ const CONFIG_CHECKS: Readonly<Record<keyof BrowserTracingConfig, (value: unknown
 const isConfig = (value: object): value is BrowserTracingConfig =>
   Object.entries(CONFIG_CHECKS).every(([key, check]) => check(Reflect.get(value, key)))
 
-export type FocusTarget = "logout_control" | "participant_goal" | "signed_out_heading"
+export type FocusTarget = "logout_control" | "participant_goal" | "recovery_heading" | "signed_out_heading"
+
+/** Where the user activated Log in (T-005). */
+export type LoginEntry = "action_recovery"
 
 /** Cross-tab message kinds: the coordination message `type` with `_` for `-`. */
 export type TabMessageKind =
@@ -61,6 +64,9 @@ export interface TraceScope {
   readonly run: <A>(task: () => A) => A
 }
 
+/** Why the coordinator changed state, where it says (#157 T-002). */
+export type TransitionCause = "action_denied"
+
 /** UI states of the session coordinator, derived from its `(view, concealed)` (telemetry contract closed sets). */
 export type UiState =
   | "content_concealed"
@@ -68,6 +74,8 @@ export type UiState =
   | "logging_out"
   | "logging_out_concealed"
   | "logout_failed"
+  | "recovery_expired"
+  | "recovery_unavailable"
   | "signed_out"
 
 /** Facts kept while the SDK loads; later ones are only counted (T-011). */
@@ -80,6 +88,7 @@ const FOCUS_ATTRIBUTE = "data-preets-focus"
 const FOCUS_TARGETS: ReadonlySet<string> = new Set<FocusTarget>([
   "logout_control",
   "participant_goal",
+  "recovery_heading",
   "signed_out_heading"
 ])
 const NAVIGATION_TYPES: ReadonlySet<string> = new Set(["push", "replace", "traverse"])
@@ -240,13 +249,34 @@ export function startBrowserTracing(): void {
   }
 }
 
-/** T-004. `from` is `undefined` for the coordinator's first state, recorded as `mounted`. */
-export const recordUiTransition = (from: UiState | undefined, to: UiState): TraceScope =>
+/**
+ * T-004 (#157 T-002). `from` is `undefined` for the coordinator's first state, recorded as `mounted`. `cause` is set
+ * only where the contract defines one.
+ */
+export const recordUiTransition = (
+  from: UiState | undefined,
+  to: UiState,
+  detail?: { readonly cause?: TransitionCause | undefined }
+): TraceScope =>
   scopeOf(record({
-    attributes: { "preets.outcome": "applied", "preets.ui.from_state": from ?? "mounted", "preets.ui.to_state": to },
+    attributes: {
+      "preets.outcome": "applied",
+      "preets.ui.cause": detail?.cause,
+      "preets.ui.from_state": from ?? "mounted",
+      "preets.ui.to_state": to
+    },
     name: "TabCoordination.transition",
     root: false
   }))
+
+/** #157 T-005. A root fact recorded synchronously when the user activates Log in, before the navigation leaves. */
+export const recordLoginActivation = (entry: LoginEntry): void => {
+  record({
+    attributes: { "preets.login.entry": entry, "preets.outcome": "activated" },
+    name: "Interaction.login",
+    root: true
+  })
+}
 
 /** T-005. Answers the send's telemetry-only UUID to carry as `telemetryId`, or `undefined` when tracing is off. */
 export const recordTabMessageSend = (kind: TabMessageKind): string | undefined => {

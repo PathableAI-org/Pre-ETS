@@ -1,4 +1,5 @@
 export {
+  actionDenialResponse,
   authenticationReturnBody,
   forbiddenDocumentResponse,
   ForbiddenNotice,

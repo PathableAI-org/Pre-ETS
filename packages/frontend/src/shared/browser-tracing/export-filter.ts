@@ -1,7 +1,9 @@
 import type { Attributes } from "@opentelemetry/api"
 import type { ReadableSpan, SpanExporter } from "@opentelemetry/sdk-trace-base"
 
-/** Record names the telemetry contract defines (T-001–T-007, T-009–T-011). Every other span is dropped. */
+/**
+ * Record names the telemetry contract defines (T-001–T-007, T-009–T-011; #157 T-005). Every other span is dropped.
+ */
 const EXPORTED_SPAN_NAMES: ReadonlySet<string> = new Set([
   "BrowserTracing.buffer",
   "CONNECT",
@@ -11,6 +13,7 @@ const EXPORTED_SPAN_NAMES: ReadonlySet<string> = new Set([
   "Focus.move",
   "GET",
   "HEAD",
+  "Interaction.login",
   "Interaction.submit",
   "OPTIONS",
   "PATCH",
@@ -31,12 +34,14 @@ const EXPORTED_ATTRIBUTE_KEYS: ReadonlySet<string> = new Set([
   "preets.focus.change",
   "preets.focus.target",
   "preets.interaction.kind",
+  "preets.login.entry",
   "preets.navigation.type",
   "preets.outcome",
   "preets.tab.message.direction",
   "preets.tab.message.id",
   "preets.tab.message.kind",
   "preets.tracing.dropped_count",
+  "preets.ui.cause",
   "preets.ui.from_state",
   "preets.ui.to_state"
 ])

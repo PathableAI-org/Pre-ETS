@@ -1,5 +1,5 @@
 import type { SessionEndCause } from "@pathableai/pre-ets-frontend-services"
-import type { ReactElement } from "react"
+import type { ReactElement, Ref } from "react"
 
 import { Heading, Link, Stack, Text } from "@pathableai/react"
 
@@ -33,15 +33,31 @@ export const sessionEndCopy = (cause: SessionEndCause): SessionEndCopy => COPY[c
 /** The fresh-entry boundary every Log in uses: it reuses a valid session or starts a fresh login (research D11). */
 const LOG_IN_HREF = "/"
 
-/** Server-renderable heading, explanation, and Log in link. Log in is a plain navigation; nothing starts login. */
-export function SessionEndNotice({ cause }: { readonly cause: SessionEndCause }): ReactElement {
+/**
+ * Server-renderable heading, explanation, and Log in link. Log in is a plain navigation; nothing starts login. A
+ * running tab passes heading props and a ref to move focus to the heading, and `onLogIn` to observe activation for
+ * telemetry; it never prevents or replaces the navigation.
+ */
+export function SessionEndNotice({
+  cause,
+  headingProps,
+  headingRef,
+  onLogIn
+}: {
+  readonly cause: SessionEndCause
+  readonly headingProps?:
+    | Readonly<{ "data-preets-focus"?: string | undefined; tabIndex?: number | undefined }>
+    | undefined
+  readonly headingRef?: Ref<HTMLHeadingElement> | undefined
+  readonly onLogIn?: (() => void) | undefined
+}): ReactElement {
   const copy = sessionEndCopy(cause)
   return (
     <Stack gap="md">
-      <Heading level={1}>{copy.heading}</Heading>
+      <Heading level={1} ref={headingRef} {...headingProps}>{copy.heading}</Heading>
       <Text>{copy.explanation}</Text>
       <Text>
-        <Link href={LOG_IN_HREF}>{copy.logIn}</Link>
+        <Link href={LOG_IN_HREF} onClick={onLogIn}>{copy.logIn}</Link>
       </Text>
     </Stack>
   )
