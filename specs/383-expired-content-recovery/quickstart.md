@@ -415,3 +415,52 @@ The BDD resume scenarios export no browser telemetry, because of the paused cloc
 probe recorded it instead. No instrumentation was missing or unusable, and no forbidden data was observed.
 
 **Cleanup:** the verifier's keys were deleted, its ports stopped, and the scratch tenants removed.
+
+### Slice B re-verification — `7ad9159628f7f7d45b07c916c7b798250607a27f` (2026-11-13)
+
+This run supersedes the `66edb65` report above. Slice C's loaded run `1fd2a803` found a stall at `66edb65`. A deadline
+check fired a few milliseconds before the tab's clock reached its local deadline and was answered as usable. The tab
+then never confirmed again. Commit `410582e` fixed this: the tab now re-confirms at the server's deadline after any
+usable answer with no deadline timer pending. A module example and a fourth BDD scenario reproduce the stall, and both
+fail without the fix.
+
+**Runs:** all ran concurrently on one deliberately loaded machine.
+
+- Full BDD: `5909f43c-b000-429f-a1a8-4698a9b681b1`.
+- Main §B probe: `4ac7c952-c4fa-4550-bd5a-3ef3fcf20da3`.
+- Resume probe: `0da9d709-4062-4a68-916c-35d299a8f23c`.
+- Early-estimate probe: `0d6eb7a8-becd-415f-8569-397be5c13961`.
+- Follow-up probe: `6dec3929-dfec-45a4-bdda-67990e95530e`.
+
+**Conditions:** the same as at `66edb65`.
+
+**Module evidence:** frontend-services 491/491, integration 42/42, and frontend unit 108/108.
+
+**BDD:** the full suite passed, 86 scenarios and 1333 steps, including the early-check scenario.
+
+**Early estimate:** the verifier ran three samples. In each, the tab's clock ran 3 s fast while another tab renewed the
+session, and then the clock was corrected. Each sample went through four steps:
+
+1. `content_concealed` (cause `deadline`) at about −2985 ms.
+2. The status check was answered 200.
+3. `content_shown` about 2.9 s before the deadline.
+4. At the server's deadline, the re-confirmation was answered 401, and `expired` followed at +16.5, +16.5, and
+   +12.5 ms.
+
+There was no stall.
+
+**Results per claim:** the results match the `66edb65` table above under load.
+
+- V-009: three sharing tabs at +28 to +30 ms.
+- V-010: the tab concealed, then showed its content, then expired at the true deadline (+16 ms). With activity in the
+  same context, it never concealed.
+- V-016: the modal appeared at +107 ms and at +104 ms, and the content returned at +110 ms.
+- V-011, V-012, V-015, V-017, V-023, V-018 (modal), and V-024 (modal) were established.
+- V-013 and V-014: the browser parts were established. The screen-reader checks (§B.6) are outstanding for a person.
+
+**Submission hold:** submissions 999, 399, and 148 ms before the deadline were admitted, and no tab concealed.
+
+**Telemetry:** T-003 (causes `deadline`, `resume`, and `peer`), T-004 `expiration_log_in`, and T-005
+`expiration_modal` are present. No instrumentation was missing or unusable, and no forbidden data was observed.
+
+**Cleanup:** the verifier's keys were deleted, its ports stopped, and the scratch tenants removed.
