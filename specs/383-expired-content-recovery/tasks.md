@@ -155,7 +155,7 @@ side). Lands T-002, T-004 (`recovery_heading`), T-005 (`action_recovery`).
       the unknown-cause recovery scenario with a second tab. A logout observed in a second tab shows the signed-out
       notice (case 3). The scenarios no longer delay activity reports. The page-text check excludes inline scripts: Next's serialized render data stays in the
       document but is never displayed, focusable, or exposed to assistive technology.
-- [ ] T027 Checks, draft pull request, verification of §A3, results recorded.
+- [x] T027 Checks, draft pull request, verification of §A3, results recorded. Passed at `4646566`.
 
 ## Slice B — Expiration modal across tabs (`383-expired-content-recovery-impl-b`)
 
