@@ -166,7 +166,10 @@ Advances V-009–V-018, V-023, V-024 (modal part). Lands T-003, T-004 (`expirati
       and `pagehide` hides the modal in `tab-coordination.ts` and `coordinator.tsx`. Also: a `Usable` answer with no
       deadline timer pending re-confirms at the server's own deadline (250 ms to 5 s), so an early local estimate,
       or a deadline timer that fires before the tab's clock reaches it under load, keeps the B5 2-second bound. The
-      first version required the clock to be past the local deadline and stalled under load (seen in slice C's run). The A3 submission hold still applies
+      first version required the clock to be past the local deadline and stalled under load (seen in slice C's run). An `Ended` answer
+      within 2 s before the held deadline with no observed logout is judged by D7 when the tab's estimate reaches the
+      deadline, because the store can evict a record a few milliseconds before the computed deadline (verifier run
+      `13a67d84`). The A3 submission hold still applies
       only to activity reports; deadline and resume confirmations are never held.
 - [x] T029 Ended record `cause` in `tab-channel.ts`; a missing cause reads as `ended`; peers adopt `expired` unless a
       logout was observed (FR-019).

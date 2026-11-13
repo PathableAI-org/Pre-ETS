@@ -238,7 +238,10 @@ focus. Nothing closes it. The library modal always renders a close control, and 
 ([#400](https://github.com/PathableAI-org/Pre-ETS/issues/400)). The tab records its tag as ended
 with `cause: "expired"`, so every sharing tab shows the modal too, unless it observed a logout of
 the session (a logout message, or an unresolved logout attempt), in which case it shows the
-signed-out notice. Without known expiration the tab ends as below with `cause: "ended"`. A record
+signed-out notice. The store can end a record a few milliseconds before the deadline the tab holds, so
+when such an answer arrives within 2 seconds before the held deadline and the tab observed no logout, the tab stays
+concealed and judges known expiration when its estimate reaches the deadline; a logout observed meanwhile still
+ends it signed out. Without known expiration the tab ends as below with `cause: "ended"`. A record
 without a cause, written by an older tab, reads as `ended`. The expired view, like the signed-out
 notice, is final for that document: a later message changes nothing. On `pagehide` into the
 back-forward cache the modal is hidden at once, so a restored page shows neither the modal nor
