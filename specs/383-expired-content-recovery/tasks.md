@@ -119,20 +119,35 @@ Advances V-006 (full), V-004 (scripts-off removed record), and V-001 (action-lev
 Advances V-003, V-004 (JS cases), V-005, V-007, V-008, V-002 (browser part), V-024 (page part), V-018 (recovery
 side). Lands T-002, T-004 (`recovery_heading`), T-005 (`action_recovery`).
 
-- [ ] T019 `fe/src/providers/action-denial.ts` (new, not a client module): `ACTION_DENIAL_BODY` and
-      `readActionDenial`; unit examples accepting only the two exact bodies.
-- [ ] T020 `ProtectionResponses.actionDenial` in `fs/src/next/protection.ts` for `fetch` denials, re-wrapped to 401
+- [x] T019 `fe/src/providers/action-denial.ts` (new, not a client module): `ACTION_DENIAL_BODY` and
+      `readActionDenial`; unit examples accepting only the two exact bodies. The bodies are `session-expired` and
+      `session-unavailable`. `readActionDenial` decodes the message through a closed-set map, because the lint rule
+      against branching on message text exists for human-readable text and Next gives the rejection no other field
+      (research D3, L-4).
+- [x] T020 `ProtectionResponses.actionDenial` in `fs/src/next/protection.ts` for `fetch` denials, re-wrapped to 401
       `private, no-store`; `actionDenialResponse` (`text/plain`, no charset) in `access-responses`; wired in
-      `fe/src/proxy.ts`; transport-table and body examples.
-- [ ] T021 `readSessionStatus` returns the `Date` header on `Ended` (`session-endpoints.ts`); the D7 known-expiration
+      `fe/src/proxy.ts`; transport-table and body examples (`fs/tests/unit/protection.test.ts`,
+      `fe/tests/unit/proxy.test.ts`). Every request carrying `next-action` is a candidate, so a `GET` carrying it
+      also receives the token. The integration suites' host stubs gained the required member.
+- [x] T021 `readSessionStatus` returns the `Date` header on `Ended` (`session-endpoints.ts`); the D7 known-expiration
       predicate and `TabCoordination.deny` enter `recovery` with a cause, write no ended record, and post no message.
-- [ ] T022 `SessionConfirmationProvider` gains `deny`; the form boundary calls `deny(readActionDenial(error))`.
-- [ ] T023 Coordinator `recovery` view renders `SessionEndNotice` (add `headingProps`, `headingRef`, `onLogIn`), moves
-      focus to the heading (`recovery_heading`), and records `Interaction.login` (`action_recovery`).
-- [ ] T024 Browser facts in `fe/src/shared/browser-tracing.ts` and `export-filter.ts` (T-002, T-004, T-005);
-      `docs/observability.md`.
-- [ ] T025 `fe/tests/unit/session-coordination.test.ts` controller examples (no record, no message, cause by D7).
-- [ ] T026 BDD: known expiration with suspended timers, unknown cause, sharing tab untouched (quickstart §A3).
+      The predicate is the private `session-coordination/known-expiration.ts`, so B's property test reaches it
+      without a test-only export (check:unused). "Observed a logout" is an unresolved logout attempt of the tag, this
+      tab's or another's; a received logout message or record has already ended the tab. Entering recovery stops the
+      controller (listeners, channel, reads, timers), so nothing later changes the view.
+- [x] T022 `SessionConfirmationProvider` gains `deny`; the form boundary calls `deny(readActionDenial(error))`. `deny`
+      reads the status itself, so the boundary no longer starts a separate confirmation.
+- [x] T023 Coordinator `recovery` view renders `SessionEndNotice` (add `headingProps`, `headingRef`, `onLogIn`), moves
+      focus to the heading (`recovery_heading`), and records `Interaction.login` (`action_recovery`). The status
+      region announces nothing in recovery; the focus move announces the heading.
+- [x] T024 Browser facts in `fe/src/shared/browser-tracing.ts` and `export-filter.ts` (T-002, T-004, T-005);
+      `docs/observability.md`; current behavior in `docs/session-state.md`.
+- [x] T025 `fe/tests/unit/session-coordination.test.ts` controller examples (no record, no message, cause by D7).
+- [x] T026 BDD: known expiration with suspended timers, unknown cause, sharing tab untouched (quickstart §A3). The
+      A1 fetch-action scenario now expects the `session-unavailable` token, and A2's scripts-enabled scenario became
+      the unknown-cause recovery scenario with a second tab. A logout observed in a second tab shows the signed-out
+      notice (case 3). The page-text check excludes inline scripts: Next's serialized render data stays in the
+      document but is never displayed, focusable, or exposed to assistive technology.
 - [ ] T027 Checks, draft pull request, verification of §A3, results recorded.
 
 ## Slice B — Expiration modal across tabs (`383-expired-content-recovery-impl-b`)
