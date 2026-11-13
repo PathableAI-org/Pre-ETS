@@ -570,7 +570,7 @@ describe("SessionService renewal, expiration, and invalidation on real Redis [PR
       const deadline = established.session.idleDeadlineEpochMilliseconds
       const expired = await readAt(runtimeA, established.reference, deadline)
       const stale = await refreshAt(runtimeB, established.reference, deadline - 60_000, changedPolicy)
-      expect(expired).toStrictEqual(noUsableSession)
+      expect(expired).toStrictEqual({ ...noUsableSession, expired: true })
       expect(stale).toStrictEqual(noUsableSession)
       expect(await read(runtimeA, established.reference)).toStrictEqual(noUsableSession)
       expect(await read(runtimeB, established.reference)).toStrictEqual(noUsableSession)
@@ -621,7 +621,7 @@ describe("SessionService renewal, expiration, and invalidation on real Redis [PR
         return
       }
       expect(renewal).toStrictEqual(noUsableSession)
-      expect(expiration).toStrictEqual(noUsableSession)
+      expect(expiration).toStrictEqual({ ...noUsableSession, expired: true })
       expect(laterA).toStrictEqual(noUsableSession)
       expect(laterB).toStrictEqual(noUsableSession)
       expect((await ownedKeyMetadata(prefix)).count).toBe(0)

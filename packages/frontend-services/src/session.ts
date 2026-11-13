@@ -45,6 +45,8 @@ export interface InvalidationExpired {
 /** Missing, malformed, expired, and deleted references. No identity or policy. */
 export interface NoUsableSession {
   readonly _tag: "NoUsableSession"
+  /** Present only when the store returned the record after its deadline had passed (before eviction). */
+  readonly expired?: true | undefined
 }
 
 /** Activities that renew the idle timeout. Every other activity is excluded and leaves the deadline unchanged. */
@@ -136,6 +138,8 @@ class SessionReferenceCollision extends Schema.TaggedError<SessionReferenceColli
   {}
 ) {}
 const noUsableSession: NoUsableSession = { _tag: "NoUsableSession" }
+/** The server observed the record past its deadline; the gate explains it as expiry (#157 research D2). */
+const expiredSession: NoUsableSession = { _tag: "NoUsableSession", expired: true }
 const invalidationExpired: InvalidationExpired = { _tag: "InvalidationExpired" }
 
 const toUsableSession = (
@@ -175,7 +179,9 @@ const exposeOutcome = (
   current: "current" | "unchanged"
 ) => {
   if (!("payload" in outcome)) {
-    return annotateOutcome(outcome._tag === "Expired" ? "expired" : "missing").pipe(Effect.as(noUsableSession))
+    return outcome._tag === "Expired" ?
+      annotateOutcome("expired").pipe(Effect.as(expiredSession)) :
+      annotateOutcome("missing").pipe(Effect.as(noUsableSession))
   }
   return exposeIfStillUsable(outcome, outcome._tag === "Renewed" ? "renewed" : current)
 }
@@ -193,7 +199,7 @@ const exposeIfStillUsable = Effect.fnUntraced(function*(
   })
   if (record.idleDeadlineEpochMilliseconds <= (yield* Clock.currentTimeMillis)) {
     yield* annotateOutcome("expired")
-    return noUsableSession
+    return expiredSession
   }
   yield* annotateOutcome(label)
   return toUsableSession(record, {
