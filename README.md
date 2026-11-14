@@ -454,7 +454,7 @@ complexity checks.
 ## Continuous integration
 
 Quality, Build, and Fallow run on every pull request, pushes to `main`, and manual dispatch.
-BDD runs nightly at 06:17 UTC on `main` and can also be dispatched manually on `main`.
+BDD runs nightly at 06:17 UTC on `main` and can also be dispatched manually on any branch.
 
 | Workflow                           | Check name       | Role                                                    |
 | ---------------------------------- | ---------------- | ------------------------------------------------------- |

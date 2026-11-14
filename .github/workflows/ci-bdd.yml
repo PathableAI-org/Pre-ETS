@@ -19,7 +19,9 @@ concurrency:
 jobs:
   bdd:
     name: CI / BDD
-    if: github.ref == 'refs/heads/main'
+    # The schedule runs on main. A manual dispatch may name any branch, so a harness fix is shown in CI before it
+    # merges; the per-ref concurrency group keeps such a run from cancelling main's.
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     # The expiration-warning scenarios wait in real time (#156 research D13); the @long-idle one alone takes about
     # 31 minutes.

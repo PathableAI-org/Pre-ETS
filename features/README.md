@@ -73,7 +73,8 @@ See [step guidance](../tests/bdd/steps/README.md).
 
 CI provisions the pinned real Keycloak realm with bounded readiness and cleanup. It runs requirements BDD
 and the production safeguard smoke nightly at 06:17 UTC on `main`.
-Manual dispatch is also restricted to `main`; there is no CI dry-run job.
+Manual dispatch may also run it on another branch, for example to show a harness fix before it merges;
+there is no CI dry-run job.
 
 ## Gherkin linting and formatting
 
