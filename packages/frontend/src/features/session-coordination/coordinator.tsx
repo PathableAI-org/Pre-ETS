@@ -13,6 +13,7 @@ import { ExpirationModal } from "./expiration-modal.tsx"
 import { LogoutControl } from "./logout-control.tsx"
 import { SignedOutNotice } from "./signed-out-notice.tsx"
 import { TabCoordination, type TabView, type TabViewState } from "./tab-coordination.ts"
+import { WarningModal } from "./warning-modal.tsx"
 
 const initialState: TabViewState = { concealed: false, endedHere: false, view: "active" }
 
@@ -80,6 +81,9 @@ export function SessionCoordinator({
     confirm: async () => {
       await controller.current?.confirm()
     },
+    continueSession: () => {
+      void controller.current?.continueSession()
+    },
     deny: async (cause: SessionEndCause | undefined) => await controller.current?.deny(cause) ?? false,
     logout: () => {
       void controller.current?.logout()
@@ -95,7 +99,9 @@ export function SessionCoordinator({
       <div aria-live="polite" role="status">
         <SessionAnnouncement state={state} />
       </div>
-      <SessionBody content={content} onLogout={actions.logout} state={state}>{children}</SessionBody>
+      <SessionBody content={content} onContinue={actions.continueSession} onLogout={actions.logout} state={state}>
+        {children}
+      </SessionBody>
     </SessionConfirmationProvider>
   )
 }
@@ -109,17 +115,19 @@ function SessionAnnouncement({ state }: { readonly state: TabViewState }) {
 }
 
 /**
- * The header and protected content of a running view; recovery content instead after a denial; the expiration modal
- * alone after confirmed expiry; nothing once ended.
+ * The header and protected content of a running view, with the expiration warning over them while it is open (#156);
+ * recovery content instead after a denial; the expiration modal alone after confirmed expiry; nothing once ended.
  */
 function SessionBody({
   children,
   content,
+  onContinue,
   onLogout,
   state
 }: {
   readonly children: ReactNode
   readonly content: Ref<HTMLDivElement>
+  readonly onContinue: () => void
   readonly onLogout: () => void
   readonly state: TabViewState
 }) {
@@ -141,6 +149,9 @@ function SessionBody({
       <div hidden={state.concealed} inert={state.concealed} ref={content}>
         {children}
       </div>
+      {state.warning === undefined ?
+        null :
+        <WarningModal continuation={state.warning.continuation} onContinue={onContinue} />}
     </>
   )
 }

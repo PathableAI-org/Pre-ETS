@@ -49,6 +49,7 @@ export type FocusTarget =
   | "participant_goal"
   | "recovery_heading"
   | "signed_out_heading"
+  | "warning_continue"
 
 /** Where the user activated Log in (#157 T-005). */
 export type LoginEntry = "action_recovery" | "expiration_modal"
@@ -69,13 +70,19 @@ export interface TraceScope {
   readonly run: <A>(task: () => A) => A
 }
 
-/** Why the coordinator changed state, where it says (#157 T-002, T-003). */
-export type TransitionCause = "action_denied" | "deadline" | "peer" | "resume"
+/**
+ * Why the coordinator changed state, where it says (#157 T-002, T-003; #156 T-002). `continue`: this tab's Continue
+ * renewed. `renewal`: another answer this tab received showed a renewal. `threshold`: the tab confirmed at its local
+ * warning threshold.
+ */
+export type TransitionCause = "action_denied" | "continue" | "deadline" | "peer" | "renewal" | "resume" | "threshold"
 
 /** The held deadline and the tab's server-time estimate at a transition, both on the server clock (#157 T-003). */
 export interface TransitionTiming {
   readonly deadlineMs: number
   readonly serverTimeMs: number
+  /** The held warning lead. Set on threshold facts and on transitions into and out of `warning_shown` (#156 T-002). */
+  readonly warningLeadMinutes?: number | undefined
 }
 
 /** UI states of the session coordinator, derived from its `(view, concealed)` (telemetry contract closed sets). */
@@ -89,6 +96,7 @@ export type UiState =
   | "recovery_expired"
   | "recovery_unavailable"
   | "signed_out"
+  | "warning_shown"
 
 /** Facts kept while the SDK loads; later ones are only counted (T-011). */
 const BUFFER_LIMIT = 256
@@ -102,7 +110,8 @@ const FOCUS_TARGETS: ReadonlySet<string> = new Set<FocusTarget>([
   "logout_control",
   "participant_goal",
   "recovery_heading",
-  "signed_out_heading"
+  "signed_out_heading",
+  "warning_continue"
 ])
 const NAVIGATION_TYPES: ReadonlySet<string> = new Set(["push", "replace", "traverse"])
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
@@ -279,6 +288,7 @@ export const recordUiTransition = (
       "preets.outcome": "applied",
       "preets.session.deadline_ms": detail?.timing?.deadlineMs,
       "preets.session.server_time_ms": detail?.timing?.serverTimeMs,
+      "preets.session.warning_lead_minutes": detail?.timing?.warningLeadMinutes,
       "preets.ui.cause": detail?.cause,
       "preets.ui.from_state": from ?? "mounted",
       "preets.ui.to_state": to
@@ -286,6 +296,27 @@ export const recordUiTransition = (
     name: "TabCoordination.transition",
     root: false
   }))
+
+/**
+ * #156 T-001. The tab reached its local warning threshold, or resumed past it, and now confirms; the confirmation
+ * request starts inside the answered scope.
+ */
+export const recordWarningThreshold = (cause: "resume" | "threshold", timing: TransitionTiming): TraceScope =>
+  scopeOf(record({
+    attributes: {
+      "preets.outcome": "reached",
+      "preets.session.deadline_ms": timing.deadlineMs,
+      "preets.session.server_time_ms": timing.serverTimeMs,
+      "preets.session.warning_lead_minutes": timing.warningLeadMinutes,
+      "preets.ui.cause": cause
+    },
+    name: "TabCoordination.threshold",
+    root: false
+  }))
+
+/** #156 T-003. Recorded synchronously when the user activates Continue; the request is sent inside its scope. */
+export const recordContinueActivation = (): TraceScope =>
+  scopeOf(record({ attributes: { "preets.outcome": "activated" }, name: "Interaction.continue", root: false }))
 
 /** #157 T-005. A root fact recorded synchronously when the user activates Log in, before the navigation leaves. */
 export const recordLoginActivation = (entry: LoginEntry): void => {

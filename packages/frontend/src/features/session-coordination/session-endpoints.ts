@@ -1,5 +1,4 @@
 import type {
-  InPageSessionActivity,
   LogoutRequestBody,
   SessionActivityRequestBody,
   SessionCoordinationSnapshot
@@ -97,8 +96,19 @@ export const readSessionStatus = (
 ): Promise<SessionOutcome> =>
   timed("/session/status", { signal: AbortSignal.any([cancel, AbortSignal.timeout(timeout)]) })
 
-export const sendActivity = (activity: InPageSessionActivity, coordinationTag: string): Promise<SessionOutcome> =>
-  timed("/session/activity", postJson({ activity, coordinationTag }))
+/**
+ * Communicates activity for this tab's session: coalesced in-page activity, or the warning's Continue (#156 research
+ * D1, D6). With a `timeout`, no answer in time is undetermined.
+ */
+export const sendActivity = (
+  activity: SessionActivityRequestBody["activity"],
+  coordinationTag: string,
+  timeout?: number
+): Promise<SessionOutcome> =>
+  timed("/session/activity", {
+    ...postJson({ activity, coordinationTag }),
+    signal: timeout === undefined ? null : AbortSignal.timeout(timeout)
+  })
 
 /** `keepalive` completes the request even if this tab closes right after starting it (research D8, R11). */
 export const sendLogout = async (coordinationTag: string, notAfter: number): Promise<LogoutOutcome> => {
