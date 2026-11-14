@@ -15,10 +15,14 @@ Feature: Expiration warning in every sharing tab, closed only by a renewal
   and adopts the later deadline. The warning is one modal dialog, named and described, whose only
   control is Continue; nothing behind it is exposed or reachable by keyboard or pointer, focus
   stays on Continue, Space renews as Enter does, and focus returns afterwards to the control that
-  had it or to the page's content.
-  Not established here: the default and disabled policies, invalid settings, and policy adoption
-  (slice D); what assistive technology announces, which needs a person (L-3); resumed tabs, a late
-  Continue, and expiration with the warning disabled (slice C).
+  had it or to the page's content. Expiration still wins: a resumed tab confirms before it warns,
+  and warns only in the warning period; a resumed tab past its deadline hides its content until the
+  server answers; a Continue that reaches the server after the deadline is refused into the expired
+  outcome in every sharing tab; interaction in a tab resumed after the end revives nothing; and with
+  the warning disabled, by an omitted lead under a five-minute timeout or by an explicit 0, sessions
+  end at their deadline with no dialog before it.
+  Not established here: the default and disabled policies' other settings, invalid settings, and
+  policy adoption (slice D); what assistive technology announces, which needs a person (L-3).
 
   Background:
     Given production tenant sites for Springfield and Shelbyville
@@ -92,3 +96,63 @@ Feature: Expiration warning in every sharing tab, closed only by a renewal
     And focus in tab "T1" is back on its attendance note
     And focus in tab "T2" is on its main content
     And tabs "T1" and "T2" expose their header and controls again
+
+  Scenario: A resumed tab confirms before it warns, and warns only in the warning period
+    Two tabs of another browser present a copy of the visitor's session with their timers
+    suspended, so they exchange no cross-tab messages with the visitor's tab. "S1" opens last, so
+    it holds the session's deadline; it returns ten seconds after its threshold, and its session
+    check is held for half a second, so a warning shown before the answer would be seen. "S2"
+    returns after the visitor's Continue has renewed the session, still holding the earlier
+    deadline.
+
+    Given the visitor has signed in at "springfield.localhost:3000" and opened tab "T1"
+    And another browser sharing the visitor's session has opened tab "S2" with its timers suspended
+    And another browser sharing the visitor's session has opened tab "S1" with its timers suspended
+    When the visitor waits until 10 seconds after the warning threshold of tab "S1"
+    And the next session check of tab "S1" is held for half a second
+    And tab "S1" resumes
+    Then tab "S1" kept its protected content on resuming
+    And tab "S1" confirms with the server, then shows the warning over its protected content within 2 seconds of resuming
+    When the visitor activates Continue with Enter in tab "T1"
+    And tab "S2" resumes
+    Then tab "S2" confirms with the server, shows no warning, and adopts the deadline of tab "T1"
+
+  Scenario: Expiration still wins after a resume, after a late Continue, and with the warning disabled
+    "S3" and "S5" are suspended tabs of browsers sharing the visitor's session. The visitor renews
+    once with Continue, so the session is in its warning period when "S3" returns past its own
+    stale deadline. Continue in "T1" just before the renewed deadline is held by request routing
+    until after it. "S5" returns after the session ended. In Shelbyville, "B1" signs in under a
+    five-minute timeout with no warning lead set, and "B2", in another browser, after the tenant
+    file changes to a six-minute timeout with an explicit 0.
+
+    Given the visitor has signed in at "springfield.localhost:3000" and opened tabs "T1" and "T2"
+    And another browser sharing the visitor's session has opened tab "S3" with its timers suspended
+    And another browser sharing the visitor's session has opened tab "S5" with its timers suspended
+    And Shelbyville sessions end after 5 minutes of inactivity, with no warning lead set
+    And another browser has signed in at "shelbyville.localhost:3000" and opened tab "B1"
+    And Shelbyville's tenant file changes to a 6-minute timeout with a warning lead of 0
+    And another browser has signed in at "shelbyville.localhost:3000" and opened tab "B2"
+    When the visitor types in tab "T1"
+    And tabs "T1" and "T2" reach their warning threshold
+    Then tabs "T1" and "T2" each show the warning within 2 seconds of their warning threshold, with focus on Continue
+    When the visitor activates Continue with Enter in tab "T1"
+    Then tabs "T1" and "T2" close their warning within 2 seconds of the renewal and hold its later deadline
+    When the idle deadline of tabs "S3" passes
+    And the next session check of tab "S3" is held for half a second
+    And tab "S3" resumes
+    Then tab "S3" hid its protected content at once on resuming
+    And tab "S3" confirms with the server, then shows the warning over its protected content within 2 seconds of resuming
+    When the visitor activates Continue in tab "T1" 3 seconds before its deadline, and the request reaches the server after it
+    Then the late Continue in tab "T1" was answered 401 after its deadline
+    And tabs "T1" and "T2" replaced the warning with the expiration modal, never closing it as renewed
+    And a request presenting the earlier session of tab "T1" is not admitted
+    And the session status of tab "T1" answers 401
+    When tab "S5" resumes
+    Then tab "S5" hid its protected content at once on resuming
+    And tab "S5" shows the expiration modal within 2 seconds of resuming
+    When the visitor presses character keys and Escape in tab "S5"
+    And the visitor clicks where the protected control was in tab "S5"
+    Then no request from tab "S5" was answered 200 since then
+    And tabs "B1" and "B2" showed no dialog before their deadline, then the expiration modal within 2 seconds of it
+    And a request presenting the earlier session of tab "B1" is not admitted
+    And a request presenting the earlier session of tab "B2" is not admitted

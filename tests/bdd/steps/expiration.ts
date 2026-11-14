@@ -19,11 +19,11 @@ import { requestInstance, startSite } from "../support/server.ts"
 const PROVIDER_ORIGIN = "http://127.0.0.1:8080"
 export const SPRINGFIELD = "springfield.localhost:3000"
 const SHELBYVILLE = "shelbyville.localhost:3000"
-const PROTECTED_CONTROL = "Record reference operation"
+export const PROTECTED_CONTROL = "Record reference operation"
 /** Protected text the reference page renders, and the header's Log out; none may remain behind the modal. */
 const PROTECTED_TEXT = /Reference session|Record reference operation|springfield|shelbyville|Log out/i
 /** The expired recovery copy that the modal must share with in-tab recovery (#157 FR-020, research D12). */
-const EXPIRED_COPY = {
+export const EXPIRED_COPY = {
   explanation: "For your security, your session ended after a period of inactivity.",
   heading: "Your session expired",
   logIn: "Log in again"
@@ -610,7 +610,8 @@ const recordResume = (world: AppWorld, name: string, outcome: { hiddenAtOnce: bo
   resumptions.set(world, recorded)
 }
 
-const resumptionOf = (world: AppWorld, name: string) => {
+/** How the named tab's last resume went: whether its content hid at once, and when the resume started. */
+export const resumptionOf = (world: AppWorld, name: string): { hiddenAtOnce: boolean; startedAt: number } => {
   const outcome = resumptions.get(world)?.get(name)
   assert.ok(outcome, `expected tab "${name}" to have resumed`)
   return outcome

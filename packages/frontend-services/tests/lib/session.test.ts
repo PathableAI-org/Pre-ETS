@@ -813,7 +813,16 @@ describe("SessionService.refreshForTenant policy properties [PREETS-SESSION-008]
   )
 })
 
-describe("SessionService.refreshForTenant expiration [PREETS-SESSION-008, PREETS-SESSION-009]", () => {
+/**
+ * When a refresh is received, in milliseconds from the stored deadline: often within 2 ms of it, so the boundary itself
+ * is drawn, otherwise within two minutes on either side.
+ */
+const ReceivedFromDeadline = Schema.Union([
+  Schema.Int.pipe(Schema.check(Schema.isBetween({ maximum: 2, minimum: -2 }))),
+  Schema.Int.pipe(Schema.check(Schema.isBetween({ maximum: 120_000, minimum: -120_000 })))
+])
+
+describe("SessionService.refreshForTenant expiration [PREETS-SESSION-008, PREETS-SESSION-009, PREETS-SESSION-011]", () => {
   it.effect.each(excludedActivities)(
     "returns the current session for %s without writing",
     (activity) =>
@@ -855,6 +864,45 @@ describe("SessionService.refreshForTenant expiration [PREETS-SESSION-008, PREETS
           expect(yield* service.read({ reference: established.reference })).toStrictEqual(noUsableSession)
         })
       )
+  )
+
+  it.effect.prop(
+    "renews a continue-session refresh exactly when it is received before the deadline (#156 research D15, V-011)",
+    [ValidPolicy, ValidPolicy, ReceivedFromDeadline],
+    ([establishedPolicy, refreshPolicy, fromDeadline]) =>
+      scenario(
+        Effect.gen(function*() {
+          yield* TestClock.setTime(BASE_TIME)
+          const service = yield* SessionService
+          const established = yield* service.establish({
+            identity: { issuer: "https://provider.test/", subject: "subject-1" },
+            policy: establishedPolicy,
+            tenantAlias: alias
+          })
+          const receivedAt = established.session.idleDeadlineEpochMilliseconds + fromDeadline
+          yield* TestClock.setTime(receivedAt)
+          const result = yield* service.refreshForTenant({
+            activity: "continue-session",
+            policy: refreshPolicy,
+            reference: established.reference,
+            tenantAlias: alias
+          })
+          const read = yield* service.read({ reference: established.reference })
+          if (fromDeadline < 0) {
+            expect(result).toMatchObject({
+              _tag: "UsableSession",
+              idleDeadlineEpochMilliseconds: receivedAt + refreshPolicy.idleTimeoutMinutes * 60_000,
+              revision: 2
+            })
+            expect(sessionState(read)).toStrictEqual(sessionState(result))
+            return
+          }
+          expect(result).toStrictEqual(expiredSession)
+          expect(yield* recordCount).toBe(0)
+          expect(read).toStrictEqual(noUsableSession)
+        })
+      ),
+    { arbitrary: { runs: 60 } }
   )
 
   it.effect("does not revive an expired session when the timeout later increases", () =>
