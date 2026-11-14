@@ -521,3 +521,98 @@ logs, or metric labels.
 **Disclosure:** the verifier's C probe stopped the shared Keycloak for about 12 s. The full suite still passed.
 
 **Cleanup:** the verifier's keys were deleted, its ports stopped, and the scratch tenants removed.
+
+### Slice C — `2f91645` implementation run (2026-11-13, before verification)
+
+Recorded by the implementation session; the verifier's report supersedes it. The C test commit is `2f91645` on B's final
+head `e9382be1dd7360053c2e663d006fd8d9ef72c80b`. At that revision the C scenarios passed (BDD run
+`9277c462-5bde-4a15-8ff6-34e8e419e463`, 4 pickles, 113 steps) and the procedure ran again in full (run
+`2837393e-6cfb-42b3-a04b-891737ed0401`) with the same outcome for every step: modal 71–90 ms after the deadline. The
+earlier runs below, at `bfdd8d5` on B `66edb65` and at `6a1ec0c` on B `7ad9159` (run
+`d1b62b21-a363-4244-ad54-8d36d4cb9cbb`), had the same outcomes. The local stack restarted before the final run, so
+telemetry for the earlier runs may no longer be queryable.
+
+**Runs:** manual `c11fe41d-f0c5-43d6-80f9-8b4daab4e44b` (procedure steps 1–12, browser tracing on); BDD
+`72696e01-de48-4aa5-a81c-d907c0bff58d` (scenario 1), `f68b1b20-ea50-4df6-9afb-59dbabb9cc10` (scenario 3), and
+`407e628d-84e3-4403-9dd0-5c45485f9ea6` (scenario 2) on the C files before the commit, then the `@preets-session-012 or @preets-session-013` regression `aff675b2-4674-4f2d-a5dc-04e49e67ddae` at `bfdd8d5`.
+
+**Conditions:** a production build; local Redis, the tracked Keycloak realm, and otel-lgtm with OTEL enabled, the
+harness `service.version` and `service.instance.id`, and `BROWSER_TRACING_ENABLED=true`; a 5-minute Springfield
+scratch tenant; Redis prefix `preets:verify:<run>:`; Chromium through the harness proxy. The default flow: no route
+interception and no activity delay, except the provider-answer substitution described below.
+
+**BDD:** `expired-recovery-login.feature` (`@preets-session-013`): 3 scenarios (4 pickles) pass. The
+`@preets-session-012 or @preets-session-013` regression at `bfdd8d5`: 18 scenarios, 379 steps, all passing. At `6a1ec0c` (run `425d2129-e4c6-4bad-be23-756e943dae73`): 18 of 19 pass, including C's three and B's
+new early-deadline scenario. B's first scenario fails at its Shelbyville sign-in, where the provider returns without
+an authentication step; it fails the same way at B's own head `7ad9159` without C. The verifier's full suite at `7ad9159` passed it, so it
+depends on timing in this environment; it is reported to slice B.
+
+**Manual procedure (one composed journey, run `c11fe41d`):**
+
+| Step | Observation                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1–2  | Context 1: Springfield tabs A2, A3 (with a roster history entry), A4, and a Shelbyville tab; A1 in its own signed-in browser with timers suspended (a frozen tab receives no cross-tab messages); context 2 with C2; further browsers for steps 8 and 9. Each browser signed in through the provider, so each holds provider SSO.                                                                                                                                                                                                   |
+| 3    | Modal 36–48 ms after the deadline in A2, A3, A4 and both step-9 tabs. A1 after the deadline: 401 `text/plain`, no receipt, "Your session expired" recovery with focus on its heading, no protected content, and no provider or `/auth/login` request.                                                                                                                                                                                                                                                                               |
+| 4    | Screen reader: **not executed** (no assistive technology in this environment).                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| 5    | A3: Escape, outside click, close button, `window.find("Reference session")` → false, 30 Tab + 30 Shift+Tab with focus never leaving the modal, background clicks: modal stays, path `/`, nothing protected. Forward, back, and refresh each reach the provider's authorization page with no protected document.                                                                                                                                                                                                                     |
+| 6    | Record removed before the deadline: scripts on → 401 `text/plain`, "Your session is no longer available"; scripts off in a fresh context → 401 document with that one heading.                                                                                                                                                                                                                                                                                                                                                      |
+| 7    | No login traffic in A1, A2, A4 from display to activation. Keyboard Log in from A1's recovery and from A2's modal: provider at `max_age=0`, password-only re-authentication (SSO held, no username asked), a new session, and the old reference answered 307 `/auth/login`. A4 (same browser as A2) still shows the modal and no protected content 3 s after A2's login, with no document; its own Log in loads `/` (200) with no provider request.                                                                                 |
+| 8    | P1 suspended across expiry: hidden at once on resume, modal 56 ms later. P2 suspended while another browser renewed: hidden at once, content again, no dialog.                                                                                                                                                                                                                                                                                                                                                                      |
+| 9    | From the modal and from recovery, each a cancel (provider `access_denied` return) and an unreachable provider (refused connection at the authentication step): the provider asked first (`max_age=0`); then the authentication-return page or the browser's error page, nothing protected, no protected document, the held reference answered 307 `/auth/login`; a later Log in asks the provider again and yields a new session. Stale and missing `auth_time`: **not executed** (no fixture supports them at these entry points). |
+| 10   | The Shelbyville tab and C2 kept their content and never showed a dialog.                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| 11   | T-005: 7 `Interaction.login` (3 `action_recovery`, 4 `expiration_modal`). `AuthenticationService.complete`: 2 `denied` (the cancels), every success `confirmed` / `inside`; no completion for the unreachable cases. T-003 `expired`: 5 with cause `deadline` or `peer` and `server_time_ms − deadline_ms` of 13–31 ms, 1 `resume`. `denied_unauthenticated >> authorizeSessionAction` is empty. No span carries a query string; span keys are within the allowed classes.                                                          |
+| 12   | Owned keys deleted, the app stopped, the scratch tenant removed.                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+
+| Claim                     | Result (implementation run)                                                  | Observation                                                                                                                                                                                          |
+| ------------------------- | ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| V-019                     | established                                                                  | BDD scenario 1 and manual step 7, from recovery and from the modal.                                                                                                                                  |
+| V-020                     | established                                                                  | No `/auth/login` or provider request over 5 s after display (BDD, all entry points) and from display to activation (manual).                                                                         |
+| V-021                     | established for cancel and provider error; stale and missing not established | Both failures from both entry points (BDD scenarios 2–3, manual step 9). Stale and missing `auth_time` rest on #158 module evidence and `tenant-oidc-callback.feature` (verification.md limitation). |
+| V-022                     | established                                                                  | BDD scenario 1 (M2) and manual step 7 (A4).                                                                                                                                                          |
+| V-001–V-018, V-023, V-024 | re-observed in the composed run; AT parts not executed                       | Steps 3, 5, 6, 8, 10, 11 match the slice results above.                                                                                                                                              |
+
+**Limitations:** the cancel and provider-error answers are substituted in the browser after the real provider asked
+to authenticate (the realm's `consent-web` client would persist the synthetic user's grant; stopping the shared
+Keycloak is outside this run). The realm's `stale-auth-time-web` client cannot establish a session that later
+expires. Within one second of a sign-in, the provider may return without asking (its whole-second `auth_time`), which
+the 30 s tolerance accepts; every Log in observed here came minutes after the last authentication. Suspension is
+emulated with Playwright's clock.
+
+**B observation (fixed):** in an earlier attempt (run `1fd2a803-8d84-4530-9d02-428c75a527dc`, machine loaded by a
+concurrent full BDD suite) every expiring tab confirmed 6–36 ms before the server deadline, got a usable answer, and
+sent no further confirmation for about 26 s, so no modal appeared. Unloaded runs never took that path. B reproduced it
+deterministically and fixed it in `410582e` (a usable answer with no confirmation pending now always re-confirms at the
+server's deadline); the restacked run above includes that fix.
+
+### Slice C verification — `354a1e118b113180aeae8916a8cdb24b58a22f8f` (2026-11-14)
+
+The verifier's report; it supersedes the implementation run above. The gate passes. B's confirmation at `e9382be` came
+from the same full run, whose product code is identical.
+
+**Runs:** full BDD `2ddc1656-488a-4d4f-a142-c1e7e0fb1fa4`; C probe `64c46d0a-482e-4888-9672-4834fadd9308`; §B main
+`081a55ab-1fce-4b50-9b07-1176c2122390`; resume `dad42da4-9935-4e82-8f7e-36f1487d9ad7`; A2 and A3 probes.
+
+**Conditions:** a detached verifier worktree; a production build; shared Redis, Keycloak, and otel-lgtm 0.41.0 with
+OTEL enabled and the harness `service.version` and `service.instance.id`; browser tracing on, except the A2 probe; a
+5-minute Springfield scratch tenant.
+
+**Module evidence:** frontend-services 491/491, integration 42/42, frontend unit 111/111.
+
+**BDD:** the full suite, 90 scenarios and 1446 steps, passed, including the 3 scenarios (4 pickles) of
+`expired-recovery-login.feature`.
+
+| Claim | Result      | Observation                                                                                                                                                                                                                                                                                                                                                                                              |
+| ----- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| V-019 | established | Keyboard Log in from the modal and from expired recovery: `/auth/login`, then the provider at `max_age=0`. With provider SSO held, the provider still presented a password-only step. A new session followed, and the earlier reference was answered 307 to login. Server: T-005, `prepareAuthentication`, `AuthenticationService.complete` confirmed (`inside`), `SessionService.establish`.            |
+| V-020 | established | Five tabs: no `/auth` or provider request in the 5 s after display, and no `prepareAuthentication` between display and T-005.                                                                                                                                                                                                                                                                            |
+| V-021 | established | A real provider error, with Keycloak stopped about 12 s, from the modal and from unknown-cause recovery: no protected content, the held reference not admitted, and no completion or establishment. After a restart, Log in from both succeeded. BDD covers the emulated cancel and provider error from both entry points. Stale and missing `auth_time` remain the approved verification.md limitation. |
+| V-022 | established | 3 s after M1's login, M2 still showed the modal with no protected text and no login traffic. Its own Log in loaded `/` as a new document with no provider request.                                                                                                                                                                                                                                       |
+
+**Composed procedure (steps 1–12):** prior-slice claims were re-observed as in the A1–B reports: A2 scripts-off
+recovery; A3 unknown 5/5, expired 2/2, logout precedence during the hold 75–80 ms; §B modal timing, isolation, bypass,
+focus, history, and logout precedence; and the B5 resume cases. Step 11 found no query strings or `url.full`, span keys
+within the allowed classes, resources only `service.*` and `telemetry.sdk.*`, and no tokens, cookies, codes, or
+claims. Screen-reader steps 4 and 7 are outstanding for a person. No instrumentation was missing or unusable, and no
+forbidden data was observed.
+
+**Cleanup:** owned keys deleted, ports stopped, scratch tenants removed, and Keycloak healthy.

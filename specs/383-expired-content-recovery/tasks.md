@@ -191,11 +191,15 @@ Advances V-009–V-018, V-023, V-024 (modal part). Lands T-003, T-004 (`expirati
 
 Advances V-019–V-022 in full and runs the full verification.md procedure. The only slice that says `Closes #157`.
 
-- [ ] T036 `tests/bdd/requirements/expired-recovery-login.feature` and Log in journeys in
-      `tests/bdd/steps/expired-recovery.ts` reusing `fresh-recovery.ts` steps (quickstart §C).
-- [ ] T037 Full verification.md procedure at the C revision; results in quickstart.md; `docs/session-state.md` note
+- [x] T036 `tests/bdd/requirements/expired-recovery-login.feature` and Log in journeys in
+      `tests/bdd/steps/expired-recovery.ts` reusing `fresh-recovery.ts` steps (quickstart §C). Done: the steps live in
+      `steps/expiration.ts` with B's named tabs and contexts, since `fresh-recovery.ts` keeps its journey private. The
+      cancel and provider-error answers are substituted in the browser after the real provider asked; the realm's
+      `consent-web` and `stale-auth-time-web` clients cannot be reached from an expired session (stale stays module
+      evidence).
+- [x] T037 Full verification.md procedure at the C revision; results in quickstart.md; `docs/session-state.md` note
       if the composed run changes it.
-- [ ] T038 Checks, draft pull request, verification of §C plus the full procedure, results recorded.
+- [x] T038 Checks, draft pull request, verification of §C plus the full procedure, results recorded.
 
 ## Dependencies
 
