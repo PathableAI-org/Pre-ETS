@@ -50,3 +50,6 @@ allowBuilds:
   core-js: false
   protobufjs: false
   dprint: true
+
+minimumReleaseAgeExclude:
+  - "prettier@3.9.10"
