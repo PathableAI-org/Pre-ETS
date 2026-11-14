@@ -64,31 +64,40 @@ scenario-level references. A completed issue, evidence in another feature, or a 
 reason to remove it. Full scenario coverage and tag removal do not automatically establish reviewed runtime
 verification; record actual execution and limitations through the requirements register's evidence rules.
 
-## Example: dashboard reachability
+## Example: tenant-selected login initiation
 
-The existing [dashboard feature](../../../tests/bdd/requirements/tenant-context.feature) exercises HTTP reachability
-under tenant configuration. A slice targeting reachability can be described as follows; this is an illustrative
-description, not a migration of that feature or proof of the full
-[tenant-selection requirement](../../requirements/tenant/PREETS-TENANT-003.md).
+The existing [login initiation feature](../../../tests/bdd/requirements/tenant-context.feature) is a partial slice
+of the [tenant-selection requirement](../../requirements/tenant/PREETS-TENANT-003.md). Its scenarios request
+`/auth/login`, one authentication flow that consumes tenant configuration, and observe which tenant's identity
+provider the response redirects to:
 
 ```gherkin
-@preets-tenant-003 @partial
-Feature: Dashboard reachability
-  This slice establishes that a document request succeeds with usable tenant configuration.
-  It does not establish which tenant was selected or configuration use in authenticated requests and flows.
+@partial
+@preets-tenant-003
+@preets-session-002
+Feature: Tenant-selected authentication initiation
+  Login preparation consumes the selected tenant in host and static modes.
+  These scenarios do not establish authenticated tenant binding or all other
+  tenant-dependent consumers; root's session redirect is not tenant evidence.
 
-  Scenario: A configured tenant document is reachable
+  Scenario: Host-mode login keeps interleaved tenant integrations distinct
     Given production tenant sites for Springfield and Shelbyville
-    And host resolution uses base hostname "example.test"
-    When a visitor requests the document at "springfield.example.test"
-    Then the response status is 200
+    And host resolution uses base hostname "localhost"
+    When a visitor requests "/auth/login" at "springfield.localhost:3000"
+    Then initiation uses the independently configured "springfield" tenant
+    When a visitor requests "/auth/login" at "shelbyville.localhost:3000"
+    Then initiation uses the independently configured "shelbyville" tenant
 ```
 
-HTTP success is evidence for that reachability slice. It does not demonstrate tenant identity, tenant isolation,
-or all configuration-consuming behavior. Adding “the landing page displays the tenant name” would impose a
-presentation obligation absent from this requirement. Hiding that assertion inside the response-status step
-would impose the same unsupported promise. If tenant-name presentation seems desirable, flag the requirement
-gap for consideration rather than adding it to this feature.
+The redirect to the selected tenant's own provider and client is evidence that this flow selects and uses that
+tenant. It does not demonstrate tenant binding in authenticated requests or every other tenant-dependent
+consumer, which is why the feature keeps `@partial` and names the gap. A successful response alone would not
+be evidence either: under [default entry-point protection](../../session-state.md#default-entry-point-protection)
+an unauthenticated request for the root document delegates to login whichever tenant was selected, so the
+description excludes it. Adding “the login page displays the tenant name” would impose a presentation obligation
+absent from this requirement. Hiding that assertion inside the initiation step would impose the same unsupported
+promise. If tenant-name presentation seems desirable, flag the requirement gap for consideration rather than
+adding it to this feature.
 
 ## Review with slice context
 
@@ -107,7 +116,7 @@ Use these cases when reviewing changes to this discipline:
 | Case                                                                     | Expected review                                                                        |
 | ------------------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
 | A new or stronger promise exists only on the PR branch                   | Defer dependent BDD assertions until the requirement change is merged into main.       |
-| A reachability slice asserts a tenant name on the page                   | Flag the unsupported presentation promise; raise a separate requirement gap if useful. |
+| A tenant-selection slice asserts a tenant name on the page               | Flag the unsupported presentation promise; raise a separate requirement gap if useful. |
 | A bounded Gherkin step hides a content assertion in its implementation   | Flag the implementation's unsupported assertion.                                       |
 | A tagged partial slice has convincing evidence for its declared outcome  | Respect its scope; do not demand full requirement coverage in the PR.                  |
 | A feature fully captures its referenced scope but retains `@partial`     | Suggest tag removal without declaring runtime verification.                            |

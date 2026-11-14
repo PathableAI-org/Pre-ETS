@@ -16,7 +16,7 @@ authority, [Testing as evidence](../../docs/engineering/testing/README.md) for o
   justify assertions, even when this PR targets another branch. Retired requirements are historical references.
 - Justify every product assertion through the referenced requirement's meaning, conditions, criteria, or explicit
   design constraints. Current UI content, implementation choices, and technical incidentals do not create obligations.
-  Dashboard HTTP reachability alone does not justify asserting tenant-name presentation or prove tenant selection.
+  A successful or redirecting response alone does not prove tenant selection or justify asserting tenant-name presentation.
 - Flag assertions outside the promise and observations that cannot establish the claimed slice. Ground suggestions
   to add assertions in requirement IDs too. Flag desirable undocumented behavior separately as a gap for consideration;
   do not suggest inserting it into tests before its requirement is merged into main.
