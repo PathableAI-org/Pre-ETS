@@ -1,6 +1,9 @@
 name: Nightly BDD
 
 on:
+  # The triggers are the only restriction on where the job runs. A scheduled run uses the default branch, main. A
+  # manual dispatch runs on the branch it names, so a harness fix can be shown in CI before it merges; the per-ref
+  # concurrency group keeps such a run from cancelling main's.
   schedule:
     - cron: "17 6 * * *"
   workflow_dispatch:
@@ -19,9 +22,6 @@ concurrency:
 jobs:
   bdd:
     name: CI / BDD
-    # The schedule runs on main. A manual dispatch may name any branch, so a harness fix is shown in CI before it
-    # merges; the per-ref concurrency group keeps such a run from cancelling main's.
-    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     # The expiration-warning scenarios wait in real time (#156 research D13); the @long-idle one alone takes about
     # 31 minutes.

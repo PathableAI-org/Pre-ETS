@@ -135,8 +135,8 @@ before redirect and writes only an opaque callback-path correlation cookie. A va
 callback returns an empty 204 and clears correlation; it still creates no authenticated
 application session or protected access. Public diagnostics and the development preview
 remain independent of provider availability, but production frontend readiness now
-requires Redis. Requirements BDD needs both Redis and the real Keycloak realm; its
-main-only nightly/manual job provisions both dependencies after building.
+requires Redis. Requirements BDD needs both Redis and the real Keycloak realm; its CI job,
+nightly on `main` or manually dispatched on any branch, provisions both dependencies after building.
 
 Optional local OpenTelemetry + Grafana uses Compose profile `observability`
 (service `otel-lgtm`); see [observability](docs/observability.md).
@@ -473,8 +473,8 @@ and `workflow_dispatch` always run the full work for those three workflows.
 **CI / BDD** installs Chromium, builds the frontend, and executes
 `pnpm exec cucumber-js --config cucumber.mjs` followed by `pnpm test:bdd:smoke`. After a
 successful build, the smoke check still runs if requirements scenarios fail, unless the job
-is cancelled. A failure in either suite fails the job. It runs only on `main`, without path
-filtering, and preserves runtime reports and failure diagnostics. There is no CI dry-run job.
+is cancelled. A failure in either suite fails the job. It runs nightly on `main` or on a manually
+dispatched branch, without path filtering, and preserves runtime reports and failure diagnostics. There is no CI dry-run job.
 See [BDD commands and evidence](features/README.md).
 
 CI uses the pinned Node and pnpm versions, a frozen lockfile, and pnpm store caching.
