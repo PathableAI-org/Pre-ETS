@@ -31,6 +31,9 @@ Review the implementation against the approved specification and engineering pla
   data class from the
   [verification telemetry conventions](../../docs/observability.md#verification-telemetry-conventions), and durable
   tests that assert telemetry output.
+- The slice's `quickstart.md` execution results are generated from the verifier's report note by
+  `pnpm verify:render`. Flag results that were edited by hand or that disagree with the pull request body's verified
+  SHA and run UUID.
 - For a delivery-issue implementation slice, check the pull request against the
   [verification gate](../../docs/engineering/verification-harness.md#gate-and-escalation): it names its `plan.md`
   slice and the verified SHA and summarizes that slice's verification report. Flag a missing or unusable assigned
