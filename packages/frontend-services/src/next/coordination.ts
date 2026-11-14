@@ -17,7 +17,7 @@ import { resolveRequestTenant } from "./request.js"
 import { runSessionRequest, SESSION_COOKIE } from "./session.js"
 import { tenantFailureStatus } from "./tenant-failure.js"
 
-/** In-page qualifying kinds a tab may communicate. Deliberate requests renew at the gate; `continue-session` is #156's. */
+/** In-page qualifying kinds a tab coalesces in B5 windows. Deliberate requests renew at the gate. */
 const InPageActivity = Schema.Literals([
   "intentional-control-activation",
   "keyboard-interaction",
@@ -28,7 +28,10 @@ const InPageActivity = Schema.Literals([
 
 export type InPageSessionActivity = typeof InPageActivity.Type
 
-const SessionActivityBody = Schema.Struct({ activity: InPageActivity, coordinationTag: Schema.String })
+/** What a tab may communicate: an in-page kind, or the expiration warning's Continue (#156 research D1). */
+const TabActivity = Schema.Literals(["continue-session", ...InPageActivity.literals])
+
+const SessionActivityBody = Schema.Struct({ activity: TabActivity, coordinationTag: Schema.String })
 const LogoutBody = Schema.Struct({ coordinationTag: Schema.String, notAfter: Schema.Finite })
 
 /** `POST /auth/logout` JSON body. */
@@ -237,7 +240,7 @@ const authorizeAction = Effect.fn("authorizeSessionAction")(
 export const authorizeSessionAction = (input: AuthorizeSessionActionInput): Promise<AuthorizedSessionAction> =>
   runSessionRequest(authorizeAction(input))
 
-/** `POST /session/activity`: renews the tab's session for one in-page qualifying activity. */
+/** `POST /session/activity`: renews the tab's session for one in-page qualifying activity, or for Continue. */
 export const createSessionActivityHandler = (): (request: NextRequest) => Promise<NextResponse> =>
   toNext(sessionActivity)
 
