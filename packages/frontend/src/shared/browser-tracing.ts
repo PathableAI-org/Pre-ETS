@@ -122,7 +122,8 @@ let recorder: ((fact: Fact) => FactScope) | undefined
 let buffered: Fact[] = []
 let dropped = 0
 /** The focus target `moveFocus` is moving to, while it runs. */
-let applicationFocus: FocusTarget | undefined
+/** The application's focus move in progress: to a named target, or a restoration to the element that had focus. */
+let applicationFocus: "restoration" | FocusTarget | undefined
 
 /** One pending cause per request kind; a second interaction before it is claimed makes the slot ambiguous (D16). */
 type CauseSlot =
@@ -367,14 +368,26 @@ export const withdrawSubmitCause = (event: SubmitEvent): void => {
   if (slot._tag === "held" && slot.key === event) causes.action = EMPTY_SLOT
 }
 
-/** Moves focus to `element`, so the focus record names the application as the cause. */
-export const moveFocus = (element: HTMLElement | null, target: FocusTarget): void => {
-  applicationFocus = target
+const asApplicationFocus = (focus: NonNullable<typeof applicationFocus>, move: () => void) => {
+  applicationFocus = focus
   try {
-    element?.focus()
+    move()
   } finally {
     applicationFocus = undefined
   }
+}
+
+/** Moves focus to `element`, so the focus record names the application as the cause. */
+export const moveFocus = (element: HTMLElement | null, target: FocusTarget): void => {
+  asApplicationFocus(target, () => element?.focus())
+}
+
+/**
+ * Runs `restore`, which gives focus back to an element the application noted, so a focus record for it names the
+ * application as the cause; the element may or may not be a marked target.
+ */
+export const restoreFocusAsApplication = (restore: () => void): void => {
+  asApplicationFocus("restoration", restore)
 }
 
 /** The attribute that identifies a focus target to the focus recorder. */

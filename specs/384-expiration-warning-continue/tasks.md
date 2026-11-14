@@ -122,7 +122,7 @@ asserts neither V-014 nor V-015. `Contributes to #156`.
       those tabs).
 - [x] T015 [P] [US1] Document T-001 to T-004 in `docs/observability.md` (browser harness facts) and the warning,
       Continue, and T-005's `continue-session` in `docs/session-state.md`.
-- [ ] T016 Run the A checks and module evidence (quickstart "Module evidence"), `pnpm test:bdd:dry`, and the §A BDD
+- [x] T016 Run the A checks and module evidence (quickstart "Module evidence"), `pnpm test:bdd:dry`, and the §A BDD
       scenarios; commit; push the draft pull request; request verification of §A and review of the slice. Address the
       report and findings, then record the final report in [quickstart.md](quickstart.md#execution-results) with
       `pnpm verify:render --write` as an evidence-only commit and name the verified SHA in the pull request body.
@@ -133,23 +133,23 @@ Continue is the dialog's only control, the background is inert, focus stays insi
 using the library `Modal` with recorded workarounds. Asserts V-014 and V-015 in part (all but the screen-reader part,
 L-3). No telemetry rows. `Contributes to #156`.
 
-- [ ] T017 [US5] Create `fe/src/features/session-coordination/blocking.ts` with
+- [x] T017 [US5] Create `fe/src/features/session-coordination/blocking.ts` with
       `blockBackground(surface: Element): () => void` (every other child of `document.body` gets `inert`; the undo
       restores each earlier value) and `restoreFocus(previous: Element | null, fallback: HTMLElement | null): void`
       (FR-016, FR-017, research D8 workarounds 3 and 5).
-- [ ] T018 [US5] In `fe/tests/unit/session-coordination.test.ts`, DOM examples for `blockBackground` (including a child
+- [x] T018 [US5] In `fe/tests/unit/session-coordination.test.ts`, DOM examples for `blockBackground` (including a child
       that was already inert) and `restoreFocus` (connected, removed, disabled, and none) (modules.md contract
       evidence, rows 8–9).
-- [ ] T019 [US5] In `fe/src/features/session-coordination/warning-modal.tsx`, disable and remove from rendering and the
+- [x] T019 [US5] In `fe/src/features/session-coordination/warning-modal.tsx`, disable and remove from rendering and the
       accessibility tree every library-rendered control that is not Continue, by structure (workaround 2); block the
       background while open; keep focus from resting outside the dialog (workaround 4).
-- [ ] T020 [US5] In `fe/src/features/session-coordination/coordinator.tsx`, record the focused element before the
+- [x] T020 [US5] In `fe/src/features/session-coordination/coordinator.tsx`, record the focused element before the
       background becomes inert and restore focus when the warning closes while the tab stays active, falling back to
       the first `main` in the protected content or the content container.
-- [ ] T021 [US5] Extend `tests/bdd/requirements/expiration-warning.feature` and `tests/bdd/steps/warning.ts` for
+- [x] T021 [US5] Extend `tests/bdd/requirements/expiration-warning.feature` and `tests/bdd/steps/warning.ts` for
       quickstart §B cases 1–5 (accessibility tree, containment, inert background, Space, restoration); add an
       accessibility-tree helper to `tests/bdd/support/browser.ts` only if the existing one is not enough.
-- [ ] T022 [P] [US5] Document the blocking behavior and its removal condition in `docs/session-state.md`, and extend
+- [x] T022 [P] [US5] Document the blocking behavior and its removal condition in `docs/session-state.md`, and extend
       #400 to name the warning (a person or the owning workflow updates the issue; this task records the request in
       the pull request body).
 - [ ] T023 Run the B checks and module evidence, commit, push the draft, request verification of §B and review, and

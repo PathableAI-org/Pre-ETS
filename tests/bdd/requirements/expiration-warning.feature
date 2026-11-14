@@ -12,12 +12,13 @@ Feature: Expiration warning in every sharing tab, closed only by a renewal
   other tenant's tab and the other browser are unchanged. A protected page opened in a new tab
   also closes the warning in every sharing tab; that delay is recorded, not held to two seconds
   (gap G2). A tab that learned of no renewal confirms at its stale threshold, shows no warning,
-  and adopts the later deadline.
+  and adopts the later deadline. The warning is one modal dialog, named and described, whose only
+  control is Continue; nothing behind it is exposed or reachable by keyboard or pointer, focus
+  stays on Continue, Space renews as Enter does, and focus returns afterwards to the control that
+  had it or to the page's content.
   Not established here: the default and disabled policies, invalid settings, and policy adoption
-  (slice D); the warning as the only control with an inert background, focus containment and
-  restoration, and what assistive technology announces (slice B); resumed tabs, a late Continue,
-  and expiration with the warning disabled (slice C). The library's close control is still shown
-  and does nothing (#400).
+  (slice D); what assistive technology announces, which needs a person (L-3); resumed tabs, a late
+  Continue, and expiration with the warning disabled (slice C).
 
   Background:
     Given production tenant sites for Springfield and Shelbyville
@@ -64,3 +65,30 @@ Feature: Expiration warning in every sharing tab, closed only by a renewal
     When the visitor types in tab "T1" 30 seconds before the warning threshold of tab "S"
     Then tab "S" shows no warning through its stale threshold and adopts the deadline of tab "T1"
     And tabs "T1" and "T2" show no warning
+
+  Scenario: The warning is the only thing operable, holds focus, and gives it back when it closes
+    Tab "T1" shows the roster with focus on its attendance note, and tab "T2" shows the reference
+    page with nothing focused. What is exposed is read from Chromium's own accessibility tree,
+    which leaves out inert content as assistive technology and the keyboard do.
+
+    Given the visitor has signed in at "springfield.localhost:3000" and opened tabs "T1" and "T2"
+    And tab "T1" shows the roster with focus on its attendance note, and tab "T2" has learned its renewal
+    When tabs "T1" and "T2" reach their warning threshold
+    Then tabs "T1" and "T2" each show the warning within 2 seconds of their warning threshold, with focus on Continue
+    And focus in tab "T1" is on Continue with a visible focus indicator
+    And the warning in tab "T1" is a modal dialog that explains itself, with Continue as its only control
+    And nothing behind the warning in tab "T1" is exposed
+    And nothing behind the warning in tab "T2" is exposed
+    When the visitor presses Tab 30 times and then Shift+Tab 30 times in tab "T1"
+    Then focus in tab "T1" is on Continue
+    When the visitor clicks outside the warning in tab "T1"
+    Then focus in tab "T1" is on Continue
+    When another window takes focus from tab "T1" and gives it back
+    Then focus in tab "T1" is on Continue
+    When the visitor clicks where Log out and the participant link are in tab "T1"
+    Then tab "T1" navigated nowhere and started no logout
+    When the visitor activates Continue with Space in tab "T1"
+    Then tabs "T1" and "T2" close their warning within 2 seconds of the renewal and hold its later deadline
+    And focus in tab "T1" is back on its attendance note
+    And focus in tab "T2" is on its main content
+    And tabs "T1" and "T2" expose their header and controls again

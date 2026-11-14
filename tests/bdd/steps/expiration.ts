@@ -439,17 +439,18 @@ export const pressEscapeAndClickOutside = async (page: Page): Promise<void> => {
   await page.mouse.click(4, 4)
 }
 
-/** Focuses `control`, presses Enter, and answers the response to the `POST` to `pathname` that it caused. */
-export const pressEnterAndAwaitPost = async (
+/** Focuses `control`, presses `key`, and answers the response to the `POST` to `pathname` that it caused. */
+export const pressKeyAndAwaitPost = async (
   page: Page,
   control: Locator,
+  key: "Enter" | "Space",
   pathname: string
 ): Promise<PlaywrightResponse> => {
   const answered = page.waitForResponse((response) =>
     response.request().method() === "POST" && new URL(response.url()).pathname === pathname
   )
   await control.focus()
-  await page.keyboard.press("Enter")
+  await page.keyboard.press(key)
   return answered
 }
 
@@ -748,7 +749,7 @@ When("the visitor submits the reference form by keyboard in tab {string}", async
   name: string
 ) {
   const { page } = tabOf(this, name)
-  await pressEnterAndAwaitPost(page, page.getByRole("button", { name: PROTECTED_CONTROL }), "/")
+  await pressKeyAndAwaitPost(page, page.getByRole("button", { name: PROTECTED_CONTROL }), "Enter", "/")
 })
 
 /** Recovery replaced the header and content: one heading with the explanation, Log in again, nothing protected. */

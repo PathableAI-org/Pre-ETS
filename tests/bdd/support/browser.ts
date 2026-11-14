@@ -73,3 +73,22 @@ export const watchForDialogs = (): void => {
   }
   observe()
 }
+
+/** The roles counted as headers and controls when reading what the accessibility tree exposes. */
+const EXPOSED_ROLES: ReadonlySet<string> = new Set(["banner", "button", "checkbox", "combobox", "link", "textbox"])
+
+/**
+ * Each header and control in Chromium's own accessibility tree, as `role: name`, read over CDP. Playwright's role
+ * queries do not treat inert content as hidden; this tree leaves it out, as assistive technology and the keyboard do.
+ */
+export const exposedControls = async (page: Page): Promise<string[]> => {
+  const cdp = await page.context().newCDPSession(page)
+  try {
+    const { nodes } = await cdp.send("Accessibility.getFullAXTree")
+    return nodes
+      .filter((node) => !node.ignored && EXPOSED_ROLES.has(String(node.role?.value)))
+      .map((node) => `${String(node.role?.value)}: ${String(node.name?.value ?? "")}`)
+  } finally {
+    await cdp.detach()
+  }
+}
