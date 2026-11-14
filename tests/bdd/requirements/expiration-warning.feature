@@ -100,13 +100,16 @@ Feature: Expiration warning in every sharing tab, closed only by a renewal
   Scenario: A resumed tab confirms before it warns, and warns only in the warning period
     Two tabs of another browser present a copy of the visitor's session with their timers
     suspended, so they exchange no cross-tab messages with the visitor's tab. "S1" opens last, so
-    it holds the session's deadline; it returns ten seconds after its threshold. "S2" returns after
-    the visitor's Continue has renewed the session, still holding the earlier deadline.
+    it holds the session's deadline; it returns ten seconds after its threshold, and its session
+    check is held for half a second, so a warning shown before the answer would be seen. "S2"
+    returns after the visitor's Continue has renewed the session, still holding the earlier
+    deadline.
 
     Given the visitor has signed in at "springfield.localhost:3000" and opened tab "T1"
     And another browser sharing the visitor's session has opened tab "S2" with its timers suspended
     And another browser sharing the visitor's session has opened tab "S1" with its timers suspended
     When the visitor waits until 10 seconds after the warning threshold of tab "S1"
+    And the next session check of tab "S1" is held for half a second
     And tab "S1" resumes
     Then tab "S1" kept its protected content on resuming
     And tab "S1" confirms with the server, then shows the warning over its protected content within 2 seconds of resuming
@@ -135,6 +138,7 @@ Feature: Expiration warning in every sharing tab, closed only by a renewal
     When the visitor activates Continue with Enter in tab "T1"
     Then tabs "T1" and "T2" close their warning within 2 seconds of the renewal and hold its later deadline
     When the idle deadline of tabs "S3" passes
+    And the next session check of tab "S3" is held for half a second
     And tab "S3" resumes
     Then tab "S3" hid its protected content at once on resuming
     And tab "S3" confirms with the server, then shows the warning over its protected content within 2 seconds of resuming

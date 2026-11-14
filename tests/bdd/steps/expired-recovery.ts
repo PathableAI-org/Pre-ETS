@@ -56,7 +56,6 @@ const entryOf = (world: AppWorld): OpenEntry => {
   return entry
 }
 
-/** Sets one session-policy field in the scenario-owned Springfield tenant file, which is read on each request. */
 /**
  * Rewrites session policy in a scenario-owned tenant file; a field given as `undefined` is removed, so the tenant's
  * default applies. The site reads the file on every request, so later sessions adopt it.

@@ -374,6 +374,15 @@ Then(
 
 /** Accessible blocking (#156 slice B, quickstart §B). */
 
+/** Waits until the tab's header holds `held` as its deadline, within the tab's clock-offset estimate. */
+const untilHolding = (page: Page, held: number, timeout: number) =>
+  page.waitForFunction(
+    ({ deadline, tolerance }) =>
+      Math.abs(Number(document.querySelector("header")?.getAttribute("data-session-deadline")) - deadline) <= tolerance,
+    { deadline: held, tolerance: OFFSET_TOLERANCE_MILLISECONDS },
+    { polling: 50, timeout }
+  )
+
 /** The roster's attendance-note field; programmatic focus there is not activity, so nothing renews. */
 const ATTENDANCE_NOTE = "Attendance note"
 
@@ -387,12 +396,7 @@ Given(
     tab.deadline = await heldDeadline(tab.page)
     const sharing = tabOf(this, other)
     // The page load renewed the session, and the other tab adopts it from the broadcast after hydration (gap G2).
-    await sharing.page.waitForFunction(
-      ({ held, tolerance }) =>
-        Math.abs(Number(document.querySelector("header")?.getAttribute("data-session-deadline")) - held) <= tolerance,
-      { held: tab.deadline, tolerance: OFFSET_TOLERANCE_MILLISECONDS },
-      { polling: 50, timeout: 10_000 }
-    )
+    await untilHolding(sharing.page, tab.deadline, 10_000)
     sharing.deadline = await heldDeadline(sharing.page)
   }
 )
@@ -539,6 +543,30 @@ Then("tab {string} kept its protected content on resuming", function(this: AppWo
   assert.equal(resumptionOf(this, name).hiddenAtOnce, false, `tab "${name}" hid its content on resuming`)
 })
 
+/** Per scenario and tab: whether the warning was open while the tab's held session check waited for its answer. */
+const heldChecks = new WeakMap<AppWorld, Map<string, { warnedWhileHeld?: boolean | undefined }>>()
+
+/** How long request routing holds a resumed tab's session check before releasing it to the server unchanged. */
+const CHECK_HOLD_MILLISECONDS = 500
+
+/**
+ * Request routing holds the tab's next session status read for half a second, then records whether the warning was
+ * open meanwhile and releases it to the server unchanged. A tab that warned before the server answered would show it
+ * during the hold.
+ */
+When("the next session check of tab {string} is held for half a second", async function(this: AppWorld, name: string) {
+  const tab = tabOf(this, name)
+  const held: { warnedWhileHeld?: boolean | undefined } = {}
+  const checks = heldChecks.get(this) ?? new Map<string, { warnedWhileHeld?: boolean | undefined }>()
+  checks.set(name, held)
+  heldChecks.set(this, checks)
+  await tab.page.route("**/session/status", async (route) => {
+    await delay(CHECK_HOLD_MILLISECONDS)
+    held.warnedWhileHeld = (await warningIn(tab.page).count()) > 0
+    await route.continue()
+  }, { times: 1 })
+})
+
 /** The first session status answer the tab received since `from`, on the test's clock; fails after 10 seconds. */
 const statusAnswerSince = async (tab: Tab, from: number) => {
   const until = Date.now() + 10_000
@@ -553,6 +581,7 @@ const statusAnswerSince = async (tab: Tab, from: number) => {
 /**
  * FR-007, FR-012 (V-012, V-013): after resuming, the tab confirmed with the server, which answered the session usable,
  * and only then opened the warning, within 2 s of the resume, over its protected content and with no expiration modal.
+ * The confirmation was held, and no warning was open while it waited.
  */
 Then(
   "tab {string} confirms with the server, then shows the warning over its protected content within 2 seconds of resuming",
@@ -562,8 +591,9 @@ Then(
     await warningIn(tab.page).waitFor({ state: "visible", timeout: 10_000 })
     const shownAt = Date.now()
     assert.ok(shownAt - startedAt <= BOUND_MILLISECONDS, `tab "${name}" warned ${String(shownAt - startedAt)} ms late`)
-    const answer = await statusAnswerSince(tab, startedAt)
-    assert.ok(answer.status === 200 && answer.at <= shownAt, `tab "${name}" warned before the server confirmed`)
+    assert.equal((await statusAnswerSince(tab, startedAt)).status, 200)
+    const held = heldChecks.get(this)?.get(name)
+    assert.equal(held?.warnedWhileHeld, false, `tab "${name}" warned before the server answered its check`)
     await tab.page.getByRole("button", { name: PROTECTED_CONTROL }).waitFor({ state: "visible" })
     assert.equal(await tab.page.getByRole("dialog", { name: EXPIRED_COPY.heading }).count(), 0)
   }
@@ -576,13 +606,7 @@ Then(
     const tab = tabOf(this, name)
     const answer = await statusAnswerSince(tab, resumptionOf(this, name).startedAt)
     assert.equal(answer.status, 200)
-    const renewed = await heldDeadline(tabOf(this, source).page)
-    await tab.page.waitForFunction(
-      ({ held, tolerance }) =>
-        Math.abs(Number(document.querySelector("header")?.getAttribute("data-session-deadline")) - held) <= tolerance,
-      { held: renewed, tolerance: OFFSET_TOLERANCE_MILLISECONDS },
-      { polling: 50, timeout: 5_000 }
-    )
+    await untilHolding(tab.page, await heldDeadline(tabOf(this, source).page), 5_000)
     await delay(1_000)
     await assertNoWarning(tab, name)
   }
