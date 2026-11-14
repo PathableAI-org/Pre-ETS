@@ -9,7 +9,7 @@ import {
   createLogoutHandler,
   createSessionActivityHandler,
   createSessionStatusHandler,
-  type InPageSessionActivity
+  type SessionActivityRequestBody
 } from "../../src/next.ts"
 import {
   type InvalidationExpired,
@@ -127,7 +127,9 @@ const statusRequest = (reference = defaultReference) =>
     }
   })
 
-const activityBody = (coordinationTag: string, kind: InPageSessionActivity = "text-entry") =>
+type TabActivity = SessionActivityRequestBody["activity"]
+
+const activityBody = (coordinationTag: string, kind: TabActivity = "text-entry") =>
   JSON.stringify({ activity: kind, coordinationTag })
 const logoutBody = (coordinationTag: string, notAfter = Date.now() + 10_000) =>
   JSON.stringify({ coordinationTag, notAfter })
@@ -158,7 +160,9 @@ afterEach(() => {
 })
 
 const reference = fc.stringMatching(/^[A-Za-z0-9_-]{43}$/)
-const kind = fc.constantFrom<InPageSessionActivity>(
+/** Every kind a tab may send: the in-page kinds and the warning's Continue (#156 research D1). */
+const kind = fc.constantFrom<TabActivity>(
+  "continue-session",
   "intentional-control-activation",
   "keyboard-interaction",
   "text-entry",
@@ -198,7 +202,7 @@ describe("coordination tag [PREETS-SESSION-010]", () => {
   )
 })
 
-describe("activity and logout bind to the observed session [PREETS-SESSION-009, PREETS-SESSION-010]", () => {
+describe("activity and logout bind to the observed session [PREETS-SESSION-009, PREETS-SESSION-010, PREETS-SESSION-011]", () => {
   it.prop([reference, fc.boolean(), fc.string(), kind, provenance, contentType], { numRuns: 300 })(
     "renew iff the body tag equals the cookie's tag and the request is same-origin JSON",
     async (cookie, useTrueTag, otherTag, activityKind, [origin, sameOrigin], [type, json]) => {
@@ -245,7 +249,7 @@ describe("activity and logout bind to the observed session [PREETS-SESSION-009, 
   )
 })
 
-describe("activity handler outcomes [PREETS-SESSION-009]", () => {
+describe("activity handler outcomes [PREETS-SESSION-009, PREETS-SESSION-011]", () => {
   it("returns the renewed snapshot without writing the session cookie", async () => {
     const tag = await tagFor(defaultReference)
     install()
@@ -260,6 +264,28 @@ describe("activity handler outcomes [PREETS-SESSION-009]", () => {
       observedAtEpochMilliseconds: usableSession.observedAtEpochMilliseconds,
       revision: usableSession.revision,
       serverTimeEpochMilliseconds: NOW,
+      warningLeadMinutes: 4
+    })
+    expect(response.headers.getSetCookie()).toEqual([])
+  })
+
+  it("renews for Continue with that activity and the tenant's effective policy, like an in-page kind", async () => {
+    const tag = await tagFor(defaultReference)
+    install()
+
+    const response = await activity(post("/session/activity", activityBody(tag, "continue-session")))
+
+    expect(response.status).toBe(200)
+    expect(recorded.refreshes).toStrictEqual([{
+      activity: "continue-session",
+      policy: effectiveSessionPolicy(tenantConfig),
+      reference: defaultReference,
+      tenantAlias: alias
+    }])
+    expect(await response.json()).toMatchObject({
+      coordinationTag: tag,
+      idleDeadlineEpochMilliseconds: usableSession.idleDeadlineEpochMilliseconds,
+      revision: usableSession.revision,
       warningLeadMinutes: 4
     })
     expect(response.headers.getSetCookie()).toEqual([])
