@@ -23,3 +23,10 @@ contract. Use [Git and pull request workflow](../../docs/engineering/git-workflo
 - Do not redefine acceptance criteria, delivery scope, or accepted requirements.
 - If the diff only records execution results in `quickstart.md`, review those results as evidence rather than as a
   new architecture decision.
+- Check the pull request body opens with
+  [Decisions for the reviewer](../../docs/engineering/git-workflow.md#decisions-for-the-reviewer) and that it is
+  honest: every tradeoff between options, accepted limitation, and technical choice left open recorded further down
+  the body appears there. Flag `None` when the body records any of them.
+- Check the pull request states a [risk tier](../../docs/engineering/git-workflow.md#risk-tiers) and that the plan's
+  evidence matches it: a High plan has `contracts/telemetry.md` and a verifier per slice, and a Standard plan has no
+  telemetry contract and no telemetry-channel claim.
