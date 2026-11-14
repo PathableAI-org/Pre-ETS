@@ -15,6 +15,7 @@ import { knownExpiration } from "../../src/features/session-coordination/known-e
 import { adoptSnapshot } from "../../src/features/session-coordination/snapshot-order.ts"
 import { openTabChannel, type TabMessage } from "../../src/features/session-coordination/tab-channel.ts"
 import { TabCoordination, type TabViewState } from "../../src/features/session-coordination/tab-coordination.ts"
+import { inWarningPeriod, warningThreshold } from "../../src/features/session-coordination/warning-period.ts"
 import { ACTION_DENIAL_BODY, readActionDenial } from "../../src/providers/action-denial.ts"
 
 const WINDOW = 60_000
@@ -485,13 +486,14 @@ const NOW = Date.UTC(2026, 10, 13, 12, 0, 0)
 const DEADLINE = NOW + 60_000
 const COORDINATED_TAG = "tag-coordinated"
 const ENDED_KEY = `preets-session-ended:v1:${COORDINATED_TAG}`
+/** A session one minute from its deadline with the warning disabled, so only expiry acts (#156 FR-003). */
 const coordinated: SessionCoordinationSnapshot = {
   coordinationTag: COORDINATED_TAG,
   idleDeadlineEpochMilliseconds: DEADLINE,
   observedAtEpochMilliseconds: NOW,
   revision: 1,
   serverTimeEpochMilliseconds: NOW,
-  warningLeadMinutes: 2
+  warningLeadMinutes: 0
 }
 
 /** A status answer: 200 with a snapshot, or 401 with a `date` header. */
@@ -537,8 +539,8 @@ const coordinationHarness = () => {
 
   return {
     harness,
-    start: () => {
-      const coordination = new TabCoordination(coordinated, (state) => harness.states.push(state), () => null)
+    start: (snapshot = coordinated, content: HTMLElement | null = null) => {
+      const coordination = new TabCoordination(snapshot, (state) => harness.states.push(state), () => content)
       harness.stop = coordination.start()
       const observer = new BroadcastChannel("preets-session-coordination")
       observer.onmessage = (event: MessageEvent) => harness.messages.push(event.data)
@@ -880,5 +882,358 @@ describe("TabCoordination expiry (#157 research D7–D10) [PREETS-SESSION-012]",
     window.dispatchEvent(Object.assign(new Event("pagehide"), { persisted: true }))
 
     expect(latest()).toStrictEqual({ concealed: true, endedHere: false, pageHidden: true, view: "expired" })
+  })
+})
+
+describe("warning period (#156 research D2) [PREETS-SESSION-011]", () => {
+  const MINUTE = 60_000
+  const deadline = fc.integer({ max: 4_000_000_000_000, min: 0 })
+  const lead = fc.integer({ max: 29, min: 1 })
+  const time = fc.integer({ max: 4_000_000_000_000, min: 0 })
+
+  it.prop([deadline, time], { numRuns: 300 })("has no threshold and never holds with a lead of 0", (end, now) => {
+    const disabled = { idleDeadlineEpochMilliseconds: end, warningLeadMinutes: 0 }
+    expect(warningThreshold(disabled)).toBeUndefined()
+    expect(inWarningPeriod(disabled, now)).toBe(false)
+  })
+
+  it.prop([deadline, lead, fc.nat({ max: 29 * MINUTE })], { numRuns: 500 })(
+    "holds from the deadline minus the lead up to, not including, the deadline",
+    (end, minutes, offset) => {
+      const policy = { idleDeadlineEpochMilliseconds: end, warningLeadMinutes: minutes }
+      const span = minutes * MINUTE
+      expect(warningThreshold(policy)).toBe(end - span)
+      expect(inWarningPeriod(policy, end - span + (offset % span))).toBe(true)
+      expect(inWarningPeriod(policy, end - span - 1 - offset)).toBe(false)
+      expect(inWarningPeriod(policy, end + offset)).toBe(false)
+    }
+  )
+
+  it("starts exactly at the threshold and ends exactly at the deadline", () => {
+    const policy = { idleDeadlineEpochMilliseconds: 10 * MINUTE, warningLeadMinutes: 4 }
+    expect(inWarningPeriod(policy, 6 * MINUTE - 1)).toBe(false)
+    expect(inWarningPeriod(policy, 6 * MINUTE)).toBe(true)
+    expect(inWarningPeriod(policy, 10 * MINUTE - 1)).toBe(true)
+    expect(inWarningPeriod(policy, 10 * MINUTE)).toBe(false)
+  })
+})
+
+describe("TabCoordination warning (#156 research D3–D7) [PREETS-SESSION-011]", () => {
+  const { harness, start } = coordinationHarness()
+  const TIMEOUT = 5 * 60_000
+  const LEAD_MINUTES = 4
+  const WARNED_DEADLINE = NOW + TIMEOUT
+  const THRESHOLD = WARNED_DEADLINE - LEAD_MINUTES * 60_000
+  const warned: SessionCoordinationSnapshot = {
+    ...coordinated,
+    idleDeadlineEpochMilliseconds: WARNED_DEADLINE,
+    warningLeadMinutes: LEAD_MINUTES
+  }
+  const latest = () => harness.states.at(-1)
+
+  /** One answer, given the server time at which the request arrives. */
+  type Answer = (serverTime: number) => Response
+  /** The held session, unrenewed, read at that server time. */
+  const held: Answer = (serverTime) => Response.json({ ...warned, serverTimeEpochMilliseconds: serverTime })
+  /** The next revision, renewed for a full timeout at that server time. */
+  const renewed: Answer = (serverTime) =>
+    Response.json({
+      ...warned,
+      idleDeadlineEpochMilliseconds: serverTime + TIMEOUT,
+      revision: 2,
+      serverTimeEpochMilliseconds: serverTime
+    })
+  const failed: Answer = () => new Response(null, { status: 503 })
+  /** The session ended: 401, dated at the server time. */
+  const ended: Answer = (serverTime) =>
+    new Response(null, { headers: { date: new Date(serverTime).toUTCString() }, status: 401 })
+
+  interface Served {
+    readonly activity: unknown
+    readonly at: number
+    readonly path: string
+  }
+
+  /**
+   * Answers status reads and activity reports in order, the last answer repeating, with the server clock `skew`
+   * milliseconds from the tab's. Records each request's path, activity kind, and local time.
+   */
+  const serve = (answers: { readonly activity?: readonly Answer[]; readonly status?: readonly Answer[] }, skew = 0) => {
+    const requests: Served[] = []
+    const served = { activity: 0, status: 0 }
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((path: string, init?: RequestInit) => {
+        const kind = path === "/session/status" ? "status" : "activity"
+        const body = typeof init?.body === "string" ? JSON.parse(init.body) as { readonly activity?: unknown } : {}
+        requests.push({ activity: body.activity, at: Date.now(), path })
+        const list = answers[kind] ?? [failed]
+        const answer = list[Math.min(served[kind], list.length - 1)] ?? failed
+        served[kind] += 1
+        return Promise.resolve(answer(Date.now() + skew))
+      })
+    )
+    return requests
+  }
+
+  const statusReads = (requests: readonly Served[]) => requests.filter((request) => request.path === "/session/status")
+  const activityKinds = (requests: readonly Served[]) =>
+    requests.filter((request) => request.path === "/session/activity").map((request) => request.activity)
+
+  /**
+   * Protected content standing in for the DOM element: it keeps the coordinator's listeners, and `press` delivers a
+   * trusted character key on a text input inside it.
+   */
+  const protectedContent = () => {
+    const listeners = new Map<string, (event: Event) => void>()
+    const content = {
+      addEventListener: (type: string, listener: (event: Event) => void) => listeners.set(type, listener),
+      contains: () => false,
+      hidden: false,
+      inert: false,
+      removeEventListener: () => undefined
+    }
+    return {
+      content: content as unknown as HTMLElement,
+      press: () => listeners.get("keydown")?.(domEvent("keydown", textInput, { key: "a" }))
+    }
+  }
+
+  /** Starts a tab under the enabled policy and runs it to the threshold, where its confirmation opens the warning. */
+  const openWarning = async (answers: { readonly activity?: readonly Answer[] } = {}) => {
+    const requests = serve({ ...answers, status: [held] })
+    const coordination = start(warned)
+    await vi.advanceTimersByTimeAsync(THRESHOLD - NOW)
+    expect(latest()?.warning).toStrictEqual({ continuation: "idle" })
+    return { coordination, requests }
+  }
+
+  const postRenewed = (revision: number, coordinationTag = COORDINATED_TAG) => {
+    harness.observer?.postMessage({
+      coordinationTag,
+      idleDeadlineEpochMilliseconds: Date.now() + TIMEOUT,
+      observedAtEpochMilliseconds: Date.now(),
+      revision,
+      type: "renewed",
+      warningLeadMinutes: LEAD_MINUTES
+    })
+  }
+
+  it("confirms at its local threshold without concealing, and opens the warning on an answer in the period", async () => {
+    const requests = serve({ status: [held] })
+    start(warned)
+
+    await vi.advanceTimersByTimeAsync(THRESHOLD - NOW - 1)
+    expect(requests).toStrictEqual([])
+    expect(latest()?.warning).toBeUndefined()
+
+    await vi.advanceTimersByTimeAsync(1)
+    expect(requests.map((request) => request.path)).toStrictEqual(["/session/status"])
+    expect(latest()).toMatchObject({ concealed: false, view: "active", warning: { continuation: "idle" } })
+  })
+
+  it("opens no warning when the answer shows a renewal made elsewhere, and confirms again at the new threshold", async () => {
+    /** The renewal made at the threshold, unrenewed since, read at that server time. */
+    const renewal: Answer = (serverTime) =>
+      Response.json({
+        ...warned,
+        idleDeadlineEpochMilliseconds: THRESHOLD + TIMEOUT,
+        revision: 2,
+        serverTimeEpochMilliseconds: serverTime
+      })
+    const requests = serve({ status: [renewal] })
+    start(warned)
+
+    await vi.advanceTimersByTimeAsync(THRESHOLD - NOW)
+    expect(latest()?.warning).toBeUndefined()
+    expect(latest()?.deadline).toBe(THRESHOLD + TIMEOUT)
+
+    await vi.advanceTimersByTimeAsync(TIMEOUT - LEAD_MINUTES * 60_000 - 1)
+    expect(statusReads(requests)).toHaveLength(1)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(statusReads(requests)).toHaveLength(2)
+    expect(latest()?.warning).toStrictEqual({ continuation: "idle" })
+  })
+
+  it("opens no warning on a stale answer when a renewal broadcast arrived while its read was in flight", async () => {
+    let answer: (response: Response) => void = () => undefined
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        new Promise<Response>((resolve) => {
+          answer = resolve
+        })
+      )
+    )
+    start(warned)
+    await vi.advanceTimersByTimeAsync(THRESHOLD - NOW)
+
+    postRenewed(2)
+    await deliveries()
+    answer(held(THRESHOLD))
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(harness.states.some((state) => state.warning !== undefined)).toBe(false)
+    expect(latest()?.deadline).toBe(THRESHOLD + TIMEOUT)
+  })
+
+  it("checks again when the server's own threshold arrives after its estimate ran early", async () => {
+    const requests = serve({ status: [held] }, -300)
+    start(warned)
+
+    await vi.advanceTimersByTimeAsync(THRESHOLD - NOW)
+    expect(statusReads(requests)).toHaveLength(1)
+    expect(latest()?.warning).toBeUndefined()
+
+    await vi.advanceTimersByTimeAsync(300)
+    expect(statusReads(requests)).toHaveLength(2)
+    expect(latest()?.warning).toStrictEqual({ continuation: "idle" })
+  })
+
+  it("never confirms or warns before the deadline with a lead of 0", async () => {
+    const requests = serve({ status: [held] })
+    start({ ...warned, warningLeadMinutes: 0 })
+
+    await vi.advanceTimersByTimeAsync(WARNED_DEADLINE - NOW - 1)
+
+    expect(requests).toStrictEqual([])
+    expect(harness.states.some((state) => state.warning !== undefined)).toBe(false)
+  })
+
+  it("sends activity still pending at the threshold before confirming, so its renewal prevents the warning", async () => {
+    const requests = serve({ activity: [failed, renewed], status: [held] })
+    const { content, press } = protectedContent()
+    start(warned, content)
+    await vi.advanceTimersByTimeAsync(THRESHOLD - NOW - 30_000)
+    press()
+    await vi.advanceTimersByTimeAsync(20_000)
+    // The window the first report opened is still open, so this key press is coalesced until after the threshold.
+    press()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(activityKinds(requests)).toStrictEqual(["keyboard-interaction"])
+
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(requests.at(-1)).toStrictEqual({
+      activity: "keyboard-interaction",
+      at: THRESHOLD,
+      path: "/session/activity"
+    })
+    await vi.advanceTimersByTimeAsync(1_000)
+
+    expect(statusReads(requests)).toStrictEqual([])
+    expect(latest()?.warning).toBeUndefined()
+  })
+
+  it("confirms within a second when the pending activity sent at the threshold did not renew", async () => {
+    const requests = serve({ activity: [failed], status: [held] })
+    const { content, press } = protectedContent()
+    start(warned, content)
+    await vi.advanceTimersByTimeAsync(THRESHOLD - NOW - 30_000)
+    press()
+    await vi.advanceTimersByTimeAsync(20_000)
+    press()
+
+    await vi.advanceTimersByTimeAsync(10_000 + 999)
+    expect(statusReads(requests)).toStrictEqual([])
+    await vi.advanceTimersByTimeAsync(1)
+
+    expect(statusReads(requests)).toHaveLength(1)
+    expect(latest()?.warning).toStrictEqual({ continuation: "idle" })
+  })
+
+  it("classifies no in-page activity while the warning is open", async () => {
+    const requests = serve({ status: [held] })
+    const { content, press } = protectedContent()
+    start(warned, content)
+    await vi.advanceTimersByTimeAsync(THRESHOLD - NOW)
+    expect(latest()?.warning).toStrictEqual({ continuation: "idle" })
+
+    press()
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(activityKinds(requests)).toStrictEqual([])
+  })
+
+  it("closes when another tab broadcasts a renewal, and adopts its deadline", async () => {
+    await openWarning()
+
+    postRenewed(2)
+    await deliveries()
+
+    expect(latest()?.warning).toBeUndefined()
+    expect(latest()?.deadline).toBe(THRESHOLD + TIMEOUT)
+  })
+
+  it("stays open for an equal revision and for another session's renewal", async () => {
+    await openWarning()
+
+    postRenewed(1)
+    postRenewed(5, "tag-other")
+    await deliveries()
+
+    expect(latest()).toMatchObject({ deadline: WARNED_DEADLINE, warning: { continuation: "idle" } })
+  })
+
+  it("closes when another answer this tab receives shows a renewal", async () => {
+    const { coordination } = await openWarning()
+    serve({ status: [renewed] })
+
+    await coordination.confirm()
+
+    expect(latest()?.warning).toBeUndefined()
+  })
+
+  it("sends one Continue at once as continue-session, even with the activity window open, and closes on its renewal", async () => {
+    const requests = serve({ activity: [failed, renewed], status: [held] })
+    const { content, press } = protectedContent()
+    const coordination = start(warned, content)
+    await vi.advanceTimersByTimeAsync(THRESHOLD - NOW - 30_000)
+    // This report opens a window that is still open at the threshold.
+    press()
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(latest()?.warning).toStrictEqual({ continuation: "idle" })
+
+    const activation = coordination.continueSession()
+    void coordination.continueSession()
+    expect(activityKinds(requests)).toStrictEqual(["keyboard-interaction", "continue-session"])
+    expect(requests.at(-1)?.at).toBe(THRESHOLD)
+    await activation
+    await deliveries()
+
+    expect(latest()?.warning).toBeUndefined()
+    expect(latest()?.deadline).toBe(THRESHOLD + TIMEOUT)
+    expect(harness.messages).toContainEqual(expect.objectContaining({ revision: 2, type: "renewed" }))
+  })
+
+  it("leaves the warning open with Continue available after a Continue that failed", async () => {
+    const { coordination, requests } = await openWarning({ activity: [failed] })
+
+    await coordination.continueSession()
+    await deliveries()
+
+    expect(latest()).toMatchObject({ deadline: WARNED_DEADLINE, warning: { continuation: "failed" } })
+    expect(harness.messages).not.toContainEqual(expect.objectContaining({ type: "renewed" }))
+    await coordination.continueSession()
+    expect(activityKinds(requests)).toStrictEqual(["continue-session", "continue-session"])
+  })
+
+  it("replaces the warning with the expired outcome when the server refused a late Continue", async () => {
+    const { coordination } = await openWarning({ activity: [() => ended(WARNED_DEADLINE + 1_000)] })
+
+    await coordination.continueSession()
+
+    expect(latest()).toStrictEqual({ concealed: true, endedHere: false, view: "expired" })
+  })
+
+  it("still conceals and confirms at the deadline behind an open warning", async () => {
+    const { requests } = await openWarning()
+    serve({ status: [ended] })
+
+    await vi.advanceTimersByTimeAsync(WARNED_DEADLINE - THRESHOLD - 1)
+    expect(latest()).toMatchObject({ concealed: false, warning: { continuation: "idle" } })
+    expect(statusReads(requests)).toHaveLength(1)
+    await vi.advanceTimersByTimeAsync(1)
+
+    expect(latest()).toStrictEqual({ concealed: true, endedHere: false, view: "expired" })
   })
 })

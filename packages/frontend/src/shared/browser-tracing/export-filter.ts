@@ -2,7 +2,8 @@ import type { Attributes } from "@opentelemetry/api"
 import type { ReadableSpan, SpanExporter } from "@opentelemetry/sdk-trace-base"
 
 /**
- * Record names the telemetry contract defines (T-001–T-007, T-009–T-011; #157 T-005). Every other span is dropped.
+ * Record names the telemetry contract defines (T-001–T-007, T-009–T-011; #157 T-005; #156 T-001, T-003). Every other
+ * span is dropped.
  */
 const EXPORTED_SPAN_NAMES: ReadonlySet<string> = new Set([
   "BrowserTracing.buffer",
@@ -13,6 +14,7 @@ const EXPORTED_SPAN_NAMES: ReadonlySet<string> = new Set([
   "Focus.move",
   "GET",
   "HEAD",
+  "Interaction.continue",
   "Interaction.login",
   "Interaction.submit",
   "OPTIONS",
@@ -22,6 +24,7 @@ const EXPORTED_SPAN_NAMES: ReadonlySet<string> = new Set([
   "Router.transition",
   "TabChannel.receive",
   "TabChannel.send",
+  "TabCoordination.threshold",
   "TabCoordination.transition",
   "TRACE"
 ])
@@ -39,6 +42,7 @@ const EXPORTED_ATTRIBUTE_KEYS: ReadonlySet<string> = new Set([
   "preets.outcome",
   "preets.session.deadline_ms",
   "preets.session.server_time_ms",
+  "preets.session.warning_lead_minutes",
   "preets.tab.message.direction",
   "preets.tab.message.id",
   "preets.tab.message.kind",

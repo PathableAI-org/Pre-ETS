@@ -5,9 +5,12 @@ import type {
 } from "@pathableai/pre-ets-frontend-services"
 
 import {
+  recordContinueActivation,
   recordUiTransition,
+  recordWarningThreshold,
   type TraceScope,
   type TransitionCause,
+  type TransitionTiming,
   type UiState,
   withdrawSubmitCause
 } from "../../shared/browser-tracing.ts"
@@ -42,6 +45,7 @@ import {
   writeCurrentHint,
   writeWindowRecord
 } from "./tab-channel.ts"
+import { inWarningPeriod, warningThreshold } from "./warning-period.ts"
 
 /**
  * Tab states from data-model "Tab coordination states"; `Confirming` keeps its view. Concealment is orthogonal, so a
@@ -63,11 +67,18 @@ export interface TabViewState {
   /** Why the session ended, as far as this tab knows; set in the `recovery` view. */
   readonly recovery?: SessionEndCause | undefined
   readonly view: TabView
+  /** Present while the warning is open in this tab. `failed`: the last Continue did not renew and did not end. */
+  readonly warning?: undefined | { readonly continuation: "failed" | "idle" | "sending" }
   /** The held warning lead, exposed beside the deadline. */
   readonly warningLeadMinutes?: number | undefined
 }
 
-type TimerName = "confirm" | "flush" | "logout-watch" | "near-deadline" | "retry"
+type TimerName = "confirm" | "flush" | "logout-watch" | "near-deadline" | "retry" | "warning"
+
+/** Continue gives up after this long; no answer leaves the warning open (#156 research D6). */
+const CONTINUE_TIMEOUT_MILLISECONDS = 10_000
+/** Activity still pending at the threshold is sent, and the threshold is checked again this soon (#156 research D5). */
+const THRESHOLD_RECHECK_MILLISECONDS = 1_000
 
 const CONFIRMATION_RETRY_MILLISECONDS = 5_000
 /**
@@ -91,11 +102,17 @@ const listenAll = (listeners: readonly Listener[]) => {
   }
 }
 
+/** Where an adopted snapshot came from, which names why an open warning closes (#156 T-002). */
+type AdoptionSource = Extract<WarningCause, "continue" | "peer" | "renewal">
+
 /** Why this tab concealed temporarily, where the telemetry contract says (#157 T-003). */
 type ConcealCause = Extract<TransitionCause, "deadline" | "resume">
 
 /** Why this tab confirmed expiry: its own confirmation (at the deadline or on resume), or another tab's record. */
 type ExpiryCause = Extract<TransitionCause, "deadline" | "peer" | "resume">
+
+/** Why the warning opened, or why it closed: which answer showed the renewal (#156 T-002). */
+type WarningCause = Extract<TransitionCause, "continue" | "peer" | "renewal" | "resume" | "threshold">
 
 /** States whose transitions carry the concealment cause and server-clock timing (#157 T-003). */
 const TIMED_STATES: ReadonlySet<UiState> = new Set<UiState>(["content_concealed", "content_shown"])
@@ -244,15 +261,19 @@ export class TabCoordination {
     },
     renewed: (message) => {
       if (message.type !== "renewed") return
-      this.#adoptSnapshot({
-        coordinationTag: message.coordinationTag,
-        idleDeadlineEpochMilliseconds: message.idleDeadlineEpochMilliseconds,
-        observedAtEpochMilliseconds: message.observedAtEpochMilliseconds,
-        revision: message.revision,
-        // A relayed deadline is already on the server clock; the relaying tab's server time is not needed.
-        serverTimeEpochMilliseconds: Number.NaN,
-        warningLeadMinutes: message.warningLeadMinutes
-      }, false)
+      this.#adoptSnapshot(
+        {
+          coordinationTag: message.coordinationTag,
+          idleDeadlineEpochMilliseconds: message.idleDeadlineEpochMilliseconds,
+          observedAtEpochMilliseconds: message.observedAtEpochMilliseconds,
+          revision: message.revision,
+          // A relayed deadline is already on the server clock; the relaying tab's server time is not needed.
+          serverTimeEpochMilliseconds: Number.NaN,
+          warningLeadMinutes: message.warningLeadMinutes
+        },
+        false,
+        "peer"
+      )
     },
     "session-current": () => undefined,
     // A joining tab without storage or locks learns the open window (R37).
@@ -271,6 +292,10 @@ export class TabCoordination {
   /** The last recorded UI state; `undefined` until the first publish, which records `mounted → …`. */
   #uiState: UiState | undefined
   #view: TabView = "active"
+  /** The open warning and its Continue state; `undefined` while no warning is open (#156 research D4). */
+  #warning: TabViewState["warning"]
+  /** Why the warning just opened or closed, and the confirming server time; read by that publish only (T-002). */
+  #warningChange: undefined | { readonly cause: WarningCause; readonly serverTime?: number | undefined }
 
   get #serverOffset() {
     return this.#clock?.offset ?? 0
@@ -290,6 +315,31 @@ export class TabCoordination {
   /** Reads the session without renewing it and acts on the answer. Never throws. */
   async confirm(timeout?: number): Promise<void> {
     await this.#confirm("deadline", timeout)
+  }
+
+  /**
+   * The warning's Continue (#156 research D6): sent at once as `continue-session`, outside the activity window, inside
+   * the activation fact's scope (T-003). An activation while one is in flight sends nothing. A renewal closes the
+   * warning here and, through its broadcast, in every sharing tab; an ended session follows the ended path of an
+   * activity report; any other answer leaves the warning open with Continue available. Never throws.
+   */
+  async continueSession(): Promise<void> {
+    if (!this.#running() || this.#warning === undefined || this.#continuing()) return
+    this.#setContinuation("sending")
+    const outcome = await recordContinueActivation().run(() =>
+      sendActivity("continue-session", this.#tag, CONTINUE_TIMEOUT_MILLISECONDS)
+    )
+    if (!this.#live()) return
+    if (outcome._tag === "Usable") {
+      this.#calibrate(outcome)
+      this.#adoptSnapshot(outcome.snapshot, true, "continue")
+    }
+    if (outcome._tag === "Ended") {
+      // The ended path replaces the warning; until it does, Continue stays busy rather than offering a refused renewal.
+      this.#activityEnded(outcome.serverTime)
+      return
+    }
+    if (this.#continuing()) this.#setContinuation(outcome._tag === "Usable" ? "idle" : "failed")
   }
 
   /**
@@ -360,7 +410,7 @@ export class TabCoordination {
     this.#stopListening = stopListening
     if (!this.#replayEnded("peer")) {
       // Without readable storage the replay proves nothing, so confirm before trusting the snapshot (R39).
-      if (storage) this.#adoptSnapshot(this.#initial, true)
+      if (storage) this.#adoptSnapshot(this.#initial, true, "renewal")
       else this.#concealAndConfirm()
       if (!writeCurrentHint(this.#tag)) this.#hintOverride = this.#tag
       this.#channel.post({ coordinationTag: this.#tag, type: "session-current" })
@@ -375,11 +425,12 @@ export class TabCoordination {
   update(snapshot: SessionCoordinationSnapshot): void {
     if (!this.#running()) return
     // Its request timing is unknown, so it does not recalibrate the clock; a newer revision reveals content.
-    if (this.#adoptSnapshot(snapshot, true)) this.#reveal()
+    if (this.#adoptSnapshot(snapshot, true, "renewal")) this.#reveal()
   }
 
   #activity(activity: InPageSessionActivity) {
-    if (this.#view !== "active" || this.#concealed) return
+    // Nothing done while the warning is open renews the session; only Continue does (#156 research D5, FR-009).
+    if (this.#view !== "active" || this.#concealed || this.#warning !== undefined) return
     this.#withWindow(() => {
       this.#decide(activity)
     })
@@ -413,15 +464,20 @@ export class TabCoordination {
 
   /**
    * Adopts a snapshot of this tab's session when its store observation is later than the held one (research D6).
-   * Answers whether it was adopted.
+   * A renewal that takes the session out of its warning period closes the warning, with `source` as the cause
+   * (#156 research D4). Answers whether it was adopted.
    */
-  #adoptSnapshot(snapshot: SessionCoordinationSnapshot, broadcast: boolean): boolean {
+  #adoptSnapshot(snapshot: SessionCoordinationSnapshot, broadcast: boolean, source: AdoptionSource): boolean {
     if (snapshot.coordinationTag !== this.#tag) {
       this.#endConfirmed("deadline", undefined)
       return false
     }
     if (!adoptSnapshot(this.#held, snapshot)) return false
     this.#held = snapshot
+    if (this.#warning !== undefined && !inWarningPeriod(snapshot, this.#serverNow())) {
+      this.#warning = undefined
+      this.#warningChange = { cause: source }
+    }
     this.#applyDeadline()
     if (broadcast) {
       this.#channel?.post({
@@ -447,6 +503,7 @@ export class TabCoordination {
     this.#schedule("near-deadline", this.#deadline - ACTIVITY_WINDOW_MILLISECONDS + 1, () => {
       this.#flushNearDeadline()
     })
+    this.#scheduleWarning()
   }
 
   /**
@@ -468,8 +525,9 @@ export class TabCoordination {
       case "Usable":
         this.#calibrate(outcome)
         this.#resolveAttempts(outcome.snapshot)
-        if (this.#adoptSnapshot(outcome.snapshot, true) || startedAt >= this.#concealedSince) this.#reveal()
+        if (this.#adoptSnapshot(outcome.snapshot, true, "renewal") || startedAt >= this.#concealedSince) this.#reveal()
         this.#confirmAtServerDeadline(outcome.snapshot)
+        this.#evaluateWarning(outcome.snapshot, cause === "resume" ? "resume" : "threshold")
     }
   }
 
@@ -543,9 +601,25 @@ export class TabCoordination {
     form.requestSubmit(submitter)
   }
 
-  #decide(activity: InPageSessionActivity) {
+  /** Records the threshold fact and reads the session inside its scope, so the read is its child (T-001). */
+  #confirmWarning(cause: "resume" | "threshold") {
+    this.#stopTimer("warning")
+    const timing = this.#warningTiming(undefined)
+    const scope = timing === undefined ? CURRENT_SCOPE : recordWarningThreshold(cause, timing)
+    scope.run(() => {
+      this.#guard(this.#confirm(cause === "resume" ? "resume" : "deadline"))
+    })
+  }
+
+  /** A Continue of this tab is in flight. */
+  #continuing(): boolean {
+    return this.#warning?.continuation === "sending"
+  }
+
+  /** Sends or coalesces `activity`; it is sent at once within a window of `communicateBy` (B5-W, #156 research D5). */
+  #decide(activity: InPageSessionActivity, communicateBy = this.#deadline) {
     if (!this.#live()) return
-    const decision = decideActivityCommunication(this.#readWindow(), { deadline: this.#deadline, now: Date.now() })
+    const decision = decideActivityCommunication(this.#readWindow(), { deadline: communicateBy, now: Date.now() })
     this.#writeWindow(decision.record)
     if (decision._tag === "SendNow") {
       this.#pendingActivity = undefined
@@ -597,6 +671,27 @@ export class TabCoordination {
     }
     recordEnded(this.#tag, "ended")
     this.#end(false)
+  }
+
+  /**
+   * After a usable answer to this tab's own request (#156 research D3): when it describes the held snapshot and its
+   * server time is in the warning period, an active tab opens the warning. When the server's threshold has not arrived,
+   * the tab checks again when it does, at least 250 ms later, as it re-confirms at the server's deadline.
+   */
+  #evaluateWarning(answer: SessionCoordinationSnapshot, cause: Extract<WarningCause, "resume" | "threshold">) {
+    const held = this.#held
+    if (held === undefined || answer.coordinationTag !== this.#tag || answer.revision !== held.revision) return
+    const serverTime = answer.serverTimeEpochMilliseconds
+    if (this.#warnable() && inWarningPeriod(held, serverTime)) {
+      this.#openWarning(cause, serverTime)
+      return
+    }
+    const threshold = warningThreshold(held)
+    if (threshold === undefined || serverTime >= threshold || this.#timers.has("warning")) return
+    const wait = Math.max(threshold - serverTime, NEAR_DEADLINE_RETRY_MILLISECONDS)
+    this.#schedule("warning", Date.now() + wait, () => {
+      this.#reachThreshold()
+    })
   }
 
   /**
@@ -726,6 +821,14 @@ export class TabCoordination {
     this.#setView("logout-failed")
   }
 
+  /** Opens the warning on a confirming answer at `serverTime`; the transition records why (#156 T-002). */
+  #openWarning(cause: Extract<WarningCause, "resume" | "threshold">, serverTime: number) {
+    this.#warning = { continuation: "idle" }
+    this.#stopTimer("warning")
+    this.#warningChange = { cause, serverTime }
+    this.#publish()
+  }
+
   /**
    * Conceals before the page enters the back/forward cache, and hides the expiration modal, so a restored page shows
    * neither until `RestoredPageGuard` reloads it (#157 FR-018).
@@ -734,6 +837,12 @@ export class TabCoordination {
     if (!event.persisted) return
     if (this.#view === "expired") this.#notify({ concealed: true, endedHere: false, pageHidden: true, view: "expired" })
     else this.#conceal()
+  }
+
+  /** Whether this tab's server-time estimate has reached the held warning threshold. */
+  #pastThreshold(): boolean {
+    const threshold = this.#held === undefined ? undefined : warningThreshold(this.#held)
+    return threshold !== undefined && this.#serverNow() >= threshold
   }
 
   #post(type: "logged-out") {
@@ -752,9 +861,33 @@ export class TabCoordination {
       deadline: this.#held === undefined ? undefined : this.#deadline,
       endedHere: false,
       view: this.#view,
+      warning: this.#warning,
       warningLeadMinutes: this.#held?.warningLeadMinutes
     })
-    return this.#transition()
+    const transition = this.#transition()
+    this.#warningChange = undefined
+    return transition
+  }
+
+  /**
+   * The local warning threshold arrived (#156 research D3, D5). Coalesced activity this tab still holds is sent at once,
+   * so real interaction is not left behind a warning, and the threshold is checked again within a second; a renewal
+   * meanwhile moves this timer. Otherwise the tab confirms without concealing, inside the threshold fact (T-001).
+   */
+  #reachThreshold() {
+    if (!this.#warnable()) return
+    const activity = this.#pendingActivity
+    if (activity === undefined) {
+      this.#confirmWarning("threshold")
+      return
+    }
+    this.#withWindow(() => {
+      if (this.#readWindow()?.pendingSince === undefined) this.#pendingActivity = undefined
+      else this.#decide(activity, Date.now())
+    })
+    this.#schedule("warning", Date.now() + THRESHOLD_RECHECK_MILLISECONDS, () => {
+      if (this.#warnable()) this.#confirmWarning("threshold")
+    })
   }
 
   #readWindow() {
@@ -776,6 +909,7 @@ export class TabCoordination {
    */
   #recover(cause: SessionEndCause): true {
     this.#view = "recovery"
+    this.#warning = undefined
     this.#hideContent(true)
     this.#notify({ concealed: true, endedHere: false, recovery: cause, view: "recovery" })
     const from = this.#uiState
@@ -825,7 +959,9 @@ export class TabCoordination {
     const overdue = (hint !== undefined && hint !== this.#tag) || Date.now() >= this.#deadline
     const transition = overdue ? this.#conceal("resume") : CURRENT_SCOPE
     transition.run(() => {
-      this.#guard(this.#confirm("resume"))
+      // Past the local threshold the confirmation is also the threshold fact's, inside the concealment (#156 T-001).
+      if (this.#warnable() && this.#pastThreshold()) this.#confirmWarning("resume")
+      else this.#guard(this.#confirm("resume"))
     })
   }
 
@@ -862,6 +998,18 @@ export class TabCoordination {
     })
   }
 
+  /** With a positive held lead and no open warning, the tab confirms at its local threshold (#156 research D3). */
+  #scheduleWarning() {
+    const threshold = this.#held === undefined ? undefined : warningThreshold(this.#held)
+    if (threshold === undefined || this.#warning !== undefined) {
+      this.#stopTimer("warning")
+      return
+    }
+    this.#schedule("warning", threshold - this.#serverOffset, () => {
+      this.#reachThreshold()
+    })
+  }
+
   #send(activity: InPageSessionActivity) {
     // In memory the window is shared by announcing each communication (R24).
     if (!this.#sharedWindow) this.#channel?.post({ at: Date.now(), coordinationTag: this.#tag, type: "communicated" })
@@ -870,7 +1018,8 @@ export class TabCoordination {
         if (!this.#live()) return
         if (outcome._tag === "Usable") {
           this.#calibrate(outcome)
-          this.#adoptSnapshot(outcome.snapshot, true)
+          this.#adoptSnapshot(outcome.snapshot, true, "renewal")
+          this.#evaluateWarning(outcome.snapshot, "threshold")
         }
         if (outcome._tag === "Ended") this.#activityEnded(outcome.serverTime)
       })
@@ -882,9 +1031,16 @@ export class TabCoordination {
     return Date.now() + this.#serverOffset
   }
 
+  #setContinuation(continuation: "failed" | "idle" | "sending") {
+    this.#warning = { continuation }
+    this.#publish()
+  }
+
+  /** Leaving the `active` view closes the warning (#156 research D4). */
   #setView(view: Exclude<TabView, "ended" | "expired" | "recovery">): TraceScope {
     if (!this.#running()) return CURRENT_SCOPE
     this.#view = view
+    if (view !== "active") this.#warning = undefined
     return this.#publish()
   }
 
@@ -947,6 +1103,7 @@ export class TabCoordination {
     if (!this.#running()) return false
     this.#clearTimers()
     this.#pendingActivity = undefined
+    this.#warning = undefined
     for (const attemptId of this.#attempts.keys()) removePendingLogout(this.#tag, attemptId)
     this.#attempts.clear()
     this.#view = view
@@ -955,7 +1112,7 @@ export class TabCoordination {
   }
 
   /** The held deadline and this tab's best server-time estimate, both on the server clock (#157 T-003). */
-  #timing(serverTime: number | undefined) {
+  #timing(serverTime: number | undefined): TransitionTiming | undefined {
     if (this.#held === undefined) return undefined
     const estimate = this.#serverNow()
     return {
@@ -974,12 +1131,30 @@ export class TabCoordination {
   #transition(): TraceScope {
     // Recovery and expiry record their own transition once, with its cause.
     if (this.#view === "recovery" || this.#view === "expired") return CURRENT_SCOPE
-    const to = UI_STATES[this.#view][this.#concealed ? 1 : 0]
+    const to = this.#uiStateNow(this.#view)
     if (to === this.#uiState) return CURRENT_SCOPE
     const from = this.#uiState
     this.#uiState = to
+    return recordUiTransition(from, to, this.#transitionDetail(from, to))
+  }
+
+  /**
+   * The cause and server-clock timing a transition carries, where the telemetry contract says (#157 T-003). Into and
+   * out of `warning_shown`: the warning's cause, or the concealment's, with the held lead (#156 T-002).
+   */
+  #transitionDetail(from: UiState | undefined, to: UiState) {
+    if (to === "warning_shown" || from === "warning_shown") {
+      const cause = this.#warningChange?.cause ?? this.#concealCause
+      return cause === undefined ? undefined : { cause, timing: this.#warningTiming(this.#warningChange?.serverTime) }
+    }
     const cause = TIMED_STATES.has(to) ? this.#concealCause : undefined
-    return recordUiTransition(from, to, cause === undefined ? undefined : { cause, timing: this.#timing(undefined) })
+    return cause === undefined ? undefined : { cause, timing: this.#timing(undefined) }
+  }
+
+  /** The running view's UI state; the warning shows over revealed content only (#156 research D7). */
+  #uiStateNow(view: Exclude<TabView, "expired" | "recovery">): UiState {
+    if (view === "active" && !this.#concealed && this.#warning !== undefined) return "warning_shown"
+    return UI_STATES[view][this.#concealed ? 1 : 0]
   }
 
   /**
@@ -990,6 +1165,18 @@ export class TabCoordination {
     if (this.#held === undefined) return Number.POSITIVE_INFINITY
     const estimate = Math.max(this.#serverNow(), serverTime ?? Number.NEGATIVE_INFINITY)
     return Math.max(0, this.#held.idleDeadlineEpochMilliseconds - estimate)
+  }
+
+  /** The tab may open a warning: it runs in the `active` view with a positive held lead and no warning open. */
+  #warnable(): boolean {
+    const lead = this.#held?.warningLeadMinutes ?? 0
+    return this.#running() && this.#view === "active" && this.#warning === undefined && lead > 0
+  }
+
+  /** `#timing` with the held warning lead, for threshold facts and warning transitions (#156 T-001, T-002). */
+  #warningTiming(serverTime: number | undefined): TransitionTiming | undefined {
+    const timing = this.#timing(serverTime)
+    return timing === undefined ? undefined : { ...timing, warningLeadMinutes: this.#held?.warningLeadMinutes }
   }
 
   /**
