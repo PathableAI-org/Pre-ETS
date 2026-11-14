@@ -1189,6 +1189,27 @@ describe("TabCoordination warning (#156 research D3–D7) [PREETS-SESSION-011]",
     expect(latest()?.warning).toStrictEqual({ continuation: "idle" })
   })
 
+  it("confirms at once at the threshold when another tab already reported the activity it still holds", async () => {
+    const requests = serve({ status: [held] })
+    start(warned)
+    await deliveries()
+    // Another tab coalesced a key press and reported it; this tab learned of it only as pending, so it still holds it.
+    harness.observer?.postMessage({
+      activity: "text-entry",
+      coordinationTag: COORDINATED_TAG,
+      sendAt: NOW + 10_000,
+      type: "pending"
+    })
+    await deliveries()
+    await vi.advanceTimersByTimeAsync(THRESHOLD - NOW - 1)
+    expect(requests).toStrictEqual([])
+
+    await vi.advanceTimersByTimeAsync(1)
+
+    expect(requests.map((request) => request.path)).toStrictEqual(["/session/status"])
+    expect(latest()?.warning).toStrictEqual({ continuation: "idle" })
+  })
+
   it("classifies no in-page activity while the warning is open", async () => {
     const requests = serve({ status: [held] })
     const { content, press } = protectedContent()
