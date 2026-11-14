@@ -57,7 +57,7 @@ const TenantConfigSchema = TenantFields.pipe(
 
 /**
  * Validated tenant file content. Omitted settings stay omitted; use {@link effectiveSessionPolicy} for defaults.
- * Resolved credentials never belong in this document. Credential lookup is deferred until a consumer needs it.
+ * Resolved credentials never belong in this document; authentication resolves `clientSecretRef` itself.
  */
 export type TenantConfig = typeof TenantConfigSchema.Type
 
