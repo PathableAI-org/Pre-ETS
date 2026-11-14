@@ -77,19 +77,20 @@ per slice, so a later slice does not hide an earlier slice's failure.
 
 A stack runs as separate agent sessions with distinct responsibilities:
 
-| Session        | Owns                                                                                         | Does not                                                                                  |
-| -------------- | -------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| Orchestrator   | Starting the other sessions, passing each the identifiers it needs, relaying human decisions | Edit feature branches                                                                     |
-| Specification  | `spec.md`, `verification.md`, the specification pull request                                 | Plan modules or telemetry                                                                 |
-| Plan           | `plan.md`, `contracts/modules.md`, `contracts/telemetry.md`, `quickstart.md`, slices         | Change acceptance criteria                                                                |
-| Implementation | `tasks.md`, the code and instrumentation for each slice, slice pull requests                 | Mark a slice ready without a verification report, or with an open blocking review finding |
-| Verification   | Running pushed revisions, inspecting the running application and its telemetry, reports      | Edit any branch or fix the implementation                                                 |
-| Review         | Reviewing pushed revisions for correctness reasoning and maintainability, review notes       | Edit any branch or fix the implementation                                                 |
+| Session        | Owns                                                                                                      | Does not                                                                                  |
+| -------------- | --------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| Orchestrator   | Starting and briefing the other sessions, relaying human decisions and escalations, reporting stack state | Edit, merge, or mark ready any branch, approve a phase, or read code                      |
+| Specification  | `spec.md`, `verification.md`, the specification pull request                                              | Plan modules or telemetry                                                                 |
+| Plan           | `plan.md`, `contracts/modules.md`, `contracts/telemetry.md`, `quickstart.md`, slices                      | Change acceptance criteria                                                                |
+| Implementation | `tasks.md`, the code and instrumentation for each slice, slice pull requests                              | Mark a slice ready without a verification report, or with an open blocking review finding |
+| Verification   | Running pushed revisions, inspecting the running application and its telemetry, reports                   | Edit any branch or fix the implementation                                                 |
+| Review         | Reviewing pushed revisions for correctness reasoning and maintainability, review notes                    | Edit any branch or fix the implementation                                                 |
 
 The orchestrator starts one verification session and, for High and Standard work, one review session per stack,
 alongside the implementation session. It gives the implementation session the other two session identifiers, and
 gives each of the other two the implementation session's identifier. [Code review session](code-review.md) owns the
-reviewer's scope, findings, and loop. Only a person approves and merges a phase, as the Git workflow requires.
+reviewer's scope, findings, and loop. Only a person approves and merges a phase, as the Git workflow requires. [Orchestration](orchestration.md) owns
+the orchestrator's lifecycle by tier, stop points, concurrency, and each role's model and effort.
 
 ## The verification loop
 
