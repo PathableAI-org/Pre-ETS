@@ -34,6 +34,8 @@ export class AppWorld extends World {
   secondaryProcess: ChildProcess | undefined
   readonly sessionPrefix = `preets:bdd:session:${randomUUID()}:`
   staticAlias: string | undefined
+  /** Identities of the scenario's configured tenants, recorded before any step alters their files. */
+  tenantIdentities: { clientId: string; displayName: string }[] = []
   readonly transactionPrefix = `preets:bdd:oidc-tx:${randomUUID()}:`
   transactionTtlSeconds = 600
 }

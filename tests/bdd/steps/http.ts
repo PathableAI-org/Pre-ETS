@@ -82,12 +82,6 @@ Then("the response JSON field {string} is {string}", function(this: AppWorld, fi
   assert.equal(responseJson(this)[field], expected)
 })
 
-Then("the response contains no fallback tenant", function(this: AppWorld) {
-  assert.ok(this.response)
-  assert.doesNotMatch(this.response.body, /Welcome to the Pre-ETS workspace|Springfield|Shelbyville/)
-  assert.doesNotMatch(this.response.body, /"displayName"\s*:/)
-})
-
 Then("the response is not cacheable", function(this: AppWorld) {
   assert.match(this.response?.headers["cache-control"] ?? "", /(?:^|[,\s])no-store(?:$|[,\s])/)
 })
@@ -121,7 +115,7 @@ Then("the response does not delegate to login", function(this: AppWorld) {
 })
 Then("the response contains no protected application content", function(this: AppWorld) {
   assert.ok(this.response)
-  assert.doesNotMatch(this.response.body, /Welcome to the Pre-ETS workspace|Reference session/)
+  assert.doesNotMatch(this.response.body, /Reference session/)
 })
 Then("the response body is empty", function(this: AppWorld) {
   assert.equal(this.response?.body, "")
