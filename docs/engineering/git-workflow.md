@@ -13,10 +13,69 @@ the Git and review boundaries around those processes.
 Use the `speckit-stack` skill for the commands. It is project-owned and uses GitHub stacked pull requests through
 the `gh stack` extension. Do not add another stack manager or a custom Git orchestrator.
 
+## Risk tiers
+
+Process weight follows risk. Each delivery issue, and each pull request outside the requirements and delivery-plan
+workflows, has one tier: High, Standard, or Light. The tier decides what evidence the work needs. Whether the work
+adds behavior or fixes it inside an approved contract decides how many pull requests it uses.
+
+### Triggers
+
+Work is **High** when any of these holds:
+
+1. A linked requirement is classified `Regulatory` or `Security`, or its ID is in the `HIPAA`, `SECURITY`, `SESSION`,
+   or `TENANT` area.
+2. It changes how participant records or other protected health information (PHI) are stored, transmitted, accessed,
+   exported, retained, or deleted. Any change under `packages/backend/`, `packages/domain/`, or a database migration
+   counts. So does a frontend Server Action, route handler, or form that adds or changes the record data it reads or
+   sends. UI work on participant records that leaves that data flow unchanged does not count.
+3. It changes authentication, sessions, authorization, or tenant binding. Changes under
+   `packages/frontend-services/src/` in `authentication`, `session`, `tenant`, `config`, `request-host.ts`, or
+   `opaque-token.ts`, or under `packages/frontend/src/` in `proxy.ts` or `shared/session-recovery`, count.
+4. It adds or changes an exported telemetry signal, attribute, resource attribute, or exporter, in either process.
+   Changes under `packages/frontend-services/src/observability`, `packages/frontend/src/instrumentation*.ts`, or
+   `packages/frontend/src/shared/browser-tracing` count.
+
+Otherwise, work is **Standard** when it adds or changes behavior a stakeholder can observe, and **Light** when it
+does not: refactors, tooling, documentation, dependency updates, generated Spec Kit upgrades, and fixes that stay
+inside an approved contract. When it is unclear whether a trigger matches, use the higher tier.
+
+### Process by tier
+
+| Tier     | New behavior or contract                                                                                                                                              | Fix inside an approved contract                                                   |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| High     | A specification pull request, an engineering-plan pull request with a telemetry contract, and verified implementation slices, as in [the full stack](#the-full-stack) | One pull request that names its triggers and carries a verification report        |
+| Standard | One combined specification-and-plan pull request without a telemetry contract, then verified implementation slices, as in [the combined stack](#the-combined-stack)   | One pull request with normal CI, naming the tests that cover the fix              |
+| Light    | Not applicable: new behavior is Standard or High                                                                                                                      | One pull request with normal CI. No `verification.md` and no verification report. |
+
+[The verification harness](verification-harness.md#verification-by-risk-tier) owns what `verification.md` contains
+and what the verifier does at each tier. Requirements and delivery-plan changes are not tiered. They use their own
+workflows and land on `main` directly.
+
+### Recording and changing a tier
+
+- The delivery issue's **Risk tier** section names the tier and every trigger that matched, or the condition that
+  makes the work Standard or Light. An agent drafting the issue proposes the tier. The maintainer sets it when the
+  issue is published.
+- `spec.md` repeats the tier and its triggers in its header. Each pull request carries the matching
+  `risk:high`, `risk:standard`, or `risk:light` label and states the tier in its body. A one-pull-request change
+  without a delivery issue sets its tier in the pull request body by the same triggers.
+- Anyone, including an agent, may raise a tier at any phase by recording the trigger in the issue, or in the pull
+  request when there is no issue. Approved phases stay approved. Add what the higher tier requires through the
+  [corrections](#corrections) path before the next phase starts, for example a corrective plan pull request that
+  adds the telemetry contract.
+- Only the maintainer may lower a tier below what the triggers produce, with the reason recorded in the delivery
+  issue. A trigger from a requirement classified `Regulatory` or `Security` cannot be lowered that way. It needs a
+  feature-specific exception under the
+  [constitution's governance](../../.specify/memory/constitution.md#governance).
+- An agent never lowers a tier, and never chooses a lower tier when a trigger matches.
+
 ## When to open a stack
 
-A substantial feature for one delivery issue uses a specification pull request, an engineering-plan pull request,
-and one or more implementation-slice pull requests:
+### The full stack
+
+A High feature for one delivery issue uses a specification pull request, an engineering-plan pull request, and one
+or more implementation-slice pull requests:
 
 | Pull request         | Reviewer                        | Typical artifacts                                                                                     | Approval means                                                           |
 | -------------------- | ------------------------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
@@ -29,6 +88,18 @@ not redefine acceptance criteria. Tasks belong on the first implementation branc
 are not a separate gate. [The verification harness](verification-harness.md) describes how telemetry is planned and
 how each slice is verified.
 
+A High feature combines specification and plan only as the maintainer's explicit review choice for a small, coherent
+feature. Record that choice in the pull request body. Do not collapse gates only to avoid a pull request.
+
+### The combined stack
+
+A Standard feature puts `spec.md`, `verification.md`, the specification checklist, `plan.md`, `contracts/modules.md`,
+and `quickstart.md` in one pull request on the specification branch, using the specification template. Approval
+means both that the expectations are defined and that the architecture and slices fit them. The plan has no
+`contracts/telemetry.md`. A claim that needs server or browser telemetry is trigger 4 and makes the work High.
+Implementation slices follow as in the full stack, starting at `{number}-{slug}-impl` on top of the specification
+branch.
+
 ### Implementation slices
 
 The engineering plan divides implementation into slices. Each slice is one pull request in the stack:
@@ -40,17 +111,13 @@ The engineering plan divides implementation into slices. Each slice is one pull 
 - **Vertical.** Each slice passes CI, `pnpm check:unused`, and `pnpm check:health` on its own. A public contract
   lands with its first consumer and its evidence, not ahead of them.
 - **Verified.** A slice is marked ready for review only after the verification agent's latest report passes the
-  [verification gate](verification-harness.md#gate-and-escalation).
+  [verification gate](verification-harness.md#gate-and-escalation) for its tier.
 
 If implementation shows that the planned slices cannot meet these rules, change the plan's slices through the
 [corrections](#corrections) path rather than letting one slice grow.
 
-Use one pull request when the change is not that specification, plan, and implementation decision. Say which gates
-are combined, or why a stack does not apply:
-
-- Requirements and delivery-plan changes use their own workflows and land on `main` directly.
-- Dependency updates, generated Spec Kit upgrades, and fixes that stay inside an approved contract use one pull request.
-- Combining specification and plan is an explicit review choice for a small, coherent feature. Record that choice in the pull request body. Do not collapse gates only to avoid a pull request.
+A fix inside an approved contract, and Light work, use one pull request with the
+[change template](../../.github/PULL_REQUEST_TEMPLATE/change.md). Say why a stack does not apply.
 
 ## Branches
 
@@ -104,7 +171,7 @@ worktree clean. After GitHub rebases the remaining branches, fetch and match tho
 the pre-rebase commits on top.
 
 Merge a native stack with `gh stack merge --squash`. A specification that is still the only pull request, and a
-recorded one-pull-request exception, are not a native stack. Merge those with `gh pr merge --squash`.
+one-pull-request change, are not a native stack. Merge those with `gh pr merge --squash`.
 
 The repository squash-merges with the pull request title as the commit subject and a blank body. The title is the
 durable history. Put the rationale in the specification, plan, and evidence files. Two repository settings are
@@ -136,6 +203,43 @@ Pull request bodies use the templates in `.github/PULL_REQUEST_TEMPLATE/`. A spe
 associates the delivery issue with `Contributes to #N`. An implementation pull request uses `Closes #N` only when
 its completion evidence satisfies that issue. None of these pull requests closes the issue merely by existing.
 
+### Decisions for the reviewer
+
+Every pull request body opens with a **Decisions for the reviewer** section, before the evidence. It names what a
+person must actually decide to approve this pull request, so a long body or a stack approved together is not
+approved without reading it:
+
+- A first line naming the pull requests approved with this one, when a stack is approved or merged together.
+- Then three to five bullets, each starting with one of these labels: **Tradeoff**, **Contract change**,
+  **Accepted limitation**, **Beyond plan**, **Evidence substitution**, or **Outstanding manual check**. Each bullet
+  says what was chosen or left undone and links where the full evidence is.
+- Every `not established` or `blocked` result, accepted or approved limitation, library workaround, change beyond the
+  plan's text, substituted observation, and manual check still waiting for a person appears there. Group related
+  items rather than dropping one.
+- More than five bullets usually means the pull request carries more than one decision. Consider splitting it.
+- When there is nothing to decide, write `None: conforms to the approved specification and plan, with no
+  limitations.` Do not use that line when the body below records a limitation.
+
+The rest of the body is the evidence for those decisions. A worked example, from slice B of #157 (#406):
+
+```markdown
+## Decisions for the reviewer
+
+Approve together with: #403, #404, #405, #407 (the stack merges together).
+
+- **Accepted limitation, L-1 (#400):** `Modal` cannot be made non-dismissible. The workaround leaves a visible
+  Close modal button that does nothing, an outside click can move focus to `body`, and the page has no `h1` while
+  the modal shows. Re-run V-011, V-013, and V-014 when #400 lands.
+- **Beyond plan:** the tab confirms again at the server's deadline, within 300 ms, which the B5 bound needs. No
+  contract changes.
+- **Evidence substitution:** the step 3 sequence in quickstart §B is produced with a renewal from a second browser,
+  because a broadcast renewal reaches S2 and it never conceals.
+- **Accepted limitation:** suspension is emulated with Playwright's clock and a visibility change, as
+  `verification.md` "emulated freeze" approves, so the paint before script runs is not observed.
+- **Outstanding manual check:** the screen-reader items in quickstart §B.6 need a person. V-019 to V-022 stay
+  incomplete until slice C.
+```
+
 ## Review
 
 Human review is the approval. Copilot advice is input to that review.
@@ -152,6 +256,8 @@ Path-scoped instructions in `.github/instructions/` set the review lens:
 - Specification files: the delivery issue, accepted requirements, and delivery scope. Module design is out of scope.
 - Plan and contract files: boundaries, public contracts, Effect shape, telemetry contract, slices, and evidence. Acceptance criteria stay as approved.
 - Implementation files: conformance, tests, security, telemetry data classes, and unapproved contract drift.
+- Every phase: the [Decisions for the reviewer](#decisions-for-the-reviewer) section is present and honest, and the
+  stated risk tier matches its triggers.
 
 Respond to each Copilot finding as accepted, rejected with a reason, or waiting on a human decision. Do not apply
 findings automatically.

@@ -52,6 +52,21 @@ is never emitted. The telemetry contract says how that fact is verified instead.
 Instrumentation named in an approved telemetry contract is product code. Commit it with the slice that implements
 the behavior. Durable tests still do not assert spans, logs, or attributes. The verification agent observes them.
 
+## Verification by risk tier
+
+The [risk tier](git-workflow.md#risk-tiers) scales what verification needs. The tier sets the minimum. A
+`verification.md` may plan more.
+
+| Tier               | `verification.md`                                                                                                                                                                                                                                                          | Verifier                                                                                                                                                                                                 |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| High, new behavior | Everything above, with every channel available. Each security, tenant, or PHI claim also names its rejection path.                                                                                                                                                         | One report per slice through [the verification loop](#the-verification-loop), including telemetry queries and the forbidden-data check                                                                   |
+| High, fix          | None. The pull request body lists the claims the fix establishes, each with its observation and channel.                                                                                                                                                                   | One report on the pull request for those claims, at the verified SHA, with the forbidden-data check                                                                                                      |
+| Standard           | Claims, meaningful violations, observations, and channels limited to browser interaction, assistive technology, module tests, and requirements BDD, plus the planned manual procedure. No server or browser telemetry channel: a claim that needs one makes the work High. | One report per slice through the verification loop, using the browser, BDD, and module evidence. No telemetry queries or forbidden-data check, because Standard work does not change exported telemetry. |
+| Light              | None                                                                                                                                                                                                                                                                       | None. Normal CI and the checks the pull request names.                                                                                                                                                   |
+
+The [gate](#gate-and-escalation) applies to every verified tier. A slice with no assigned telemetry rows meets the
+first condition trivially.
+
 ## Implementation slices
 
 [Git and pull request workflow](git-workflow.md#implementation-slices) defines slices and their size and independence

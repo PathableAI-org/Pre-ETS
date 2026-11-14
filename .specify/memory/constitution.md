@@ -1,14 +1,22 @@
 <!--
 Sync Impact Report
-Version change: 1.3.0 → 1.3.1 (PATCH: pointer replacement that preserves every obligation)
-Reason: Agent guidance consolidation. The pre-commit check list was restated here, in AGENTS.md, and in
-docs/engineering/fallow.md. AGENTS.md now owns the operational list, and this workflow step points to it.
-Modified principles: none.
-Modified sections: Development Workflow and Review step 6 references the AGENTS.md "Before committing"
-checks instead of restating them; feature-specific checks, the pre-commit hook protections, and the ban on
-committing generated output remain required through that section.
-Affected artifacts: AGENTS.md, docs/engineering/fallow.md.
-Follow-up: none.
+Version change: 1.3.1 → 1.4.0 (MINOR: materially expanded workflow guidance; no principle removed or redefined)
+Reason: Every delivery-issue feature received the same full process (separate specification and plan pull requests,
+a telemetry contract, and a verifier report per slice), which slowed low-risk work and invited rubber-stamp approval
+of long stacks. Process weight now follows a risk tier that docs/engineering/git-workflow.md defines with objective
+triggers.
+Modified principles: none. Principle I (sibling verification.md), Principle V (a manual feature procedure for every
+feature; telemetry only for telemetry-channel claims), and the Governance exception process are unchanged.
+Modified sections: Development Workflow and Review gains a risk-tier rule (agents never lower a tier; a Regulatory or
+Security requirement keeps work High unless a feature-specific exception is approved). Step 3 limits the seven-phase
+plan with a telemetry contract to High features and lets a Standard plan omit the telemetry contract and be reviewed
+with the specification. Step 5 scales the verification-agent gate by tier.
+Affected artifacts: docs/engineering/git-workflow.md, docs/engineering/verification-harness.md,
+.github/PULL_REQUEST_TEMPLATE/*, .github/ISSUE_TEMPLATE/delivery.md, .github/instructions/*review*.instructions.md
+(updated in the preceding commit).
+Follow-up: Spec Kit skills and .specify templates (speckit-assess-decide, speckit-specify, speckit-plan,
+speckit-tasks, speckit-stack, verification-harness, delivery-plan, delivery-issues; spec, plan, and tasks templates)
+must record and scale by the tier; the risk:high, risk:standard, and risk:light labels must be created.
 -->
 
 # Pre-ETS Constitution
@@ -205,24 +213,34 @@ implementation and verification status MUST be established from repository evide
 
 ## Development Workflow and Review
 
+Process weight follows the risk tier that the
+[Git and pull request workflow](../../docs/engineering/git-workflow.md#risk-tiers) defines and the delivery issue
+records. Work that touches PHI data flow, authentication, sessions, authorization, tenant binding, or exported
+telemetry is High. Agents MUST NOT lower a tier. Work linked to a requirement classified Regulatory or Security MUST
+remain High unless a feature-specific exception under Governance is approved. The steps below apply to features;
+fixes inside an approved contract follow the Git workflow's one-pull-request rules for their tier.
+
 1. Start from one authorized delivery issue. Read its reviewed delivery slice and accepted
    requirements from current `origin/main`; report material authority conflicts in the required
    five-part format instead of guessing or editing an authority.
 2. Specify the stakeholder-observable workflow, scope, acceptance criteria, and feature verification.
    Complete `spec.md` and `verification.md` together before planning dependent behavior.
-3. Plan in seven reviewable phases: module architecture, public module contracts in
+3. Plan a High feature in seven reviewable phases: module architecture, public module contracts in
    `contracts/modules.md`, module-contract evidence, private implementation architecture,
    feature-verification integration in `quickstart.md`, the verification telemetry contract in
-   `contracts/telemetry.md`, and implementation slices. Record a Constitution Check for each
-   applicable principle and explain any non-applicable principle.
+   `contracts/telemetry.md`, and implementation slices. A Standard feature's plan omits the telemetry
+   contract, because none of its claims uses a telemetry channel, and is reviewed in the same pull
+   request as its specification. Record a Constitution Check for each applicable principle and explain
+   any non-applicable principle.
 4. Derive implementation tasks from the approved verification, module contracts, and telemetry
    contract, grouped by implementation slice. Sequence public contracts and their evidence before
    dependent private implementation, and include instrumentation, manual, transient, operational,
    verification-handoff, and cleanup tasks required by the plan.
 5. Implement each slice as its own reviewable pull request and validate its behavior. A slice is
    ready for review only after a verification agent has reported on its claims from the running
-   application, as described in
-   [the verification harness](../../docs/engineering/verification-harness.md). For UI, review the
+   application, at the depth its tier requires, as described in
+   [the verification harness](../../docs/engineering/verification-harness.md#verification-by-risk-tier).
+   A High fix inside an approved contract also needs that report. For UI, review the
    installed PathAble guidance and report library gaps upstream as required by Principle IV.
 6. Before committing, run the repository checks in
    [AGENTS.md](../../AGENTS.md#before-committing), plus feature-specific checks, and preserve the
@@ -257,4 +275,4 @@ amended date while preserving the original ratification date.
 Plans and pull requests MUST be reviewed against the applicable principles. Any required follow-up
 synchronization MUST be recorded; this constitution workflow modifies only this file.
 
-**Version**: 1.3.1 | **Ratified**: 2026-09-13 | **Last Amended**: 2026-11-12
+**Version**: 1.4.0 | **Ratified**: 2026-09-13 | **Last Amended**: 2026-11-13
