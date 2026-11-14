@@ -169,7 +169,7 @@ Asserts V-011, V-012, V-013, V-016, and V-017 in full. No product change unless 
       quickstart §C cases 1–6 (three resume cases, late Continue held past the deadline, resume after the end, and
       disabled warnings), reusing the resume helpers exported from `tests/bdd/steps/expiration.ts`.
 - [x] T027 [P] [US7] Update `docs/session-state.md` only if the composed run changes what it states.
-- [ ] T028 Run the C checks and module evidence, commit, push the draft, request verification of §C and review, and
+- [x] T028 Run the C checks and module evidence, commit, push the draft, request verification of §C and review, and
       record the final report as in T016.
 
 ## Slice D — Tenant policy end to end and completion (`384-expiration-warning-continue-impl-d`)
@@ -178,12 +178,12 @@ Defaults, `0`, valid leads, rejection, and adoption on renewal hold end to end, 
 Asserts V-001 to V-005 in full, and V-014 and V-015 in part (L-3). `Closes #156` only when its completion evidence is
 satisfied.
 
-- [ ] T029 [US3] Create `tests/bdd/requirements/warning-policy.feature` and extend `tests/bdd/steps/warning.ts` for
+- [x] T029 [US3] Create `tests/bdd/requirements/warning-policy.feature` and extend `tests/bdd/steps/warning.ts` for
       quickstart §D cases 1–4, including the `@long-idle` 30-minute scenario; add the invalid warning values to
       `tests/bdd/steps/tenant.ts`.
-- [ ] T030 [P] Raise the nightly BDD job's timeout in `.github/workflows/ci-bdd.yml` for the added scenarios
+- [x] T030 [P] Raise the nightly BDD job's timeout in `.github/workflows/ci-bdd.yml` for the added scenarios
       (research D13).
-- [ ] T031 [P] [US3] Update `docs/multi-tenancy.md` only if the composed run changes its policy section.
+- [x] T031 [P] [US3] Update `docs/multi-tenancy.md` only if the composed run changes its policy section.
 - [ ] T032 Run the D checks and module evidence, commit, push the draft, request verification of §D plus the full
       [verification.md procedure](verification.md#procedure), and record the final report as in T016. The
       screen-reader steps stay an outstanding manual check for a person (L-3).

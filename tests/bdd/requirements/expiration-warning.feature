@@ -128,7 +128,7 @@ Feature: Expiration warning in every sharing tab, closed only by a renewal
     Given the visitor has signed in at "springfield.localhost:3000" and opened tabs "T1" and "T2"
     And another browser sharing the visitor's session has opened tab "S3" with its timers suspended
     And another browser sharing the visitor's session has opened tab "S5" with its timers suspended
-    And Shelbyville sessions end after 5 minutes of inactivity, with no warning lead set
+    And Shelbyville's tenant file changes to a 5-minute timeout with no warning lead set
     And another browser has signed in at "shelbyville.localhost:3000" and opened tab "B1"
     And Shelbyville's tenant file changes to a 6-minute timeout with a warning lead of 0
     And another browser has signed in at "shelbyville.localhost:3000" and opened tab "B2"
