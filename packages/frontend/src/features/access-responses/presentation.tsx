@@ -1,4 +1,4 @@
-import type { ReactElement } from "react"
+import type { ReactElement, ReactNode } from "react"
 
 import {
   PRIVATE_NO_STORE,
@@ -12,41 +12,52 @@ import { renderToReadableStream } from "react-dom/server.edge"
 import { ACTION_DENIAL_BODY } from "../../providers/action-denial.ts"
 import { sessionEndCopy, SessionEndNotice } from "../../shared/session-recovery.ts"
 
-export const authenticationReturnBody = () =>
+/**
+ * Streams a document rendered outside the root layout. Because the layout does not wrap it, it states the layout's
+ * charset and viewport and its own title, which React hoists into `<head>`; app stylesheets are hashed build output and
+ * are not linked (research D4). Every host-rendered HTML document in this module renders through it.
+ */
+const renderStandaloneDocument = (title: string, content: ReactNode) =>
   renderToReadableStream(
     <html lang="en">
       <body>
-        <Page>
-          <Container>
-            <Stack gap="lg">
-              <Heading level={1}>Authentication return</Heading>
-              <Alert heading="Sign-in could not continue" status="info">
-                The identity provider return could not be completed. Return home and try again.
-              </Alert>
-              <Text>
-                <Link href="/">Return to the application entry</Link>
-              </Text>
-            </Stack>
-          </Container>
-        </Page>
+        <meta charSet="utf-8" />
+        <meta content="width=device-width, initial-scale=1" name="viewport" />
+        <title>{`${title} – Pre-ETS`}</title>
+        {content}
       </body>
     </html>
   )
 
+export const authenticationReturnBody = () =>
+  renderStandaloneDocument(
+    "Authentication return",
+    <Page>
+      <Container>
+        <Stack gap="lg">
+          <Heading level={1}>Authentication return</Heading>
+          <Alert heading="Sign-in could not continue" status="info">
+            The identity provider return could not be completed. Return home and try again.
+          </Alert>
+          <Text>
+            <Link href="/">Return to the application entry</Link>
+          </Text>
+        </Stack>
+      </Container>
+    </Page>
+  )
+
 const missingPageBody = () =>
-  renderToReadableStream(
-    <html lang="en">
-      <body>
-        <Page>
-          <Container>
-            <Stack gap="lg">
-              <Heading level={1}>404</Heading>
-              <Text>This page could not be found.</Text>
-            </Stack>
-          </Container>
-        </Page>
-      </body>
-    </html>
+  renderStandaloneDocument(
+    "Page not found",
+    <Page>
+      <Container>
+        <Stack gap="lg">
+          <Heading level={1}>404</Heading>
+          <Text>This page could not be found.</Text>
+        </Stack>
+      </Container>
+    </Page>
   )
 
 export const tenantFailureResponse: TenantFailureResponse = async (status) =>
@@ -75,23 +86,10 @@ export function ForbiddenNotice(): ReactElement {
   )
 }
 
-/**
- * Host-rendered 403 document for `ProtectionResponses.forbiddenDocument`; `private, no-store`. It states the root
- * layout's charset and viewport and its own title, which React hoists into `<head>`, because it does not render through
- * the layout; app stylesheets are hashed build output and are not linked (research D4).
- */
+/** Host-rendered, self-contained 403 document for `ProtectionResponses.forbiddenDocument`; `private, no-store`. */
 export const forbiddenDocumentResponse = async (): Promise<NextResponse> =>
   new NextResponse(
-    await renderToReadableStream(
-      <html lang="en">
-        <body>
-          <meta charSet="utf-8" />
-          <meta content="width=device-width, initial-scale=1" name="viewport" />
-          <title>Access denied – Pre-ETS</title>
-          <ForbiddenNotice />
-        </body>
-      </html>
-    ),
+    await renderStandaloneDocument("Access denied", <ForbiddenNotice />),
     {
       headers: { "cache-control": PRIVATE_NO_STORE, "content-type": "text/html; charset=utf-8" },
       status: 403
@@ -100,24 +98,17 @@ export const forbiddenDocumentResponse = async (): Promise<NextResponse> =>
 
 /**
  * Host-rendered recovery document for `ProtectionResponses.recoveryDocument`: the gate's answer to a denied no-script
- * Server Action submission. Like the 403 document it is self-contained, stating its charset, viewport, and title; the
- * gate sends it with HTTP 401 and `private, no-store` (#157 research D1).
+ * Server Action submission. Like the 403 document it is self-contained; the gate sends it with HTTP 401 and `private, no-store` (#157 research D1).
  */
 export const recoveryDocumentResponse: ProtectionResponses["recoveryDocument"] = async ({ cause }) =>
   new NextResponse(
-    await renderToReadableStream(
-      <html lang="en">
-        <body>
-          <meta charSet="utf-8" />
-          <meta content="width=device-width, initial-scale=1" name="viewport" />
-          <title>{`${sessionEndCopy(cause).heading} – Pre-ETS`}</title>
-          <Page>
-            <Container>
-              <SessionEndNotice cause={cause} />
-            </Container>
-          </Page>
-        </body>
-      </html>
+    await renderStandaloneDocument(
+      sessionEndCopy(cause).heading,
+      <Page>
+        <Container>
+          <SessionEndNotice cause={cause} />
+        </Container>
+      </Page>
     ),
     {
       headers: { "cache-control": PRIVATE_NO_STORE, "content-type": "text/html; charset=utf-8" },
