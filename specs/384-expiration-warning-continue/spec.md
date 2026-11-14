@@ -8,6 +8,12 @@
 
 **Input**: User description: "https://github.com/PathableAI-org/Pre-ETS/issues/156"
 
+**Risk tier**: High, under the [Git workflow's triggers](../../docs/engineering/git-workflow.md#triggers). Trigger 1:
+the linked requirement PREETS-SESSION-011 is in the `SESSION` area. Trigger 3: the feature changes session behavior
+(the warning, renewal by Continue, and cross-tab session coordination). The engineering plan records trigger 4 as
+well if its telemetry contract adds or changes an exported signal for the telemetry-channel claims in
+[verification.md](verification.md); the tier is High either way.
+
 ## User Scenarios & Testing _(mandatory)_
 
 ### User Story 1 - Get a Warning Before an Idle Session Ends and Keep Working (Priority: P1)
@@ -321,7 +327,13 @@ read in its current open state on 2026-11-13, including its B5 timing and resume
 **Originating delivery slice**: [S4 — Warn before expiration and continue accessibly across tabs](https://github.com/PathableAI-org/Pre-ETS/blob/00116612c13c85457439a24937f615be72f8ad1b/docs/delivery/session-management.md#s4--warn-before-expiration-and-continue-accessibly-across-tabs),
 with the [B5 browser timing and resume decision](https://github.com/PathableAI-org/Pre-ETS/blob/00116612c13c85457439a24937f615be72f8ad1b/docs/delivery/session-management.md#b5-browser-timing-and-resume-decision-2026-11-09)
 merged by PR #360 at `00116612c13c85457439a24937f615be72f8ad1b`. Current `origin/main` authority was inspected at
-`8ab3e692ba58c07a7ef70eec078f93b83fed67e8`; the requirement and delivery plan are unchanged since that pin.
+`8ab3e692ba58c07a7ef70eec078f93b83fed67e8`; the requirement and delivery plan are unchanged since that pin. They
+were inspected again on 2026-11-14 at `d03389afa69d1e08972255d136d10ac8768f556a` and are still unchanged, as is the
+issue.
+
+**Risk tier**: High, triggers 1 and 3, as the header states. Issue #156 was published before delivery issues had a
+Risk tier section and does not record one yet. The tier here applies the Git workflow's triggers; the maintainer
+records it on the issue.
 
 ### Accepted requirement coverage
 
@@ -361,7 +373,9 @@ late Continue never revives the session; and disabled warnings still lead to pro
   warning reaching expiration (US7 scenario 3, AC1) are #157's expired-session presentation. The delivery plan
   prioritizes #157 first but does not make it a start dependency. If this feature merges before #157, the server-side
   part of those claims (no renewal, expiration at the deadline) is verified here and the tab outcome stays an explicit
-  shipping gap; #156 does not close until it is verified with #157 present.
+  shipping gap; #156 does not close until it is verified with #157 present. Status on 2026-11-14: #157 is closed and
+  its expired-session presentation is on `main` at `d03389a`, so this feature's implementation can observe those tab
+  outcomes. The gate itself is unchanged.
 - #158 (S6) completes fresh recovery after expiration; this feature does not depend on it.
 
 ### Authority findings

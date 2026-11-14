@@ -6,11 +6,15 @@
 
 **Status**: Planned — no execution evidence is recorded by this document
 
+**Risk tier**: High (triggers 1 and 3, recorded in the [spec.md](spec.md) header). Every evidence channel is
+available, and each security or tenant claim names its rejection path under [Rejection paths](#rejection-paths).
+
 ## Authority and scope
 
 Claims derive from PREETS-SESSION-011 AC1–5 and its Verification Plan, issue #156's completion evidence, the S4
-delivery slice, and the 2026-11-09 B5 decision, all read at `origin/main` `8ab3e692ba58c07a7ef70eec078f93b83fed67e8`.
-This plan refines evidence for S4 and creates no product obligation.
+delivery slice, and the 2026-11-09 B5 decision, all read at `origin/main` `8ab3e692ba58c07a7ef70eec078f93b83fed67e8`
+and unchanged at `d03389afa69d1e08972255d136d10ac8768f556a` on 2026-11-14. This plan refines evidence for S4 and
+creates no product obligation.
 
 Out of verification scope: #157's expired-session concealment, modal, and recovery, except where V-016 and V-017
 compose them; #155's activity windows and logout; #158's fresh login; server-unreachable behavior. Dialog strings,
@@ -38,6 +42,22 @@ a role attribute, or a server response alone never establish that the warning is
 | V-016 | Disabled warnings leave authoritative expiration unchanged and lead to the expired outcome.                                          | SESSION-011 AC1, Verification Plan              | With the warning disabled, the session outlives its deadline or tabs do not reach the expired outcome.                                                    | With explicit `0` and with the five-minute default: authoritative expiration at the deadline, and every running tab reaches #157's concealment and recovery.                                                                                                                                 | Server telemetry; browser interaction                       |
 | V-017 | After a late Continue the tab leaves the warning for the expired outcome.                                                            | SESSION-011 AC4; S4 shipping gate               | The tab keeps a usable warning, shows protected content, or appears renewed.                                                                              | After V-011's late Continue, every sharing tab shows #157's expired concealment and recovery, with no warning remaining.                                                                                                                                                                     | Browser interaction                                         |
 | V-018 | Warnings and renewals stay within one session.                                                                                       | SESSION-011 AC2, AC3; B5 isolation              | A warning opens, closes, or renews in another tenant's, session's, or browser context's tabs.                                                             | With tabs for tenant B in the same context and tenant A in a second context, their warnings and deadlines are unaffected by tenant A context 1's warning and Continue.                                                                                                                       | Browser interaction; server telemetry                       |
+
+### Rejection paths
+
+High-tier work names the rejection path of each claim on a security or tenant boundary: what is refused, and what a
+verifier sees when it is. No claim in this feature changes how PHI is stored, sent, or accessed. The remaining claims
+(V-001–V-003, V-005–V-010, V-012, V-014, V-015) concern warning timing, coordination, and accessibility and refuse
+nothing.
+
+| ID    | Boundary                            | Rejection path                                                                                                                                                                                                                        | Planned observation                           |
+| ----- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| V-004 | Tenant configuration                | A request that consumes a tenant whose warning setting is invalid is refused with PREETS-TENANT-004 AC5's schema-invalid outcome (ordinary HTTP 404, no fallback). No session is established and no default lead is substituted.      | Requirements BDD; manual step 12              |
+| V-011 | Session expiration                  | A Continue reaching the server at or after the authoritative deadline is refused. The deadline does not move, the session stays ended, and the next protected request is denied.                                                      | Module test; requirements BDD; manual step 10 |
+| V-013 | Session expiration after resume     | Once the server confirms that the session ended while the tab was suspended, Continue or any other interaction from that tab causes no renewal, and its content stays concealed.                                                      | Manual step 8, ended case                     |
+| V-016 | Expiration with the warning off     | With explicit `0` or the five-minute default, the session ends at its deadline as it does with a warning. Later protected requests are denied and every running tab reaches #157's concealment and recovery.                          | Manual step 11                                |
+| V-017 | Late Continue in the tab            | No sharing tab treats the refused Continue as a renewal. None closes its warning as renewed, and each replaces the warning with #157's expired concealment and recovery.                                                              | Manual step 10                                |
+| V-018 | Tenant, session, and context limits | A warning, Continue, or renewal of one session is not applied to tabs of another tenant, session, or browser context. Their warning state and held deadlines stay unchanged, and their sessions' authoritative deadlines do not move. | Requirements BDD; manual steps 3 and 7        |
 
 ## Automated behavioral evidence
 
@@ -92,19 +112,23 @@ observations no durable test asserts.
    and the deadline is unchanged. Restore the server.
 7. Activate Continue in tab 1 with the keyboard, observing the visible focus indicator. Record the time from
    activation to server receipt, the deadline before and after, the time from the renewal response to tab 2's warning
-   closing, and where focus lands in each tab.
+   closing, and where focus lands in each tab. Record that the warning state and deadlines of tab 3 (tenant B) and
+   tab 4 (context 2) are unchanged by this Continue.
 8. Return to the warning period. Freeze tab 2, activate Continue in tab 1, advance past tab 2's stale threshold but
    not its stale deadline, and resume tab 2. Record that it confirms, adopts the later deadline, and shows no warning.
    Repeat with no renewal while frozen; record the warning opening within 2 seconds of resume after confirmation.
    Repeat, freezing past the stale deadline with a renewal elsewhere; record temporary concealment, then restored
-   content and a warning or no warning according to the confirmed deadline.
+   content and a warning or no warning according to the confirmed deadline. Repeat, freezing past the deadline with
+   no renewal so the session ends; record temporary concealment on resume, the ended confirmation, that Continue
+   (if a warning was still shown) and other interaction cause no renewal, and the tab's outcome.
 9. Change tenant A's warning to `0`. Before any renewal, record that the old threshold still opens the warning; after
    a renewal, record that no warning opens before the deadline, and that tab 4's session (not yet renewed) still warns
    at its old lead. Change back to an explicit lead of 1 minute and renew; record the new threshold in tabs 1 and 2.
 10. With the warning open, let a Continue reach the server after the deadline (delay it past the deadline). Record no
     renewal, denial of a protected request, and each tab's outcome (V-017 needs #157).
 11. Set tenant A's timeout to 5 with the warning omitted, sign in again, and leave it idle to expiration. Record no
-    warning, expiration at the deadline, and each tab's outcome (V-016 needs #157).
+    warning, expiration at the deadline, denial of a protected request after it, and each tab's outcome (V-016 needs
+    #157). Repeat with an explicit `0` at the default timeout.
 12. For each invalid warning value (negative, fractional, nonnumeric, equal to the timeout, greater), request a
     protected page for tenant A. Record the tenant rejection and the run's rejection diagnostic naming the warning
     field without its value.
@@ -119,8 +143,10 @@ observations no durable test asserts.
   close it, and the screen reader announces it and reads its explanation and Continue (V-010, V-014, V-015).
 - Step 6: a failed Continue closes nothing (V-010).
 - Step 7: Continue reaches the server immediately, the authoritative deadline moves, tab 2 closes within 2 seconds of
-  the response, and focus returns to the prior element or main content (V-008, V-009, V-015).
-- Step 8: resumed tabs follow local-check-then-confirm (V-007, V-012, V-013).
+  the response, focus returns to the prior element or main content, and the other tenant and context are unaffected
+  (V-008, V-009, V-015, V-018).
+- Step 8: resumed tabs follow local-check-then-confirm, and a session that ended while a tab was suspended is not
+  revived (V-007, V-012, V-013).
 - Step 9: policy changes apply only after renewal, per session (V-002, V-003, V-005).
 - Steps 10–11: no renewal after the deadline; disabled warnings still expire; tab outcomes per #157 (V-011, V-016,
   V-017).
@@ -170,7 +196,8 @@ Issue closure, merge, generated scenarios, dry runs, and static checks are not r
 
 - V-016 and V-017 compose #157's expired-session presentation. Until #157 is present, only their server-side part
   (expiration at the deadline, no renewal) can be established; the tab outcome stays incomplete and #156 does not
-  close until it is verified with #157.
+  close until it is verified with #157. On 2026-11-14 #157's presentation is on `main` at `d03389a`, so a run at a
+  revision that includes it can establish both parts.
 - The #155 accepted gap G2 applies to V-009 when the renewal is caused by a page load: such a renewal may reach other
   tabs after the 2-second bound. Continue renewals are not affected. The execution record reports G2 cases as known
   shortfalls rather than passes.
@@ -186,6 +213,7 @@ Issue closure, merge, generated scenarios, dry runs, and static checks are not r
 - [x] Every feature claim maps to an authoritative source.
 - [x] Every claim states the observation that distinguishes it and an evidence channel able to make it.
 - [x] Successful, failure, rejection, security/privacy, accessibility, and operational outcomes are covered where applicable.
+- [x] Each security or tenant claim names its rejection path and the planned observation of it (High tier).
 - [x] The manual feature procedure is non-empty, executable by an agent, and adds a distinct observation.
 - [x] Environmental prerequisites, evidence retention, cleanup, and limitations are explicit.
 - [x] Planned evidence is not described as executed or verified.

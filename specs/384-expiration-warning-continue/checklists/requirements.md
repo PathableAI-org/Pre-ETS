@@ -31,11 +31,14 @@
 
 ## Pre-ETS Readiness
 
-- [x] Authority and scope trace to #156, S4 and B5 at `00116612`, and SESSION-011 at `8ab3e69`
+- [x] Authority and scope trace to #156, S4 and B5 at `00116612`, and SESSION-011 at `8ab3e69`, unchanged at
+      `d03389a` on 2026-11-14
+- [x] The spec header records the risk tier (High) and its triggers (1 and 3)
 - [x] Every accepted criterion has a disposition, including the #157 shipping gate for late-Continue and
       disabled-warning outcomes
 - [x] `verification.md` is complete
 - [x] Every claim has a distinguishing observation and an evidence channel
+- [x] Each security or tenant claim names its rejection path (High tier)
 - [x] Manual feature verification is agent-executable and adds a distinct observation
 - [x] Planned evidence is distinguished from executed evidence
 - [x] No architectural decisions leaked into the contract
@@ -47,4 +50,7 @@
   time. No requirement or delivery-plan change is implied.
 - Configuration derivation, rejection, and policy adoption are delivered server-side by #153; this feature observes
   them end to end in the browser.
-- #156 cannot close until V-016 and V-017 are verified with #157's expired-session presentation present.
+- #156 cannot close until V-016 and V-017 are verified with #157's expired-session presentation present. That
+  presentation is on `main` at `d03389a`.
+- Issue #156 has no Risk tier section yet. The tier applies the Git workflow's triggers; the maintainer records it on
+  the issue.
