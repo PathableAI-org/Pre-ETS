@@ -61,3 +61,15 @@ export const sampleReport = (
   edit(report)
   return JSON.stringify(report)
 }
+
+/** A passing round-one review of slice A1 from `base` to `sha`, optionally changed by `edit`. */
+export const sampleReview = (
+  base: string,
+  sha: string,
+  edit: (review: Record<string, unknown>) => void = () => undefined
+): string => {
+  const review = JSON.parse(fixture("review-a1.json")) as Record<string, unknown>
+  Object.assign(review, { baseSha: base, findings: [], reviewedSha: sha })
+  edit(review)
+  return JSON.stringify(review)
+}

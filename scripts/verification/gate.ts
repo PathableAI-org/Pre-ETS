@@ -19,13 +19,17 @@ export const implementationBranch = (branch: string | undefined): Implementation
   return match?.[1] === undefined ? undefined : { featureDir: `specs/${match[1]}`, sliceSuffix: match[2] }
 }
 
-const sliceMatchesBranch = (report: VerificationReport, branch: ImplementationBranch): readonly string[] => {
-  if (report.featureDir !== branch.featureDir) {
-    return [`the report is for ${report.featureDir}, but this branch belongs to ${branch.featureDir}`]
+/** Whether a report or review names this branch's feature and, for a suffixed branch, its slice. */
+export const sliceMatchesBranch = (
+  evidence: { readonly featureDir: string; readonly label: string; readonly sliceId: string },
+  branch: ImplementationBranch
+): readonly string[] => {
+  if (evidence.featureDir !== branch.featureDir) {
+    return [`the ${evidence.label} is for ${evidence.featureDir}, but this branch belongs to ${branch.featureDir}`]
   }
   const expected = branch.sliceSuffix
-  return expected !== undefined && expected.toLowerCase() !== report.sliceId.toLowerCase()
-    ? [`the report is for slice ${report.sliceId}, but this branch is slice ${expected}`]
+  return expected !== undefined && expected.toLowerCase() !== evidence.sliceId.toLowerCase()
+    ? [`the ${evidence.label} is for slice ${evidence.sliceId}, but this branch is slice ${expected}`]
     : []
 }
 
@@ -92,25 +96,29 @@ export const gateForBranch = (
   report: VerificationReport,
   request: VerificationRequest,
   branch: ImplementationBranch
-): readonly string[] => [...sliceMatchesBranch(report, branch), ...evaluateGate(report, request)]
+): readonly string[] => [
+  ...sliceMatchesBranch({ featureDir: report.featureDir, label: "report", sliceId: report.sliceId }, branch),
+  ...evaluateGate(report, request)
+]
 
 const executionResults = /^execution results$/i
 
 /**
- * Whether the commits from the verified SHA to HEAD are evidence-only: they change nothing but the feature's
- * `quickstart.md` execution results.
+ * Whether the commits from the verified or reviewed SHA to HEAD are evidence-only: they change nothing but the
+ * feature's `quickstart.md` execution results.
  */
 export const evidenceOnlyFindings = (
-  featureDir: string,
+  evidence: { readonly featureDir: string; readonly label: "reviewed" | "verified" },
   paths: readonly string[],
   quickstartAt: { readonly head: string | undefined; readonly verified: string | undefined }
 ): readonly string[] => {
-  const quickstart = `${featureDir}/quickstart.md`
+  const quickstart = `${evidence.featureDir}/quickstart.md`
+  const after = `commits after the ${evidence.label} SHA change`
   const other = paths.filter((path) => path !== quickstart)
-  if (other.length > 0) return [`commits after the verified SHA change ${other.join(", ")}`]
+  if (other.length > 0) return [`${after} ${other.join(", ")}`]
   if (!paths.includes(quickstart)) return []
   const outside = (content: string | undefined): string => withoutSection(content ?? "", executionResults)
   return outside(quickstartAt.verified) === outside(quickstartAt.head)
     ? []
-    : [`commits after the verified SHA change ${quickstart} outside its execution results`]
+    : [`${after} ${quickstart} outside its execution results`]
 }

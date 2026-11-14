@@ -77,16 +77,19 @@ per slice, so a later slice does not hide an earlier slice's failure.
 
 A stack runs as separate agent sessions with distinct responsibilities:
 
-| Session        | Owns                                                                                         | Does not                                         |
-| -------------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------ |
-| Orchestrator   | Starting the other sessions, passing each the identifiers it needs, relaying human decisions | Edit feature branches                            |
-| Specification  | `spec.md`, `verification.md`, the specification pull request                                 | Plan modules or telemetry                        |
-| Plan           | `plan.md`, `contracts/modules.md`, `contracts/telemetry.md`, `quickstart.md`, slices         | Change acceptance criteria                       |
-| Implementation | `tasks.md`, the code and instrumentation for each slice, slice pull requests                 | Mark a slice ready without a verification report |
-| Verification   | Running pushed revisions, inspecting the running application and its telemetry, reports      | Edit any branch or fix the implementation        |
+| Session        | Owns                                                                                         | Does not                                                                                  |
+| -------------- | -------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| Orchestrator   | Starting the other sessions, passing each the identifiers it needs, relaying human decisions | Edit feature branches                                                                     |
+| Specification  | `spec.md`, `verification.md`, the specification pull request                                 | Plan modules or telemetry                                                                 |
+| Plan           | `plan.md`, `contracts/modules.md`, `contracts/telemetry.md`, `quickstart.md`, slices         | Change acceptance criteria                                                                |
+| Implementation | `tasks.md`, the code and instrumentation for each slice, slice pull requests                 | Mark a slice ready without a verification report, or with an open blocking review finding |
+| Verification   | Running pushed revisions, inspecting the running application and its telemetry, reports      | Edit any branch or fix the implementation                                                 |
+| Review         | Reviewing pushed revisions for correctness reasoning and maintainability, review notes       | Edit any branch or fix the implementation                                                 |
 
-The orchestrator starts one verification session per stack, alongside the implementation session, and gives each
-session the other's session identifier. Only a person approves and merges a phase, as the Git workflow requires.
+The orchestrator starts one verification session and, for High and Standard work, one review session per stack,
+alongside the implementation session. It gives the implementation session the other two session identifiers, and
+gives each of the other two the implementation session's identifier. [Code review session](code-review.md) owns the
+reviewer's scope, findings, and loop. Only a person approves and merges a phase, as the Git workflow requires.
 
 ## The verification loop
 
@@ -208,7 +211,8 @@ a change to `quickstart.md` steps, needs a new verification request.
 report on HEAD, or on the nearest ancestor when the commits since change only the feature's `quickstart.md`
 execution-results section. It regenerates the request at the report's SHA, checks the report's slice against the
 branch, and exits non-zero with every failing reason. A limitation excuses only a claim the slice asserts in part. A
-report with an open escalation does not pass. A Claude Code `PreToolUse` hook in `.claude/settings.json` runs the
+report with an open escalation does not pass. The gate also applies the
+[code review gate](code-review.md#gate-and-escalation) to the nearest reviewed commit. A Claude Code `PreToolUse` hook in `.claude/settings.json` runs the
 gate before `gh pr ready` on those branches and blocks the command when the gate fails. It takes effect in sessions
 started after the hook is installed. The hook gates the checked-out branch, so run `gh pr ready` from the slice's
 own branch.

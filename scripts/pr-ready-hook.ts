@@ -23,9 +23,9 @@ if (marksReady(command) && featureForBranch(cwd) !== undefined) {
   const gate = runGate(cwd)
   if (!gate.ok) {
     process.stderr.write(
-      `Blocked: the verification gate fails for this implementation slice, so it cannot be marked ready.\n${
+      `Blocked: the verification and code review gate fails for this implementation slice, so it cannot be marked ready.\n${
         gate.problems.map((problem) => `  - ${problem}`).join("\n")
-      }\nRequest verification of the pushed SHA, or run \`pnpm verify:gate\` for details.\n`
+      }\nRequest verification or code review of the pushed SHA, or run \`pnpm verify:gate\` for details.\n`
     )
     process.exitCode = 2
   }

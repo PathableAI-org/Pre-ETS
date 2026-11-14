@@ -17,6 +17,8 @@
     "format:write": "dprint fmt \"*\" .github docs scripts tests && pnpm --filter \"./packages/*\" run format:write && pnpm format:gherkin:write",
     "prepare": "husky",
     "check:changes": "pnpm --include-workspace-root --no-bail run --parallel fallow:audit",
+    "review:record": "node scripts/review.ts record",
+    "review:show": "node scripts/review.ts show",
     "test:bdd": "pnpm --filter @pathableai/pre-ets-frontend build && cucumber-js --config cucumber.mjs",
     "test:bdd:smoke": "cucumber-js --config cucumber.smoke.mjs",
     "test:bdd:dry": "cucumber-js --config cucumber.mjs --dry-run",
