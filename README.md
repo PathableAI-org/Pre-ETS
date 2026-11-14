@@ -504,7 +504,11 @@ provide skills; `.specify/extensions.yml` records their workflow hooks. Spec Kit
 registers presets and extensions only for the default integration, so after changing
 them, refresh the Codex copies with `specify integration use codex` followed by
 `specify integration use claude`, then review the diff: in Spec Kit 1.3.2 that round
-trip also clears the executable bit on `.specify/scripts/bash/*.sh`. Repository-owned
+trip also clears the executable bit on `.specify/scripts/bash/*.sh`. The two copies are
+separate renderings, not duplicates to merge: they differ only in invocation syntax
+(`/speckit-plan` or `$speckit-plan`), Claude-only frontmatter, and provenance metadata,
+and a symlink between them would be overwritten by whichever integration Spec Kit renders
+last. Never edit one copy by hand. Repository-owned
 skills live only in `.agents/skills`; each has a relative symlink in `.claude/skills` so
 Claude Code can load it. Add the symlink when adding a repository-owned skill.
 The closed-vocabulary preset extends the analysis command to report
