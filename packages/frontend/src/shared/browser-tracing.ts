@@ -43,10 +43,15 @@ const CONFIG_CHECKS: Readonly<Record<keyof BrowserTracingConfig, (value: unknown
 const isConfig = (value: object): value is BrowserTracingConfig =>
   Object.entries(CONFIG_CHECKS).every(([key, check]) => check(Reflect.get(value, key)))
 
-export type FocusTarget = "logout_control" | "participant_goal" | "recovery_heading" | "signed_out_heading"
+export type FocusTarget =
+  | "expiration_log_in"
+  | "logout_control"
+  | "participant_goal"
+  | "recovery_heading"
+  | "signed_out_heading"
 
-/** Where the user activated Log in (T-005). */
-export type LoginEntry = "action_recovery"
+/** Where the user activated Log in (#157 T-005). */
+export type LoginEntry = "action_recovery" | "expiration_modal"
 
 /** Cross-tab message kinds: the coordination message `type` with `_` for `-`. */
 export type TabMessageKind =
@@ -64,13 +69,20 @@ export interface TraceScope {
   readonly run: <A>(task: () => A) => A
 }
 
-/** Why the coordinator changed state, where it says (#157 T-002). */
-export type TransitionCause = "action_denied"
+/** Why the coordinator changed state, where it says (#157 T-002, T-003). */
+export type TransitionCause = "action_denied" | "deadline" | "peer" | "resume"
+
+/** The held deadline and the tab's server-time estimate at a transition, both on the server clock (#157 T-003). */
+export interface TransitionTiming {
+  readonly deadlineMs: number
+  readonly serverTimeMs: number
+}
 
 /** UI states of the session coordinator, derived from its `(view, concealed)` (telemetry contract closed sets). */
 export type UiState =
   | "content_concealed"
   | "content_shown"
+  | "expired"
   | "logging_out"
   | "logging_out_concealed"
   | "logout_failed"
@@ -86,6 +98,7 @@ const PENDING_LIMIT_MILLISECONDS = 10_000
 const CAUSE_LIFETIME_MILLISECONDS = 5_000
 const FOCUS_ATTRIBUTE = "data-preets-focus"
 const FOCUS_TARGETS: ReadonlySet<string> = new Set<FocusTarget>([
+  "expiration_log_in",
   "logout_control",
   "participant_goal",
   "recovery_heading",
@@ -250,17 +263,22 @@ export function startBrowserTracing(): void {
 }
 
 /**
- * T-004 (#157 T-002). `from` is `undefined` for the coordinator's first state, recorded as `mounted`. `cause` is set
- * only where the contract defines one.
+ * T-004 (#157 T-002, T-003). `from` is `undefined` for the coordinator's first state, recorded as `mounted`. `cause`
+ * and `timing` are set only where the contract defines them.
  */
 export const recordUiTransition = (
   from: UiState | undefined,
   to: UiState,
-  detail?: { readonly cause?: TransitionCause | undefined }
+  detail?: {
+    readonly cause?: TransitionCause | undefined
+    readonly timing?: TransitionTiming | undefined
+  }
 ): TraceScope =>
   scopeOf(record({
     attributes: {
       "preets.outcome": "applied",
+      "preets.session.deadline_ms": detail?.timing?.deadlineMs,
+      "preets.session.server_time_ms": detail?.timing?.serverTimeMs,
       "preets.ui.cause": detail?.cause,
       "preets.ui.from_state": from ?? "mounted",
       "preets.ui.to_state": to

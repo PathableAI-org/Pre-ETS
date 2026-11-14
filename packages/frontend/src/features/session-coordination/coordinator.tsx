@@ -4,10 +4,12 @@ import type { SessionCoordinationSnapshot, SessionEndCause } from "@pathableai/p
 
 import { Alert, Inline, Text } from "@pathableai/react"
 import { type ReactNode, type Ref, useEffect, useMemo, useRef, useState } from "react"
+import { flushSync } from "react-dom"
 
 import { SessionConfirmationProvider } from "../../providers/session-confirmation.tsx"
 import { focusTargetProps, moveFocus, recordLoginActivation } from "../../shared/browser-tracing.ts"
 import { SessionEndNotice } from "../../shared/session-recovery.ts"
+import { ExpirationModal } from "./expiration-modal.tsx"
 import { LogoutControl } from "./logout-control.tsx"
 import { SignedOutNotice } from "./signed-out-notice.tsx"
 import { TabCoordination, type TabView, type TabViewState } from "./tab-coordination.ts"
@@ -20,9 +22,9 @@ const logoutFailedAlert = (
   </Alert>
 )
 
-/** How each running view presents the header and content; `ended` and `recovery` unmount both. */
+/** How each running view presents the header and content; `ended`, `expired`, and `recovery` unmount both. */
 const VIEW_PRESENTATION: Readonly<
-  Record<Exclude<TabView, "ended" | "recovery">, { readonly alert: ReactNode; readonly busy: boolean }>
+  Record<Exclude<TabView, "ended" | "expired" | "recovery">, { readonly alert: ReactNode; readonly busy: boolean }>
 > = {
   active: { alert: null, busy: false },
   "logging-out": { alert: null, busy: true },
@@ -32,7 +34,8 @@ const VIEW_PRESENTATION: Readonly<
 /**
  * Renders the header with Log out, then the protected content. Temporary concealment hides the content from view,
  * keyboard, and assistive technology while keeping its state; after the session ends the content is unmounted. A
- * denied action in this tab replaces both with recovery content (#157 research D6).
+ * denied action in this tab replaces both with recovery content (#157 research D6), and confirmed expiry with the
+ * expiration modal (D8).
  */
 export function SessionCoordinator({
   children,
@@ -56,7 +59,15 @@ export function SessionCoordinator({
 
   // One controller per session: a route refresh of the same session updates it instead of replacing it.
   useEffect(() => {
-    const coordination = new TabCoordination(latest.current, setState, () => content.current)
+    // Hiding the modal on `pagehide` commits at once, before the page enters the back/forward cache (#157 FR-018).
+    const notify = (next: TabViewState) => {
+      if (next.pageHidden === true) {
+        flushSync(() => {
+          setState(next)
+        })
+      } else setState(next)
+    }
+    const coordination = new TabCoordination(latest.current, notify, () => content.current)
     controller.current = coordination
     const stop = coordination.start()
     return () => {
@@ -91,13 +102,16 @@ export function SessionCoordinator({
 
 function SessionAnnouncement({ state }: { readonly state: TabViewState }) {
   if (state.view === "ended") return <SignedOutNotice initiating={state.endedHere} />
-  // Recovery is announced by moving focus to its heading.
-  if (state.view === "recovery") return null
+  // Recovery is announced by moving focus to its heading, and expiry by the modal taking focus.
+  if (state.view === "recovery" || state.view === "expired") return null
   if (state.concealed && state.view !== "logout-failed") return <Text>Checking your session…</Text>
   return null
 }
 
-/** The header and protected content of a running view; recovery content instead after a denial; nothing once ended. */
+/**
+ * The header and protected content of a running view; recovery content instead after a denial; the expiration modal
+ * alone after confirmed expiry; nothing once ended.
+ */
 function SessionBody({
   children,
   content,
@@ -110,6 +124,7 @@ function SessionBody({
   readonly state: TabViewState
 }) {
   if (state.view === "recovery") return <RecoveryNotice cause={state.recovery ?? "unknown"} />
+  if (state.view === "expired") return <ExpirationModal hidden={state.pageHidden === true} />
   if (state.view === "ended") return null
   const presentation = VIEW_PRESENTATION[state.view]
   return (

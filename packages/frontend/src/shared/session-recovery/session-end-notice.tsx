@@ -31,7 +31,7 @@ const COPY: Readonly<Record<SessionEndCause, SessionEndCopy>> = {
 export const sessionEndCopy = (cause: SessionEndCause): SessionEndCopy => COPY[cause]
 
 /** The fresh-entry boundary every Log in uses: it reuses a valid session or starts a fresh login (research D11). */
-const LOG_IN_HREF = "/"
+export const LOG_IN_HREF = "/"
 
 /**
  * Server-renderable heading, explanation, and Log in link. Log in is a plain navigation; nothing starts login. A

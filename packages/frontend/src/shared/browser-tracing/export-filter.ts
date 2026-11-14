@@ -37,6 +37,8 @@ const EXPORTED_ATTRIBUTE_KEYS: ReadonlySet<string> = new Set([
   "preets.login.entry",
   "preets.navigation.type",
   "preets.outcome",
+  "preets.session.deadline_ms",
+  "preets.session.server_time_ms",
   "preets.tab.message.direction",
   "preets.tab.message.id",
   "preets.tab.message.kind",
