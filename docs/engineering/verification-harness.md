@@ -92,14 +92,30 @@ session the other's session identifier. Only a person approves and merges a phas
 
 ### Request
 
-When a slice is committed and pushed as a draft pull request, the implementation session sends the verification
-session:
+When a slice is committed and pushed as a draft pull request, the implementation session generates the request
+instead of choosing claims by hand:
 
-- the branch and the pushed commit SHA
-- the slice ID from `plan.md`
-- the claim IDs the slice claims to establish, and any it claims only in part
-- the `quickstart.md` sections to run
-- any change to the run instructions since the last request
+```sh
+pnpm verify:request --slice <ID> --sha <pushed SHA>
+```
+
+The command reads the feature's `plan.md`, `verification.md`, `quickstart.md`, and `research.md` at that SHA through
+Git, not from the working tree. It prints the slice ID, the pushed SHA, each claim the slice asserts in full or in
+part (with the plan's qualifier for a partial claim), the slice's telemetry rows, its `quickstart.md` sections, and
+the limitations already approved in `verification.md` and the plan. On an implementation branch it finds the feature
+directory from the branch name; elsewhere, pass `--feature specs/{number}-{slug}`.
+
+The request reads the slice's row in the plan's slice table. A plan whose table has ID-only `Full claims`,
+`Partial claims`, and `Quickstart sections` columns is read directly. An older plan with a prose `Claim IDs advanced`
+cell is read as follows: a bare ID or one marked `(full)` is asserted in full, an ID with any other qualifier or a
+`partial` prefix is partial, and ranges such as `V-009–V-018` expand. Quickstart sections are the headings that name
+`(slice <ID>)`, plus `(every slice)`. Unnumbered `verification.md` limitations get positional IDs `VL-1`, `VL-2`, and
+so on at that SHA, and plan limitations keep their `L-n` IDs. Anything the parser cannot read is listed under
+`warnings`. A request with warnings cannot pass the gate, so correct the plan through the
+[corrections](git-workflow.md#corrections) path rather than working around it.
+
+The implementation session then sends the verification session the branch, the pushed SHA, the slice ID, and any
+change to the run instructions since the last request. The verifier regenerates the request from the SHA itself.
 
 The verifier checks only pushed commits. It never reads the implementation session's uncommitted work.
 
@@ -138,7 +154,7 @@ a violation of the slice, whatever the claim results are.
 
 ### Report
 
-The verification session replies to the implementation session with one result per requested claim ID:
+The verification session records one result per requested claim ID:
 
 | Result            | Meaning                                                                                |
 | ----------------- | -------------------------------------------------------------------------------------- |
@@ -147,12 +163,28 @@ The verification session replies to the implementation session with one result p
 | `not established` | The procedure ran but did not produce a conclusive observation                         |
 | `blocked`         | A prerequisite outside the slice prevented the procedure, such as a missing dependency |
 
-Each result includes the revision, the trace IDs or query and time range, the observed values that matter, the
-conditions, and the limits. The report also lists missing or unusable instrumentation against
-`contracts/telemetry.md` and any forbidden data observed.
+The report is a JSON document checked by the schema in
+[`scripts/verification/report.ts`](../../scripts/verification/report.ts). It holds the verified SHA, slice ID,
+feature directory, run UUID, time range, and an environment summary without credentials or header values. Per
+claim, it holds the scope (`full` or `partial`), the result, the evidence (trace IDs, verifier queries, or the
+procedure for non-telemetry channels), the observed values, the conditions, and, for `not established` or `blocked`,
+the ID of the approved limitation it falls under. It also gives a status for each of the slice's telemetry rows
+(`present`, `missing`, or `unusable`), forbidden-data findings by signal and field name only, escalations, cleanup,
+and any unrequested claim the run showed violated. The schema rejects text that looks like a credential.
 
-The report is information for the implementation session and the reviewer. It is not proof by itself. Raw query
-output, screenshots, and transcripts are not committed.
+The verifier records the report with `pnpm verify:record <report.json>`. The command validates it and adds it to the
+Git note on the verified SHA under `refs/notes/verification`. A retry on the same SHA is appended and supersedes the
+earlier report, which stays in the note. Git also keeps each version of the note in the notes ref's history. Notes
+are shared by every worktree of a clone and are not pushed; do not push or configure pushing for them.
+
+The note is the record. The verification session then sends the implementation session only a pointer, such as
+`refs/notes/verification @ <SHA> (run <uuid>)`, and `pnpm verify:show <SHA>` prints the report. The report is
+information for the implementation session and the reviewer. It is not proof by itself. Raw query output,
+screenshots, and transcripts are not committed.
+
+The report needs no schema change to be posted later as a GitHub check run: `verifiedSha` is the check's `head_sha`,
+the run UUID its `external_id`, the gate's outcome its `conclusion`, and the rendered results its output summary.
+Nothing posts to GitHub today.
 
 ### Gate and escalation
 
@@ -172,6 +204,15 @@ verified SHA, and the reviewer or verifier checks that the diff from the verifie
 those results. Any application, instrumentation, test, or run-instruction change after the verified SHA, including
 a change to `quickstart.md` steps, needs a new verification request.
 
+`pnpm verify:gate` applies these rules to the checked-out `{number}-{slug}-impl*` branch. It takes the latest
+report on HEAD, or on the nearest ancestor when the commits since change only the feature's `quickstart.md`
+execution-results section. It regenerates the request at the report's SHA, checks the report's slice against the
+branch, and exits non-zero with every failing reason. A limitation excuses only a claim the slice asserts in part. A
+report with an open escalation does not pass. A Claude Code `PreToolUse` hook in `.claude/settings.json` runs the
+gate before `gh pr ready` on those branches and blocks the command when the gate fails. It takes effect in sessions
+started after the hook is installed. The hook gates the checked-out branch, so run `gh pr ready` from the slice's
+own branch.
+
 A slice pull request cannot create its own exception. A new limitation goes back through the
 [corrections](git-workflow.md#corrections) path to the phase that owns it.
 
@@ -184,9 +225,12 @@ Escalate to the orchestrator, and through it to a person, instead of patching th
 
 ### Recording
 
-The implementation session summarizes each final report in the `quickstart.md` execution results for the slice:
-revision, conditions, result per claim, and limitations. Record superseded results as stale rather than deleting
-them, as earlier features did.
+The implementation session does not summarize the report by hand. It runs `pnpm verify:render --write`, which appends
+the latest report on HEAD (or on a named commit: `pnpm verify:render <SHA> --write`) to the feature's `quickstart.md`
+execution results: revision, run, conditions, result per claim with any limitation ID, telemetry rows, forbidden data,
+escalation, and cleanup. The generated section names the slice's earlier results it supersedes, so they stay in place,
+marked stale, as earlier features did. Do not edit the generated text; correct the report through a new verification
+run. The pull request body names the verified SHA and run UUID and links that section.
 
 Committing that summary creates an evidence-only commit after the verified SHA, which needs no new verification
 request under [Gate and escalation](#gate-and-escalation). Commit any other change, including a change to the run
