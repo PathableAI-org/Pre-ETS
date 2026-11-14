@@ -1,4 +1,4 @@
-import type { Browser, BrowserContext, Page } from "playwright"
+import type { Browser, BrowserContext, Locator, Page, Response as PlaywrightResponse } from "playwright"
 
 import { After, Given, Then, When } from "@cucumber/cucumber"
 import assert from "node:assert/strict"
@@ -17,7 +17,7 @@ import {
 import { requestInstance, startSite } from "../support/server.ts"
 
 const PROVIDER_ORIGIN = "http://127.0.0.1:8080"
-const SPRINGFIELD = "springfield.localhost:3000"
+export const SPRINGFIELD = "springfield.localhost:3000"
 const SHELBYVILLE = "shelbyville.localhost:3000"
 const PROTECTED_CONTROL = "Record reference operation"
 /** Protected text the reference page renders, and the header's Log out; none may remain behind the modal. */
@@ -38,19 +38,11 @@ declare global {
   }
 }
 
-/** The scenario's browser, named tabs, and its signed-in contexts by name. */
-interface Expiration {
-  readonly browser: Browser
-  readonly close: () => Promise<void>
-  readonly contexts: Map<string, BrowserContext>
-  readonly tabs: Map<string, Tab>
-}
-
 /**
  * One open tab: its page, its own local deadline as last read, the application session it opened with, and since a
  * mark, protected documents served and login traffic (the application's login route and any provider request).
  */
-interface Tab {
+export interface Tab {
   deadline: number
   /** Settles once a failed login's last document has loaded, after a step arranged that failure. */
   failedLogin?: Promise<unknown> | undefined
@@ -64,6 +56,14 @@ interface Tab {
   session: string | undefined
   /** Each session status answer the tab received, with its status and when it arrived on the test's clock. */
   readonly statusAnswers: { readonly at: number; readonly status: number }[]
+}
+
+/** The scenario's browser, named tabs, and its signed-in contexts by name. */
+interface Expiration {
+  readonly browser: Browser
+  readonly close: () => Promise<void>
+  readonly contexts: Map<string, BrowserContext>
+  readonly tabs: Map<string, Tab>
 }
 
 const scenarios = new WeakMap<AppWorld, Expiration>()
@@ -85,14 +85,15 @@ const scenarioOf = async (world: AppWorld): Promise<Expiration> => {
   return scenario
 }
 
-const tabOf = (world: AppWorld, name: string): Tab => {
+export const tabOf = (world: AppWorld, name: string): Tab => {
   const tab = scenarios.get(world)?.tabs.get(name)
   assert.ok(tab, `expected tab "${name}" to be open`)
   return tab
 }
 
 /** Tab names written `"S1", "S2", and "S3"` or `"S1" and "S2"`. */
-const namesOf = (list: string): readonly string[] => [...list.matchAll(/"([^"]+)"/g)].map((match) => match[1] ?? "")
+export const namesOf = (list: string): readonly string[] =>
+  [...list.matchAll(/"([^"]+)"/g)].map((match) => match[1] ?? "")
 
 /** A new browser context that watches for dialogs and reports back/forward-cache restores. */
 const newContext = async (scenario: Expiration): Promise<BrowserContext> => {
@@ -213,7 +214,7 @@ const signInAndOpen = async (
 }
 
 /** Each tab converts the server deadline with its own clock-offset estimate, which differs by a few milliseconds. */
-const OFFSET_TOLERANCE_MILLISECONDS = 250
+export const OFFSET_TOLERANCE_MILLISECONDS = 250
 
 /**
  * Every page load renewed the session and broadcast it; waits until the tabs agree on the latest deadline, within
@@ -227,6 +228,17 @@ const settleDeadlines = async (tabs: readonly Tab[]) => {
     await delay(200)
   }
   assert.fail("expected the tabs to agree on one deadline")
+}
+
+/** Every tab the scenario has open, so another step file can observe them all (#156). */
+export const openTabs = async (world: AppWorld): Promise<readonly Tab[]> => [...(await scenarioOf(world)).tabs.values()]
+
+/** Opens a further named tab at `host` in a signed-in browser, such as `visitor`; its page load renews its session. */
+export const openTabIn = async (world: AppWorld, browser: string, name: string, host: string): Promise<Tab> => {
+  const scenario = await scenarioOf(world)
+  const context = scenario.contexts.get(browser)
+  assert.ok(context, `expected browser "${browser}" to have signed in`)
+  return openTab(scenario, context, name, host)
 }
 
 Given(
@@ -305,14 +317,14 @@ When("the visitor logs out in tab {string}", async function(this: AppWorld, name
 })
 
 /** A character key on a protected control counts as activity, and the tab communicates it at once after silence. */
-const typeIn = async (tab: Tab) => {
+export const typeIn = async (tab: Tab): Promise<void> => {
   await tab.page.getByRole("button", { name: PROTECTED_CONTROL }).focus()
   const reported = tab.page.waitForResponse((response) => new URL(response.url()).pathname === "/session/activity")
   await tab.page.keyboard.press("a")
   assert.equal((await reported).status(), 200)
 }
 
-const untilBefore = async (deadline: number, lead: number) => {
+export const untilBefore = async (deadline: number, lead: number): Promise<void> => {
   await delay(Math.max(0, deadline - lead - Date.now()))
 }
 
@@ -411,12 +423,31 @@ Then("focus in tab {string} is on {string} in the expiration modal", async funct
   assert.deepEqual(await activeElementOf(tabOf(this, name).page), { inDialog: true, name: link, tag: "A" })
 })
 
+/** Presses Escape, then clicks the page's top-left corner, outside any dialog. */
+export const pressEscapeAndClickOutside = async (page: Page): Promise<void> => {
+  await page.keyboard.press("Escape")
+  await page.mouse.click(4, 4)
+}
+
+/** Focuses `control`, presses Enter, and answers the response to the `POST` to `pathname` that it caused. */
+export const pressEnterAndAwaitPost = async (
+  page: Page,
+  control: Locator,
+  pathname: string
+): Promise<PlaywrightResponse> => {
+  const answered = page.waitForResponse((response) =>
+    response.request().method() === "POST" && new URL(response.url()).pathname === pathname
+  )
+  await control.focus()
+  await page.keyboard.press("Enter")
+  return answered
+}
+
 When(
   "the visitor presses Escape, clicks outside the modal, and activates its close button in tab {string}",
   async function(this: AppWorld, name: string) {
     const { page } = tabOf(this, name)
-    await page.keyboard.press("Escape")
-    await page.mouse.click(4, 4)
+    await pressEscapeAndClickOutside(page)
     // The library modal always renders a close control (#400, styles#264); here it does nothing.
     await page.getByRole("dialog").getByRole("button").click()
   }
@@ -707,12 +738,7 @@ When("the visitor submits the reference form by keyboard in tab {string}", async
   name: string
 ) {
   const { page } = tabOf(this, name)
-  const submitted = page.waitForResponse((response) =>
-    response.request().method() === "POST" && new URL(response.url()).pathname === "/"
-  )
-  await page.getByRole("button", { name: PROTECTED_CONTROL }).focus()
-  await page.keyboard.press("Enter")
-  await submitted
+  await pressEnterAndAwaitPost(page, page.getByRole("button", { name: PROTECTED_CONTROL }), "/")
 })
 
 /** Recovery replaced the header and content: one heading with the explanation, Log in again, nothing protected. */

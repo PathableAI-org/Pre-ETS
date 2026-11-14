@@ -56,11 +56,25 @@ const entryOf = (world: AppWorld): OpenEntry => {
   return entry
 }
 
-Given("Springfield sessions end after {int} minutes of inactivity", async function(this: AppWorld, minutes: number) {
-  assert.ok(this.ownedDirectory, "expected scenario-owned tenant sites")
-  const file = path.join(this.directory, "springfield.json")
+/** Sets one session-policy field in the scenario-owned Springfield tenant file, which is read on each request. */
+const setSpringfieldPolicy = async (
+  world: AppWorld,
+  field: "idleTimeoutMinutes" | "warningLeadMinutes",
+  minutes: number
+) => {
+  assert.ok(world.ownedDirectory, "expected scenario-owned tenant sites")
+  const file = path.join(world.directory, "springfield.json")
   const springfield = JSON.parse(await fs.readFile(file, "utf8")) as Record<string, unknown>
-  await fs.writeFile(file, JSON.stringify({ ...springfield, idleTimeoutMinutes: minutes }))
+  await fs.writeFile(file, JSON.stringify({ ...springfield, [field]: minutes }))
+}
+
+Given("Springfield sessions end after {int} minutes of inactivity", async function(this: AppWorld, minutes: number) {
+  await setSpringfieldPolicy(this, "idleTimeoutMinutes", minutes)
+})
+
+/** The tenant's warning lead (#156): the warning opens this many minutes before a session's idle deadline. */
+Given("Springfield warns {int} minutes before its sessions end", async function(this: AppWorld, minutes: number) {
+  await setSpringfieldPolicy(this, "warningLeadMinutes", minutes)
 })
 
 /**
