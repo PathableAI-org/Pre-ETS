@@ -96,7 +96,10 @@ approved in `verification.md` or `plan.md`, and there is no `violated` result or
 report must cover the pushed SHA, or only evidence-only commits may follow its verified SHA:
 `git diff <verified-SHA>..<pushed-SHA>` touches only the feature's `quickstart.md` execution results, and the pull
 request body names the verified SHA. Any other change after the verified SHA, including a change to `quickstart.md`
-steps, needs a new verification request. Before more intermediate pushes, return it to draft with
+steps, needs a new verification request. For High and Standard work, also require that the latest
+[code review](../../../docs/engineering/code-review.md#gate-and-escalation) has no open blocking finding or
+escalation (`pnpm review:show <reviewed-SHA>` exits 0) and covers the pushed SHA under the same evidence-only rule.
+Before more intermediate pushes, return it to draft with
 `gh pr ready --undo`. Classify Copilot findings as accepted, rejected with a reason, or waiting on a human. Do not
 apply them automatically.
 

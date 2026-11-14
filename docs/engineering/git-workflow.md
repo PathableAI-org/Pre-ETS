@@ -141,7 +141,8 @@ its completion evidence satisfies that issue. None of these pull requests closes
 Human review is the approval. Copilot advice is input to that review.
 
 Keep a pull request in draft until that phase has passed its local checks and is ready for one review. An
-implementation slice also needs a verification report first. The
+implementation slice also needs a verification report first, and for High and Standard work a
+[code review](code-review.md#gate-and-escalation) with no open blocking finding. The
 organization requests a Copilot review on every push to a non-draft pull request, including stacked layers, and
 skips drafts. Mark a pull request draft again before a series of intermediate pushes, then mark it ready once.
 Use the repository's Balanced review effort. Do not request a fresh review for a push that does not change a decision.
