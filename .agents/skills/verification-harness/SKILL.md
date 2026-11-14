@@ -1,6 +1,6 @@
 ---
 name: verification-harness
-description: Act as the verification session for a Pre-ETS implementation stack. Run a pushed slice revision, observe the running application through its telemetry and the browser, and report a result per claim to the implementation session. Never edits branches.
+description: Act as the verification session for a Pre-ETS implementation stack. Run a pushed slice revision, observe the running application through its telemetry and the browser, record a schema-checked report per run in git notes on the verified SHA, and send the implementation session a pointer. Never edits branches.
 ---
 
 # Verification harness
@@ -16,7 +16,9 @@ the roles, the request and report shapes, the gate, and escalation. This skill s
 ## Boundaries
 
 - Verify only pushed commits named in a request. Never read or change the implementation session's worktree.
-- Do not edit any branch, pull request, issue, requirement, delivery plan, or `specs/` file. Report instead.
+- Do not edit any branch, pull request, issue, requirement, delivery plan, or `specs/` file. Report instead. The
+  one write this session makes is the report note under `refs/notes/verification`, through `pnpm verify:record`.
+  Never push notes or configure pushing for them.
 - Do not fix the implementation or suggest code beyond naming the observed defect and where it appeared.
 - Do not commit or retain probes, query output, screenshots, or transcripts in the repository.
 - Do not use real client records, real credentials, or production services. Never print credentials, cookies,
@@ -24,10 +26,17 @@ the roles, the request and report shapes, the gate, and escalation. This skill s
 
 ## Inputs
 
-From the request: branch, pushed SHA, slice ID, claim IDs (full or partial), `quickstart.md` sections, and changed
-run instructions. From the SHA: the feature's `verification.md`, `contracts/telemetry.md`, `quickstart.md`, and the
-slice entry in `plan.md`. If an input is missing or the documents disagree about a claim, report `blocked` with the
-reason rather than guessing.
+From the implementation session's message: branch, pushed SHA, slice ID, and changed run instructions. Generate the
+request from the SHA yourself rather than trusting a hand-picked claim list:
+
+```sh
+pnpm verify:request --feature specs/<number>-<slug> --slice <ID> --sha <SHA>
+```
+
+It lists the claims (full or partial), telemetry rows, `quickstart.md` sections, and approved limitation IDs. Also
+read the feature's `verification.md`, `contracts/telemetry.md`, and `quickstart.md` at the SHA. If the request has
+warnings, an input is missing, or the documents disagree about a claim, report `blocked` with the reason (or
+escalate) rather than guessing.
 
 ## Procedure
 
@@ -56,22 +65,52 @@ time, then report `not established` if the observation is still missing.
 
 ## Report
 
-Send the report to the implementation session that requested it, and copy the orchestrator when a result needs a
-person. Use this shape:
+Write the report as JSON that matches the schema in
+[`scripts/verification/report.ts`](../../../scripts/verification/report.ts), one file per run in a scratch
+directory outside the repository:
 
-```text
-Verification report — slice <ID> at <SHA>
-Environment: <instances, ports, services, run UUID, OTEL settings without header values, run time range>
-
-| Claim | Result | Evidence | Observed | Limits |
-| ----- | ------ | -------- | -------- | ------ |
-| V-001 | established / violated / not established / blocked | trace IDs or query | key values | conditions |
-
-Missing or unusable instrumentation: <telemetry rows and what was missing, or none>
-Forbidden data observed: <signal and field name only, never the value, or none>
-Escalation: <spec or plan correction, disagreement, or third failed round, or none>
-Cleanup: <done, or what remains>
+```json
+{
+  "schemaVersion": 1,
+  "verifiedSha": "<full SHA>",
+  "featureDir": "specs/<number>-<slug>",
+  "sliceId": "<ID>",
+  "runId": "<run UUID>",
+  "timeRange": { "start": "<ISO time>", "end": "<ISO time>" },
+  "environment": "<instances, ports, services, OTEL settings without header values>",
+  "claims": [
+    {
+      "id": "V-001",
+      "scope": "full | partial, as the request says",
+      "result": "established | violated | not established | blocked",
+      "evidence": { "traceIds": ["..."], "queries": ["..."], "procedure": "quickstart step or BDD run" },
+      "observed": "key values",
+      "conditions": "conditions",
+      "limitationId": "approved ID from the request, required unless established"
+    }
+  ],
+  "telemetryRows": [{ "id": "T-001", "status": "present | missing | unusable", "detail": "optional" }],
+  "forbiddenData": [{ "signal": "span or log name", "field": "field name only, never the value" }],
+  "escalations": [{ "kind": "specification | plan | disagreement | third round", "detail": "..." }],
+  "cleanup": { "complete": true },
+  "unrequestedViolations": []
+}
 ```
 
-Report what was observed, not what the code is expected to do. Name each claim the slice did not ask about but
-that a run happened to show as violated.
+Give one claim entry per requested claim and a status for every requested telemetry row. Put a claim the request
+did not name but the run showed violated under `unrequestedViolations`. Then record it:
+
+```sh
+pnpm verify:record <report.json>
+```
+
+The command validates the report and appends it to the note on the verified SHA. A retry on the same SHA is a new
+run UUID; it supersedes the earlier report, which stays in the note. Fix any validation problem and record again.
+
+Send the implementation session only the pointer the command prints, `refs/notes/verification @ <SHA> (run <uuid>)`,
+plus one line naming any claim that is not `established`, any telemetry row that is not present, and any
+forbidden-data finding or escalation. Copy the orchestrator when a result needs a person. Do not paste the report into
+the message; the note is the record, and the implementation session renders it into `quickstart.md` with `pnpm
+verify:render --write`.
+
+Report what was observed, not what the code is expected to do.
