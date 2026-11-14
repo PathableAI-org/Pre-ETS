@@ -63,8 +63,8 @@ Server Action calls, and requests without Fetch Metadata, is an **application re
 Next strips Flight headers before the proxy, so they are not used.
 
 The gate resolves the request tenant first, then reads the session for that tenant. Every
-response it returns carries `Cache-Control: private, no-store`; its denials have empty
-bodies and set no cookie.
+response it returns carries `Cache-Control: private, no-store`; its denials set no cookie
+and have empty bodies, except the denied Server Action answers below.
 
 | Outcome (in order)                | Document entry                           | Application request |
 | --------------------------------- | ---------------------------------------- | ------------------- |
@@ -81,6 +81,34 @@ same `ForbiddenNotice` that `forbidden()` shows, with status 403 and
 rewrite would become an external proxy when Next binds `127.0.0.1`
 ([#356](https://github.com/PathableAI-org/Pre-ETS/issues/356)).
 
+A denied Server Action candidate starts no login. When it was submitted without scripts, as a
+form-encoded navigation `POST` without `next-action`, the 401 carries the host's recovery
+document instead of an empty body: a self-contained page whose one heading explains that the
+session expired or is no longer available, with a "Log in again" link to `/`. When it carries
+`next-action`, the 401 body is a cause token, `session-expired` or `session-unavailable`, with
+`content-type: text/plain` and no charset. Next's client throws that body as the action's
+rejection message only for exactly that content type. The gate supplies the status and headers
+whatever the host returns. The cause is "expired" only when the session read returned the record
+past its deadline. Records are evicted at their deadline, so a later request is usually explained
+as "no longer available" ([#157](https://github.com/PathableAI-org/Pre-ETS/issues/157)).
+
+In a running tab, a protected action form hands a rejected action to the session coordinator
+with the gate's token, if any. The `session-expired` token enters recovery at once. Otherwise the
+coordinator reads `GET /session/status`. A 401 or 409 replaces that tab's header and protected
+content with recovery content: the same explanation and "Log in again" link as the recovery
+document, with focus moved to its heading. The explanation says "expired" when the tab observed no
+logout of its session (no logout message or record, and no unresolved logout attempt) and the
+session's held deadline is at or before the later of the tab's server-clock estimate and the
+status response's `Date` header. That also holds when the tab's timers were suspended past the
+deadline. Otherwise it says the session is no longer available. The submission is also activity,
+and its activity report may find the session ended first. For 5 seconds after a protected
+submission leaves the tab, such an answer waits for the action's own outcome instead of ending
+the tab; if no outcome arrives by then, a confirmation ends the tab as usual. Recovery writes no ended record
+and posts no cross-tab message, so other tabs keep their state until their own confirmation or
+deadline. The tab then stops coordinating. A usable answer leaves the page and the form shows "The
+operation was not performed."; an undetermined answer hides content and retries, as for any
+confirmation.
+
 A defect rejects the proxy promise (Next answers 500); nothing passes through on failure.
 A document entry renews a usable session as `deliberate-page-request` through `refreshForTenant`
 with the tenant's effective policy. Every other request only reads at the gate, including every
@@ -94,8 +122,8 @@ idle authority, and a cookie outliving its record names nothing.
 
 `/` and the protected `(app)` layout keep their own `readSessionRequest` check; `runReferenceOperation` and
 `recordFixtureOperation` call `authorizeSessionAction`. The reference
-consumer shows a rejected action invocation as "The operation was not performed." without
-retrying. The root layout renders a history guard that reloads a page restored from the
+consumer shows a rejected action invocation that did not end in recovery as "The operation was
+not performed." without retrying. The root layout renders a history guard that reloads a page restored from the
 back-forward cache and refreshes the route on `popstate`, so history traversal reaches the
 gate.
 
@@ -106,8 +134,13 @@ designated above.
 
 Known gaps: `/_next/static/**` is publicly served and `/favicon.ico`, metadata routes, and
 `/_next/image` answer 401 without a session until the public-asset decision is made.
-Expired- or missing-session recovery content and Server Action 401 recovery belong to
-[#157](https://github.com/PathableAI-org/Pre-ETS/issues/157).
+"Log in again" in recovery content and in the expiration modal is a plain link to `/`, so no login
+starts until the visitor activates it. The entry then follows fresh entry: the provider is asked for
+fresh authentication (`max_age=0`) even while it holds a single sign-on session, a new session is
+established, and the earlier reference is never admitted. A cancelled or failed login establishes
+nothing, and Log in can be tried again. A tab still behind the expiration modal stays there when
+another tab logs in; its own Log in loads a new document under the valid session
+([#157](https://github.com/PathableAI-org/Pre-ETS/issues/157)).
 
 ## Cross-tab activity and logout coordination
 
@@ -166,7 +199,8 @@ due, so a stale timer reschedules. Tabs share renewed deadlines, coalesced activ
 `BroadcastChannel("preets-session-coordination")`, ignoring other tags, and adopt a snapshot only
 when its revision is higher than the one they hold; equal revisions are ignored. Two more records support replay:
 `preets-session-current:v1`, the tag of the most recently mounted protected document, and
-one `preets-session-ended:v1:<tag>` → `{ endedAt }` key per tag the server confirmed ended, pruned
+one `preets-session-ended:v1:<tag>` → `{ cause, endedAt }` key per tag the server confirmed ended
+(`cause` is `expired` or `ended`), pruned
 after 24 hours. Messages and records hold
 only tags, times, the warning lead, and an activity kind.
 
@@ -187,13 +221,36 @@ only if this tab's session is still current. When storage cannot hold the hint, 
 is kept in memory as this tab's hint. The coordinator's header carries `data-session-deadline` (the
 held local deadline) and `data-session-warning-lead` for evidence; they hold no protected content.
 
-A tab confirms with `GET /session/status` before acting on its local deadline and on resume. Past
-its deadline on resume it first hides content, setting `hidden` and `inert` on the DOM at once
-rather than waiting for React to render. Concealment also applies while a logout is in progress,
+A tab confirms with `GET /session/status` before acting on its local deadline and on resume. At
+its local deadline, and past it on resume, it first hides content ("Checking your session…"),
+setting `hidden` and `inert` on the DOM at once rather than waiting for React to render. This
+temporary concealment is not the expired state. Concealment also applies while a logout is in progress,
 which keeps its busy state. A usable answer reveals content when its read started after
 concealment began, even if a newer renewal from another tab was adopted meanwhile. An unanswered or failed
-confirmation (1.5 seconds) hides content and retries. A page entering the back-forward cache is
-hidden first, and the history guard reloads it on restore. Server Action forms confirm after
+confirmation (1.5 seconds) hides content and retries. When the deadline check is answered as still usable,
+as when the local estimate runs slightly early or the timer fires before the tab's clock reaches its
+local deadline under load, the tab confirms again when the server's own deadline arrives (at least
+250 ms, at most 5 seconds later). A page entering
+the back-forward cache is hidden first, and the history guard reloads it on restore.
+
+A 401 or 409 confirmation with known expiration (the tab observed no logout of its session, and the
+held deadline is at or before the later of its server-clock estimate and the response's `Date`
+header) shows the expiration modal ([#157](https://github.com/PathableAI-org/Pre-ETS/issues/157)):
+the header and protected content are unmounted, and the `@pathableai/react` `Modal` shows "Your
+session expired", the same explanation as recovery, and a "Log in again" link to `/`, which takes
+focus. Nothing closes it. The library modal always renders a close control, and Escape calls its
+`onClose`; both do nothing here until the library offers a non-dismissible modal
+([#400](https://github.com/PathableAI-org/Pre-ETS/issues/400)). The tab records its tag as ended
+with `cause: "expired"`, so every sharing tab shows the modal too, unless it observed a logout of
+the session (a logout message, or an unresolved logout attempt), in which case it shows the
+signed-out notice. The store can end a record a few milliseconds before the deadline the tab holds, so
+when such an answer arrives within 2 seconds before the held deadline and the tab observed no logout, the tab stays
+concealed and judges known expiration when its estimate reaches the deadline; a logout observed meanwhile still
+ends it signed out. Without known expiration the tab ends as below with `cause: "ended"`. A record
+without a cause, written by an older tab, reads as `ended`. The expired view, like the signed-out
+notice, is final for that document: a later message changes nothing. On `pagehide` into the
+back-forward cache the modal is hidden at once, so a restored page shows neither the modal nor
+content before the history guard reloads it into fresh entry. Server Action forms confirm after
 they settle, so other tabs learn of the gate's renewal.
 
 Every protected page has a Log out button. Each attempt gets an `attemptId` and is written to its
@@ -213,8 +270,7 @@ because the server may have ended the session and lost or failed the reply (a 50
 applied delete): the initiating tab hides content and confirms, the other tabs keep watching, and
 the status answer decides. A 401 or a different tag ends every tab as above; a usable status
 observed after `notAfter` means logout did not complete.
-Authentication never starts on its own. The same notice stands in for expiration until
-[#157](https://github.com/PathableAI-org/Pre-ETS/issues/157). If logout fails (a definitive 403 or
+Authentication never starts on its own. Expiration shows the expiration modal instead (above). If logout fails (a definitive 403 or
 other refusal, or a usable status observed after `notAfter`), the tab broadcasts `logout-failed` with
 its `attemptId`, which resolves that attempt in the other tabs, hides content, and offers Log out again. Logout ends the application session only; see
 [authentication](./authentication.md#application-logout). Coordination and logout need JavaScript;
@@ -262,11 +318,17 @@ created. No signal carries the session reference, cookie, coordination tag, issu
 
 ### Host adapter spans
 
-| Span                                         | `preets.outcome`                                                                                                                                                         | Other attributes                                                                                                                              |
-| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `protectRequest`                             | `admitted`, `redirected_login`, `denied_unauthenticated`, `denied_forbidden`, `unavailable`, `tenant_failure`                                                            | `preets.protection.entry` (`document`, `application`), `preets.protection.renewal` (`deliberate-page-request`, `none`), `preets.tenant.alias` |
-| `sessionActivity`, `sessionStatus`, `logout` | `ok`, `unauthenticated`, `tag_mismatch`, `cross_origin`, `unsupported_content_type`, `invalid_body`, `rejected_late`, `tenant_mismatch`, `unavailable`, `tenant_failure` | `preets.tenant.alias` once the tenant resolved                                                                                                |
-| `authorizeSessionAction`                     | `authorized`, `session_changed`, `no_session`, `tenant_mismatch`, `unavailable`, `tenant_failure`                                                                        | `preets.tenant.alias`                                                                                                                         |
+| Span                                         | `preets.outcome`                                                                                                                                                         | Other attributes                                                                                                                                                                                                   |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `protectRequest`                             | `admitted`, `redirected_login`, `denied_unauthenticated`, `denied_forbidden`, `unavailable`, `tenant_failure`                                                            | `preets.protection.entry` (`document`, `application`), `preets.protection.renewal` (`deliberate-page-request`, `none`), `preets.protection.server_action`, `preets.protection.denial_cause`, `preets.tenant.alias` |
+| `sessionActivity`, `sessionStatus`, `logout` | `ok`, `unauthenticated`, `tag_mismatch`, `cross_origin`, `unsupported_content_type`, `invalid_body`, `rejected_late`, `tenant_mismatch`, `unavailable`, `tenant_failure` | `preets.tenant.alias` once the tenant resolved                                                                                                                                                                     |
+| `authorizeSessionAction`                     | `authorized`, `session_changed`, `no_session`, `tenant_mismatch`, `unavailable`, `tenant_failure`                                                                        | `preets.tenant.alias`                                                                                                                                                                                              |
+
+`preets.protection.server_action` is set on every gated request: `fetch` when the request carries `next-action`,
+`document` for a Server Action candidate sent as a navigation without it (a no-script submission), and `none`
+otherwise. `preets.protection.denial_cause` is set only with `denied_unauthenticated` on a Server Action candidate:
+`expired` when the child `SessionService.read` returned the record past its deadline, and `unknown` otherwise. A gate
+denial has no `authorizeSessionAction` span in its trace, because the action never runs.
 
 The session-service span under each adapter span carries the session facts for that request. `rejected_late`
 appears only on `logout`. A request the gate denies never reaches its handler. For example, activity after expiry or
@@ -307,6 +369,7 @@ Filter every query by the run's `service.version` and `service.instance.id`:
 ```text
 { resource.service.instance.id = "<run-uuid>" && name = "SessionService.refreshForTenant" && span.preets.outcome = "renewed" }
 { resource.service.instance.id = "<run-uuid>" && name = "protectRequest" } | select(span.preets.outcome, span.preets.protection.entry)
+{ resource.service.instance.id = "<run-uuid>" && name = "protectRequest" && span.preets.protection.server_action != "none" } | select(span.preets.outcome, span.preets.protection.server_action, span.preets.protection.denial_cause)
 { resource.service.instance.id = "<run-uuid>" && name = "SessionService.invalidate" && span.preets.outcome = "rejected_late" }
 { resource.service.instance.id = "<run-uuid>" && name = "AuthenticationService.complete" } | select(span.preets.outcome, span.preets.authentication.freshness_position)
 ```

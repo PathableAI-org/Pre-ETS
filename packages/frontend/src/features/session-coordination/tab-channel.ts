@@ -232,13 +232,23 @@ export const readCurrentHint = (): string | undefined => {
 /** Answers whether the hint was stored; a tab that cannot store it keeps the confirmed tag in memory (R19). */
 export const writeCurrentHint = (coordinationTag: string): boolean => writeJson(CURRENT_KEY, { coordinationTag })
 
-/** Tags of sessions confirmed ended, newest first, so a tab that missed the broadcast can replay it (R3). */
 /** One marker per ended tag, so concurrent writers never overwrite one another (R3, R33). */
 export const endedKey = (coordinationTag: string): string => `${ENDED_PREFIX}${coordinationTag}`
 
-export const isEnded = (coordinationTag: string): boolean => {
+/**
+ * Why a session ended, as recorded by the tab that confirmed it: `expired` after confirmed expiry, `ended` after a
+ * logout or any other confirmed end (#157 research D9).
+ */
+export type EndedCause = "ended" | "expired"
+
+/**
+ * The recorded cause when the tag is confirmed ended, so a tab that missed the broadcast can replay it (R3). A record
+ * without a cause, written by an older tab, reads as `ended`.
+ */
+export const readEnded = (coordinationTag: string): EndedCause | undefined => {
   const value = readJson(endedKey(coordinationTag))
-  return isRecord(value) && isTime(value.endedAt)
+  if (!isRecord(value) || !isTime(value.endedAt)) return undefined
+  return value.cause === "expired" ? "expired" : "ended"
 }
 
 const pruneEndedMarkers = (now: number) => {
@@ -254,9 +264,10 @@ const pruneEndedMarkers = (now: number) => {
   }
 }
 
-export const recordEnded = (coordinationTag: string): void => {
+/** Written only after the server answered that the session ended, never on a local deadline alone (FR-010). */
+export const recordEnded = (coordinationTag: string, cause: EndedCause): void => {
   const now = Date.now()
-  writeJson(endedKey(coordinationTag), { endedAt: now })
+  writeJson(endedKey(coordinationTag), { cause, endedAt: now })
   pruneEndedMarkers(now)
 }
 

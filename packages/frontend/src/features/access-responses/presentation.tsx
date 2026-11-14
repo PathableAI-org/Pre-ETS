@@ -1,9 +1,16 @@
 import type { ReactElement } from "react"
 
-import { PRIVATE_NO_STORE, type TenantFailureResponse } from "@pathableai/pre-ets-frontend-services"
+import {
+  PRIVATE_NO_STORE,
+  type ProtectionResponses,
+  type TenantFailureResponse
+} from "@pathableai/pre-ets-frontend-services"
 import { Alert, Container, Heading, Link, Page, Stack, Text } from "@pathableai/react"
 import { NextResponse } from "next/server"
 import { renderToReadableStream } from "react-dom/server.edge"
+
+import { ACTION_DENIAL_BODY } from "../../providers/action-denial.ts"
+import { sessionEndCopy, SessionEndNotice } from "../../shared/session-recovery.ts"
 
 export const authenticationReturnBody = () =>
   renderToReadableStream(
@@ -89,4 +96,44 @@ export const forbiddenDocumentResponse = async (): Promise<NextResponse> =>
       headers: { "cache-control": PRIVATE_NO_STORE, "content-type": "text/html; charset=utf-8" },
       status: 403
     }
+  )
+
+/**
+ * Host-rendered recovery document for `ProtectionResponses.recoveryDocument`: the gate's answer to a denied no-script
+ * Server Action submission. Like the 403 document it is self-contained, stating its charset, viewport, and title; the
+ * gate sends it with HTTP 401 and `private, no-store` (#157 research D1).
+ */
+export const recoveryDocumentResponse: ProtectionResponses["recoveryDocument"] = async ({ cause }) =>
+  new NextResponse(
+    await renderToReadableStream(
+      <html lang="en">
+        <body>
+          <meta charSet="utf-8" />
+          <meta content="width=device-width, initial-scale=1" name="viewport" />
+          <title>{`${sessionEndCopy(cause).heading} – Pre-ETS`}</title>
+          <Page>
+            <Container>
+              <SessionEndNotice cause={cause} />
+            </Container>
+          </Page>
+        </body>
+      </html>
+    ),
+    {
+      headers: { "cache-control": PRIVATE_NO_STORE, "content-type": "text/html; charset=utf-8" },
+      status: 401
+    }
+  )
+
+/**
+ * `ProtectionResponses.actionDenial`: the closed-set cause token for a denied fetch Server Action. Exactly
+ * `text/plain` with no charset, because Next's client reads the body as the rejection message only for that content
+ * type (#157 research D3, F5). The gate sends it with HTTP 401 and `private, no-store`.
+ */
+export const actionDenialResponse: ProtectionResponses["actionDenial"] = ({ cause }) =>
+  Promise.resolve(
+    new NextResponse(ACTION_DENIAL_BODY[cause], {
+      headers: { "cache-control": PRIVATE_NO_STORE, "content-type": "text/plain" },
+      status: 401
+    })
   )

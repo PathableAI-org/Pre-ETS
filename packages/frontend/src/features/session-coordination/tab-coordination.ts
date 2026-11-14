@@ -1,6 +1,16 @@
-import type { InPageSessionActivity, SessionCoordinationSnapshot } from "@pathableai/pre-ets-frontend-services"
+import type {
+  InPageSessionActivity,
+  SessionCoordinationSnapshot,
+  SessionEndCause
+} from "@pathableai/pre-ets-frontend-services"
 
-import { recordUiTransition, type TraceScope, type UiState, withdrawSubmitCause } from "../../shared/browser-tracing.ts"
+import {
+  recordUiTransition,
+  type TraceScope,
+  type TransitionCause,
+  type UiState,
+  withdrawSubmitCause
+} from "../../shared/browser-tracing.ts"
 import { classifySessionActivity } from "./activity-classification.ts"
 import {
   ACTIVITY_WINDOW_MILLISECONDS,
@@ -10,16 +20,18 @@ import {
   flushActivityCommunication
 } from "./activity-window.ts"
 import { calibrateClockOffset, type ClockOffset, type ClockSample } from "./clock-offset.ts"
+import { knownExpiration } from "./known-expiration.ts"
 import { readSessionStatus, sendActivity, sendLogout, type SessionOutcome } from "./session-endpoints.ts"
 import { adoptSnapshot } from "./snapshot-order.ts"
 import {
   addPendingLogout,
   CURRENT_KEY,
+  type EndedCause,
   endedKey,
-  isEnded,
   openTabChannel,
   pendingLogouts,
   readCurrentHint,
+  readEnded,
   readWindowRecord,
   recordEnded,
   removePendingLogout,
@@ -33,9 +45,11 @@ import {
 
 /**
  * Tab states from data-model "Tab coordination states"; `Confirming` keeps its view. Concealment is orthogonal, so a
- * logout in progress keeps its busy state while an unconfirmed session hides the content.
+ * logout in progress keeps its busy state while an unconfirmed session hides the content. `recovery` follows a denied
+ * action in this tab only (#157 research D6); `expired` follows confirmed expiry in every sharing tab (#157 D8–D10).
+ * `ended`, `expired`, and `recovery` are terminal.
  */
-export type TabView = "active" | "ended" | "logging-out" | "logout-failed"
+export type TabView = "active" | "ended" | "expired" | "logging-out" | "logout-failed" | "recovery"
 
 export interface TabViewState {
   /** Protected content is hidden and inert (temporary concealment, or a failed logout). */
@@ -44,6 +58,10 @@ export interface TabViewState {
   readonly deadline?: number | undefined
   /** The session ended by this tab's own logout, so this tab moves focus to the notice. */
   readonly endedHere: boolean
+  /** In the `expired` view: the page is entering the back/forward cache, so the modal is hidden (#157 FR-018). */
+  readonly pageHidden?: true | undefined
+  /** Why the session ended, as far as this tab knows; set in the `recovery` view. */
+  readonly recovery?: SessionEndCause | undefined
   readonly view: TabView
   /** The held warning lead, exposed beside the deadline. */
   readonly warningLeadMinutes?: number | undefined
@@ -52,6 +70,11 @@ export interface TabViewState {
 type TimerName = "confirm" | "flush" | "logout-watch" | "near-deadline" | "retry"
 
 const CONFIRMATION_RETRY_MILLISECONDS = 5_000
+/**
+ * How long after a protected submission leaves this tab an `Ended` activity answer waits for the action's own outcome,
+ * so a denied action shows recovery in this tab only (#157 FR-003, FR-008). A settled action answers sooner.
+ */
+const SUBMISSION_SETTLE_MILLISECONDS = 5_000
 /** Watch reads start on a fixed one-second cadence and each gives up after one second, keeping FR-015's 2-second bound. */
 const LOGOUT_WATCH_INTERVAL_MILLISECONDS = 1_000
 /** A logout attempt is refused by the server after `notAfter`, this far ahead on the server clock (R21). */
@@ -68,12 +91,35 @@ const listenAll = (listeners: readonly Listener[]) => {
   }
 }
 
-/** The recorded UI state of each view, unconcealed and concealed (telemetry contract closed sets). */
-const UI_STATES: Readonly<Record<TabView, readonly [shown: UiState, concealed: UiState]>> = {
+/** Why this tab concealed temporarily, where the telemetry contract says (#157 T-003). */
+type ConcealCause = Extract<TransitionCause, "deadline" | "resume">
+
+/** Why this tab confirmed expiry: its own confirmation (at the deadline or on resume), or another tab's record. */
+type ExpiryCause = Extract<TransitionCause, "deadline" | "peer" | "resume">
+
+/** States whose transitions carry the concealment cause and server-clock timing (#157 T-003). */
+const TIMED_STATES: ReadonlySet<UiState> = new Set<UiState>(["content_concealed", "content_shown"])
+
+/** B5: confirmed expiry is shown within this bound of the authoritative deadline. */
+const EXPIRY_BOUND_MILLISECONDS = 2_000
+
+/** The minimum wait before re-confirming a session the server still holds past this tab's local deadline. */
+const NEAR_DEADLINE_RETRY_MILLISECONDS = 250
+
+/** The recorded UI state of each running view, unconcealed and concealed (telemetry contract closed sets). */
+const UI_STATES: Readonly<
+  Record<Exclude<TabView, "expired" | "recovery">, readonly [shown: UiState, concealed: UiState]>
+> = {
   active: ["content_shown", "content_concealed"],
   ended: ["signed_out", "signed_out"],
   "logging-out": ["logging_out", "logging_out_concealed"],
   "logout-failed": ["logout_failed", "logout_failed"]
+}
+
+/** The recorded UI state of the recovery view by cause (#157 T-002). */
+const RECOVERY_STATES: Readonly<Record<SessionEndCause, UiState>> = {
+  expired: "recovery_expired",
+  unknown: "recovery_unavailable"
 }
 
 /** No transition was recorded: work runs in whatever scope is already active. */
@@ -142,6 +188,8 @@ export class TabCoordination {
   /** Server clock minus this tab's clock, from the latest server snapshot (research D6). */
   /** Server clock minus this tab's clock, calibrated from request timing (research D6, R29). */
   #clock: ClockOffset | undefined
+  /** Why the current temporary concealment began, when the telemetry contract names it (#157 T-003). */
+  #concealCause: ConcealCause | undefined
   #concealed = false
   /** When concealment began; a confirmation started later may reveal the content. */
   #concealedSince = Number.POSITIVE_INFINITY
@@ -154,6 +202,8 @@ export class TabCoordination {
   /** The confirmed tag when storage could not hold it; used as this tab's hint (R19). */
   #hintOverride: string | undefined
   readonly #initial: SessionCoordinationSnapshot
+  /** When a protected submission last left this tab (#157). */
+  #lastSubmission = Number.NEGATIVE_INFINITY
   /** This tab's logout had no definitive answer; confirmation decides its outcome (R18). */
   #logoutUnresolved = false
   /** The window for this tab's tag when storage or locks are unavailable (R24). */
@@ -220,7 +270,6 @@ export class TabCoordination {
   readonly #timers = new Map<TimerName, ReturnType<typeof setTimeout>>()
   /** The last recorded UI state; `undefined` until the first publish, which records `mounted → …`. */
   #uiState: UiState | undefined
-
   #view: TabView = "active"
 
   get #serverOffset() {
@@ -240,15 +289,31 @@ export class TabCoordination {
 
   /** Reads the session without renewing it and acts on the answer. Never throws. */
   async confirm(timeout?: number): Promise<void> {
-    if (this.#view === "ended") return
+    await this.#confirm("deadline", timeout)
+  }
+
+  /**
+   * A protected action of this tab was rejected (#157 research D6). The gate's `expired` token enters recovery at
+   * once. Otherwise the session status decides: `Ended` enters recovery with the known-expiration cause (research D7),
+   * and any other answer is applied as a confirmation. Recovery writes no ended record and posts no message, so other
+   * tabs keep their state (FR-008). Answers whether the tab now shows recovery. Never throws.
+   */
+  async deny(cause: SessionEndCause | undefined): Promise<boolean> {
+    if (!this.#running()) return false
+    if (cause === "expired") return this.#recover("expired")
     const startedAt = Date.now()
-    const outcome = await readSessionStatus(this.#cancel.signal, timeout)
-    if (this.#live()) this.#applyStatus(outcome, startedAt)
+    const outcome = await readSessionStatus(this.#cancel.signal)
+    if (!this.#live() || !this.#running()) return false
+    if (outcome._tag !== "Ended") {
+      this.#applyStatus(outcome, startedAt, "deadline")
+      return false
+    }
+    return this.#recover(this.#knownExpiration(outcome.serverTime) ? "expired" : "unknown")
   }
 
   /** Logout is sent at once with `keepalive` and never enters the activity window (FR-009, research D8). */
   async logout(): Promise<void> {
-    if (this.#view === "ended" || this.#view === "logging-out") return
+    if (!this.#running() || this.#view === "logging-out") return
     const transition = this.#setView("logging-out")
     const attemptId = crypto.randomUUID()
     // On the Redis clock, which the store's atomic check and attempt resolution also use (R34).
@@ -292,7 +357,8 @@ export class TabCoordination {
     this.#clock = initialOffset(applicationClock(this.#initial), timing)
     this.#redisClock = initialOffset(redisClock(this.#initial), timing)
     this.#replayPendingLogouts()
-    if (!this.#replayEnded()) {
+    this.#stopListening = stopListening
+    if (!this.#replayEnded("peer")) {
       // Without readable storage the replay proves nothing, so confirm before trusting the snapshot (R39).
       if (storage) this.#adoptSnapshot(this.#initial, true)
       else this.#concealAndConfirm()
@@ -301,17 +367,13 @@ export class TabCoordination {
       if (!this.#sharedWindow) this.#channel.post({ coordinationTag: this.#tag, type: "window-query" })
     }
     return () => {
-      stopListening()
-      this.#cancel.abort()
-      this.#channel?.close()
-      this.#channel = undefined
-      this.#clearTimers()
+      this.#stop()
     }
   }
 
   /** A newer server-rendered snapshot of this session (a route refresh) counts as a confirmation of it. */
   update(snapshot: SessionCoordinationSnapshot): void {
-    if (!this.#live() || this.#view === "ended") return
+    if (!this.#running()) return
     // Its request timing is unknown, so it does not recalibrate the clock; a newer revision reveals content.
     if (this.#adoptSnapshot(snapshot, true)) this.#reveal()
   }
@@ -324,12 +386,38 @@ export class TabCoordination {
   }
 
   /**
+   * Converts the held server-clock deadline with the current offset and schedules confirmation and the near-deadline
+   * flush; snapshot age never extends it (R29).
+   */
+  /**
+   * An activity report found the session ended. While a protected submission of this tab is settling, its outcome
+   * decides instead: a denial enters recovery in this tab only, and a settled action confirms. If neither comes, a
+   * confirmation at the end of the settle window ends the tab as before (#157 research D6, FR-008).
+   */
+  #activityEnded(serverTime: number | undefined) {
+    const settledBy = this.#lastSubmission + SUBMISSION_SETTLE_MILLISECONDS
+    if (Date.now() >= settledBy) {
+      this.#endConfirmed("deadline", serverTime)
+      return
+    }
+    this.#schedule("retry", settledBy, () => {
+      this.#guard(this.confirm())
+    })
+  }
+
+  /** Enters a recorded end: `expired` unless this tab observed a logout, which keeps precedence (#157 FR-019). */
+  #adoptEnded(recorded: EndedCause, cause: ExpiryCause) {
+    if (recorded === "expired" && !this.#logoutObserved()) this.#expire(cause, undefined)
+    else this.#end(false)
+  }
+
+  /**
    * Adopts a snapshot of this tab's session when its store observation is later than the held one (research D6).
    * Answers whether it was adopted.
    */
   #adoptSnapshot(snapshot: SessionCoordinationSnapshot, broadcast: boolean): boolean {
     if (snapshot.coordinationTag !== this.#tag) {
-      this.#endConfirmed()
+      this.#endConfirmed("deadline", undefined)
       return false
     }
     if (!adoptSnapshot(this.#held, snapshot)) return false
@@ -348,16 +436,13 @@ export class TabCoordination {
     return true
   }
 
-  /**
-   * Converts the held server-clock deadline with the current offset and schedules confirmation and the near-deadline
-   * flush; snapshot age never extends it (R29).
-   */
   #applyDeadline() {
     if (this.#held === undefined) return
     this.#deadline = this.#held.idleDeadlineEpochMilliseconds - this.#serverOffset
     this.#publish()
+    // At the local deadline the content is concealed while the server confirms (#157 research D10).
     this.#schedule("confirm", this.#deadline, () => {
-      this.#guard(this.confirm())
+      this.#concealAndConfirm("deadline")
     })
     this.#schedule("near-deadline", this.#deadline - ACTIVITY_WINDOW_MILLISECONDS + 1, () => {
       this.#flushNearDeadline()
@@ -365,31 +450,26 @@ export class TabCoordination {
   }
 
   /**
-   * Acts on a status answer for a read started at `startedAt`. A usable answer for this session reveals concealed
-   * content when the read started after concealment began, or when its snapshot is newer than the held one, so a
-   * renewal adopted from another tab meanwhile does not keep this tab hidden.
+   * Acts on a status answer for a read started at `startedAt` because of `cause`. A usable answer for this session
+   * reveals concealed content when the read started after concealment began, or when its snapshot is newer than the
+   * held one, so a renewal adopted from another tab meanwhile does not keep this tab hidden.
    */
-  #applyStatus(outcome: SessionOutcome, startedAt: number) {
+  #applyStatus(outcome: SessionOutcome, startedAt: number, cause: ExpiryCause) {
     switch (outcome._tag) {
       case "Ended":
-        this.#endConfirmed()
+        this.#endConfirmed(cause, outcome.serverTime)
         return
       case "Undetermined":
         this.#conceal()
         this.#schedule("retry", Date.now() + CONFIRMATION_RETRY_MILLISECONDS, () => {
-          this.#guard(this.confirm())
+          this.#guard(this.#confirm(cause))
         })
         return
       case "Usable":
         this.#calibrate(outcome)
         this.#resolveAttempts(outcome.snapshot)
         if (this.#adoptSnapshot(outcome.snapshot, true) || startedAt >= this.#concealedSince) this.#reveal()
-        // An equal revision with the deadline still passed adopts nothing, so keep confirming instead of going idle.
-        if (Date.now() >= this.#deadline && !this.#timers.has("confirm")) {
-          this.#schedule("confirm", Date.now() + CONFIRMATION_RETRY_MILLISECONDS, () => {
-            this.#guard(this.confirm())
-          })
-        }
+        this.#confirmAtServerDeadline(outcome.snapshot)
     }
   }
 
@@ -409,19 +489,45 @@ export class TabCoordination {
 
   /**
    * Temporary concealment, applied to the DOM at once so nothing stays visible or focusable until React commits.
-   * It applies over a logout in progress too.
+   * It applies over a logout in progress too. `cause` names a deadline or resume concealment (#157 T-003).
    */
-  #conceal(): TraceScope {
-    if (this.#view === "ended" || !this.#live()) return CURRENT_SCOPE
-    if (!this.#concealed) this.#concealedSince = Date.now()
+  #conceal(cause?: ConcealCause): TraceScope {
+    if (!this.#running()) return CURRENT_SCOPE
+    if (!this.#concealed) {
+      this.#concealedSince = Date.now()
+      this.#concealCause = cause
+    }
     this.#concealed = true
     return this.#publish()
   }
 
   /** The confirmation starts inside the concealment's scope, so its request is the transition's child (D5). */
-  #concealAndConfirm() {
-    this.#conceal().run(() => {
-      this.#guard(this.confirm())
+  #concealAndConfirm(cause?: ConcealCause) {
+    this.#conceal(cause).run(() => {
+      this.#guard(this.#confirm(cause ?? "deadline"))
+    })
+  }
+
+  /** Reads the session without renewing it; `cause` names why, should the answer confirm expiry (#157 T-003). */
+  async #confirm(cause: ExpiryCause, timeout?: number): Promise<void> {
+    if (!this.#running()) return
+    const startedAt = Date.now()
+    const outcome = await readSessionStatus(this.#cancel.signal, timeout)
+    if (this.#live()) this.#applyStatus(outcome, startedAt, cause)
+  }
+
+  /**
+   * After a usable answer with no deadline timer pending, the deadline timer has fired and nothing rescheduled it: the
+   * local estimate ran early, or the timer fired before this tab's clock reached the local deadline, as under load. Either
+   * way the server still holds the session, so confirm again when the server's own deadline arrives (250 ms to 5 s),
+   * keeping confirmed expiry within the 2-second bound (B5) instead of never confirming again.
+   */
+  #confirmAtServerDeadline(snapshot: SessionCoordinationSnapshot) {
+    if (snapshot.coordinationTag !== this.#tag || this.#timers.has("confirm")) return
+    const remaining = snapshot.idleDeadlineEpochMilliseconds - snapshot.serverTimeEpochMilliseconds
+    const wait = Math.min(Math.max(remaining, NEAR_DEADLINE_RETRY_MILLISECONDS), CONFIRMATION_RETRY_MILLISECONDS)
+    this.#schedule("confirm", Date.now() + wait, () => {
+      this.#concealAndConfirm("deadline")
     })
   }
 
@@ -430,7 +536,7 @@ export class TabCoordination {
     const startedAt = Date.now()
     const outcome = await readSessionStatus(this.#cancel.signal)
     if (!this.#live()) return
-    this.#applyStatus(outcome, startedAt)
+    this.#applyStatus(outcome, startedAt, "deadline")
     if (outcome._tag !== "Usable" || outcome.snapshot.coordinationTag !== this.#tag) return
     if (!writeCurrentHint(this.#tag)) this.#hintOverride = this.#tag
     this.#confirmedReplay = { form, submitter }
@@ -455,35 +561,61 @@ export class TabCoordination {
   }
 
   #end(endedHere: boolean) {
-    if (this.#view === "ended" || !this.#live()) return
-    this.#clearTimers()
-    this.#pendingActivity = undefined
-    // The session ended, so every attempt of this tag is resolved (R31).
-    for (const attemptId of this.#attempts.keys()) removePendingLogout(this.#tag, attemptId)
-    this.#attempts.clear()
-    this.#view = "ended"
-    this.#hideContent(true)
+    if (!this.#terminate("ended")) return
     this.#notify({ concealed: true, endedHere, view: "ended" })
     this.#transition()
   }
 
   /**
    * The server answered 401 or a different session: record it so tabs that missed it can replay it. While this tab's
-   * own logout is unresolved, that answer is its outcome (R18).
+   * own logout is unresolved, that answer is its outcome (R18). With known expiration (#157 research D7) every sharing
+   * tab enters `expired`; otherwise it ends (D9).
+   *
+   * The store may end a record a few milliseconds before the deadline this tab holds, and a deadline check may be
+   * answered while every estimate this tab has still reads just before it. Within the B5 bound of the deadline, with no
+   * logout observed, the tab stays concealed and judges known expiration when its estimate reaches the deadline; a
+   * logout observed meanwhile still ends it signed out (FR-019).
    */
-  #endConfirmed() {
+  #endConfirmed(cause: ExpiryCause, serverTime: number | undefined) {
+    if (!this.#running()) return
     if (this.#logoutUnresolved) {
       this.#logoutEnded()
       return
     }
-    recordEnded(this.#tag)
+    if (this.#knownExpiration(serverTime)) {
+      recordEnded(this.#tag, "expired")
+      this.#expire(cause, serverTime)
+      return
+    }
+    const untilDeadline = this.#untilDeadline(serverTime)
+    if (!this.#logoutObserved() && untilDeadline <= EXPIRY_BOUND_MILLISECONDS) {
+      this.#conceal()
+      this.#schedule("confirm", Date.now() + untilDeadline, () => {
+        this.#endConfirmed(cause, undefined)
+      })
+      return
+    }
+    recordEnded(this.#tag, "ended")
     this.#end(false)
+  }
+
+  /**
+   * Confirmed expiry: the header and content are unmounted and the expiration modal is shown (#157 research D8). The
+   * transition carries the cause and the server-clock timing (T-003).
+   */
+  #expire(cause: ExpiryCause, serverTime: number | undefined) {
+    const timing = this.#timing(serverTime)
+    if (!this.#terminate("expired")) return
+    this.#notify({ concealed: true, endedHere: false, view: "expired" })
+    const from = this.#uiState
+    this.#uiState = "expired"
+    recordUiTransition(from, "expired", { cause, timing })
   }
 
   /** Window end: one tab sends the coalesced activity if it is still pending and its window is due (R8). */
   #flush() {
     const activity = this.#pendingActivity
-    if (activity === undefined || this.#view === "ended") return
+    if (activity === undefined || !this.#running()) return
     this.#withWindow(() => {
       if (!this.#live()) return
       const decision = flushActivityCommunication(this.#readWindow(), { now: Date.now() })
@@ -518,6 +650,15 @@ export class TabCoordination {
     if (content === null) return
     content.hidden = hidden
     content.inert = hidden
+  }
+
+  /** The tab's known expiration on the server clock (#157 research D7); `serverTime` is an `Ended` answer's date. */
+  #knownExpiration(serverTime: number | undefined): boolean {
+    return knownExpiration({
+      deadline: this.#held?.idleDeadlineEpochMilliseconds,
+      logoutObserved: this.#logoutObserved(),
+      serverTimes: [this.#serverNow(), serverTime]
+    })
   }
 
   #listen() {
@@ -562,9 +703,14 @@ export class TabCoordination {
   #logoutEnded() {
     this.#logoutUnresolved = false
     if (this.#ownAttempt !== undefined) removePendingLogout(this.#tag, this.#ownAttempt)
-    recordEnded(this.#tag)
+    recordEnded(this.#tag, "ended")
     this.#post("logged-out")
     this.#end(true)
+  }
+
+  /** This tab received a logout of its session, or a logout attempt of its tag is unresolved (#157 research D7). */
+  #logoutObserved(): boolean {
+    return this.#logoutUnresolved || this.#attempts.size > 0
   }
 
   /** Logout did not complete (403, or confirmed still usable after `notAfter`): conceal and offer Log out again. */
@@ -580,9 +726,14 @@ export class TabCoordination {
     this.#setView("logout-failed")
   }
 
-  /** Conceals before the page enters the back/forward cache; `RestoredPageGuard` reloads it on restore. */
+  /**
+   * Conceals before the page enters the back/forward cache, and hides the expiration modal, so a restored page shows
+   * neither until `RestoredPageGuard` reloads it (#157 FR-018).
+   */
   #pageHide(event: PageTransitionEvent) {
-    if (event.persisted) this.#conceal()
+    if (!event.persisted) return
+    if (this.#view === "expired") this.#notify({ concealed: true, endedHere: false, pageHidden: true, view: "expired" })
+    else this.#conceal()
   }
 
   #post(type: "logged-out") {
@@ -619,10 +770,26 @@ export class TabCoordination {
     if (message.type === "session-current") this.#guard(this.confirm())
   }
 
-  /** A confirmed-ended tag ends the tab. Answers whether it did. */
-  #replayEnded(): boolean {
-    if (!isEnded(this.#tag)) return false
-    this.#end(false)
+  /**
+   * Replaces the tab's header and content with recovery and stops coordinating: no record, no message, no further
+   * reads or activity, so nothing here changes another tab (#157 research D6, FR-008). Answers `true`.
+   */
+  #recover(cause: SessionEndCause): true {
+    this.#view = "recovery"
+    this.#hideContent(true)
+    this.#notify({ concealed: true, endedHere: false, recovery: cause, view: "recovery" })
+    const from = this.#uiState
+    this.#uiState = RECOVERY_STATES[cause]
+    recordUiTransition(from, this.#uiState, { cause: "action_denied" })
+    this.#stop()
+    return true
+  }
+
+  /** A confirmed-ended tag ends the tab, or shows it expired, as recorded. Answers whether it did. */
+  #replayEnded(cause: ExpiryCause): boolean {
+    const recorded = readEnded(this.#tag)
+    if (recorded === undefined) return false
+    this.#adoptEnded(recorded, cause)
     return true
   }
 
@@ -649,25 +816,31 @@ export class TabCoordination {
 
   /** B5-R: replay records first; past the local deadline conceal at once; either way confirm (research D9). */
   #resume() {
-    if (this.#view === "ended" || document.visibilityState !== "visible") return
-    if (this.#replayEnded()) return
+    if (!this.#running() || document.visibilityState !== "visible") return
+    if (this.#replayEnded("resume")) return
     this.#replayPendingLogouts()
     const hint = readCurrentHint()
     // A hint naming another session, or a passed deadline, conceals temporarily and confirms; it never ends the tab
     // (R14). The confirmation starts inside the concealment's scope (research D5).
     const overdue = (hint !== undefined && hint !== this.#tag) || Date.now() >= this.#deadline
-    const transition = overdue ? this.#conceal() : CURRENT_SCOPE
+    const transition = overdue ? this.#conceal("resume") : CURRENT_SCOPE
     transition.run(() => {
-      this.#guard(this.confirm())
+      this.#guard(this.#confirm("resume"))
     })
   }
 
   /** Ends temporary concealment after the server confirmed this session. */
   #reveal() {
-    if (!this.#concealed || this.#view === "ended" || !this.#live()) return
+    if (!this.#concealed || !this.#running()) return
     this.#concealed = false
     this.#concealedSince = Number.POSITIVE_INFINITY
     this.#publish()
+    this.#concealCause = undefined
+  }
+
+  /** Still coordinating a session that has not reached a terminal view (`ended`, `expired`, or `recovery`). */
+  #running() {
+    return this.#live() && this.#view !== "ended" && this.#view !== "expired" && this.#view !== "recovery"
   }
 
   #schedule(name: TimerName, at: number, task: () => void) {
@@ -699,16 +872,32 @@ export class TabCoordination {
           this.#calibrate(outcome)
           this.#adoptSnapshot(outcome.snapshot, true)
         }
-        if (outcome._tag === "Ended") this.#endConfirmed()
+        if (outcome._tag === "Ended") this.#activityEnded(outcome.serverTime)
       })
     )
   }
 
-  #setView(view: Exclude<TabView, "ended">): TraceScope {
-    if (this.#view === "ended" || !this.#live()) return CURRENT_SCOPE
+  /** Server time on this tab's calibrated estimate (#157 research D7). */
+  #serverNow(): number {
+    return Date.now() + this.#serverOffset
+  }
+
+  #setView(view: Exclude<TabView, "ended" | "expired" | "recovery">): TraceScope {
+    if (!this.#running()) return CURRENT_SCOPE
     this.#view = view
     return this.#publish()
   }
+
+  /** Stops listening, aborts reads in flight, closes the channel, and clears timers. Idempotent. */
+  #stop() {
+    this.#stopListening()
+    this.#cancel.abort()
+    this.#channel?.close()
+    this.#channel = undefined
+    this.#clearTimers()
+  }
+
+  #stopListening: () => void = () => undefined
 
   #stopTimer(name: TimerName) {
     const existing = this.#timers.get(name)
@@ -718,11 +907,11 @@ export class TabCoordination {
 
   /** Stops the watch once no attempt remains; a pending tick is kept so the fixed cadence holds (R11, FR-015). */
   #stopWatchIfIdle() {
-    if (this.#view === "ended" || this.#attempts.size === 0) this.#stopTimer("logout-watch")
+    if (!this.#running() || this.#attempts.size === 0) this.#stopTimer("logout-watch")
   }
 
   #storage(event: StorageEvent) {
-    if (event.key === endedKey(this.#tag) && isEnded(this.#tag)) this.#end(false)
+    if (event.key === endedKey(this.#tag)) this.#replayEnded("peer")
     if (event.key !== CURRENT_KEY) return
     this.#hintOverride = undefined
     if (readCurrentHint() !== this.#tag) this.#guard(this.confirm())
@@ -736,13 +925,43 @@ export class TabCoordination {
     const replay = this.#confirmedReplay
     if (replay?.form === form && replay.submitter === event.submitter) {
       this.#confirmedReplay = undefined
+      this.#lastSubmission = Date.now()
       return
     }
-    if ((this.#hintOverride ?? readCurrentHint() ?? this.#tag) === this.#tag) return
+    if ((this.#hintOverride ?? readCurrentHint() ?? this.#tag) === this.#tag) {
+      this.#lastSubmission = Date.now()
+      return
+    }
     event.preventDefault()
     // The cancelled submission causes no request; its confirmed replay, if any, does (research D16).
     withdrawSubmitCause(event)
     this.#guard(this.#confirmThenReplay(form, event.submitter))
+  }
+
+  /**
+   * Leaves coordination for a terminal view that keeps the page listeners: timers stop, pending activity is dropped,
+   * every attempt of this tag is resolved because the session ended (R31), and the content is hidden at once. Answers
+   * whether this tab was still running.
+   */
+  #terminate(view: "ended" | "expired"): boolean {
+    if (!this.#running()) return false
+    this.#clearTimers()
+    this.#pendingActivity = undefined
+    for (const attemptId of this.#attempts.keys()) removePendingLogout(this.#tag, attemptId)
+    this.#attempts.clear()
+    this.#view = view
+    this.#hideContent(true)
+    return true
+  }
+
+  /** The held deadline and this tab's best server-time estimate, both on the server clock (#157 T-003). */
+  #timing(serverTime: number | undefined) {
+    if (this.#held === undefined) return undefined
+    const estimate = this.#serverNow()
+    return {
+      deadlineMs: this.#held.idleDeadlineEpochMilliseconds,
+      serverTimeMs: serverTime === undefined ? estimate : Math.max(estimate, serverTime)
+    }
   }
 
   /** Watches an attempt of this tag until it resolves (R26, R31). */
@@ -753,11 +972,24 @@ export class TabCoordination {
 
   /** Records the UI state when it changed and answers that record's scope; otherwise the current scope (T-004). */
   #transition(): TraceScope {
+    // Recovery and expiry record their own transition once, with its cause.
+    if (this.#view === "recovery" || this.#view === "expired") return CURRENT_SCOPE
     const to = UI_STATES[this.#view][this.#concealed ? 1 : 0]
     if (to === this.#uiState) return CURRENT_SCOPE
     const from = this.#uiState
     this.#uiState = to
-    return recordUiTransition(from, to)
+    const cause = TIMED_STATES.has(to) ? this.#concealCause : undefined
+    return recordUiTransition(from, to, cause === undefined ? undefined : { cause, timing: this.#timing(undefined) })
+  }
+
+  /**
+   * How long until the held deadline on this tab's best server-time estimate (#157 research D7), never negative;
+   * unbounded without a held deadline.
+   */
+  #untilDeadline(serverTime: number | undefined): number {
+    if (this.#held === undefined) return Number.POSITIVE_INFINITY
+    const estimate = Math.max(this.#serverNow(), serverTime ?? Number.NEGATIVE_INFINITY)
+    return Math.max(0, this.#held.idleDeadlineEpochMilliseconds - estimate)
   }
 
   /**
@@ -765,7 +997,7 @@ export class TabCoordination {
    * for earlier reads, so a slow read cannot push the next one past the concealment bound.
    */
   #watchLogout(at = Date.now() + LOGOUT_WATCH_INTERVAL_MILLISECONDS) {
-    if (this.#view === "ended" || this.#attempts.size === 0) {
+    if (!this.#running() || this.#attempts.size === 0) {
       this.#stopTimer("logout-watch")
       return
     }

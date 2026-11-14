@@ -33,7 +33,9 @@ const springfieldTenant = Layer.succeed(TenantConfigService, {
 })
 
 const protect = createProtectionProxy({
+  actionDenial: () => Promise.resolve(new NextResponse(null, { status: 401 })),
   forbiddenDocument: () => Promise.resolve(new NextResponse(null, { status: 403 })),
+  recoveryDocument: () => Promise.resolve(new NextResponse(null, { status: 401 })),
   tenantFailure: (status) => Promise.resolve(new NextResponse(null, { status }))
 })
 const activity = createSessionActivityHandler()

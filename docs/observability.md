@@ -179,7 +179,9 @@ origins ([Docker Compose](docker-compose.md#browser-export-and-cors)). A
 collector that requires headers is not supported for browser export.
 
 Spans are batched and exported about 30 seconds after they end. Keep the page
-open that long before querying; records from a page that closes first may be
+open that long before querying. On `pagehide` the page flushes its batch with
+`keepalive` requests, so records made just before a navigation, such as a Log in
+activation, are sent; records from a page that closes abruptly may still be
 lost. A collector that is down or rejects export never changes the page.
 
 Every span passes an export filter before it leaves the page. Only the record
@@ -217,28 +219,45 @@ fixtures record harness facts through the shared facade
 zero-duration span with closed-set attributes only. No recorder accepts page
 text, accessible names, form values, message contents, or any other free text.
 
-| Record                       | Emitted when                                                 | Attributes                                                                                                                                                   | Parent and correlation                                                                                         |
-| ---------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------- |
-| `TabCoordination.transition` | The coordinator publishes a different UI state               | `preets.outcome` = `applied`; `preets.ui.from_state` (`mounted` first); `preets.ui.to_state`                                                                 | The active scope (a receipt, when a message caused it). A logout or status confirmation it starts is its child |
-| `TabChannel.send`            | A tab posts a cross-tab message                              | `preets.outcome` = `sent`; `preets.tab.message.kind`; `preets.tab.message.direction` = `send`; `preets.tab.message.id`                                       | The active scope. Every receipt of the send carries the same `preets.tab.message.id`                           |
-| `TabChannel.receive`         | A tab receives a well-formed cross-tab message               | `preets.outcome` = `received`; `preets.tab.message.kind`; `preets.tab.message.direction` = `receive`; `preets.tab.message.id` (when the send carried a UUID) | The active scope. Transitions the receipt causes are its children                                              |
-| `Focus.move`                 | Focus enters or leaves a marked target (`data-preets-focus`) | `preets.outcome` = `moved`; `preets.focus.target`; `preets.focus.change` (`entered`, `left`); `preets.focus.cause` (`application`, `user`)                   | Root; order by start time                                                                                      |
-| `Interaction.submit`         | Any form submit, including a confirmed replay                | `preets.outcome` = `submitted`; `preets.interaction.kind` = `form_submit`                                                                                    | The parent of the Server Action `POST` it causes                                                               |
-| `Router.transition`          | Next starts an App Router navigation                         | `preets.outcome` = `started`; `preets.navigation.type` (`push`, `replace`, `traverse`); `url.path` (destination pathname)                                    | The parent of the RSC `GET` to that path                                                                       |
-| `BrowserTracing.buffer`      | The SDK registers after more than 256 facts were buffered    | `preets.outcome` = `overflowed`; `preets.tracing.dropped_count`                                                                                              | Root. Its presence makes a missing fact on that page inconclusive                                              |
+| Record                       | Emitted when                                                 | Attributes                                                                                                                                                                                            | Parent and correlation                                                                                         |
+| ---------------------------- | ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `TabCoordination.transition` | The coordinator publishes a different UI state               | `preets.outcome` = `applied`; `preets.ui.from_state` (`mounted` first); `preets.ui.to_state`; `preets.ui.cause`, `preets.session.deadline_ms`, and `preets.session.server_time_ms` where listed below | The active scope (a receipt, when a message caused it). A logout or status confirmation it starts is its child |
+| `TabChannel.send`            | A tab posts a cross-tab message                              | `preets.outcome` = `sent`; `preets.tab.message.kind`; `preets.tab.message.direction` = `send`; `preets.tab.message.id`                                                                                | The active scope. Every receipt of the send carries the same `preets.tab.message.id`                           |
+| `TabChannel.receive`         | A tab receives a well-formed cross-tab message               | `preets.outcome` = `received`; `preets.tab.message.kind`; `preets.tab.message.direction` = `receive`; `preets.tab.message.id` (when the send carried a UUID)                                          | The active scope. Transitions the receipt causes are its children                                              |
+| `Focus.move`                 | Focus enters or leaves a marked target (`data-preets-focus`) | `preets.outcome` = `moved`; `preets.focus.target`; `preets.focus.change` (`entered`, `left`); `preets.focus.cause` (`application`, `user`)                                                            | Root; order by start time                                                                                      |
+| `Interaction.submit`         | Any form submit, including a confirmed replay                | `preets.outcome` = `submitted`; `preets.interaction.kind` = `form_submit`                                                                                                                             | The parent of the Server Action `POST` it causes                                                               |
+| `Interaction.login`          | The user activates Log in on the recovery content or modal   | `preets.outcome` = `activated`; `preets.login.entry`                                                                                                                                                  | Root, recorded before the navigation; order by start time against the next document's server spans             |
+| `Router.transition`          | Next starts an App Router navigation                         | `preets.outcome` = `started`; `preets.navigation.type` (`push`, `replace`, `traverse`); `url.path` (destination pathname)                                                                             | The parent of the RSC `GET` to that path                                                                       |
+| `BrowserTracing.buffer`      | The SDK registers after more than 256 facts were buffered    | `preets.outcome` = `overflowed`; `preets.tracing.dropped_count`                                                                                                                                       | Root. Its presence makes a missing fact on that page inconclusive                                              |
 
 The closed sets:
 
-- UI states: `content_shown`, `content_concealed`, `logging_out`,
-  `logging_out_concealed`, `logout_failed`, `signed_out`.
+- UI states: `content_shown`, `content_concealed`, `expired`, `logging_out`,
+  `logging_out_concealed`, `logout_failed`, `signed_out`, `recovery_expired`,
+  `recovery_unavailable`.
+- Transition causes: `action_denied`, set only on the transition into
+  `recovery_expired` or `recovery_unavailable` after a denied action in that tab.
+  `deadline` (the tab reached its local deadline, or confirmed expiry otherwise),
+  `resume` (the tab returned to visibility or resumed), and `peer` (another tab's
+  ended record), set on the transition into `expired`; `deadline` and `resume` also
+  on `content_concealed` when that concealment began, and on the `content_shown`
+  that ends it.
+- Server-clock timing on those caused transitions: `preets.session.deadline_ms`, the
+  held authoritative deadline, and `preets.session.server_time_ms`, the tab's
+  offset-corrected server-time estimate at the transition (the later of its
+  calibrated clock and the `Date` header of an `Ended` answer). Relate them to the
+  server's `SessionService.*` `preets.session.deadline_ms` for the same session.
+- Log in entries: `action_recovery`, `expiration_modal`.
 - Message kinds: the coordination message types with `_` for `-`:
   `communicated`, `logged_out`, `logout_failed`, `logout_started`, `pending`,
   `renewed`, `session_current`, and `window_query`.
-- Focus targets: `logout_control`, `participant_goal`, `signed_out_heading`.
+- Focus targets: `expiration_log_in`, `logout_control`, `participant_goal`,
+  `recovery_heading`, `signed_out_heading`.
 
 `preets.focus.cause` is `application` only for a move the code makes through
-`moveFocus`. Focus on the signed-out heading and the participant fixture's
-"Focus later" move are `application`. Every other change, such as a keyboard
+`moveFocus`. Focus on the signed-out heading, on the recovery heading, on the
+expiration modal's Log in again link, and the participant fixture's "Focus later"
+move are `application`. Every other change, such as a keyboard
 move, is `user`.
 
 The cross-tab match identifier is a UUID that the facade generates for each send.

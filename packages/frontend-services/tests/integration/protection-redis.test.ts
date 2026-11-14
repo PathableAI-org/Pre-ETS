@@ -28,17 +28,31 @@ const springfieldTenant = Layer.succeed(TenantConfigService, {
 })
 
 const protect = createProtectionProxy({
+  actionDenial: ({ cause }) => Promise.resolve(new NextResponse(`action-denial:${cause}`, { status: 200 })),
   forbiddenDocument: () => Promise.resolve(new NextResponse("forbidden-document", { status: 403 })),
+  recoveryDocument: ({ cause }) => Promise.resolve(new NextResponse(`recovery-document:${cause}`, { status: 200 })),
   tenantFailure: (status) => Promise.resolve(new NextResponse(null, { status }))
 })
 
 const navigation = { "sec-fetch-dest": "document", "sec-fetch-mode": "navigate" }
 const rscFetch = { "sec-fetch-dest": "empty", "sec-fetch-mode": "cors" }
 
-const request = (reference: string, headers: Readonly<Record<string, string>>) =>
+const request = (reference: string, headers: Readonly<Record<string, string>>, method = "GET") =>
   new NextRequest("http://springfield.localhost/", {
-    headers: { ...headers, cookie: `pathable-session=${reference}`, host: "springfield.localhost" }
+    headers: { ...headers, cookie: `pathable-session=${reference}`, host: "springfield.localhost" },
+    method
   })
+
+/** A no-script Server Action submission: a form-encoded navigation `POST` without `next-action`. */
+const noScriptSubmission = (reference: string) =>
+  request(reference, { ...navigation, "content-type": "application/x-www-form-urlencoded" }, "POST")
+
+const expectRecoveryDocument = async (response: Response, cause: string) => {
+  expect(response.status).toBe(401)
+  expect(response.headers.get("cache-control")).toBe("private, no-store")
+  expect(response.headers.getSetCookie()).toEqual([])
+  expect(await response.text()).toBe(`recovery-document:${cause}`)
+}
 
 type World = ManagedRuntime.ManagedRuntime<SessionRedis | SessionService | TenantConfigService, unknown>
 
@@ -118,6 +132,19 @@ describe("createProtectionProxy over the real session store [PREETS-SESSION-001,
 
       expectLogin(await protect(request(established.reference, navigation)))
       await expectDenial(await protect(request(established.reference, rscFetch)), 401)
+    }))
+
+  it("explains a no-script submission as expired only while the store still returns the past-deadline record [#157]", () =>
+    withWorld(async (world) => {
+      const established = await establish(world, springfield)
+      await world.runPromise(
+        SessionRedis.use((redis) =>
+          redis.rewriteAll((payload) => JSON.stringify({ ...JSON.parse(payload), idleDeadlineEpochMilliseconds: 1 }))
+        )
+      )
+
+      await expectRecoveryDocument(await protect(noScriptSubmission(established.reference)), "expired")
+      await expectRecoveryDocument(await protect(noScriptSubmission(established.reference)), "unknown")
     }))
 
   it("sends an invalidated session to login for a document and 401 otherwise", () =>

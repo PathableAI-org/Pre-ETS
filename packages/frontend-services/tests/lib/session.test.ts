@@ -21,6 +21,8 @@ import { SessionRedis, sessionState, sessionWorld, type StoredSessionRecord } fr
 const alias = Schema.decodeSync(TenantAlias)("alpha")
 const otherAlias = Schema.decodeSync(TenantAlias)("beta")
 const noUsableSession: NoUsableSession = { _tag: "NoUsableSession" }
+/** The store returned the record past its deadline, before eviction (#157 research D2). */
+const expiredSession: NoUsableSession = { _tag: "NoUsableSession", expired: true }
 
 const publicDiagnostic = (value: unknown): string => {
   const seen = new Set<unknown>()
@@ -312,14 +314,14 @@ describe("SessionService read outcomes [PREETS-SESSION-008]", () => {
       })
     ))
 
-  it.effect("returns NoUsableSession at and after the stored deadline", () =>
+  it.effect("flags a record read at its deadline as expired, and the evicted reference after it as missing [#157 V-004]", () =>
     scenario(
       Effect.gen(function*() {
         yield* TestClock.setTime(BASE_TIME)
         const service = yield* SessionService
         const { reference } = yield* establish(service, 30, 5)
         yield* TestClock.adjust("30 minutes")
-        expect(yield* service.read({ reference })).toStrictEqual(noUsableSession)
+        expect(yield* service.read({ reference })).toStrictEqual(expiredSession)
         expect(yield* recordCount).toBe(0)
         yield* TestClock.adjust("1 minute")
         expect(yield* service.read({ reference })).toStrictEqual(noUsableSession)
@@ -848,7 +850,7 @@ describe("SessionService.refreshForTenant expiration [PREETS-SESSION-008, PREETS
             reference: established.reference,
             tenantAlias: alias
           })
-          expect(result).toStrictEqual(noUsableSession)
+          expect(result).toStrictEqual(expiredSession)
           expect(yield* recordCount).toBe(0)
           expect(yield* service.read({ reference: established.reference })).toStrictEqual(noUsableSession)
         })
@@ -868,7 +870,7 @@ describe("SessionService.refreshForTenant expiration [PREETS-SESSION-008, PREETS
           reference: established.reference,
           tenantAlias: alias
         })
-        expect(revived).toStrictEqual(noUsableSession)
+        expect(revived).toStrictEqual(expiredSession)
         expect(yield* recordCount).toBe(0)
         expect(yield* service.read({ reference: established.reference })).toStrictEqual(noUsableSession)
       })
@@ -885,7 +887,7 @@ describe("SessionService.refreshForTenant expiration [PREETS-SESSION-008, PREETS
           reference: established.reference,
           tenantAlias: otherAlias
         })
-        expect(result).toStrictEqual(noUsableSession)
+        expect(result).toStrictEqual(expiredSession)
         expect(yield* recordCount).toBe(0)
       })
     ))
@@ -904,7 +906,7 @@ describe("SessionService.refreshForTenant expiration [PREETS-SESSION-008, PREETS
         yield* Deferred.await(started)
         yield* TestClock.setTime(established.session.idleDeadlineEpochMilliseconds)
         yield* Deferred.succeed(release, undefined)
-        expect(yield* Fiber.join(fiber)).toStrictEqual(noUsableSession)
+        expect(yield* Fiber.join(fiber)).toStrictEqual(expiredSession)
         expect(yield* recordCount).toBe(1)
       })
     ))
@@ -922,7 +924,7 @@ describe("SessionService storage failures", () => {
         expect(yield* service.read({ reference: established.reference })).toStrictEqual(noUsableSession)
         const expired = yield* establish(service, 5, 0)
         yield* TestClock.setTime(expired.session.idleDeadlineEpochMilliseconds)
-        expect(yield* service.read({ reference: expired.reference })).toStrictEqual(noUsableSession)
+        expect(yield* service.read({ reference: expired.reference })).toStrictEqual(expiredSession)
         expect(yield* recordCount).toBe(0)
       })
     ))

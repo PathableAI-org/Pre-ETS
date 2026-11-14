@@ -12,18 +12,34 @@ import { type TenantFailureResponse, tenantFailureStatus } from "./tenant-failur
 /** Responses the Next host presents for protection outcomes it owns. */
 export interface ProtectionResponses {
   /**
+   * A denied fetch Server Action (`next-action` present). The body is the host's closed-set `text/plain` token for
+   * `cause`, which Next's client throws as the action's rejection message. The gate sends it with HTTP 401 and
+   * `Cache-Control: private, no-store`, whatever status or cache headers the host sets (#157 research D3).
+   */
+  readonly actionDenial: (input: { readonly cause: SessionEndCause }) => Promise<NextResponse>
+  /**
    * A tenant mismatch on a document entry. The response MUST carry HTTP 403 and the accessible forbidden
    * presentation, and no protected content. The Next app renders it as the response body (no rewrite; research D4).
    * The gate sets `Cache-Control: private, no-store` on the returned response, so it is never cacheable.
    */
   readonly forbiddenDocument: (request: NextRequest) => Promise<NextResponse>
+  /**
+   * A denied Server Action candidate submitted as a browser navigation without `next-action` (scripts disabled or
+   * not yet running). The body is the accessible recovery document for `cause`. The gate sends it with HTTP 401 and
+   * `Cache-Control: private, no-store`, whatever status or cache headers the host sets (#157 research D1).
+   */
+  readonly recoveryDocument: (input: { readonly cause: SessionEndCause }) => Promise<NextResponse>
   /** The host's existing tenant-failure presentation (404 missing page, 500). */
   readonly tenantFailure: TenantFailureResponse
 }
 
+/** Why a session is not usable, as far as the server or the tab can tell. */
+export type SessionEndCause = "expired" | "unknown"
+
 /**
  * The closed public designation. `/_test` and `/_test/…` are public for every method; the other exact paths for
- * `GET`/`HEAD` only. A Server Action candidate is never public. #157 adds its recovery path here.
+ * `GET`/`HEAD` only. A Server Action candidate is never public. #157 answers a denied candidate in place, so it adds
+ * no public recovery path.
  */
 const PUBLIC_DOCUMENT_PATHS: ReadonlySet<string> = new Set(["/auth/callback", "/auth/login", "/login-unavailable"])
 const PUBLIC_ROOT = "/_test"
@@ -37,9 +53,17 @@ const PUBLIC_METHODS: ReadonlySet<string> = new Set(["GET", "HEAD"])
 const ENCODED_PATH_SEPARATOR = /%(?:2f|5c|2e)/i
 
 interface ProtectedRequest {
+  readonly candidate: boolean
   readonly entry: "application" | "document"
   readonly renewal: QualifyingSessionActivity | undefined
+  readonly serverAction: ServerActionTransport
 }
+
+/**
+ * How a Server Action candidate arrived: `fetch` carries `next-action` (a script submitted it), `document` is a
+ * form-encoded navigation without it (a no-script submission), and `none` is every other request.
+ */
+type ServerActionTransport = "document" | "fetch" | "none"
 
 /**
  * Next's own possible-action predicate (`isPossibleServerAction`): a form-encoded `POST`, which Next decodes as an
@@ -72,14 +96,23 @@ const isPublic = (method: string, pathname: string, headers: Headers) =>
  * Server Action renews inside `authorizeSessionAction`, after its tag check (research D2, R17).
  */
 const classify = (request: NextRequest): ProtectedRequest | undefined => {
-  const { method } = request
+  const { headers, method } = request
   const { pathname } = request.nextUrl
-  if (isPublic(method, pathname, request.headers)) return undefined
-  if (NON_RENEWING_PATHS.has(pathname)) return { entry: "application", renewal: undefined }
-  const action = request.headers.has("next-action")
-  const document = PUBLIC_METHODS.has(method) && !action && navigationStatus(request.headers) === "navigation"
-  if (document) return { entry: "document", renewal: "deliberate-page-request" }
-  return { entry: "application", renewal: undefined }
+  if (isPublic(method, pathname, headers)) return undefined
+  const action = headers.has("next-action")
+  const navigation = navigationStatus(headers) === "navigation"
+  const candidate = isServerActionCandidate(method, headers)
+  const serverAction = serverActionTransport(candidate, action, navigation)
+  if (NON_RENEWING_PATHS.has(pathname)) return { candidate, entry: "application", renewal: undefined, serverAction }
+  if (PUBLIC_METHODS.has(method) && !action && navigation) {
+    return { candidate, entry: "document", renewal: "deliberate-page-request", serverAction }
+  }
+  return { candidate, entry: "application", renewal: undefined, serverAction }
+}
+
+const serverActionTransport = (candidate: boolean, action: boolean, navigation: boolean): ServerActionTransport => {
+  if (action) return "fetch"
+  return candidate && navigation ? "document" : "none"
 }
 
 const denial = (status: 401 | 403 | 503) =>
@@ -99,13 +132,54 @@ const decided = (outcome: string, response: Effect.Effect<NextResponse>) =>
 /** A renewal sets no cookie: only establishment writes `pathable-session` (research D15). */
 const admit = () => privately(NextResponse.next())
 
+/**
+ * The gate owns a denial's status and headers: only the host's body and content type pass, so the response stays 401,
+ * private and not storable, sets no cookie, and redirects nowhere, whatever the host returns.
+ */
+const unauthorizedFromHost = (respond: () => Promise<NextResponse>) =>
+  Effect.promise(respond).pipe(
+    Effect.map((response) => {
+      const headers = new Headers({ "cache-control": PRIVATE_NO_STORE })
+      const contentType = response.headers.get("content-type")
+      if (contentType !== null) headers.set("content-type", contentType)
+      return new NextResponse(response.body, { headers, status: 401 })
+    })
+  )
+
+/**
+ * A denied Server Action candidate starts no login. Its cause is what the session read observed (#157 research D2).
+ * A script submission receives the host's cause token and a no-script submission the host's recovery document
+ * (research D1, D3); every other denial stays an empty 401.
+ */
+const denyUnauthenticated = (
+  responses: ProtectionResponses,
+  classified: ProtectedRequest,
+  session: NoUsableSession
+) => {
+  if (!classified.candidate) return decided("denied_unauthenticated", Effect.sync(() => denial(401)))
+  const cause: SessionEndCause = session.expired === true ? "expired" : "unknown"
+  return Effect.annotateCurrentSpan("preets.protection.denial_cause", cause).pipe(
+    Effect.andThen(decided(
+      "denied_unauthenticated",
+      hostDenial(responses, classified.serverAction, cause)
+    ))
+  )
+}
+
+const hostDenial = (responses: ProtectionResponses, transport: ServerActionTransport, cause: SessionEndCause) => {
+  if (transport === "fetch") return unauthorizedFromHost(() => responses.actionDenial({ cause }))
+  if (transport === "document") return unauthorizedFromHost(() => responses.recoveryDocument({ cause }))
+  return Effect.sync(() => denial(401))
+}
+
 const respondToSession = (
+  responses: ProtectionResponses,
   request: NextRequest,
   classified: ProtectedRequest,
   session: NoUsableSession | UsableSession
 ) => {
   if (session._tag === "UsableSession") return decided("admitted", Effect.sync(admit))
-  if (classified.entry === "application") return decided("denied_unauthenticated", Effect.sync(() => denial(401)))
+  if (classified.entry === "application") return denyUnauthenticated(responses, classified, session)
   const login = NextResponse.redirect(new URL("/auth/login", request.nextUrl), 307)
   return decided("redirected_login", Effect.succeed(privately(login)))
 }
@@ -115,7 +189,8 @@ const protectRequest = Effect.fn("protectRequest")(
   function*(_responses: ProtectionResponses, request: NextRequest, classified: ProtectedRequest) {
     yield* Effect.annotateCurrentSpan({
       "preets.protection.entry": classified.entry,
-      "preets.protection.renewal": classified.renewal ?? "none"
+      "preets.protection.renewal": classified.renewal ?? "none",
+      "preets.protection.server_action": classified.serverAction
     })
     const tenant = yield* resolveRequestTenant(request.headers.get("host") ?? "")
     const sessions = yield* SessionService
@@ -150,7 +225,7 @@ const protectRequest = Effect.fn("protectRequest")(
               return decided("tenant_failure", fromHost(() => responses.tenantFailure(tenantFailureStatus(failure))))
           }
         },
-        onSuccess: (session) => respondToSession(request, classified, session)
+        onSuccess: (session) => respondToSession(responses, request, classified, session)
       })
     )
 )

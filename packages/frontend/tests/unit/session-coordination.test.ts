@@ -1,5 +1,7 @@
+import type { SessionCoordinationSnapshot } from "@pathableai/pre-ets-frontend-services"
+
 import { fc, it } from "@fast-check/vitest"
-import { describe, expect } from "vitest"
+import { afterEach, beforeEach, describe, expect, vi } from "vitest"
 
 import { classifySessionActivity } from "../../src/features/session-coordination/activity-classification.ts"
 import {
@@ -9,8 +11,11 @@ import {
   flushActivityCommunication
 } from "../../src/features/session-coordination/activity-window.ts"
 import { calibrateClockOffset } from "../../src/features/session-coordination/clock-offset.ts"
+import { knownExpiration } from "../../src/features/session-coordination/known-expiration.ts"
 import { adoptSnapshot } from "../../src/features/session-coordination/snapshot-order.ts"
 import { openTabChannel, type TabMessage } from "../../src/features/session-coordination/tab-channel.ts"
+import { TabCoordination, type TabViewState } from "../../src/features/session-coordination/tab-coordination.ts"
+import { ACTION_DENIAL_BODY, readActionDenial } from "../../src/providers/action-denial.ts"
 
 const WINDOW = 60_000
 
@@ -405,5 +410,475 @@ describe("openTabChannel (research D8) [PREETS-SESSION-010]", () => {
     })
     otherTab.close()
     channel?.close()
+  })
+})
+
+describe("readActionDenial (#157 research D3) [PREETS-SESSION-007]", () => {
+  it.each(
+    [
+      ["expired", new Error(ACTION_DENIAL_BODY.expired)],
+      ["unknown", new Error(ACTION_DENIAL_BODY.unknown)]
+    ] as const
+  )("reads the gate's %s token from a rejection", (cause, error) => {
+    expect(readActionDenial(error)).toBe(cause)
+  })
+
+  it.each([
+    ["a generic rejection", new Error("An unexpected response was received from the server.")],
+    ["a token with surrounding text", new Error(` ${ACTION_DENIAL_BODY.expired}`)],
+    ["a token in another case", new Error(ACTION_DENIAL_BODY.expired.toUpperCase())],
+    ["the bare token string", ACTION_DENIAL_BODY.expired],
+    ["an object with the token as message", { message: ACTION_DENIAL_BODY.expired }],
+    ["nothing", undefined]
+  ])("accepts no cause from %s", (_label, error) => {
+    expect(readActionDenial(error)).toBeUndefined()
+  })
+})
+
+describe("knownExpiration (#157 research D7) [PREETS-SESSION-007]", () => {
+  it.each([
+    ["the deadline passed on the tab's estimate", { serverTimes: [1_000, undefined] }, true],
+    ["the deadline passed on the status response's date", { serverTimes: [500, 1_000] }, true],
+    ["the estimate reached the deadline exactly", { serverTimes: [1_000] }, true],
+    ["the deadline has not passed on any estimate", { serverTimes: [999, 999] }, false],
+    ["no server time is known", { serverTimes: [undefined] }, false]
+  ])("is %s → %s", (_label, row, expected) => {
+    expect(knownExpiration({ deadline: 1_000, logoutObserved: false, ...row })).toBe(expected)
+  })
+
+  it("is never known after an observed logout, or without a held deadline", () => {
+    expect(knownExpiration({ deadline: 1_000, logoutObserved: true, serverTimes: [5_000] })).toBe(false)
+    expect(knownExpiration({ deadline: undefined, logoutObserved: false, serverTimes: [5_000] })).toBe(false)
+  })
+})
+
+/** A `Storage` over a map: the node environment has no `localStorage`. */
+const memoryStorage = () => {
+  const items = new Map<string, string>()
+  const storage = {
+    clear: () => {
+      items.clear()
+    },
+    getItem: (key: string) => items.get(key) ?? null,
+    key: (index: number) => [...items.keys()][index] ?? null,
+    get length() {
+      return items.size
+    },
+    removeItem: (key: string) => {
+      items.delete(key)
+    },
+    setItem: (key: string, value: string) => {
+      items.set(key, value)
+    }
+  }
+  // `Object.keys(localStorage)` lists stored keys, as in a browser.
+  return new Proxy(storage, {
+    getOwnPropertyDescriptor: (_target, key) =>
+      typeof key === "string" && items.has(key) ?
+        { configurable: true, enumerable: true, value: items.get(key) } :
+        undefined,
+    ownKeys: () => [...items.keys()]
+  })
+}
+
+const NOW = Date.UTC(2026, 10, 13, 12, 0, 0)
+const DEADLINE = NOW + 60_000
+const COORDINATED_TAG = "tag-coordinated"
+const ENDED_KEY = `preets-session-ended:v1:${COORDINATED_TAG}`
+const coordinated: SessionCoordinationSnapshot = {
+  coordinationTag: COORDINATED_TAG,
+  idleDeadlineEpochMilliseconds: DEADLINE,
+  observedAtEpochMilliseconds: NOW,
+  revision: 1,
+  serverTimeEpochMilliseconds: NOW,
+  warningLeadMinutes: 2
+}
+
+/** A status answer: 200 with a snapshot, or 401 with a `date` header. */
+type StatusAnswer = { readonly date: string } | { readonly snapshot: SessionCoordinationSnapshot }
+
+const statusResponse = (answer: StatusAnswer) =>
+  "snapshot" in answer ?
+    Response.json(answer.snapshot) :
+    new Response(null, { headers: { date: answer.date }, status: 401 })
+
+/**
+ * One coordinator over in-memory storage, a stubbed status endpoint, fake `Date` and timers, and an observer on the
+ * coordination channel standing in for another tab.
+ */
+const coordinationHarness = () => {
+  const harness = {
+    messages: [] as unknown[],
+    observer: undefined as BroadcastChannel | undefined,
+    states: [] as TabViewState[],
+    stop: (): void => undefined,
+    storage: memoryStorage()
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] })
+    vi.setSystemTime(NOW)
+    harness.storage = memoryStorage()
+    harness.states = []
+    harness.messages = []
+    vi.stubGlobal("localStorage", harness.storage)
+    vi.stubGlobal("document", Object.assign(new EventTarget(), { visibilityState: "visible" }))
+    vi.stubGlobal("window", new EventTarget())
+    // No navigation entry exists here; any constructor lets the coordinator's `instanceof` check answer false.
+    vi.stubGlobal("PerformanceNavigationTiming", Object)
+  })
+
+  afterEach(() => {
+    harness.stop()
+    harness.observer?.close()
+    vi.unstubAllGlobals()
+    vi.useRealTimers()
+  })
+
+  return {
+    harness,
+    start: () => {
+      const coordination = new TabCoordination(coordinated, (state) => harness.states.push(state), () => null)
+      harness.stop = coordination.start()
+      const observer = new BroadcastChannel("preets-session-coordination")
+      observer.onmessage = (event: MessageEvent) => harness.messages.push(event.data)
+      harness.observer = observer
+      return coordination
+    },
+    /** Each status read takes the next answer; the last one repeats. */
+    statusAnswers: (...answers: readonly StatusAnswer[]) => {
+      let index = 0
+      const fetch = vi.fn(() => {
+        const answer = answers[Math.min(index, answers.length - 1)]
+        index += 1
+        return Promise.resolve(answer === undefined ? new Response(null, { status: 503 }) : statusResponse(answer))
+      })
+      vi.stubGlobal("fetch", fetch)
+      return fetch
+    }
+  }
+}
+
+/** Lets queued channel deliveries arrive before asserting none came. */
+const deliveries = () => new Promise((resolve) => setImmediate(resolve))
+
+describe("TabCoordination.deny (#157 research D6, D7) [PREETS-SESSION-007]", () => {
+  const { harness, start, statusAnswers: answers } = coordinationHarness()
+  const usable = { snapshot: { ...coordinated, revision: 2 } }
+  const statusAnswers = (answer: "usable" | { readonly date: string }) => answers(answer === "usable" ? usable : answer)
+
+  it("enters expired recovery when the status date shows the held deadline passed, though the tab's clock lags", async () => {
+    statusAnswers({ date: new Date(DEADLINE + 5_000).toUTCString() })
+    const coordination = start()
+
+    await expect(coordination.deny(undefined)).resolves.toBe(true)
+
+    expect(harness.states.at(-1)).toStrictEqual({
+      concealed: true,
+      endedHere: false,
+      recovery: "expired",
+      view: "recovery"
+    })
+  })
+
+  it("enters expired recovery when the tab's own estimate passed the deadline while its timers were suspended", async () => {
+    statusAnswers({ date: "not a date" })
+    const coordination = start()
+    vi.setSystemTime(DEADLINE + 1_000)
+
+    await expect(coordination.deny("unknown")).resolves.toBe(true)
+
+    expect(harness.states.at(-1)?.recovery).toBe("expired")
+  })
+
+  it("enters unknown recovery when the record ended before the deadline, without a record or a message", async () => {
+    statusAnswers({ date: new Date(NOW + 10_000).toUTCString() })
+    const coordination = start()
+    const stored = Object.keys(harness.storage)
+
+    await expect(coordination.deny(undefined)).resolves.toBe(true)
+    await deliveries()
+
+    expect(harness.states.at(-1)).toStrictEqual({
+      concealed: true,
+      endedHere: false,
+      recovery: "unknown",
+      view: "recovery"
+    })
+    expect(Object.keys(harness.storage)).toStrictEqual(stored)
+    expect(harness.messages).toStrictEqual([])
+  })
+
+  it("trusts the gate's expired token without reading the status", async () => {
+    const fetch = statusAnswers("usable")
+    const coordination = start()
+
+    await expect(coordination.deny("expired")).resolves.toBe(true)
+
+    expect(fetch).not.toHaveBeenCalled()
+    expect(harness.states.at(-1)?.recovery).toBe("expired")
+  })
+
+  it("leaves the page when the session is still usable, so the form reports the action as not performed", async () => {
+    statusAnswers("usable")
+    const coordination = start()
+
+    await expect(coordination.deny(undefined)).resolves.toBe(false)
+
+    expect(harness.states.at(-1)?.view).toBe("active")
+  })
+
+  it("stops coordinating after recovery: a later denial changes nothing", async () => {
+    statusAnswers({ date: new Date(NOW).toUTCString() })
+    const coordination = start()
+    await coordination.deny(undefined)
+    const recorded = harness.states.length
+
+    await expect(coordination.deny("expired")).resolves.toBe(false)
+
+    expect(harness.states).toHaveLength(recorded)
+  })
+})
+
+describe("knownExpiration property (#157 research D7) [PREETS-SESSION-012]", () => {
+  const time = fc.integer({ max: 4_000_000_000_000, min: 0 })
+  const estimates = fc.array(fc.option(time, { nil: undefined }), { maxLength: 3 })
+
+  it.prop([time, estimates], { numRuns: 500 })(
+    "is never known while every server-time estimate is before the deadline (FR-010)",
+    (deadline, serverTimes) => {
+      const early = serverTimes.map((value) => value === undefined ? undefined : Math.min(value, deadline - 1))
+      expect(knownExpiration({ deadline, logoutObserved: false, serverTimes: early })).toBe(false)
+    }
+  )
+
+  it.prop([time, estimates, fc.nat({ max: 86_400_000 })], { numRuns: 500 })(
+    "is known once any estimate reaches the deadline, unless a logout was observed (FR-019)",
+    (deadline, serverTimes, past) => {
+      const reached = [...serverTimes, deadline + past]
+      expect(knownExpiration({ deadline, logoutObserved: false, serverTimes: reached })).toBe(true)
+      expect(knownExpiration({ deadline, logoutObserved: true, serverTimes: reached })).toBe(false)
+    }
+  )
+})
+
+describe("TabCoordination expiry (#157 research D7–D10) [PREETS-SESSION-012]", () => {
+  const { harness, start, statusAnswers } = coordinationHarness()
+  const expiredAnswer = { date: new Date(DEADLINE).toUTCString() }
+  const recorded = () => JSON.parse(harness.storage.getItem(ENDED_KEY) ?? "null") as unknown
+  const latest = () => harness.states.at(-1)
+
+  const storageEvent = () => {
+    window.dispatchEvent(Object.assign(new Event("storage"), { key: ENDED_KEY }))
+  }
+
+  it("conceals at the local deadline before the server answers, then shows the modal and records the cause", async () => {
+    let answer: (response: Response) => void = () => undefined
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        new Promise<Response>((resolve) => {
+          answer = resolve
+        })
+      )
+    )
+    start()
+
+    await vi.advanceTimersByTimeAsync(DEADLINE - NOW)
+
+    expect(latest()).toMatchObject({ concealed: true, view: "active" })
+    answer(statusResponse(expiredAnswer))
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(latest()).toStrictEqual({ concealed: true, endedHere: false, view: "expired" })
+    expect(recorded()).toStrictEqual({ cause: "expired", endedAt: DEADLINE })
+  })
+
+  it("reveals the content and does not expire when the server still holds the session at the local deadline", async () => {
+    const renewed = { ...coordinated, idleDeadlineEpochMilliseconds: DEADLINE + 60_000, revision: 2 }
+    statusAnswers({ snapshot: { ...renewed, serverTimeEpochMilliseconds: DEADLINE } })
+    start()
+
+    await vi.advanceTimersByTimeAsync(DEADLINE - NOW)
+
+    expect(latest()).toMatchObject({ concealed: false, view: "active" })
+    expect(harness.states.some((state) => state.view === "expired")).toBe(false)
+    expect(recorded()).toBeNull()
+  })
+
+  it("re-confirms at the server's own deadline when the local deadline ran early, staying within 2 s", async () => {
+    const fetch = statusAnswers(
+      { snapshot: { ...coordinated, serverTimeEpochMilliseconds: DEADLINE - 300 } },
+      expiredAnswer
+    )
+    start()
+
+    await vi.advanceTimersByTimeAsync(DEADLINE - NOW)
+    expect(latest()).toMatchObject({ concealed: false, view: "active" })
+    await vi.advanceTimersByTimeAsync(300)
+
+    expect(fetch).toHaveBeenCalledTimes(2)
+    expect(latest()?.view).toBe("expired")
+  })
+
+  /**
+   * The deadline timer fires 100 ms before the tab's clock reaches its local deadline, as when a timer outruns a loaded
+   * wall clock, so the deadline check is answered before the held deadline on every estimate the tab has. Each
+   * answer's server time is the midpoint of its read, so the clock offset stays 0, and the read at the deadline is
+   * slower than the first, so it neither replaces the calibration nor reschedules the deadline.
+   */
+  const reachDeadlineEarly = async (atDeadline: StatusAnswer) => {
+    const reads = [
+      { answer: { snapshot: { ...coordinated, serverTimeEpochMilliseconds: NOW + 10 } }, latency: 20 },
+      { answer: atDeadline, latency: 40 },
+      { answer: expiredAnswer, latency: 20 }
+    ]
+    const fetch = vi.fn(() => {
+      const read = reads[Math.min(fetch.mock.calls.length - 1, reads.length - 1)] ?? reads[2]
+      vi.setSystemTime(Date.now() + (read?.latency ?? 0))
+      return Promise.resolve(statusResponse(read?.answer ?? expiredAnswer))
+    })
+    vi.stubGlobal("fetch", fetch)
+    const coordination = start()
+    // An early answer calibrates the clock, as Navigation Timing does in a browser.
+    await coordination.confirm()
+    vi.setSystemTime(Date.now() - 100)
+    await vi.advanceTimersByTimeAsync(DEADLINE - NOW)
+    return fetch
+  }
+
+  it("re-confirms when the early deadline check finds the session still usable", async () => {
+    const fetch = await reachDeadlineEarly({ snapshot: { ...coordinated, serverTimeEpochMilliseconds: DEADLINE - 80 } })
+    expect(latest()).toMatchObject({ concealed: false, view: "active" })
+
+    await vi.advanceTimersByTimeAsync(2_000)
+
+    expect(fetch).toHaveBeenCalledTimes(3)
+    expect(latest()?.view).toBe("expired")
+  })
+
+  it("shows the modal when the early deadline check finds the session already ended by its store", async () => {
+    // The store evicted the record a few milliseconds before the computed deadline; the `Date` header has whole seconds.
+    await reachDeadlineEarly({ date: new Date(DEADLINE - 1_000).toUTCString() })
+    expect(latest()).toMatchObject({ concealed: true, view: "active" })
+    expect(recorded()).toBeNull()
+
+    await vi.advanceTimersByTimeAsync(200)
+
+    expect(latest()?.view).toBe("expired")
+    expect(recorded()).toMatchObject({ cause: "expired" })
+  })
+
+  it.each([
+    [
+      "a logout message",
+      async () => {
+        const otherTab = new BroadcastChannel("preets-session-coordination")
+        otherTab.postMessage({ coordinationTag: COORDINATED_TAG, type: "logged-out" })
+        await deliveries()
+        otherTab.close()
+      }
+    ],
+    [
+      "a logout record",
+      async () => {
+        harness.storage.setItem(ENDED_KEY, JSON.stringify({ cause: "ended", endedAt: NOW }))
+        storageEvent()
+        await deliveries()
+      }
+    ]
+  ])("lets %s observed while it waits for the deadline end the tab signed out (FR-019)", async (_label, observe) => {
+    await reachDeadlineEarly({ date: new Date(DEADLINE - 1_000).toUTCString() })
+    await observe()
+
+    await vi.advanceTimersByTimeAsync(200)
+
+    expect(latest()?.view).toBe("ended")
+    expect(harness.states.some((state) => state.view === "expired")).toBe(false)
+  })
+
+  it("ends with the signed-out view when the server ended the session before its deadline", async () => {
+    statusAnswers({ date: new Date(NOW + 1_000).toUTCString() })
+    const coordination = start()
+
+    await coordination.confirm()
+
+    expect(latest()?.view).toBe("ended")
+    expect(recorded()).toStrictEqual({ cause: "ended", endedAt: NOW })
+  })
+
+  it.each([
+    ["an expired record", { cause: "expired", endedAt: NOW }, "expired"],
+    ["a logout record", { cause: "ended", endedAt: NOW }, "ended"],
+    ["a record from an older tab without a cause", { endedAt: NOW }, "ended"]
+  ])("adopts %s written by another tab", (_label, record, view) => {
+    statusAnswers(expiredAnswer)
+    start()
+
+    harness.storage.setItem(ENDED_KEY, JSON.stringify(record))
+    storageEvent()
+
+    expect(latest()?.view).toBe(view)
+  })
+
+  it("keeps the signed-out view over an expired record once it observed a logout attempt (FR-019)", async () => {
+    statusAnswers(expiredAnswer)
+    start()
+    const otherTab = new BroadcastChannel("preets-session-coordination")
+    otherTab.postMessage({
+      attemptId: "attempt-1",
+      coordinationTag: COORDINATED_TAG,
+      notAfter: NOW + 10_000,
+      type: "logout-started"
+    })
+    await deliveries()
+    otherTab.close()
+
+    harness.storage.setItem(ENDED_KEY, JSON.stringify({ cause: "expired", endedAt: NOW }))
+    storageEvent()
+
+    expect(latest()?.view).toBe("ended")
+  })
+
+  it("stays signed out across the former deadline (V-017)", async () => {
+    const fetch = statusAnswers(expiredAnswer)
+    start()
+    harness.storage.setItem(ENDED_KEY, JSON.stringify({ cause: "ended", endedAt: NOW }))
+    storageEvent()
+    const seen = harness.states.length
+
+    await vi.advanceTimersByTimeAsync(DEADLINE - NOW + 10_000)
+
+    expect(fetch).not.toHaveBeenCalled()
+    expect(harness.states).toHaveLength(seen)
+  })
+
+  it("is terminal: a later logout broadcast or record changes nothing, and denial no longer applies", async () => {
+    statusAnswers(expiredAnswer)
+    const coordination = start()
+    harness.storage.setItem(ENDED_KEY, JSON.stringify({ cause: "expired", endedAt: NOW }))
+    storageEvent()
+    const seen = harness.states.length
+
+    const otherTab = new BroadcastChannel("preets-session-coordination")
+    otherTab.postMessage({ coordinationTag: COORDINATED_TAG, type: "logged-out" })
+    await deliveries()
+    otherTab.close()
+    harness.storage.setItem(ENDED_KEY, JSON.stringify({ cause: "ended", endedAt: NOW }))
+    storageEvent()
+
+    await expect(coordination.deny(undefined)).resolves.toBe(false)
+    expect(harness.states).toHaveLength(seen)
+  })
+
+  it("hides the modal when the expired page enters the back/forward cache (FR-018)", () => {
+    statusAnswers(expiredAnswer)
+    start()
+    harness.storage.setItem(ENDED_KEY, JSON.stringify({ cause: "expired", endedAt: NOW }))
+    storageEvent()
+
+    window.dispatchEvent(Object.assign(new Event("pagehide"), { persisted: true }))
+
+    expect(latest()).toStrictEqual({ concealed: true, endedHere: false, pageHidden: true, view: "expired" })
   })
 })
