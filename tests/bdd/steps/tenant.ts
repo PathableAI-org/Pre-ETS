@@ -85,10 +85,20 @@ Given("the tenant directory is {string}", async function(this: AppWorld, conditi
   await setup()
 })
 
-/** Rewrites the selected Springfield file with the given session-policy fields and its other fields unchanged. */
-const withSpringfieldPolicy = async (file: string, policy: Readonly<Record<string, unknown>>) => {
-  const springfield = JSON.parse(await fs.readFile(file, "utf8")) as Record<string, unknown>
-  await fs.writeFile(file, JSON.stringify({ ...springfield, ...policy }))
+/**
+ * Rewrites session policy in a scenario-owned tenant file, keeping its other fields. Values are written as given,
+ * valid or not; a field given as `undefined` is removed, so the tenant's default applies. The site reads the file on
+ * every request, so later sessions adopt it.
+ */
+export const setTenantPolicy = async (
+  world: AppWorld,
+  alias: "shelbyville" | "springfield",
+  policy: { readonly idleTimeoutMinutes?: unknown; readonly warningLeadMinutes?: unknown }
+): Promise<void> => {
+  assert.ok(world.ownedDirectory, "expected scenario-owned tenant sites")
+  const file = path.join(world.directory, `${alias}.json`)
+  const tenant = JSON.parse(await fs.readFile(file, "utf8")) as Record<string, unknown>
+  await fs.writeFile(file, JSON.stringify({ ...tenant, ...policy }))
 }
 
 Given("the selected Springfield tenant file is {string}", async function(this: AppWorld, condition: string) {
@@ -96,12 +106,12 @@ Given("the selected Springfield tenant file is {string}", async function(this: A
   const arrange: Record<string, () => Promise<void>> = {
     // Invalid warning leads (#156 FR-003, V-004): each fails the selected document as schema-invalid.
     "a warning lead above its idle timeout": () =>
-      withSpringfieldPolicy(selectedFile, { idleTimeoutMinutes: 5, warningLeadMinutes: 6 }),
+      setTenantPolicy(this, "springfield", { idleTimeoutMinutes: 5, warningLeadMinutes: 6 }),
     "a warning lead equal to its idle timeout": () =>
-      withSpringfieldPolicy(selectedFile, { idleTimeoutMinutes: 5, warningLeadMinutes: 5 }),
-    "a warning lead of 1.5": () => withSpringfieldPolicy(selectedFile, { warningLeadMinutes: 1.5 }),
-    "a warning lead of -1": () => withSpringfieldPolicy(selectedFile, { warningLeadMinutes: -1 }),
-    "a warning lead of five, as text": () => withSpringfieldPolicy(selectedFile, { warningLeadMinutes: "five" }),
+      setTenantPolicy(this, "springfield", { idleTimeoutMinutes: 5, warningLeadMinutes: 5 }),
+    "a warning lead of 1.5": () => setTenantPolicy(this, "springfield", { warningLeadMinutes: 1.5 }),
+    "a warning lead of -1": () => setTenantPolicy(this, "springfield", { warningLeadMinutes: -1 }),
+    "a warning lead of five, as text": () => setTenantPolicy(this, "springfield", { warningLeadMinutes: "five" }),
     "invalid JSON": () => fs.writeFile(selectedFile, "{invalid JSON"),
     "missing": () => fs.rm(selectedFile),
     "schema-invalid": () => fs.writeFile(selectedFile, JSON.stringify({ displayName: 42 })),

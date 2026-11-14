@@ -26,7 +26,7 @@ import {
   typeIn,
   untilBefore
 } from "./expiration.ts"
-import { setTenantPolicy } from "./expired-recovery.ts"
+import { setTenantPolicy } from "./tenant.ts"
 
 /** The warning's name and the alert after a Continue that did not renew (#156 research D9). */
 const WARNING = {
@@ -784,13 +784,58 @@ Given("{word}'s tenant file sets no idle timeout and no warning lead", async fun
   await setTenantPolicy(this, tenantNamed(tenant), { idleTimeoutMinutes: undefined, warningLeadMinutes: undefined })
 })
 
-/** FR-001, FR-002, FR-004 (V-001 to V-005): each named tab holds the warning lead its session last adopted. */
+/**
+ * FR-001, FR-002, FR-004 (V-001 to V-005): each named tab holds the warning lead its session last adopted. A tab
+ * renders an adopted snapshot after the answer, and a sharing tab after the broadcast, so each gets 5 seconds.
+ */
 const assertHeldLead = async (world: AppWorld, names: readonly string[], lead: number) => {
   for (const name of names) {
-    const held = await sessionHeader(tabOf(world, name).page).getAttribute("data-session-warning-lead")
+    const { page } = tabOf(world, name)
+    await page.waitForFunction(
+      (expected) =>
+        document.querySelector("header[data-session-deadline]")?.getAttribute("data-session-warning-lead") === expected,
+      String(lead),
+      { polling: 50, timeout: 5_000 }
+    ).catch(() => undefined)
+    const held = await sessionHeader(page).getAttribute("data-session-warning-lead")
     assert.equal(held, String(lead), `the warning lead tab "${name}" holds`)
   }
 }
+
+/**
+ * FR-004 (V-005): the renewal the visitor's activity made reached each tab: it holds a deadline later than the one last
+ * read, and the lead of the policy current at that renewal.
+ */
+Then("tabs {} adopt that renewal with a warning lead of {int}", async function(
+  this: AppWorld,
+  list: string,
+  lead: number
+) {
+  for (const name of namesOf(list)) {
+    const tab = tabOf(this, name)
+    const earlier = tab.deadline
+    await tab.page.waitForFunction(
+      (held) => Number(document.querySelector("header")?.getAttribute("data-session-deadline")) > held,
+      earlier + 1_000,
+      { polling: 50, timeout: 5_000 }
+    ).catch(() => undefined)
+    tab.deadline = await heldDeadline(tab.page)
+    assert.ok(tab.deadline > earlier + 1_000, `tab "${name}" did not adopt the renewal`)
+  }
+  await assertHeldLead(this, namesOf(list), lead)
+})
+
+/** FR-004 (V-005): with a lead of 0 adopted at the Continue, no tab opened a warning since that renewal. */
+Then("tabs {} opened no warning since Continue renewed the session", async function(this: AppWorld, list: string) {
+  const renewedAt = measuredOf(this).renewedAt
+  assert.ok(renewedAt !== undefined, "expected a renewal")
+  for (const name of namesOf(list)) {
+    const { page } = tabOf(this, name)
+    const opened: WarningChange[] = (await warningLog(page)).filter((change) => change.open && change.at >= renewedAt)
+    assert.deepEqual(opened, [], `tab "${name}" opened a warning after adopting a lead of 0`)
+    assert.equal(await warningIn(page).count(), 0, `tab "${name}" shows the warning`)
+  }
+})
 
 Then("tabs {} hold a warning lead of {int}", async function(this: AppWorld, list: string, lead: number) {
   await assertHeldLead(this, namesOf(list), lead)

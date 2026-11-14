@@ -11,6 +11,7 @@ import type { AppWorld } from "../support/world.ts"
 import { applicationBrowser, documentText, signInAtProvider } from "../support/browser.ts"
 import { multipartBody, serverActionId } from "../support/server-actions.ts"
 import { FETCH_METADATA, requestSiteWith, startSite } from "../support/server.ts"
+import { setTenantPolicy } from "./tenant.ts"
 
 /**
  * One visitor's real application session: the browser that signed in through the tracked provider, the host it
@@ -54,21 +55,6 @@ const entryOf = (world: AppWorld): OpenEntry => {
   const { entry } = visitorOf(world)
   assert.ok(entry, "expected the visitor to have the application entry open")
   return entry
-}
-
-/**
- * Rewrites session policy in a scenario-owned tenant file; a field given as `undefined` is removed, so the tenant's
- * default applies. The site reads the file on every request, so later sessions adopt it.
- */
-export const setTenantPolicy = async (
-  world: AppWorld,
-  alias: "shelbyville" | "springfield",
-  policy: { readonly idleTimeoutMinutes?: number | undefined; readonly warningLeadMinutes?: number | undefined }
-): Promise<void> => {
-  assert.ok(world.ownedDirectory, "expected scenario-owned tenant sites")
-  const file = path.join(world.directory, `${alias}.json`)
-  const tenant = JSON.parse(await fs.readFile(file, "utf8")) as Record<string, unknown>
-  await fs.writeFile(file, JSON.stringify({ ...tenant, ...policy }))
 }
 
 Given("Springfield sessions end after {int} minutes of inactivity", async function(this: AppWorld, minutes: number) {
