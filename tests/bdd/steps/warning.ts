@@ -384,8 +384,9 @@ Given(
     const sharing = tabOf(this, other)
     // The page load renewed the session, and the other tab adopts it from the broadcast after hydration (gap G2).
     await sharing.page.waitForFunction(
-      (held) => Math.abs(Number(document.querySelector("header")?.getAttribute("data-session-deadline")) - held) <= 250,
-      tab.deadline,
+      ({ held, tolerance }) =>
+        Math.abs(Number(document.querySelector("header")?.getAttribute("data-session-deadline")) - held) <= tolerance,
+      { held: tab.deadline, tolerance: OFFSET_TOLERANCE_MILLISECONDS },
       { polling: 50, timeout: 10_000 }
     )
     sharing.deadline = await heldDeadline(sharing.page)

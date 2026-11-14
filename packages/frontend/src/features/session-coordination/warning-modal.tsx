@@ -39,13 +39,14 @@ const removeOtherControls = (dialog: Element, action: HTMLElement) => {
 
 /**
  * Workaround 4 (research D8): a pointer press outside the dialog moves no focus, and focus found outside it, after a
- * blur or when the window is focused again, returns to Continue (FR-015). Answers the undo.
+ * blur or when the window is focused again, returns to Continue as the application's move (FR-015, T-004). Answers the
+ * undo.
  */
 const containFocus = (dialog: HTMLElement, action: HTMLElement): () => void => {
   let containing = true
   const outside = (target: EventTarget | null) => !(target instanceof Node && dialog.contains(target))
   const returnFocus = () => {
-    if (containing && outside(document.activeElement)) action.focus()
+    if (containing && outside(document.activeElement)) moveFocus(action, "warning_continue")
   }
   const holdFocus = (event: MouseEvent) => {
     if (outside(event.target)) event.preventDefault()

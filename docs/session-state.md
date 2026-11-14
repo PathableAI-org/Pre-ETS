@@ -296,7 +296,9 @@ content's own `inert`, which concealment sets. A pointer press outside the dialo
 outside it, after a blur or when the window is focused again, returns to Continue. When the warning closes and the
 tab stays active, focus returns to the element that had it when the warning opened, if that element is still
 connected and takes focus; otherwise it goes to the first `main` in the protected content or, failing that, the
-content container, made focusable from script. Remove the first three when the library ships a non-dismissible modal
+content container, made focusable from script. Content still concealed when the warning closes gets focus back once
+it is shown, unless the person has placed focus since. Both moves are recorded as the application's in `Focus.move`.
+Remove the first three when the library ships a non-dismissible modal
 with an inert background, and keep the restoration only if the library's own restoration has no such fallback.
 
 Every protected page has a Log out button. Each attempt gets an `attemptId` and is written to its

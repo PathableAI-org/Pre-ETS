@@ -36,6 +36,27 @@ const takesFocus = (element: HTMLElement): boolean => {
 }
 
 /**
+ * One render of the running view, for focus restoration (FR-017): whether a restoration is still owed afterwards, and
+ * whether to restore now. A warning that closes while the tab stays active owes one. It is made once the content is
+ * shown, so content still concealed when the warning closed gets focus back when it is revealed, and only while focus
+ * is lost, so focus the user has placed since stays where it is. Leaving the active view cancels it.
+ */
+export const focusRestorationStep = (
+  owed: boolean,
+  render: {
+    readonly active: boolean
+    readonly closed: boolean
+    readonly concealed: boolean
+    readonly focusLost: boolean
+    readonly open: boolean
+  }
+): { readonly owed: boolean; readonly restore: boolean } => {
+  const owing = render.active && (owed || render.closed)
+  const due = owing && !render.open && !render.concealed
+  return { owed: owing && !due, restore: due && render.focusLost }
+}
+
+/**
  * Focuses `previous` if it is connected and takes focus, otherwise `fallback` (FR-017). The body is where focus rests
  * when nothing has it, so it counts as nothing. The fallback, the page's main content, is made focusable from script
  * only when it is not focusable already, as a skip-link target is.
