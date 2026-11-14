@@ -161,3 +161,7 @@ blob-report/
 
 # Regenerable Spec Kit command-composition caches.
 .specify/presets/*/.composed/
+
+# Claude Code machine-local settings and session worktrees
+.claude/settings.local.json
+.claude/worktrees/

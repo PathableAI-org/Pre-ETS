@@ -26,6 +26,7 @@ Cursor rules.
 | UI that uses `@pathableai/react`                                       | The installed package's `agent-guidance/pathable-react/SKILL.md`                                         | Only the linked reference relevant to the task                                                                         |
 | Tenancy, authentication, sessions, domain persistence, local services  | That area's strategy (below)                                                                             |                                                                                                                        |
 | Copilot pull request review                                            | The lenses in [`.github/instructions/`](.github/instructions/)                                           | Each names what to check and links its owner                                                                           |
+| Claude Code permissions                                                | [Enforced agent guardrails](#enforced-agent-guardrails)                                                  |                                                                                                                        |
 
 Workspace guides: [frontend](packages/frontend/AGENTS.md),
 [frontend-services](packages/frontend-services/AGENTS.md),
@@ -94,6 +95,18 @@ entries, or weaker complexity thresholds to accommodate new code. Always fix the
 underlying error or warning; a pre-commit hook failure is a signal to fix code, not
 to silence the checker. Only human developers may disable a check; if an agent
 believes a finding truly needs a disable, it must stop and ask the user.
+
+## Enforced agent guardrails
+
+[`.claude/settings.json`](.claude/settings.json) enforces part of this guidance for
+every Claude Code session. It denies force pushes, `git reset --hard`,
+`gh stack modify`, interactive `gh stack submit`, environment dumps, and reads of
+`.env` files other than `.env.example`. It prompts before merges, `gh pr ready`,
+remote branch deletion, and edits to check configuration and to the settings file.
+Routine read-only and check commands run without a prompt. Rules match command text,
+so they stop the usual form of a command and are not a security boundary; this
+file's prose still governs. Codex and Cursor do not read this file. Put personal
+overrides in the gitignored `.claude/settings.local.json`.
 
 ## Tooling and configuration
 
