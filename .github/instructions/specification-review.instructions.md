@@ -16,3 +16,12 @@ branch, the reviewed delivery plan, and [Git and pull request workflow](../../do
 - Flag unsupported behavioral assumptions and unauthorized product decisions.
 - Do not request module interfaces, public types, internal algorithms, or runtime composition.
 - Do not request edits to accepted requirements or approved delivery plans. Name that owning workflow instead.
+- Check the pull request body opens with
+  [Decisions for the reviewer](../../docs/engineering/git-workflow.md#decisions-for-the-reviewer) and that it is
+  honest: every accepted limitation, open question still needing a decision, and deferred scope recorded further down
+  the body appears there. Flag `None` when the body records any of them.
+- Check the pull request states a [risk tier](../../docs/engineering/git-workflow.md#risk-tiers) and that the delivery
+  issue's tier matches the triggers. Flag a lower tier than a trigger produces unless the issue records the
+  maintainer's reason, and any lowering below High for a `Regulatory` or `Security` requirement without a constitution
+  exception. For a Standard combined stack, also review the plan with the engineering-plan lens, and flag any claim
+  that uses a server or browser telemetry channel.
