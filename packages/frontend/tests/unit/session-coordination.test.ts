@@ -10,6 +10,7 @@ import {
   decideActivityCommunication,
   flushActivityCommunication
 } from "../../src/features/session-coordination/activity-window.ts"
+import { blockBackground, restoreFocus } from "../../src/features/session-coordination/blocking.ts"
 import { calibrateClockOffset } from "../../src/features/session-coordination/clock-offset.ts"
 import { knownExpiration } from "../../src/features/session-coordination/known-expiration.ts"
 import { adoptSnapshot } from "../../src/features/session-coordination/snapshot-order.ts"
@@ -1317,5 +1318,129 @@ describe("TabCoordination warning (#156 research D3–D7) [PREETS-SESSION-011]",
 
     expect(statusReads(reads)).toHaveLength(1)
     expect(latest()).toStrictEqual({ concealed: true, endedHere: false, view: "expired" })
+  })
+})
+
+/**
+ * A DOM double for the blocking helpers: `document.body` with children, and elements with a parent, `inert`, a
+ * connection, and focus that only focusable elements (or ones given a `tabindex`) take. The node environment has no DOM.
+ */
+interface FakeNode {
+  focus(): void
+  focusable: boolean
+  hasAttribute(name: string): boolean
+  inert: boolean
+  isConnected: boolean
+  readonly parentElement: null | object
+  tabIndex: number | undefined
+}
+
+const blockingDom = () => {
+  const fakeDocument: {
+    activeElement: unknown
+    readonly body: { children: FakeNode[]; focus(): void; readonly isConnected: true }
+  } = {
+    activeElement: null,
+    // The body takes focus, as it does in a browser, where it is the active element when nothing else is.
+    body: {
+      children: [],
+      focus: () => {
+        fakeDocument.activeElement = fakeDocument.body
+      },
+      isConnected: true
+    }
+  }
+  const { body } = fakeDocument
+  const node = (options: Partial<Pick<FakeNode, "focusable" | "inert" | "isConnected" | "tabIndex">> & {
+    readonly parent?: object
+  } = {}): FakeNode => {
+    const created: FakeNode = {
+      focus: () => {
+        if (created.isConnected && (created.focusable || created.tabIndex !== undefined)) {
+          fakeDocument.activeElement = created
+        }
+      },
+      focusable: options.focusable ?? false,
+      hasAttribute: (name) => name === "tabindex" && created.tabIndex !== undefined,
+      inert: options.inert ?? false,
+      isConnected: options.isConnected ?? true,
+      parentElement: options.parent ?? body,
+      tabIndex: options.tabIndex
+    }
+    if (created.parentElement === body) body.children.push(created)
+    return created
+  }
+  vi.stubGlobal("document", fakeDocument)
+  return { fakeDocument, node }
+}
+
+const asElement = (fake: FakeNode) => fake as unknown as HTMLElement
+
+describe("blockBackground and restoreFocus (#156 research D8) [PREETS-SESSION-011]", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it("makes every other child of the body inert, and gives each its earlier value back on undo", () => {
+    const { node } = blockingDom()
+    const portal = node()
+    const dialog = node({ parent: node({ parent: portal }) })
+    const header = node()
+    const content = node()
+    const alreadyInert = node({ inert: true })
+
+    const undo = blockBackground(asElement(dialog))
+
+    expect([portal.inert, header.inert, content.inert, alreadyInert.inert]).toStrictEqual([false, true, true, true])
+    undo()
+    expect([portal.inert, header.inert, content.inert, alreadyInert.inert]).toStrictEqual([false, false, false, true])
+  })
+
+  it("returns focus to the element that had it when it is still connected and takes focus", () => {
+    const { fakeDocument, node } = blockingDom()
+    const previous = node({ focusable: true })
+    const main = node()
+
+    restoreFocus(asElement(previous), asElement(main))
+
+    expect(fakeDocument.activeElement).toBe(previous)
+    expect(main.tabIndex).toBeUndefined()
+  })
+
+  it.each([
+    ["was removed", { focusable: true, isConnected: false }],
+    ["no longer takes focus, as when disabled", { focusable: false }]
+  ])("focuses the main content when the earlier element %s", (_label, previousOptions) => {
+    const { fakeDocument, node } = blockingDom()
+    const previous = node(previousOptions)
+    const main = node()
+
+    restoreFocus(asElement(previous), asElement(main))
+
+    expect(fakeDocument.activeElement).toBe(main)
+    expect(main.tabIndex).toBe(-1)
+  })
+
+  it.each([
+    ["nothing", () => null],
+    ["only the body", () => document.body]
+  ])("focuses the main content when %s had focus, keeping a tabindex it already has", (_label, previous) => {
+    const { fakeDocument, node } = blockingDom()
+    const main = node({ tabIndex: 0 })
+
+    restoreFocus(previous(), asElement(main))
+
+    expect(fakeDocument.activeElement).toBe(main)
+    expect(main.tabIndex).toBe(0)
+  })
+
+  it("leaves focus alone when neither the earlier element nor the main content is in the document", () => {
+    const { fakeDocument, node } = blockingDom()
+    const elsewhere = node({ focusable: true })
+    fakeDocument.activeElement = elsewhere
+
+    restoreFocus(asElement(node({ focusable: true, isConnected: false })), asElement(node({ isConnected: false })))
+
+    expect(fakeDocument.activeElement).toBe(elsewhere)
   })
 })

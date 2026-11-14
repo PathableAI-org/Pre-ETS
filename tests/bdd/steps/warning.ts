@@ -1,11 +1,12 @@
-import type { Page } from "playwright"
+import type { Page, Request as PlaywrightRequest } from "playwright"
 
-import { Then, When } from "@cucumber/cucumber"
+import { Given, Then, When } from "@cucumber/cucumber"
 import assert from "node:assert/strict"
 import { setTimeout as delay } from "node:timers/promises"
 
 import type { AppWorld } from "../support/world.ts"
 
+import { exposedControls } from "../support/browser.ts"
 import {
   BOUND_MILLISECONDS,
   heldDeadline,
@@ -13,8 +14,8 @@ import {
   OFFSET_TOLERANCE_MILLISECONDS,
   openTabIn,
   openTabs,
-  pressEnterAndAwaitPost,
   pressEscapeAndClickOutside,
+  pressKeyAndAwaitPost,
   sessionHeader,
   SPRINGFIELD,
   type Tab,
@@ -26,6 +27,7 @@ import {
 /** The warning's name and the alert after a Continue that did not renew (#156 research D9). */
 const WARNING = {
   action: "Continue",
+  explanation: "For your security, your session will end soon because of inactivity. Select Continue to keep working.",
   failure: "We could not continue your session. Try again.",
   heading: "Your session is about to expire"
 }
@@ -251,11 +253,16 @@ Then("tab {string} says the session could not be continued", async function(this
   assert.equal((await alert.textContent())?.trim(), WARNING.failure)
 })
 
-/** Focuses Continue and presses Enter; the step ends when the server answered, and records when that was. */
-When("the visitor activates Continue with Enter in tab {string}", async function(this: AppWorld, name: string) {
+/** Focuses Continue and presses Enter or Space; the step ends when the server answered, and records when that was. */
+When("the visitor activates Continue with {word} in tab {string}", async function(
+  this: AppWorld,
+  key: string,
+  name: string
+) {
+  assert.ok(key === "Enter" || key === "Space", "expected Enter or Space")
   const { page } = tabOf(this, name)
   const continueButton = warningIn(page).getByRole("button", { name: WARNING.action })
-  const response = await pressEnterAndAwaitPost(page, continueButton, "/session/activity")
+  const response = await pressKeyAndAwaitPost(page, continueButton, key, "/session/activity")
   measuredOf(this).renewedAt = Date.now()
   assert.equal(response.status(), 200, "expected Continue to be answered")
 })
@@ -360,3 +367,154 @@ Then(
     assert.ok(drift <= OFFSET_TOLERANCE_MILLISECONDS, `tab "${name}" did not adopt the later deadline`)
   }
 )
+
+/** Accessible blocking (#156 slice B, quickstart §B). */
+
+/** The roster's attendance-note field; programmatic focus there is not activity, so nothing renews. */
+const ATTENDANCE_NOTE = "Attendance note"
+
+Given(
+  "tab {string} shows the roster with focus on its attendance note, and tab {string} has learned its renewal",
+  async function(this: AppWorld, name: string, other: string) {
+    const tab = tabOf(this, name)
+    await tab.page.goto(`http://${tab.host}/coordination/roster`)
+    await tab.page.getByRole("button", { name: "Log out" }).waitFor({ state: "visible" })
+    await tab.page.getByRole("textbox", { name: ATTENDANCE_NOTE }).focus()
+    tab.deadline = await heldDeadline(tab.page)
+    const sharing = tabOf(this, other)
+    // The page load renewed the session, and the other tab adopts it from the broadcast after hydration (gap G2).
+    await sharing.page.waitForFunction(
+      (held) => Math.abs(Number(document.querySelector("header")?.getAttribute("data-session-deadline")) - held) <= 250,
+      tab.deadline,
+      { polling: 50, timeout: 10_000 }
+    )
+    sharing.deadline = await heldDeadline(sharing.page)
+  }
+)
+
+/** FR-014 in part (V-014): one modal dialog, named and described, whose only control is Continue (workaround 2). */
+Then(
+  "the warning in tab {string} is a modal dialog that explains itself, with Continue as its only control",
+  async function(this: AppWorld, name: string) {
+    const { page } = tabOf(this, name)
+    const dialog = warningIn(page)
+    assert.equal(await page.getByRole("dialog").count(), 1, "expected exactly one dialog")
+    assert.equal(await dialog.getAttribute("aria-modal"), "true")
+    const described = await dialog.getAttribute("aria-describedby")
+    assert.ok(described, "expected the warning to have a description")
+    assert.equal(await page.locator(`[id="${described}"]`).textContent(), WARNING.explanation)
+    assert.deepEqual(await dialog.getByRole("button").allTextContents(), [WARNING.action])
+    assert.equal(await dialog.getByRole("link").count(), 0)
+    assert.equal(await page.getByLabel("Close modal").isVisible(), false, "the library's close control is shown")
+  }
+)
+
+/** FR-015 (V-015): focus is on the warning's Continue, and with `indicated`, its focus indicator is drawn. */
+const assertFocusOnContinue = async (world: AppWorld, name: string, indicated: boolean) => {
+  const { page } = tabOf(world, name)
+  assert.equal(await focusedOnContinue(page), true, `expected focus on Continue in tab "${name}"`)
+  if (!indicated) return
+  const indicator = await page.evaluate(() => ({
+    focusVisible: document.activeElement?.matches(":focus-visible") === true,
+    outline: document.activeElement === null ? "none" : getComputedStyle(document.activeElement).outlineStyle
+  }))
+  assert.ok(indicator.focusVisible && indicator.outline !== "none", "expected a visible focus indicator")
+}
+
+Then("focus in tab {string} is on Continue", async function(this: AppWorld, name: string) {
+  await assertFocusOnContinue(this, name, false)
+})
+
+Then("focus in tab {string} is on Continue with a visible focus indicator", async function(
+  this: AppWorld,
+  name: string
+) {
+  await assertFocusOnContinue(this, name, true)
+})
+
+When("the visitor clicks outside the warning in tab {string}", async function(this: AppWorld, name: string) {
+  await tabOf(this, name).page.mouse.click(4, 4)
+})
+
+/** Another window of the browser takes focus, and the visitor brings the tab back. */
+When("another window takes focus from tab {string} and gives it back", async function(this: AppWorld, name: string) {
+  const { page } = tabOf(this, name)
+  const other = await page.context().newPage()
+  try {
+    await other.bringToFront()
+    await page.bringToFront()
+  } finally {
+    await other.close()
+  }
+})
+
+/** FR-016 (V-015): the accessibility tree exposes Continue and nothing else, so no header or control behind it. */
+Then("nothing behind the warning in tab {string} is exposed", async function(this: AppWorld, name: string) {
+  assert.deepEqual(await exposedControls(tabOf(this, name).page), [`button: ${WARNING.action}`])
+})
+
+/** Per scenario: the navigations, router requests, and logout requests a tab sent while the warning was open. */
+const blockedRequests = new WeakMap<AppWorld, readonly string[]>()
+
+/** Pointer presses where Log out and the participant link are drawn; the background is inert, so they reach nothing. */
+When("the visitor clicks where Log out and the participant link are in tab {string}", async function(
+  this: AppWorld,
+  name: string
+) {
+  const { page } = tabOf(this, name)
+  const sent: string[] = []
+  const record = (request: PlaywrightRequest) => {
+    const { pathname } = new URL(request.url())
+    if (request.isNavigationRequest() || request.headers().rsc !== undefined || pathname.includes("logout")) {
+      sent.push(`${request.method()} ${pathname}`)
+    }
+  }
+  page.on("request", record)
+  for (const target of [page.getByText("Log out"), page.getByText("Open participant page", { exact: true })]) {
+    const box = await target.boundingBox()
+    assert.ok(box, "expected the background control to be drawn")
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
+  }
+  // A navigation or logout starts within the press's task; the wait lets a router request or redirect show too.
+  await delay(1_000)
+  page.off("request", record)
+  blockedRequests.set(this, sent)
+})
+
+Then("tab {string} navigated nowhere and started no logout", async function(this: AppWorld, name: string) {
+  const { page } = tabOf(this, name)
+  assert.equal(new URL(page.url()).pathname, "/coordination/roster")
+  assert.deepEqual(blockedRequests.get(this), [], `tab "${name}" sent a request from behind the warning`)
+  await warningIn(page).waitFor({ state: "visible" })
+})
+
+/** FR-017 (V-015): focus returned to the element that had it, which is still present and focusable. */
+Then("focus in tab {string} is back on its attendance note", async function(this: AppWorld, name: string) {
+  const { page } = tabOf(this, name)
+  assert.equal(await page.evaluate(() => document.activeElement?.id), "roster-attendance-note")
+})
+
+/**
+ * FR-017 (V-015): with nothing focused before, focus goes to the page's main content. The pages have no `main`
+ * landmark, so that is the protected content's container: it holds the page heading and not the header.
+ */
+Then("focus in tab {string} is on its main content", async function(this: AppWorld, name: string) {
+  const focused = await tabOf(this, name).page.evaluate(() => {
+    const active = document.activeElement
+    return {
+      holdsHeader: active?.querySelector("header") !== null,
+      holdsHeading: active?.querySelector("h1") !== null,
+      isBody: active === document.body
+    }
+  })
+  assert.deepEqual(focused, { holdsHeader: false, holdsHeading: true, isBody: false })
+})
+
+/** After the warning closed, each tab's header and controls are exposed, and so operable, again. */
+Then("tabs {} expose their header and controls again", async function(this: AppWorld, list: string) {
+  for (const name of namesOf(list)) {
+    const exposed = await exposedControls(tabOf(this, name).page)
+    assert.ok(exposed.includes("button: Log out"), `tab "${name}" still hides its header: ${JSON.stringify(exposed)}`)
+    assert.ok(!exposed.includes(`button: ${WARNING.action}`), `tab "${name}" still shows the warning`)
+  }
+})

@@ -273,9 +273,8 @@ every running tab sharing the session confirms for itself.
 
 The warning is the `@pathableai/react` `Modal`, titled "Your session is about to expire", explaining that the
 session will end soon because of inactivity, with Continue, which takes focus when it opens. It shows no remaining
-time. Nothing but a renewal or the session's end closes it: Escape and the library's close control call a no-op
-`onClose`, and no in-page activity is classified while it is open. The close control is still shown until the
-blocking slice removes it ([#400](https://github.com/PathableAI-org/Pre-ETS/issues/400)). Continue sends
+time. Nothing but a renewal or the session's end closes it: Escape calls a no-op `onClose`, the library's close
+control is removed (below), and no in-page activity is classified while it is open. Continue sends
 `continue-session` at once, outside the activity window, and gives up after 10 seconds; activating it again while
 a request is in flight sends nothing. A renewal is adopted and broadcast as `renewed`, so the warning closes in this
 tab, which shows its content again if a confirmation had hidden it, and in every sharing tab that adopts the higher
@@ -285,6 +284,20 @@ another tab, closes it the same way (a page-load renewal reaches other tabs only
 warning. Any other answer leaves the warning open in every tab with "We could not continue your session. Try
 again." inside it, and Continue stays available. The deadline still hides content and confirms behind an open
 warning, which stays in place: a usable answer reveals the content under it, and an ended answer replaces both.
+
+While the warning is open, Continue is the only thing on the page that the keyboard, the pointer, or assistive
+technology reaches. The library `Modal` has no non-dismissible mode and no inert background
+([#400](https://github.com/PathableAI-org/Pre-ETS/issues/400), PathableAI-org/styles#264), so the application does
+four things the library does not. Every control the library renders in the dialog other than Continue, today its
+close button, is disabled and removed from rendering and from the accessibility tree; it is found by structure, not
+by class name. Every other child of `document.body` becomes `inert`, and each gets back the value it had when the
+warning closes. The running view's header and content sit inside one wrapper element, so this never touches the
+content's own `inert`, which concealment sets. A pointer press outside the dialog moves no focus, and focus found
+outside it, after a blur or when the window is focused again, returns to Continue. When the warning closes and the
+tab stays active, focus returns to the element that had it when the warning opened, if that element is still
+connected and takes focus; otherwise it goes to the first `main` in the protected content or, failing that, the
+content container, made focusable from script. Remove the first three when the library ships a non-dismissible modal
+with an inert background, and keep the restoration only if the library's own restoration has no such fallback.
 
 Every protected page has a Log out button. Each attempt gets an `attemptId` and is written to its
 own `localStorage` key (`preets-session-logout-pending:v1:<tag>:<attemptId>` → `{ notAfter }`), then
