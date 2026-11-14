@@ -324,3 +324,41 @@ No instrumentation was missing or unusable. No forbidden data was observed: span
 span has a query string, and resources carry only `service.*` and `telemetry.sdk.*`.
 
 **Cleanup:** one leftover owned session key was deleted, the app was stopped, and the scratch tenant was removed.
+
+### Slice A3 — `4646566d218f06637cd53583f8fd0fdac2c75813` (2026-11-13)
+
+**Runs:** BDD `480eb67a-be6a-4d7b-b86b-d7a3f734e769`; probe `9feb9235-c8d5-4e2b-bcf0-4f5ea30eed33` (browser tracing on,
+the telemetry record). This report supersedes the failed verification at `99b2261`: there T-005 was not exported and,
+without the BDD's then 2 s activity delay, the refused activity report ended the denying and sharing tabs before
+recovery. Both were fixed (`e8c6b7f`), and T-002's correlation was corrected in the plan (`023085f`).
+
+**Conditions:** a detached verifier worktree; a production build; local Redis, the tracked Keycloak realm, and
+otel-lgtm with OTEL enabled and the harness `service.version` and `service.instance.id`; `BROWSER_TRACING_ENABLED=true`
+for the probe, with every page waiting for `data-preets-browser-tracing="started"`; a 5-minute Springfield scratch
+tenant. The default flow: no route interception and no `/session/activity` delay anywhere.
+
+**Module evidence:** frontend-services `test` 491/491, `test:integration` 42/42, frontend `test:unit` 94/94.
+
+**BDD:** `--tags @preets-session-007` ran 9 scenarios (141 steps), all passing.
+
+| Claim                 | Result                                   | Observation                                                                                                                                                                                                                                                                                                                                                                                   |
+| --------------------- | ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| V-003                 | established                              | 7/7 recoveries (5 unknown, 2 expired): the action answers 401 and recovery replaces the tab's header and content. No form or button remains. Rendered text and the accessibility tree hold no protected labels, and the only tab stop is "Log in again". Next's inline flight payload still holds earlier label text; it is not rendered, focusable, or exposed, and was ruled not a failure. |
+| V-004 (JS cases)      | established                              | Removed record → "Your session is no longer available" (5/5). Deadline passed with suspended timers → "Your session expired" (2/2); the gate token was `session-unavailable`, so the tab basis decided (L-2). Logout observed in another tab → the signed-out notice and no recovery.                                                                                                         |
+| V-005 (browser)       | established                              | Clock installed before load, paused after load, set to the deadline plus 5 s, then a keyboard submit: 401, no receipt, expired recovery with focus on its heading (2/2). Emulated suspension, as approved.                                                                                                                                                                                    |
+| V-007                 | browser part established; AT outstanding | Focus lands on the `h1` marked `recovery_heading` (`tabindex="-1"`). The first Tab reaches "Log in again" with `:focus-visible` and a solid outline, and Enter navigates to the provider. Screen-reader announcement (§A3.5) was not executed and is left for a person.                                                                                                                       |
+| V-008                 | established                              | The second sharing tab still shows "Reference session" and the form immediately and 5 s after the denial (5/5). Between the submit and the transition, the denying tab's only `TabChannel.send` is `pending` (activity in flight), never an end or logout message.                                                                                                                            |
+| V-002 (browser part)  | established                              | From the denial to Log in activation the tab requested only `POST /`, `POST /session/activity`, and `GET /session/status`. Each T-005 precedes the next document's `prepareAuthentication` by about 10 ms, and none appears between a denial and its T-005.                                                                                                                                   |
+| V-024 (page part)     | established                              | No protected labels, tenant, identity, or session values in rendered text, the accessibility tree, or live regions.                                                                                                                                                                                                                                                                           |
+| V-018 (recovery side) | established                              | Expired and unknown recovery share the "Log in again" action; the unknown copy claims no cause. The modal side is slice B.                                                                                                                                                                                                                                                                    |
+
+**S3 logout during the submission hold:** with a submission in tab A, a logout in tab B 100, 500, or 1000 ms later ended
+A in 74, 77, and 79 ms. A never showed recovery, so the 5 s hold does not delay logout.
+
+**Telemetry:** T-002 present (5 `recovery_unavailable`, 2 `recovery_expired`, cause `action_denied`), as root spans
+ordered submit → T-001 denial → transition → `Focus.move`, as the corrected row says. T-004 `recovery_heading`
+`entered`/`application` at each recovery. T-005 present: 7 `Interaction.login` with `action_recovery`, exported by the
+`pagehide` flush. In the suspended-clock case browser timestamps lag wall time by about 1.5 s, so that case's order was
+judged by browser interaction. No instrumentation was missing or unusable. No forbidden data was observed.
+
+**Cleanup:** owned keys deleted, the app stopped, and the scratch tenant removed.

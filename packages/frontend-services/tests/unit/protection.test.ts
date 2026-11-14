@@ -109,8 +109,22 @@ const install = (
 const forbiddenBody = "forbidden-document"
 const tenantFailureBody = "missing-tenant"
 const recoveryBody = (cause: string) => `recovery-document:${cause}`
+const denialBody = (cause: string) => `action-denial:${cause}`
+
+/** A host that answers with the wrong status and caching, a cookie, and a redirect: the gate must override them. */
+const misbehaving = (body: string, contentType: string) =>
+  new NextResponse(body, {
+    headers: {
+      "cache-control": "public, max-age=600",
+      "content-type": contentType,
+      location: "/elsewhere",
+      "set-cookie": "pathable-session=leaked; Path=/"
+    },
+    status: 200
+  })
 
 const responses: ProtectionResponses = {
+  actionDenial: ({ cause }) => Promise.resolve(misbehaving(denialBody(cause), "text/plain")),
   forbiddenDocument: (request) =>
     Promise.resolve(
       new NextResponse(forbiddenBody, {
@@ -118,19 +132,7 @@ const responses: ProtectionResponses = {
         status: 403
       })
     ),
-  // A host that answers with the wrong status and caching, a cookie, and a redirect: the gate must override them.
-  recoveryDocument: ({ cause }) =>
-    Promise.resolve(
-      new NextResponse(recoveryBody(cause), {
-        headers: {
-          "cache-control": "public, max-age=600",
-          "content-type": "text/html; charset=utf-8",
-          location: "/elsewhere",
-          "set-cookie": "pathable-session=leaked; Path=/"
-        },
-        status: 200
-      })
-    ),
+  recoveryDocument: ({ cause }) => Promise.resolve(misbehaving(recoveryBody(cause), "text/html; charset=utf-8")),
   tenantFailure: (status) => Promise.resolve(new NextResponse(status === 404 ? tenantFailureBody : null, { status }))
 }
 
@@ -165,15 +167,22 @@ const expectEmptyDenial = async (response: Response, status: number) => {
 }
 
 /** The host's recovery document, re-wrapped by the gate: 401, private, no cookie, no redirect, host body and type. */
-const expectRecoveryDocument = async (response: Response, cause: string) => {
+const expectHostDenial = async (response: Response, contentType: string, body: string) => {
   expect(response.status).toBe(401)
   expect(passedThrough(response)).toBe(false)
   expect(response.headers.get("cache-control")).toBe("private, no-store")
-  expect(response.headers.get("content-type")).toBe("text/html; charset=utf-8")
+  expect(response.headers.get("content-type")).toBe(contentType)
   expect(response.headers.get("location")).toBeNull()
   expect(response.headers.getSetCookie()).toEqual([])
-  expect(await response.text()).toBe(recoveryBody(cause))
+  expect(await response.text()).toBe(body)
 }
+
+const expectRecoveryDocument = (response: Response, cause: string) =>
+  expectHostDenial(response, "text/html; charset=utf-8", recoveryBody(cause))
+
+/** Exactly `text/plain`: Next's client compares the header exactly before reading the body as the message. */
+const expectActionDenial = (response: Response, cause: string) =>
+  expectHostDenial(response, "text/plain", denialBody(cause))
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"] })
@@ -354,11 +363,11 @@ describe("createProtectionProxy designation [PREETS-SESSION-001]", () => {
   it.each([
     { headers: { ...rscFetch, "next-action": "0123456789abcdef" }, method: "POST", name: "an action header" },
     { headers: { ...navigation, "next-action": "0123456789abcdef" }, method: "GET", name: "an action header on GET" }
-  ])("protects a Server Action candidate under /_test: $name", async (row) => {
+  ])("protects a Server Action candidate under /_test with the cause token: $name", async (row) => {
     install(sessionDouble(() => Effect.succeed(noUsableSession)))
 
     for (const path of ["/_test", "/_test/x"]) {
-      await expectEmptyDenial(await protect(request(path, { headers: row.headers, method: row.method })), 401)
+      await expectActionDenial(await protect(request(path, { headers: row.headers, method: row.method })), "unknown")
     }
   })
 
@@ -440,6 +449,8 @@ describe("createProtectionProxy outcomes [PREETS-SESSION-001, PREETS-SESSION-005
       expect(response.headers.get("location")).toBe(`${ORIGIN}/auth/login`)
       expect(response.headers.get("cache-control")).toBe("private, no-store")
       expect(response.headers.getSetCookie()).toEqual([])
+    } else if (incoming.headers.has("next-action")) {
+      await expectActionDenial(response, "unknown")
     } else {
       await expectEmptyDenial(response, 401)
     }
@@ -616,7 +627,7 @@ describe("createProtectionProxy denied Server Actions [PREETS-SESSION-007]", () 
   const formContentType = fc.constantFrom("multipart/form-data; boundary=x", "application/x-www-form-urlencoded")
 
   it.prop([pathname, formContentType, headerSubset], { numRuns: 300 })(
-    "answers every denied candidate with 401 and no login, and only a no-script navigation with the recovery document",
+    "answers every denied candidate with 401 and no login: a fetch action with the cause token, a no-script navigation with the recovery document",
     async (path, contentType, headers) => {
       install(sessionDouble(() => Effect.succeed(noUsableSession)))
       const incoming = request(path, {
@@ -627,8 +638,9 @@ describe("createProtectionProxy denied Server Actions [PREETS-SESSION-007]", () 
 
       const response = await protect(incoming)
 
-      const noScript = !incoming.headers.has("next-action") && isNavigation(incoming.headers)
-      if (noScript) await expectRecoveryDocument(response, "unknown")
+      const fetchAction = incoming.headers.has("next-action")
+      if (fetchAction) await expectActionDenial(response, "unknown")
+      else if (isNavigation(incoming.headers)) await expectRecoveryDocument(response, "unknown")
       else await expectEmptyDenial(response, 401)
     }
   )
@@ -644,7 +656,16 @@ describe("createProtectionProxy denied Server Actions [PREETS-SESSION-007]", () 
   })
 
   it.each([
-    { headers: { ...rscFetch, "content-type": "multipart/form-data; boundary=x", "next-action": "a" }, name: "fetch" },
+    { cause: "expired", session: { _tag: "NoUsableSession", expired: true } as const },
+    { cause: "unknown", session: noUsableSession }
+  ])("answers a fetch action with the $cause token from what the session read observed", async (row) => {
+    install(sessionDouble(() => Effect.succeed(row.session)))
+    const headers = { ...rscFetch, "content-type": "multipart/form-data; boundary=x", "next-action": "a" }
+
+    await expectActionDenial(await protect(request("/", { cookie: reference, headers, method: "POST" })), row.cause)
+  })
+
+  it.each([
     { headers: { ...rscFetch, "content-type": "multipart/form-data; boundary=x" }, name: "non-navigation form" },
     { headers: { "content-type": "application/x-www-form-urlencoded" }, name: "metadata-less form" }
   ])("keeps the empty 401 for a denied $name candidate, even when the server observed expiry", async (row) => {
@@ -685,6 +706,17 @@ describe("createProtectionProxy defects", () => {
       recoveryDocument: () => Promise.reject(new Error("factory failed"))
     })
     const headers = { ...navigation, "content-type": "application/x-www-form-urlencoded" }
+
+    await expect(failing(request("/", { cookie: reference, headers, method: "POST" }))).rejects.toBeDefined()
+  })
+
+  it("rejects rather than passing through when the action denial factory throws", async () => {
+    install(sessionDouble(() => Effect.succeed(noUsableSession)))
+    const failing = createProtectionProxy({
+      ...responses,
+      actionDenial: () => Promise.reject(new Error("factory failed"))
+    })
+    const headers = { ...rscFetch, "content-type": "multipart/form-data; boundary=x", "next-action": "a" }
 
     await expect(failing(request("/", { cookie: reference, headers, method: "POST" }))).rejects.toBeDefined()
   })

@@ -9,6 +9,7 @@ import { Alert, Container, Heading, Link, Page, Stack, Text } from "@pathableai/
 import { NextResponse } from "next/server"
 import { renderToReadableStream } from "react-dom/server.edge"
 
+import { ACTION_DENIAL_BODY } from "../../providers/action-denial.ts"
 import { sessionEndCopy, SessionEndNotice } from "../../shared/session-recovery.ts"
 
 export const authenticationReturnBody = () =>
@@ -122,4 +123,17 @@ export const recoveryDocumentResponse: ProtectionResponses["recoveryDocument"] =
       headers: { "cache-control": PRIVATE_NO_STORE, "content-type": "text/html; charset=utf-8" },
       status: 401
     }
+  )
+
+/**
+ * `ProtectionResponses.actionDenial`: the closed-set cause token for a denied fetch Server Action. Exactly
+ * `text/plain` with no charset, because Next's client reads the body as the rejection message only for that content
+ * type (#157 research D3, F5). The gate sends it with HTTP 401 and `private, no-store`.
+ */
+export const actionDenialResponse: ProtectionResponses["actionDenial"] = ({ cause }) =>
+  Promise.resolve(
+    new NextResponse(ACTION_DENIAL_BODY[cause], {
+      headers: { "cache-control": PRIVATE_NO_STORE, "content-type": "text/plain" },
+      status: 401
+    })
   )

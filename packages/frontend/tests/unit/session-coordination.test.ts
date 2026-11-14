@@ -1,5 +1,7 @@
+import type { SessionCoordinationSnapshot } from "@pathableai/pre-ets-frontend-services"
+
 import { fc, it } from "@fast-check/vitest"
-import { describe, expect } from "vitest"
+import { afterEach, beforeEach, describe, expect, vi } from "vitest"
 
 import { classifySessionActivity } from "../../src/features/session-coordination/activity-classification.ts"
 import {
@@ -9,8 +11,11 @@ import {
   flushActivityCommunication
 } from "../../src/features/session-coordination/activity-window.ts"
 import { calibrateClockOffset } from "../../src/features/session-coordination/clock-offset.ts"
+import { knownExpiration } from "../../src/features/session-coordination/known-expiration.ts"
 import { adoptSnapshot } from "../../src/features/session-coordination/snapshot-order.ts"
 import { openTabChannel, type TabMessage } from "../../src/features/session-coordination/tab-channel.ts"
+import { TabCoordination, type TabViewState } from "../../src/features/session-coordination/tab-coordination.ts"
+import { ACTION_DENIAL_BODY, readActionDenial } from "../../src/providers/action-denial.ts"
 
 const WINDOW = 60_000
 
@@ -405,5 +410,198 @@ describe("openTabChannel (research D8) [PREETS-SESSION-010]", () => {
     })
     otherTab.close()
     channel?.close()
+  })
+})
+
+describe("readActionDenial (#157 research D3) [PREETS-SESSION-007]", () => {
+  it.each(
+    [
+      ["expired", new Error(ACTION_DENIAL_BODY.expired)],
+      ["unknown", new Error(ACTION_DENIAL_BODY.unknown)]
+    ] as const
+  )("reads the gate's %s token from a rejection", (cause, error) => {
+    expect(readActionDenial(error)).toBe(cause)
+  })
+
+  it.each([
+    ["a generic rejection", new Error("An unexpected response was received from the server.")],
+    ["a token with surrounding text", new Error(` ${ACTION_DENIAL_BODY.expired}`)],
+    ["a token in another case", new Error(ACTION_DENIAL_BODY.expired.toUpperCase())],
+    ["the bare token string", ACTION_DENIAL_BODY.expired],
+    ["an object with the token as message", { message: ACTION_DENIAL_BODY.expired }],
+    ["nothing", undefined]
+  ])("accepts no cause from %s", (_label, error) => {
+    expect(readActionDenial(error)).toBeUndefined()
+  })
+})
+
+describe("knownExpiration (#157 research D7) [PREETS-SESSION-007]", () => {
+  it.each([
+    ["the deadline passed on the tab's estimate", { serverTimes: [1_000, undefined] }, true],
+    ["the deadline passed on the status response's date", { serverTimes: [500, 1_000] }, true],
+    ["the estimate reached the deadline exactly", { serverTimes: [1_000] }, true],
+    ["the deadline has not passed on any estimate", { serverTimes: [999, 999] }, false],
+    ["no server time is known", { serverTimes: [undefined] }, false]
+  ])("is %s → %s", (_label, row, expected) => {
+    expect(knownExpiration({ deadline: 1_000, logoutObserved: false, ...row })).toBe(expected)
+  })
+
+  it("is never known after an observed logout, or without a held deadline", () => {
+    expect(knownExpiration({ deadline: 1_000, logoutObserved: true, serverTimes: [5_000] })).toBe(false)
+    expect(knownExpiration({ deadline: undefined, logoutObserved: false, serverTimes: [5_000] })).toBe(false)
+  })
+})
+
+/** A `Storage` over a map: the node environment has no `localStorage`. */
+const memoryStorage = () => {
+  const items = new Map<string, string>()
+  const storage = {
+    clear: () => {
+      items.clear()
+    },
+    getItem: (key: string) => items.get(key) ?? null,
+    key: (index: number) => [...items.keys()][index] ?? null,
+    get length() {
+      return items.size
+    },
+    removeItem: (key: string) => {
+      items.delete(key)
+    },
+    setItem: (key: string, value: string) => {
+      items.set(key, value)
+    }
+  }
+  // `Object.keys(localStorage)` lists stored keys, as in a browser.
+  return new Proxy(storage, {
+    getOwnPropertyDescriptor: (_target, key) =>
+      typeof key === "string" && items.has(key) ?
+        { configurable: true, enumerable: true, value: items.get(key) } :
+        undefined,
+    ownKeys: () => [...items.keys()]
+  })
+}
+
+describe("TabCoordination.deny (#157 research D6, D7) [PREETS-SESSION-007]", () => {
+  const NOW = Date.UTC(2026, 10, 13, 12, 0, 0)
+  const DEADLINE = NOW + 60_000
+  const tag = "tag-denied"
+  const snapshot: SessionCoordinationSnapshot = {
+    coordinationTag: tag,
+    idleDeadlineEpochMilliseconds: DEADLINE,
+    observedAtEpochMilliseconds: NOW,
+    revision: 1,
+    serverTimeEpochMilliseconds: NOW,
+    warningLeadMinutes: 2
+  }
+  let storage: ReturnType<typeof memoryStorage>
+  let states: TabViewState[]
+  let messages: unknown[]
+  let observer: BroadcastChannel
+  let stop: () => void
+
+  /** The status endpoint answers 401 with `date`, or 200 with a usable snapshot. */
+  const statusAnswers = (answer: "usable" | { readonly date: string }) => {
+    const fetch = vi.fn(() =>
+      Promise.resolve(
+        answer === "usable" ?
+          Response.json({ ...snapshot, revision: 2 }) :
+          new Response(null, { headers: { date: answer.date }, status: 401 })
+      )
+    )
+    vi.stubGlobal("fetch", fetch)
+    return fetch
+  }
+
+  const start = () => {
+    const coordination = new TabCoordination(snapshot, (state) => states.push(state), () => null)
+    stop = coordination.start()
+    observer = new BroadcastChannel("preets-session-coordination")
+    observer.onmessage = (event: MessageEvent) => messages.push(event.data)
+    return coordination
+  }
+
+  /** Lets queued channel deliveries arrive before asserting none came. */
+  const deliveries = () => new Promise((resolve) => setImmediate(resolve))
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] })
+    vi.setSystemTime(NOW)
+    storage = memoryStorage()
+    states = []
+    messages = []
+    vi.stubGlobal("localStorage", storage)
+    vi.stubGlobal("document", Object.assign(new EventTarget(), { visibilityState: "visible" }))
+    vi.stubGlobal("window", new EventTarget())
+    // No navigation entry exists here; any constructor lets the coordinator's `instanceof` check answer false.
+    vi.stubGlobal("PerformanceNavigationTiming", Object)
+  })
+
+  afterEach(() => {
+    stop()
+    observer.close()
+    vi.unstubAllGlobals()
+    vi.useRealTimers()
+  })
+
+  it("enters expired recovery when the status date shows the held deadline passed, though the tab's clock lags", async () => {
+    statusAnswers({ date: new Date(DEADLINE + 5_000).toUTCString() })
+    const coordination = start()
+
+    await expect(coordination.deny(undefined)).resolves.toBe(true)
+
+    expect(states.at(-1)).toStrictEqual({ concealed: true, endedHere: false, recovery: "expired", view: "recovery" })
+  })
+
+  it("enters expired recovery when the tab's own estimate passed the deadline while its timers were suspended", async () => {
+    statusAnswers({ date: "not a date" })
+    const coordination = start()
+    vi.setSystemTime(DEADLINE + 1_000)
+
+    await expect(coordination.deny("unknown")).resolves.toBe(true)
+
+    expect(states.at(-1)?.recovery).toBe("expired")
+  })
+
+  it("enters unknown recovery when the record ended before the deadline, without a record or a message", async () => {
+    statusAnswers({ date: new Date(NOW + 10_000).toUTCString() })
+    const coordination = start()
+    const stored = Object.keys(storage)
+
+    await expect(coordination.deny(undefined)).resolves.toBe(true)
+    await deliveries()
+
+    expect(states.at(-1)).toStrictEqual({ concealed: true, endedHere: false, recovery: "unknown", view: "recovery" })
+    expect(Object.keys(storage)).toStrictEqual(stored)
+    expect(messages).toStrictEqual([])
+  })
+
+  it("trusts the gate's expired token without reading the status", async () => {
+    const fetch = statusAnswers("usable")
+    const coordination = start()
+
+    await expect(coordination.deny("expired")).resolves.toBe(true)
+
+    expect(fetch).not.toHaveBeenCalled()
+    expect(states.at(-1)?.recovery).toBe("expired")
+  })
+
+  it("leaves the page when the session is still usable, so the form reports the action as not performed", async () => {
+    statusAnswers("usable")
+    const coordination = start()
+
+    await expect(coordination.deny(undefined)).resolves.toBe(false)
+
+    expect(states.at(-1)?.view).toBe("active")
+  })
+
+  it("stops coordinating after recovery: a later denial changes nothing", async () => {
+    statusAnswers({ date: new Date(NOW).toUTCString() })
+    const coordination = start()
+    await coordination.deny(undefined)
+    const recorded = states.length
+
+    await expect(coordination.deny("expired")).resolves.toBe(false)
+
+    expect(states).toHaveLength(recorded)
   })
 })

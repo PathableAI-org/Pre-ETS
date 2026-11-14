@@ -3,6 +3,7 @@ import type { NextProxy } from "next/server"
 import { createProtectionProxy } from "@pathableai/pre-ets-frontend-services"
 
 import {
+  actionDenialResponse,
   forbiddenDocumentResponse,
   recoveryDocumentResponse,
   tenantFailureResponse
@@ -10,6 +11,7 @@ import {
 
 /** Every matched request passes the default protection gate before any page, route handler, or Server Action. */
 export const proxy: NextProxy = createProtectionProxy({
+  actionDenial: actionDenialResponse,
   forbiddenDocument: forbiddenDocumentResponse,
   recoveryDocument: recoveryDocumentResponse,
   tenantFailure: tenantFailureResponse

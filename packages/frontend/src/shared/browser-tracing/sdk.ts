@@ -47,8 +47,8 @@ const causedRequest = (input: RequestInfo | URL, init: RequestInit | undefined):
 /**
  * Registers the web SDK: a provider exporting filtered spans over OTLP/HTTP straight to the collector with no
  * headers, `traceparent` on same-origin `fetch` only, and the document-load records continuing the rendered
- * `traceparent` (research D4–D7, D9, D10). Then it wraps `fetch` with the cause wrapper, replays the facts buffered
- * before registration, and sets the `started` marker last. Answers the live recorder. Loaded lazily by the facade only.
+ * `traceparent` (research D4–D7, D9, D10). Then it wraps `fetch` with the cause wrapper, flushes on `pagehide`, replays
+ * the facts buffered before registration, and sets the `started` marker last. Answers the live recorder. Loaded lazily by the facade only.
  */
 export function startSdk(config: BrowserTracingConfig, startup: SdkStartup): (fact: Fact) => FactScope {
   const traceUrl = new URL("v1/traces", config.endpoint).href
@@ -74,6 +74,11 @@ export function startSdk(config: BrowserTracingConfig, startup: SdkStartup): (fa
     tracerProvider: provider
   })
   wrapFetch(startup.claimCause)
+  // Records made just before the page leaves, such as a Log in activation (#157 T-005), are still batched. Flushing
+  // on `pagehide` sends them before the document unloads; the OTLP transport uses `keepalive`.
+  addEventListener("pagehide", () => {
+    void provider.forceFlush()
+  })
   replayFacts(startup.buffered, startup.dropped)
   document.documentElement.dataset.preetsBrowserTracing = "started"
   return recordFact
