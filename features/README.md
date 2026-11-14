@@ -35,7 +35,9 @@ pnpm exec playwright install chromium
 pnpm test:bdd
 ```
 
-`REDIS_URL` defaults to `redis://127.0.0.1:6379` for the owned Next process. Each scenario owns a
+`REDIS_URL` defaults to `redis://127.0.0.1:6379` for the owned Next process. That process otherwise takes its
+server configuration from the shell and `packages/frontend/.env.local`, so OTEL needs either a collector endpoint or
+`OTEL_SDK_DISABLED=true`, which CI sets ([Observability](../docs/observability.md#local-grafana--otlp)). Each scenario owns a
 temporary tenant directory and explicit callback origins/loopback permission. Cleanup removes only that
 scenario's resources. The registered `http://springfield.localhost:3000` and
 `http://shelbyville.localhost:3000` callback origins do not follow Next's random transport port or logical

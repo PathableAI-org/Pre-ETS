@@ -50,6 +50,9 @@ jobs:
             echo "SESSION_STORE_TIMEOUT_MS=2000"
             echo "SESSION_KEY_PREFIX=ci:bdd:${{ github.run_id }}:"
             echo "OIDC_TX_KEY_PREFIX=ci:bdd:oidc-tx:${{ github.run_id }}:"
+            # No collector runs here and no scenario observes telemetry. An unset endpoint is a startup error, so
+            # owned frontend processes use the documented off switch (docs/observability.md).
+            echo "OTEL_SDK_DISABLED=true"
           } >> "$GITHUB_ENV"
       - name: Install Chromium for browser scenarios
         run: pnpm exec playwright install --with-deps chromium
