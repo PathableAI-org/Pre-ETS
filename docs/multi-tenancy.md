@@ -103,9 +103,11 @@ has no such field. Unknown fields are rejected, including nested credential fiel
 JSON types remain strict: strings, null, and booleans cannot substitute for numeric
 policy settings.
 
-Non-secret credential references remain data. A secrets module/provider contract
-and actual resolution are deferred until an authentication consumer needs to read
-a real secret. Tenant loading and diagnostics do not resolve those references. Producers
+Non-secret credential references remain data. Authentication alone resolves a
+confidential client's `clientSecretRef`, from the server-only `OIDC_CLIENT_SECRETS_JSON`
+map, when it needs the selected client; see
+[Configuration for OIDC consumers](authentication.md#configuration-for-oidc-consumers).
+Tenant loading and diagnostics do not resolve those references. Producers
 must still prevent secrets inside permitted text fields; schema validation alone
 cannot establish that external content is safe.
 
