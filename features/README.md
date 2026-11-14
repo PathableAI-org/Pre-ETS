@@ -1,7 +1,8 @@
 # Requirements BDD
 
 Executable acceptance scenarios live under [`tests/bdd/requirements/`](../tests/bdd/requirements/).
-They observe a running Next.js application over HTTP and in Chromium for missing-page presentation and real-provider delegation.
+They observe a running Next.js application over HTTP and in Chromium for missing-page presentation, real-provider delegation,
+and session expiration and recovery journeys.
 Tests never connect to Redis or other backing services directly; Compose (or CI services) may still run for the app process.
 
 Before authoring or reviewing scenarios and their steps, read
@@ -61,7 +62,9 @@ whenever the harness starts it.
 
 Steps use unfollowed HTTP for status/content claims: root 307 is separate from the tenant-dependent login
 response. Chromium follows native redirects through a scoped proxy that preserves application Hosts and leaves
-external provider destinations intact; it establishes missing-page presentation and real provider arrival.
+external provider destinations intact; it establishes missing-page presentation, real provider arrival, and the
+session expiration and recovery journeys. Those journeys wait in real time for server deadlines; only the page's
+clock may be controlled, as the step guidance's controlled browser time section describes.
 Permission-denial scenarios require a non-root user and a filesystem that enforces Unix permissions;
 the setup checks that access is actually denied before asserting an application response.
 See [step guidance](../tests/bdd/steps/README.md).
