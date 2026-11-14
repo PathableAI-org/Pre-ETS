@@ -2,10 +2,11 @@
 
 The frontend owns tenant configuration. The server-only
 [TenantConfigService](../packages/frontend-services/src/tenant.ts) resolves tenant aliases
-and loads one `{alias}.json` file under `TENANT_CONFIG_DIR` for each read. The current
-app has a welcome page and a tenant diagnostic route; login and sessions remain
-follow-on work described in [authentication.md](./authentication.md). Durable business
-records belong to the backend; see [domain-persistence.md](./domain-persistence.md).
+and loads one `{alias}.json` file under `TENANT_CONFIG_DIR` for each read. Login,
+callback, and sessions resolve the request tenant through this service; see
+[authentication.md](./authentication.md) and [session-state.md](./session-state.md).
+Durable business records belong to the backend; see
+[domain-persistence.md](./domain-persistence.md).
 
 ## Tenant selection
 
@@ -103,9 +104,11 @@ has no such field. Unknown fields are rejected, including nested credential fiel
 JSON types remain strict: strings, null, and booleans cannot substitute for numeric
 policy settings.
 
-Non-secret credential references remain data. A secrets module/provider contract
-and actual resolution are deferred until an authentication consumer needs to read
-a real secret. Tenant loading and diagnostics do not resolve those references. Producers
+Non-secret credential references remain data. Authentication alone resolves a
+confidential client's `clientSecretRef`, from the server-only `OIDC_CLIENT_SECRETS_JSON`
+map, when it needs the selected client; see
+[Configuration for OIDC consumers](authentication.md#configuration-for-oidc-consumers).
+Tenant loading and diagnostics do not resolve those references. Producers
 must still prevent secrets inside permitted text fields; schema validation alone
 cannot establish that external content is safe.
 
@@ -140,8 +143,11 @@ environments, returning the complete parsed permitted document with
 `Cache-Control: private, no-store`. Successful JSON equals an independently parsed
 selected file. Defaults are not inserted into its response, and a non-secret
 `clientSecretRef` remains visible. Provider credentials and resolved secrets are
-never part of this document. The welcome page consumes the same tenant service through
-the request-cached `requireTenantConfig`; it does not call the diagnostic endpoint.
+never part of this document. Pages that need the tenant but no session, `/login-unavailable`
+and `/_test/onsite`, consume the same tenant service through the request-cached
+`requireTenantConfig`, so a tenant failure keeps its 404 or 500. The protected `/` page
+resolves the tenant through its session read instead. No page calls the diagnostic
+endpoint.
 
 Local HTTP and OTel inspection can establish the running composition's selection,
 status, response, and telemetry behavior. Durable service tests separately protect
