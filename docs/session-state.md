@@ -150,17 +150,20 @@ built by `frontend-services` let a tab take part in it. The gate runs first and 
 these paths, so each handler resolves the tenant and re-checks the session itself. No handler sets
 or clears a cookie:
 
-| Handler                  | Rejected before any session operation                             | Outcome                                                                                                                                                      |
-| ------------------------ | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `POST /session/activity` | Not same-origin 403; not `application/json` 415; invalid body 400 | Tag of another session 409, nothing renewed. Otherwise `refreshForTenant` with the in-page kind and effective policy: 200 snapshot, or 401 without a session |
-| `GET /session/status`    | none                                                              | Reads only, never renews: 200 snapshot or 401                                                                                                                |
-| `POST /auth/logout`      | Not same-origin 403; not `application/json` 415; invalid body 400 | 401 without a session; tag of another session 409, nothing invalidated; otherwise `invalidate` and 204                                                       |
+| Handler                  | Rejected before any session operation                             | Outcome                                                                                                                                                  |
+| ------------------------ | ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /session/activity` | Not same-origin 403; not `application/json` 415; invalid body 400 | Tag of another session 409, nothing renewed. Otherwise `refreshForTenant` with the activity and effective policy: 200 snapshot, or 401 without a session |
+| `GET /session/status`    | none                                                              | Reads only, never renews: 200 snapshot or 401                                                                                                            |
+| `POST /auth/logout`      | Not same-origin 403; not `application/json` 415; invalid body 400 | 401 without a session; tag of another session 409, nothing invalidated; otherwise `invalidate` and 204                                                   |
 
 Tenant mismatch answers 403, undeterminable session state 503, and tenant failure 404 or 500. Every response is `private, no-store`; non-200
 bodies are empty. Same-origin means `sec-fetch-site: same-origin`, or without it an `Origin`
 equal to the request origin. The in-page kinds are `intentional-control-activation`,
 `keyboard-interaction`, `text-entry`, `touch-interaction`, and
-`user-driven-meaningful-input-focus`; deliberate requests renew at the gate.
+`user-driven-meaningful-input-focus`; deliberate requests renew at the gate. The body also accepts
+`continue-session`, the expiration warning's Continue (below). It renews exactly as an in-page kind
+does, with every check above, but a tab sends it at once and never coalesces it or carries it in a
+cross-tab message.
 
 The **snapshot** is `{ coordinationTag, idleDeadlineEpochMilliseconds, observedAtEpochMilliseconds,
 revision, serverTimeEpochMilliseconds, warningLeadMinutes }`, also returned by `readSessionRequest` as
@@ -253,6 +256,34 @@ back-forward cache the modal is hidden at once, so a restored page shows neither
 content before the history guard reloads it into fresh entry. Server Action forms confirm after
 they settle, so other tabs learn of the gate's renewal.
 
+### Expiration warning
+
+With a positive held warning lead, each tab warns before its session expires
+([#156](https://github.com/PathableAI-org/Pre-ETS/issues/156)). The threshold is the authoritative deadline minus
+the lead, on the server clock; a lead of `0` has none. When a tab applies a deadline it schedules a check at its
+local threshold. There, any coalesced activity it still holds is sent at once and the check repeats within a second,
+so interaction just before the threshold renews instead of hiding behind a warning. Otherwise the tab reads
+`GET /session/status` without hiding content, and on resume past its local threshold it does the same (inside the
+resume concealment when it is also past its deadline). It opens the warning only on a usable answer to its own read
+that describes the snapshot it holds and whose server time is in the warning period. A later deadline in that answer,
+from a renewal another tab or browser made, prevents the warning and moves the threshold. An answer before the server's
+threshold checks again when that threshold arrives, at least 250 ms later. No cross-tab message opens a warning:
+every running tab sharing the session confirms for itself.
+
+The warning is the `@pathableai/react` `Modal`, titled "Your session is about to expire", explaining that the
+session will end soon because of inactivity, with Continue, which takes focus when it opens. It shows no remaining
+time. Nothing but a renewal or the session's end closes it: Escape and the library's close control call a no-op
+`onClose`, and no in-page activity is classified while it is open. The close control is still shown until the
+blocking slice removes it ([#400](https://github.com/PathableAI-org/Pre-ETS/issues/400)). Continue sends
+`continue-session` at once, outside the activity window, and gives up after 10 seconds; activating it again while
+a request is in flight sends nothing. A renewal is adopted and broadcast as `renewed`, so the warning closes in this
+tab and in every sharing tab that adopts the higher revision; any other adopted renewal, such as a page load in
+another tab, closes it the same way (a page-load renewal reaches other tabs only after hydration, gap G2). A 401 or
+409 follows the ended path of an activity report, so the expiration modal or the signed-out notice replaces the
+warning. Any other answer leaves the warning open in every tab with "We could not continue your session. Try
+again." inside it, and Continue stays available. The deadline still hides content and confirms behind an open
+warning, which stays in place: a usable answer reveals the content under it, and an ended answer replaces both.
+
 Every protected page has a Log out button. Each attempt gets an `attemptId` and is written to its
 own `localStorage` key (`preets-session-logout-pending:v1:<tag>:<attemptId>` → `{ notAfter }`), then
 announced as `logout-started` and sent at once with `keepalive`. `notAfter` is the Redis-clock time
@@ -310,7 +341,8 @@ created. No signal carries the session reference, cookie, coordination tag, issu
   the same `preets.session.deadline_ms` and `preets.session.revision` as before the request. `no_reference` means the request carried no well-formed reference, so no store call
   was made.
 - `preets.session.activity` is the activity literal, for example `deliberate-page-request` or `keyboard-interaction`.
-  `preets.session.activity_class` is `qualifying` or `excluded`.
+  `continue-session` is the expiration warning's Continue, which reaches this span through `sessionActivity`; it
+  never answers `unchanged`. `preets.session.activity_class` is `qualifying` or `excluded`.
 - On a qualifying refresh, `preets.session.idle_timeout_minutes` and `preets.session.warning_lead_minutes` are the
   effective tenant policy the renewal adopts. On a renewed record, `preets.session.deadline_ms` is the new
   authoritative deadline and `preets.session.revision` is the stored revision after the write.

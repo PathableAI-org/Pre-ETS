@@ -222,11 +222,13 @@ text, accessible names, form values, message contents, or any other free text.
 | Record                       | Emitted when                                                 | Attributes                                                                                                                                                                                            | Parent and correlation                                                                                         |
 | ---------------------------- | ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
 | `TabCoordination.transition` | The coordinator publishes a different UI state               | `preets.outcome` = `applied`; `preets.ui.from_state` (`mounted` first); `preets.ui.to_state`; `preets.ui.cause`, `preets.session.deadline_ms`, and `preets.session.server_time_ms` where listed below | The active scope (a receipt, when a message caused it). A logout or status confirmation it starts is its child |
+| `TabCoordination.threshold`  | The tab reaches its warning threshold, or resumes past it    | `preets.outcome` = `reached`; `preets.ui.cause` (`threshold`, `resume`); `preets.session.deadline_ms`; `preets.session.server_time_ms`; `preets.session.warning_lead_minutes`                         | The active scope (a resume concealment, when there is one). The status confirmation it starts is its child     |
 | `TabChannel.send`            | A tab posts a cross-tab message                              | `preets.outcome` = `sent`; `preets.tab.message.kind`; `preets.tab.message.direction` = `send`; `preets.tab.message.id`                                                                                | The active scope. Every receipt of the send carries the same `preets.tab.message.id`                           |
 | `TabChannel.receive`         | A tab receives a well-formed cross-tab message               | `preets.outcome` = `received`; `preets.tab.message.kind`; `preets.tab.message.direction` = `receive`; `preets.tab.message.id` (when the send carried a UUID)                                          | The active scope. Transitions the receipt causes are its children                                              |
 | `Focus.move`                 | Focus enters or leaves a marked target (`data-preets-focus`) | `preets.outcome` = `moved`; `preets.focus.target`; `preets.focus.change` (`entered`, `left`); `preets.focus.cause` (`application`, `user`)                                                            | Root; order by start time                                                                                      |
 | `Interaction.submit`         | Any form submit, including a confirmed replay                | `preets.outcome` = `submitted`; `preets.interaction.kind` = `form_submit`                                                                                                                             | The parent of the Server Action `POST` it causes                                                               |
 | `Interaction.login`          | The user activates Log in on the recovery content or modal   | `preets.outcome` = `activated`; `preets.login.entry`                                                                                                                                                  | Root, recorded before the navigation; order by start time against the next document's server spans             |
+| `Interaction.continue`       | The user activates Continue on the expiration warning        | `preets.outcome` = `activated`                                                                                                                                                                        | The parent of the `POST /session/activity` it sends with `continue-session`                                    |
 | `Router.transition`          | Next starts an App Router navigation                         | `preets.outcome` = `started`; `preets.navigation.type` (`push`, `replace`, `traverse`); `url.path` (destination pathname)                                                                             | The parent of the RSC `GET` to that path                                                                       |
 | `BrowserTracing.buffer`      | The SDK registers after more than 256 facts were buffered    | `preets.outcome` = `overflowed`; `preets.tracing.dropped_count`                                                                                                                                       | Root. Its presence makes a missing fact on that page inconclusive                                              |
 
@@ -234,30 +236,40 @@ The closed sets:
 
 - UI states: `content_shown`, `content_concealed`, `expired`, `logging_out`,
   `logging_out_concealed`, `logout_failed`, `signed_out`, `recovery_expired`,
-  `recovery_unavailable`.
+  `recovery_unavailable`, `warning_shown`. `warning_shown` is the expiration
+  warning open over revealed content; a concealed tab records `content_concealed`
+  even while its warning stays open.
 - Transition causes: `action_denied`, set only on the transition into
   `recovery_expired` or `recovery_unavailable` after a denied action in that tab.
   `deadline` (the tab reached its local deadline, or confirmed expiry otherwise),
   `resume` (the tab returned to visibility or resumed), and `peer` (another tab's
   ended record), set on the transition into `expired`; `deadline` and `resume` also
   on `content_concealed` when that concealment began, and on the `content_shown`
-  that ends it.
+  that ends it. On the transition into `warning_shown`: `threshold` (the tab
+  confirmed at its local warning threshold) or `resume`. On the `content_shown`
+  that leaves it: `continue` (this tab's Continue renewed), `peer` (another tab's
+  `renewed` message, the transition then being that receipt's child), or `renewal`
+  (another answer this tab received showed a renewal).
 - Server-clock timing on those caused transitions: `preets.session.deadline_ms`, the
   held authoritative deadline, and `preets.session.server_time_ms`, the tab's
   offset-corrected server-time estimate at the transition (the later of its
   calibrated clock and the `Date` header of an `Ended` answer). Relate them to the
   server's `SessionService.*` `preets.session.deadline_ms` for the same session.
+  Threshold facts and transitions into or out of `warning_shown` also carry
+  `preets.session.warning_lead_minutes`, the held warning lead; on the opening,
+  `preets.session.server_time_ms` is the confirming answer's server time. A
+  threshold fact is never recorded with a lead of `0`.
 - Log in entries: `action_recovery`, `expiration_modal`.
 - Message kinds: the coordination message types with `_` for `-`:
   `communicated`, `logged_out`, `logout_failed`, `logout_started`, `pending`,
   `renewed`, `session_current`, and `window_query`.
 - Focus targets: `expiration_log_in`, `logout_control`, `participant_goal`,
-  `recovery_heading`, `signed_out_heading`.
+  `recovery_heading`, `signed_out_heading`, `warning_continue`.
 
 `preets.focus.cause` is `application` only for a move the code makes through
 `moveFocus`. Focus on the signed-out heading, on the recovery heading, on the
-expiration modal's Log in again link, and the participant fixture's "Focus later"
-move are `application`. Every other change, such as a keyboard
+expiration modal's Log in again link, on the warning's Continue when the warning
+opens, and the participant fixture's "Focus later" move are `application`. Every other change, such as a keyboard
 move, is `user`.
 
 The cross-tab match identifier is a UUID that the facade generates for each send.
@@ -289,6 +301,8 @@ Example TraceQL, written with `RUN` as above:
 { RUN && name = "TabCoordination.transition" } | select(span.preets.ui.from_state, span.preets.ui.to_state)
 { RUN && name = "TabChannel.receive" && span.preets.tab.message.id = "<id from a TabChannel.send>" } | select(span.preets.tab.message.kind)
 { RUN && name = "Focus.move" } | select(span.preets.focus.target, span.preets.focus.change, span.preets.focus.cause)
+{ RUN && name = "TabCoordination.threshold" } >> { RUN && name = "sessionStatus" } | select(span.preets.outcome)
+{ RUN && name = "Interaction.continue" } >> { RUN && name = "SessionService.refreshForTenant" } | select(span.preets.outcome, span.preets.session.activity)
 ```
 
 ### Startup and export policy
