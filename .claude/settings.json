@@ -22,6 +22,12 @@
       "Bash(pnpm check:health)",
       "Bash(pnpm check:changes)",
       "Bash(pnpm test:bdd:dry)",
+      "Bash(pnpm test:tooling)",
+      "Bash(pnpm verify:gate)",
+      "Bash(pnpm verify:request *)",
+      "Bash(pnpm verify:show)",
+      "Bash(pnpm verify:show *)",
+      "Bash(pnpm verify:render)",
       "Bash(pnpm test *)",
       "Bash(pnpm test:unit *)",
       "Bash(pnpm test:integration *)",
@@ -94,6 +100,20 @@
       "Read(.env)",
       "Read(.env.*)",
       "Read(!.env.example)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/scripts/pr-ready-hook.ts\"",
+            "timeout": 60
+          }
+        ]
+      }
     ]
   }
 }
