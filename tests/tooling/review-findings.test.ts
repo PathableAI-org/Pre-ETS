@@ -6,7 +6,7 @@ import { dirname, join } from "node:path"
 import { after, before, describe, it } from "node:test"
 import { fileURLToPath } from "node:url"
 
-import { latestReview, passes, recordReview, validateReview } from "../../scripts/review-findings.ts"
+import { latestReview, recordReview, reviewProblems, validateReview } from "../../scripts/review-findings.ts"
 
 const fixture = join(dirname(fileURLToPath(import.meta.url)), "fixtures", "review-a1.json")
 
@@ -29,7 +29,7 @@ void describe("review schema", () => {
   void it("accepts the sample review, which does not pass while a blocking finding is open", () => {
     const result = validateReview(sample())
     assert.ok(result.ok)
-    assert.equal(passes(result.value), false)
+    assert.notDeepEqual(reviewProblems(result.value), [])
   })
 
   void it("requires how each finding was verified", () => {
@@ -93,7 +93,7 @@ void describe("review schema", () => {
       review.escalations = [{ detail: "Justification disputed.", findingIds: ["R-001"], kind: "disagreement" }]
     }))
     assert.ok(result.ok)
-    assert.equal(passes(result.value), false)
+    assert.notDeepEqual(reviewProblems(result.value), [])
   })
 
   void it("rejects an escalation about an unknown finding, and paths outside the repository", () => {
@@ -166,14 +166,16 @@ void describe("review notes", () => {
     const latest = latestReview(dir, ref, "HEAD")
     assert.ok(latest.ok)
     assert.equal(latest.value.reviewId, "9d3c2b1a-0f4e-4a5b-8c7d-1e2f3a4b5c6d")
-    assert.ok(passes(latest.value))
+    assert.deepEqual(reviewProblems(latest.value), [])
     assert.deepEqual(latestReview(dir, ref, base), { ok: false, problems: [`no review on ${base} in ${ref}`] })
   })
 
   void it("refuses a repeated review ID, an unknown commit, and a ref outside refs/notes", () => {
     assert.deepEqual(recordReview(dir, ref, reviewJson()), {
       ok: false,
-      problems: ["review 4b0e6a52-3c1f-4d7e-9f0a-6c2b8d1e5a90 is already recorded on this SHA; use a new UUID"]
+      problems: [
+        "review 4b0e6a52-3c1f-4d7e-9f0a-6c2b8d1e5a90 is already recorded on this SHA; each review needs a new UUID"
+      ]
     })
     assert.deepEqual(
       recordReview(

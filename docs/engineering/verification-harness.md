@@ -211,7 +211,8 @@ a change to `quickstart.md` steps, needs a new verification request.
 report on HEAD, or on the nearest ancestor when the commits since change only the feature's `quickstart.md`
 execution-results section. It regenerates the request at the report's SHA, checks the report's slice against the
 branch, and exits non-zero with every failing reason. A limitation excuses only a claim the slice asserts in part. A
-report with an open escalation does not pass. A Claude Code `PreToolUse` hook in `.claude/settings.json` runs the
+report with an open escalation does not pass. The gate also applies the
+[code review gate](code-review.md#gate-and-escalation) to the nearest reviewed commit. A Claude Code `PreToolUse` hook in `.claude/settings.json` runs the
 gate before `gh pr ready` on those branches and blocks the command when the gate fails. It takes effect in sessions
 started after the hook is installed. The hook gates the checked-out branch, so run `gh pr ready` from the slice's
 own branch.

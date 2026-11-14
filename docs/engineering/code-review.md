@@ -83,7 +83,7 @@ pnpm review:show <sha>           # print the latest review; exits 1 while a bloc
 ```
 
 Both take `--notes-ref <ref>` to use another ref under `refs/notes/`, for trials. The verification handoff stores its
-reports the same way in `refs/notes/verification`.
+reports the same way in `refs/notes/verification`, through the same git and schema-check modules.
 
 ## The review loop
 
@@ -116,6 +116,13 @@ A slice may be marked ready for review only when its latest review shows no open
 unresolved escalation. The review covers the reviewed SHA, which may be older than the pushed tip only through
 evidence-only commits as [the verification gate](verification-harness.md#gate-and-escalation) defines them. Any
 other change after the reviewed SHA needs a new review request.
+
+`pnpm verify:gate`, and the `gh pr ready` hook that runs it, enforce this on `{number}-{slug}-impl*` branches. They
+take the latest review on the nearest commit at or below HEAD in `refs/notes/review`, and fail with a `code review:`
+reason for an open blocking finding, an open escalation, a review for another feature or slice, or a change after
+the reviewed SHA that is not evidence-only. Only High and Standard work has implementation-slice branches, so the
+gate needs no tier. A High fix's single pull request is not an implementation-slice branch; check its review with
+`pnpm review:show` before marking it ready.
 
 Escalate to the orchestrator, and through it to a person, instead of continuing the loop when:
 

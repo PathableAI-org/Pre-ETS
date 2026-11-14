@@ -11,7 +11,7 @@
 import { readFileSync } from "node:fs"
 import { parseArgs } from "node:util"
 
-import { blockingSummary, defaultNotesRef, latestReview, passes, recordReview } from "./review-findings.ts"
+import { blockingSummary, defaultNotesRef, latestReview, recordReview, reviewProblems } from "./review-findings.ts"
 
 const cwd = process.cwd()
 
@@ -46,7 +46,7 @@ const show = (): number => {
   if (!outcome.ok) return failed("No review:", outcome.problems)
   process.stdout.write(`${JSON.stringify(outcome.value, null, 2)}\n`)
   process.stderr.write(blockingSummary(outcome.value))
-  return passes(outcome.value) ? 0 : 1
+  return reviewProblems(outcome.value).length === 0 ? 0 : 1
 }
 
 const commands: Readonly<Record<string, () => number>> = { record, show }

@@ -3,6 +3,22 @@
  * and returns either the typed review or every problem found, each with its JSON path. See
  * docs/engineering/code-review.md for what each field means.
  */
+import {
+  type Check,
+  featureDir,
+  list,
+  matching,
+  object,
+  ok,
+  oneOf,
+  optional,
+  schemaVersion1,
+  sha,
+  sliceId,
+  text,
+  uuid,
+  type Validated
+} from "../schema-checks.ts"
 
 const severities = ["blocking", "advisory"] as const
 const categories = [
@@ -73,42 +89,11 @@ export interface Review {
   readonly supersedesReviewId?: string | undefined
 }
 
-type Check = (value: unknown, path: string) => readonly string[]
-
-const ok: readonly string[] = []
-
-const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
-  typeof value === "object" && value !== null && !Array.isArray(value)
-
-const text: Check = (value, path) =>
-  typeof value === "string" && value.trim().length > 0 ? ok : [`${path}: expected non-empty text`]
-
-const matching = (pattern: RegExp, description: string): Check => (value, path) =>
-  typeof value === "string" && pattern.test(value) ? ok : [`${path}: expected ${description}`]
-
-const oneOf = (allowed: readonly string[]): Check => (value, path) =>
-  typeof value === "string" && allowed.includes(value) ? ok : [`${path}: expected one of ${allowed.join(", ")}`]
-
 const positiveInteger: Check = (value, path) =>
   Number.isInteger(value) && Number(value) > 0 ? ok : [`${path}: expected a positive integer`]
 
-const sha = matching(/^[0-9a-f]{40}$/, "a full 40-character commit SHA")
-const uuid = matching(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, "a UUID")
 const findingId = matching(/^R-\d{3,}$/, "a finding ID such as R-001")
 const repoPath = matching(/^(?!\/)(?!.*(^|\/)\.\.(\/|$))[^\s]+$/, "a repository-relative path")
-
-const optional = (check: Check): Check => (value, path) => value === undefined ? ok : check(value, path)
-
-const list = (item: Check): Check => (value, path) =>
-  Array.isArray(value) ? value.flatMap((entry, index) => item(entry, `${path}[${String(index)}]`)) : [
-    `${path}: expected a list`
-  ]
-
-const object = (fields: Readonly<Record<string, Check>>): Check => (value, path) => {
-  if (!isRecord(value)) return [`${path}: expected an object`]
-  const unknown = Object.keys(value).filter((key) => !(key in fields)).map((key) => `${path}.${key}: unknown field`)
-  return [...unknown, ...Object.entries(fields).flatMap(([key, check]) => check(value[key], `${path}.${key}`))]
-}
 
 const finding = object({
   category: oneOf(categories),
@@ -126,13 +111,13 @@ const shape = object({
   baseSha: sha,
   closed: list(object({ closure: oneOf(closures), id: findingId, note: text })),
   escalations: list(object({ detail: text, findingIds: list(findingId), kind: oneOf(escalationKinds) })),
-  featureDir: matching(/^specs\/\d+-[a-z0-9-]+$/, "specs/{number}-{slug}"),
+  featureDir,
   findings: list(finding),
   reviewedSha: sha,
   reviewId: uuid,
   round: positiveInteger,
-  schemaVersion: (value, path) => value === 1 ? ok : [`${path}: expected 1`],
-  sliceId: matching(/^[A-Za-z0-9]+$/, "a slice ID such as A1"),
+  schemaVersion: schemaVersion1,
+  sliceId,
   supersedesReviewId: optional(uuid)
 })
 
@@ -160,11 +145,6 @@ const consistency = (review: Review): readonly string[] => {
   ]
 }
 
-export type Validated<T> = { readonly ok: false; readonly problems: readonly string[] } | {
-  readonly ok: true
-  readonly value: T
-}
-
 export const validateReview = (value: unknown): Validated<Review> => {
   const problems = shape(value, "$")
   if (problems.length > 0) return { ok: false, problems }
@@ -177,6 +157,3 @@ export const validateReview = (value: unknown): Validated<Review> => {
 /** The blocking findings still open in a review. */
 export const openBlocking = (review: Review): readonly Finding[] =>
   review.findings.filter((entry) => entry.severity === "blocking")
-
-/** Whether a review lets the slice be marked ready: no open blocking finding and no escalation. */
-export const passes = (review: Review): boolean => openBlocking(review).length === 0 && review.escalations.length === 0
