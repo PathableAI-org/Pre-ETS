@@ -68,18 +68,15 @@ declare global {
 
 /** Records, from the first script of every document, whether a dialog was ever in it, and which came first and when. */
 export const watchForDialogs = (): void => {
-  const observe = () => {
-    new MutationObserver(() => {
-      const dialog = document.querySelector("[role=dialog]")
-      if (dialog === null) return
-      globalThis.window.preetsDialogSeen = true
-      globalThis.window.preetsFirstDialog ??= {
-        at: Date.now(),
-        name: document.getElementById(dialog.getAttribute("aria-labelledby") ?? "")?.textContent ?? ""
-      }
-    }).observe(document, { childList: true, subtree: true })
+  const nameOf = (dialog: Element) =>
+    document.getElementById(dialog.getAttribute("aria-labelledby") ?? "")?.textContent ?? ""
+  const record = () => {
+    const dialog = document.querySelector("[role=dialog]")
+    if (dialog === null) return
+    globalThis.window.preetsDialogSeen = true
+    globalThis.window.preetsFirstDialog ??= { at: Date.now(), name: nameOf(dialog) }
   }
-  observe()
+  new MutationObserver(record).observe(document, { childList: true, subtree: true })
 }
 
 /** The roles counted as headers and controls when reading what the accessibility tree exposes. */

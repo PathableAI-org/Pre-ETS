@@ -646,11 +646,13 @@ Then(
       const tab = tabOf(this, name)
       await tab.page.getByRole("dialog", { name: EXPIRED_COPY.heading }).waitFor({ state: "visible", timeout: 10_000 })
       assert.equal(await warningIn(tab.page).count(), 0, `tab "${name}" still shows the warning`)
-      const [opened, closed] = (await warningLog(tab.page)).slice(-2)
-      assert.equal(opened?.open, true, `expected the warning to have been open in tab "${name}"`)
-      assert.ok(
-        closed !== undefined && !closed.open && closed.at >= tab.deadline - OFFSET_TOLERANCE_MILLISECONDS,
-        `tab "${name}" closed its warning before its deadline`
+      const log = await warningLog(tab.page)
+      const lastOpening = log.map((change) => change.open).lastIndexOf(true)
+      assert.ok(lastOpening >= 0, `expected the warning to have been open in tab "${name}"`)
+      assert.deepEqual(
+        log.slice(lastOpening + 1).map((change) => change.at >= tab.deadline - OFFSET_TOLERANCE_MILLISECONDS),
+        [true],
+        `tab "${name}" closed its warning before its deadline, or more than once`
       )
     }
   }
@@ -662,6 +664,9 @@ Then("the session status of tab {string} answers 401", async function(this: AppW
   assert.equal(status, 401)
 })
 
+/** The resource types of the application's own requests: documents and script requests, not static files. */
+const APPLICATION_REQUESTS: ReadonlySet<string> = new Set(["document", "fetch", "xhr"])
+
 /** Per scenario: each application request the tab sent after the interaction began, with its answer's status. */
 const answeredAfterInteraction = new WeakMap<AppWorld, { readonly answered: string[]; readonly stop: () => void }>()
 
@@ -672,7 +677,7 @@ When("the visitor presses character keys and Escape in tab {string}", async func
   const record = (response: PlaywrightResponse) => {
     const url = new URL(response.url())
     const kind = response.request().resourceType()
-    if (url.host === tab.host && (kind === "document" || kind === "fetch" || kind === "xhr")) {
+    if (url.host === tab.host && APPLICATION_REQUESTS.has(kind)) {
       answered.push(`${String(response.status())} ${response.request().method()} ${url.pathname}`)
     }
   }
