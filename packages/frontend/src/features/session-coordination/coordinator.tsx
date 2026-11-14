@@ -3,12 +3,28 @@
 import type { SessionCoordinationSnapshot, SessionEndCause } from "@pathableai/pre-ets-frontend-services"
 
 import { Alert, Inline, Text } from "@pathableai/react"
-import { type ReactNode, type Ref, useEffect, useMemo, useRef, useState } from "react"
+import {
+  type ReactNode,
+  type Ref,
+  type RefObject,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState
+} from "react"
 import { flushSync } from "react-dom"
 
 import { SessionConfirmationProvider } from "../../providers/session-confirmation.tsx"
-import { focusTargetProps, moveFocus, recordLoginActivation } from "../../shared/browser-tracing.ts"
+import {
+  focusTargetProps,
+  moveFocus,
+  recordLoginActivation,
+  restoreFocusAsApplication
+} from "../../shared/browser-tracing.ts"
 import { SessionEndNotice } from "../../shared/session-recovery.ts"
+import { focusRestorationStep, restoreFocus } from "./blocking.ts"
 import { ExpirationModal } from "./expiration-modal.tsx"
 import { LogoutControl } from "./logout-control.tsx"
 import { SignedOutNotice } from "./signed-out-notice.tsx"
@@ -51,6 +67,7 @@ export function SessionCoordinator({
 
   const latest = useRef(snapshot)
   const tag = snapshot.coordinationTag
+  const noteFocus = useFocusRestoration(state, content)
 
   // Runs before the controller effect, so a controller for a new session starts from the latest snapshot.
   useEffect(() => {
@@ -62,6 +79,7 @@ export function SessionCoordinator({
   useEffect(() => {
     // Hiding the modal on `pagehide` commits at once, before the page enters the back/forward cache (#157 FR-018).
     const notify = (next: TabViewState) => {
+      noteFocus(next)
       if (next.pageHidden === true) {
         flushSync(() => {
           setState(next)
@@ -75,7 +93,7 @@ export function SessionCoordinator({
       stop()
       controller.current = undefined
     }
-  }, [tag])
+  }, [noteFocus, tag])
 
   const actions = useMemo(() => ({
     confirm: async () => {
@@ -135,8 +153,10 @@ function SessionBody({
   if (state.view === "expired") return <ExpirationModal hidden={state.pageHidden === true} />
   if (state.view === "ended") return null
   const presentation = VIEW_PRESENTATION[state.view]
+  // One element around the header and content, so the warning can make all of it inert without touching the content's
+  // own `inert`, which concealment sets.
   return (
-    <>
+    <div>
       <Inline
         as="header"
         data-session-deadline={state.deadline}
@@ -152,8 +172,45 @@ function SessionBody({
       {state.warning === undefined ?
         null :
         <WarningModal continuation={state.warning.continuation} onContinue={onContinue} />}
-    </>
+    </div>
   )
+}
+
+/**
+ * Gives focus back after the warning closes while the tab stays active (#156 FR-017): to the element that had it when
+ * the warning opened, or to the main content, once the content is shown (`focusRestorationStep`). Answers the note of
+ * where focus was, which the controller's notification calls before React renders, while the focused element is still
+ * the one the user left. When the restoration runs, the warning's own cleanup has lifted the inert background; an ended
+ * session places focus in its own view instead.
+ */
+function useFocusRestoration(state: TabViewState, content: RefObject<HTMLDivElement | null>) {
+  const before = useRef<Element | null>(null)
+  const noted = useRef(false)
+  const note = useCallback((next: TabViewState) => {
+    if (next.warning !== undefined && !noted.current) before.current = document.activeElement
+    noted.current = next.warning !== undefined
+  }, [])
+  const open = state.warning !== undefined
+  const wasOpen = useRef(false)
+  const owed = useRef(false)
+  useLayoutEffect(() => {
+    const focused = document.activeElement
+    const step = focusRestorationStep(owed.current, {
+      active: state.view === "active",
+      closed: wasOpen.current && !open,
+      concealed: state.concealed,
+      focusLost: focused === null || focused === document.body,
+      open
+    })
+    wasOpen.current = open
+    owed.current = step.owed
+    if (!step.restore) return
+    const container = content.current
+    restoreFocusAsApplication(() => {
+      restoreFocus(before.current, container?.querySelector("main") ?? container)
+    })
+  }, [content, open, state.concealed, state.view])
+  return note
 }
 
 const recoveryHeadingProps = { ...focusTargetProps("recovery_heading"), tabIndex: -1 }
