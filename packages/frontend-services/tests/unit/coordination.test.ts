@@ -327,6 +327,54 @@ describe("activity handler outcomes [PREETS-SESSION-009, PREETS-SESSION-011]", (
     expect(recorded.refreshes).toEqual([])
   })
 
+  describe("Continue at the deadline (#156 research D15, V-011)", () => {
+    const deadline = NOW + 60_000
+    const renewed: UsableSession = {
+      ...usableSession,
+      idleDeadlineEpochMilliseconds: deadline + 1_200_000,
+      revision: 4
+    }
+    /** The store's answer to a refresh: renewed while received before the deadline, ended from the deadline on. */
+    const atDeadline = () =>
+      Effect.succeed<NoUsableSession | UsableSession>(
+        Date.now() < deadline ? renewed : { _tag: "NoUsableSession", expired: true }
+      )
+    const continueOnce = {
+      activity: "continue-session",
+      policy: effectiveSessionPolicy(tenantConfig),
+      reference: defaultReference,
+      tenantAlias: alias
+    } satisfies RefreshSessionForTenantInput
+
+    it("renews for Continue received one millisecond before the deadline", async () => {
+      const tag = await tagFor(defaultReference)
+      install({ session: atDeadline })
+      vi.setSystemTime(deadline - 1)
+
+      const response = await activity(post("/session/activity", activityBody(tag, "continue-session")))
+
+      expect(response.status).toBe(200)
+      expect(await response.json()).toMatchObject({
+        idleDeadlineEpochMilliseconds: renewed.idleDeadlineEpochMilliseconds
+      })
+      expect(recorded.refreshes).toStrictEqual([continueOnce])
+    })
+
+    it.each([
+      ["exactly at", 0],
+      ["one millisecond after", 1],
+      ["a minute after", 60_000]
+    ])("answers 401 to Continue received %s the deadline, with one refresh and no renewal", async (_label, late) => {
+      const tag = await tagFor(defaultReference)
+      install({ session: atDeadline })
+      vi.setSystemTime(deadline + late)
+
+      await expectEmpty(await activity(post("/session/activity", activityBody(tag, "continue-session"))), 401)
+      expect(recorded.refreshes).toStrictEqual([continueOnce])
+      expect(recorded.invalidations).toStrictEqual([])
+    })
+  })
+
   it("answers 401 without a cookie or when the store has no usable session", async () => {
     const tag = await tagFor(defaultReference)
     install()
