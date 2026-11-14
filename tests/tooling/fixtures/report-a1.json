@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "verifiedSha": "0000000000000000000000000000000000000000",
+  "featureDir": "specs/900-sample",
+  "sliceId": "A1",
+  "runId": "79b28959-742b-4ba0-84dc-e25bb8a345dc",
+  "timeRange": { "start": "2026-11-13T18:02:00Z", "end": "2026-11-13T18:20:00Z" },
+  "environment": "Detached verifier worktree, production build on port 3401, local Redis, Keycloak, and otel-lgtm; OTEL on with service.version and service.instance.id set; browser tracing off.",
+  "claims": [
+    {
+      "id": "V-001",
+      "scope": "partial",
+      "result": "established",
+      "evidence": {
+        "traceIds": ["4bf92f3577b34da6a3ce929d0e0e4736"],
+        "queries": ["{ RUN && name = \"protectRequest\" && span.preets.outcome = \"denied_unauthenticated\" }"]
+      },
+      "observed": "A removed record and a request 5 s after the deadline each gave 401 with no receipt.",
+      "conditions": "Fetch action and no-script navigation, 5-minute scratch tenant"
+    },
+    {
+      "id": "V-004",
+      "scope": "partial",
+      "result": "not established",
+      "limitationId": "L-2",
+      "evidence": { "procedure": "§A1 step 4, two window probes" },
+      "observed": "Both probes missed the pre-eviction window, so no server-observed expired explanation was seen.",
+      "conditions": "Navigation POST within the eviction window"
+    }
+  ],
+  "telemetryRows": [{ "id": "T-001", "status": "present" }],
+  "forbiddenData": [],
+  "escalations": [],
+  "cleanup": { "complete": true },
+  "unrequestedViolations": []
+}

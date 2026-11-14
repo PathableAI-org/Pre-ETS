@@ -1,0 +1,35 @@
+{
+  "baseSha": "1111111111111111111111111111111111111111",
+  "closed": [],
+  "escalations": [],
+  "featureDir": "specs/900-sample",
+  "findings": [
+    {
+      "category": "correctness",
+      "confidence": "high",
+      "failureScenario": "Two tabs renew within the same tick; the second write restores the expired deadline.",
+      "file": "src/app.ts",
+      "id": "R-001",
+      "line": 1,
+      "severity": "blocking",
+      "summary": "Renewal reads the deadline before the clear and writes it back after.",
+      "verification": "Traced renew() and clear() call order at the reviewed SHA."
+    },
+    {
+      "category": "readability",
+      "confidence": "medium",
+      "failureScenario": "A maintainer reads `d` as a duration and adds milliseconds to an absolute time.",
+      "file": "src/app.ts",
+      "id": "R-002",
+      "line": 1,
+      "severity": "advisory",
+      "summary": "The name `d` hides that it is an absolute deadline.",
+      "verification": "Read every use of `d` in the module."
+    }
+  ],
+  "reviewedSha": "2222222222222222222222222222222222222222",
+  "reviewId": "4b0e6a52-3c1f-4d7e-9f0a-6c2b8d1e5a90",
+  "round": 1,
+  "schemaVersion": 1,
+  "sliceId": "A1"
+}

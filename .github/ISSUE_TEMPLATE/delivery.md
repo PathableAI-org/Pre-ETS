@@ -8,6 +8,13 @@ title: ""
 
 <!-- State the capability or enabling result this issue delivers. -->
 
+## Risk tier
+
+<!-- High, Standard, or Light, with every trigger that matched or the condition that makes it Standard or Light.
+The drafting agent proposes; the maintainer sets it at publication. Only the maintainer may lower it, with a reason
+here, and never below High for a Regulatory or Security requirement without a constitution exception. See the Git
+workflow's "Risk tiers" section. -->
+
 ## Requirements
 
 <!-- Link accepted requirement entries and identify exact AC numbers and any partial coverage. -->

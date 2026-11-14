@@ -24,7 +24,9 @@ with a shorter lifetime; retain completed plans as historical context, not new o
    planning completeness check, not an RTM or a verification-status register.
 7. Draft issue bodies using the [delivery issue template](../../.github/ISSUE_TEMPLATE/delivery.md). For issue-ready
    links use full repository URLs pinned to the recorded source revision; local relative links do not resolve in
-   GitHub issue bodies. Keep parent containment separate from blocking dependencies. Use a parent for a substantial
+   GitHub issue bodies. Propose each issue's
+   [risk tier](../engineering/git-workflow.md#risk-tiers) with the triggers that matched; the maintainer sets it at
+   publication. Keep parent containment separate from blocking dependencies. Use a parent for a substantial
    coordinated effort; smaller efforts can propose standalone issues. Do not invent issue numbers or relationships.
 8. Review coverage, outcomes, scope, dependencies, duplication, and evidence boundaries. Record findings and
    unresolved decisions. Merge into `main` through a PR approves the merged decomposition; the PR is the review

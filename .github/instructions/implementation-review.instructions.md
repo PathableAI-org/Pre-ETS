@@ -31,6 +31,9 @@ Review the implementation against the approved specification and engineering pla
   data class from the
   [verification telemetry conventions](../../docs/observability.md#verification-telemetry-conventions), and durable
   tests that assert telemetry output.
+- The slice's `quickstart.md` execution results are generated from the verifier's report note by
+  `pnpm verify:render`. Flag results that were edited by hand or that disagree with the pull request body's verified
+  SHA and run UUID.
 - For a delivery-issue implementation slice, check the pull request against the
   [verification gate](../../docs/engineering/verification-harness.md#gate-and-escalation): it names its `plan.md`
   slice and the verified SHA and summarizes that slice's verification report. Flag a missing or unusable assigned
@@ -38,9 +41,18 @@ Review the implementation against the approved specification and engineering pla
   approved limitation (the slice cannot create one), any change after the verified SHA other than `quickstart.md`
   execution results, and a slice well over 15 hand-written files without a stated reason. A single pull request
   that the [Git workflow](../../docs/engineering/git-workflow.md#implementation-slices) exempts from the stack
-  needs no slice or verification report; check that it says why the stack does not apply.
+  needs no slice; check that it says why the stack does not apply. A High fix still needs a verification report.
 - A planned `quickstart.md` procedure is not defective because it has not yet been executed. On an implementation
   review, identify evidence the pull request claims but does not show.
 - Do not treat a Copilot suggestion as approval to change an accepted requirement, delivery slice, or public contract.
 - This phase may update its own feature's `tasks.md` and `quickstart.md`. The
   [Spec Kit artifact scope](spec-artifacts.instructions.md) lens checks every other `specs/` path.
+- Check the pull request body opens with
+  [Decisions for the reviewer](../../docs/engineering/git-workflow.md#decisions-for-the-reviewer) and that it is
+  honest: every `not established` or `blocked` result, accepted limitation, library workaround, change beyond the
+  plan's text, substituted observation, and manual check still waiting for a person recorded further down the body
+  appears there. Flag `None` when the body records any of them.
+- Check the pull request states a [risk tier](../../docs/engineering/git-workflow.md#risk-tiers) and that the evidence
+  matches it. Flag a High fix without a verification report for the claims it lists, a High or Standard slice without
+  one, and a change that matches a trigger in the Git workflow while claiming a lower tier without the maintainer's
+  recorded reason.

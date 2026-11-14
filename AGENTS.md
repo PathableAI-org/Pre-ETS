@@ -9,23 +9,28 @@ Cursor rules.
 
 ## Where guidance lives
 
-| Task or decision                                                       | Owner: read before the task                                                                              | Read only when relevant                                                                                                |
-| ---------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| Principles, amendments, conflicts between documents                    | [Constitution](.specify/memory/constitution.md)                                                          | [Development Workflow](.specify/memory/constitution.md#development-workflow-and-review) during Spec Kit phases         |
-| Coding conventions, module boundaries, suppressions, final checks      | This file                                                                                                | [README](README.md) for setup and operational commands                                                                 |
-| Changing one workspace                                                 | That workspace's `AGENTS.md` (below)                                                                     |                                                                                                                        |
-| Specifying, planning, or implementing a delivery-issue feature         | [Git and pull request workflow](docs/engineering/git-workflow.md); the `speckit-stack` skill             | [Artifacts](docs/engineering/git-workflow.md#artifacts) before changing anything under `specs/`                        |
-| Planning, implementing, or verifying a feature                         | [Verification harness](docs/engineering/verification-harness.md)                                         | The `verification-harness` skill when acting as the verifier                                                           |
-| Designing or changing tests                                            | [Testing as evidence](docs/engineering/testing/README.md)                                                | [Property-based testing](docs/engineering/testing/property-based-testing.md) for property tests                        |
-| Authoring or reviewing requirements BDD, steps, or helpers             | [Requirements-backed BDD](docs/engineering/testing/requirements-bdd.md); the `requirements-bdd-*` skills | [BDD commands](features/README.md) to run scenarios                                                                    |
-| Authoring or reviewing a requirement                                   | [Durable requirements](docs/requirements/README.md)                                                      | The `requirements-author` and `requirements-review` skills                                                             |
-| Delivery planning and issue publication                                | [Delivery planning](docs/delivery/README.md)                                                             | The `delivery-plan`, `delivery-review`, and `delivery-issues` skills                                                   |
-| Effect code in an Effect workspace                                     | [Effect guidance](docs/engineering/effect-guidance.md) and the workspace `AGENTS.md`                     | Only the local Effect v4 `LLMS.md` topics the task needs                                                               |
-| New modules, imports, source layout, or app structure; Fallow findings | [Fallow during development](docs/engineering/fallow.md)                                                  | [Module boundaries](#module-boundaries), the rule Fallow does not enforce                                              |
-| Telemetry runtime, local Grafana, Grafana MCP                          | [Observability](docs/observability.md)                                                                   | [Verification telemetry conventions](docs/observability.md#verification-telemetry-conventions) for telemetry contracts |
-| UI that uses `@pathableai/react`                                       | The installed package's `agent-guidance/pathable-react/SKILL.md`                                         | Only the linked reference relevant to the task                                                                         |
-| Tenancy, authentication, sessions, domain persistence, local services  | That area's strategy (below)                                                                             |                                                                                                                        |
-| Copilot pull request review                                            | The lenses in [`.github/instructions/`](.github/instructions/)                                           | Each names what to check and links its owner                                                                           |
+| Task or decision                                                       | Owner: read before the task                                                                              | Read only when relevant                                                                                                    |
+| ---------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| Principles, amendments, conflicts between documents                    | [Constitution](.specify/memory/constitution.md)                                                          | [Development Workflow](.specify/memory/constitution.md#development-workflow-and-review) during Spec Kit phases             |
+| Coding conventions, module boundaries, suppressions, final checks      | This file                                                                                                | [README](README.md) for setup and operational commands                                                                     |
+| Changing one workspace                                                 | That workspace's `AGENTS.md` (below)                                                                     |                                                                                                                            |
+| Specifying, planning, or implementing a delivery-issue feature         | [Git and pull request workflow](docs/engineering/git-workflow.md); the `speckit-stack` skill             | [Artifacts](docs/engineering/git-workflow.md#artifacts) before changing anything under `specs/`                            |
+| Choosing or changing a risk tier; pull request summaries               | [Risk tiers](docs/engineering/git-workflow.md#risk-tiers)                                                | [Decisions for the reviewer](docs/engineering/git-workflow.md#decisions-for-the-reviewer) when writing a pull request body |
+| Planning, implementing, or verifying a feature                         | [Verification harness](docs/engineering/verification-harness.md)                                         | The `verification-harness` skill when acting as the verifier                                                               |
+| Orchestrating a feature's sessions; a role's model and effort          | [Orchestration](docs/engineering/orchestration.md)                                                       | The `orchestrate-stack` skill when acting as the orchestrator                                                              |
+| Reviewing a slice's code, or answering review findings                 | [Code review session](docs/engineering/code-review.md)                                                   | The `code-reviewer` skill when acting as the reviewer                                                                      |
+| Drift review areas, scope, and issue format; adding or moving an area  | [Drift review](docs/engineering/drift-review.md)                                                         | The `drift-review` skill when running a review                                                                             |
+| Designing or changing tests                                            | [Testing as evidence](docs/engineering/testing/README.md)                                                | [Property-based testing](docs/engineering/testing/property-based-testing.md) for property tests                            |
+| Authoring or reviewing requirements BDD, steps, or helpers             | [Requirements-backed BDD](docs/engineering/testing/requirements-bdd.md); the `requirements-bdd-*` skills | [BDD commands](features/README.md) to run scenarios                                                                        |
+| Authoring or reviewing a requirement                                   | [Durable requirements](docs/requirements/README.md)                                                      | The `requirements-author` and `requirements-review` skills                                                                 |
+| Delivery planning and issue publication                                | [Delivery planning](docs/delivery/README.md)                                                             | The `delivery-plan`, `delivery-review`, and `delivery-issues` skills                                                       |
+| Effect code in an Effect workspace                                     | [Effect guidance](docs/engineering/effect-guidance.md) and the workspace `AGENTS.md`                     | Only the local Effect v4 `LLMS.md` topics the task needs                                                                   |
+| New modules, imports, source layout, or app structure; Fallow findings | [Fallow during development](docs/engineering/fallow.md)                                                  | [Module boundaries](#module-boundaries), the rule Fallow does not enforce                                                  |
+| Telemetry runtime, local Grafana, Grafana MCP                          | [Observability](docs/observability.md)                                                                   | [Verification telemetry conventions](docs/observability.md#verification-telemetry-conventions) for telemetry contracts     |
+| UI that uses `@pathableai/react`                                       | The installed package's `agent-guidance/pathable-react/SKILL.md`                                         | Only the linked reference relevant to the task                                                                             |
+| Tenancy, authentication, sessions, domain persistence, local services  | That area's strategy (below)                                                                             |                                                                                                                            |
+| Copilot pull request review                                            | The lenses in [`.github/instructions/`](.github/instructions/)                                           | Each names what to check and links its owner                                                                               |
+| Claude Code permissions                                                | [Enforced agent guardrails](#enforced-agent-guardrails)                                                  |                                                                                                                            |
 
 Workspace guides: [frontend](packages/frontend/AGENTS.md),
 [frontend-services](packages/frontend-services/AGENTS.md),
@@ -94,6 +99,29 @@ entries, or weaker complexity thresholds to accommodate new code. Always fix the
 underlying error or warning; a pre-commit hook failure is a signal to fix code, not
 to silence the checker. Only human developers may disable a check; if an agent
 believes a finding truly needs a disable, it must stop and ask the user.
+
+## Enforced agent guardrails
+
+[`.claude/settings.json`](.claude/settings.json) enforces part of this guidance for
+every Claude Code session. It denies force pushes, `git reset --hard`,
+`gh stack modify`, interactive `gh stack submit`, environment dumps, and reads of
+`.env` files other than `.env.example`. It prompts before merges, `gh pr ready`,
+remote branch deletion, and edits to check configuration and to the settings file.
+Routine read-only and check commands run without a prompt. Rules match command text,
+so they stop the usual form of a command and are not a security boundary; this
+file's prose still governs. Codex and Cursor do not read this file. Put personal
+overrides in the gitignored `.claude/settings.local.json`.
+
+Agents never connect to a system that can hold protected health information: a
+deployed application's database, session store, logs, or telemetry, in staging or
+production. The repository, its history, and its fixtures hold no such data, so an
+agent works only with the code, local services, and synthetic data. No agent
+environment, local or cloud, holds production or staging credentials, connection
+strings, or network secrets. A cloud environment for agent sessions or scheduled
+tasks allows only the hosts its task needs, and none that reach deployed systems;
+that allowlist enforces this rule, and a task that needs only GitHub uses network
+access None. Changing an agent environment's allowlist or secrets is a decision for
+a person.
 
 ## Tooling and configuration
 

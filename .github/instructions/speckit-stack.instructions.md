@@ -17,3 +17,5 @@ match that policy without copying it.
   `speckit.git.feature`.
 - Confirm a pull request changes `specs/` only inside its own `specs/{number}-{slug}/` directory. Other feature
   directories stay historic. Living documentation belongs in `docs/`.
+- Confirm every pull request template opens with the Decisions for the reviewer section, and that tier policy stays
+  in `docs/engineering/git-workflow.md` with templates and lenses pointing to it rather than restating triggers.
