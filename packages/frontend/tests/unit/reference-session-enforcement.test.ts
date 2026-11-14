@@ -23,7 +23,7 @@ import {
   setRequestCookie,
   setRequestHost
 } from "./next-headers-stub.ts"
-import { ForbiddenError, NotFoundError, RedirectError } from "./next-navigation-stub.ts"
+import { ForbiddenError, NotFoundError, RedirectError, UnauthorizedError } from "./next-navigation-stub.ts"
 
 const initialReferenceActionState: ReferenceActionState = { _tag: "Ready" }
 const operationProps = vi.hoisted(() => [] as unknown[])
@@ -156,17 +156,11 @@ describe("reference session enforcement [PREETS-SESSION-001, PREETS-SESSION-004,
     expect(cookieWriteCount()).toBe(0)
   })
 
-  it("denies an action without a usable session and does not start login or emit a receipt", async () => {
+  it("answers an action without a usable session with a real 401, no login, and no receipt [PREETS-SESSION-007]", async () => {
     vi.mocked(authorizeSessionAction).mockResolvedValue({ _tag: "NoUsableSession" })
 
-    const result = await runReferenceOperation({ _tag: "Succeeded", message: "previous" }, new FormData())
-
-    expect(result._tag).toBe("Denied")
-    if (result._tag === "Denied") {
-      expect(result.message).not.toContain("subject-1")
-      expect(result.message).not.toContain("springfield")
-      expect(result.message).not.toContain("previous")
-    }
+    await expect(runReferenceOperation({ _tag: "Succeeded", message: "previous" }, new FormData())).rejects
+      .toBeInstanceOf(UnauthorizedError)
     expect(cookieWriteCount()).toBe(0)
     expect(authorizeSessionAction).toHaveBeenCalledTimes(1)
   })

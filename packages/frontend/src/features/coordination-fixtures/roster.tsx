@@ -1,13 +1,9 @@
 "use client"
 
-import { Button, Form, FormGroup, Heading, Input, Label, Link, Stack, Text } from "@pathableai/react"
+import { Button, FormGroup, Heading, Input, Label, Link, Stack, Text } from "@pathableai/react"
 import { useRouter } from "next/navigation"
 
-import {
-  CoordinationTagField,
-  type ProtectedFormAction,
-  useSessionConfirmedActionState
-} from "../../providers/session-confirmation.tsx"
+import { ProtectedActionForm, type ProtectedFormAction } from "../../providers/session-confirmation.tsx"
 import { type FixtureActionState, initialFixtureActionState } from "./action-state.ts"
 
 const SYNTHETIC_ROSTER = ["Participant A", "Participant B", "Participant C"] as const
@@ -21,11 +17,6 @@ const notRecorded: FixtureActionState = { _tag: "Denied", message: "The attendan
  */
 export function RosterFixture({ action }: { readonly action: ProtectedFormAction<FixtureActionState> }) {
   const router = useRouter()
-  const [outcome, record, recording] = useSessionConfirmedActionState(
-    action,
-    initialFixtureActionState,
-    notRecorded
-  )
   return (
     <Stack gap="md">
       <Heading level={1}>Coordination roster</Heading>
@@ -42,15 +33,18 @@ export function RosterFixture({ action }: { readonly action: ProtectedFormAction
       >
         Open participant page in place
       </Button>
-      <Form action={record}>
-        <CoordinationTagField />
-        <FormGroup>
-          <Label htmlFor="roster-attendance-note">Attendance note</Label>
-          <Input id="roster-attendance-note" name="note" type="text" />
-        </FormGroup>
-        <Button disabled={recording} type="submit">Record attendance note</Button>
-        <Text aria-live="polite" role="status">{outcome._tag === "Ready" ? "" : outcome.message}</Text>
-      </Form>
+      <ProtectedActionForm action={action} initialState={initialFixtureActionState} notPerformed={notRecorded}>
+        {(outcome, recording) => (
+          <>
+            <FormGroup>
+              <Label htmlFor="roster-attendance-note">Attendance note</Label>
+              <Input id="roster-attendance-note" name="note" type="text" />
+            </FormGroup>
+            <Button disabled={recording} type="submit">Record attendance note</Button>
+            <Text aria-live="polite" role="status">{outcome._tag === "Ready" ? "" : outcome.message}</Text>
+          </>
+        )}
+      </ProtectedActionForm>
     </Stack>
   )
 }

@@ -284,3 +284,43 @@ requests. `denial_cause` appeared only on denials. No forbidden data was observe
   progressive-enhancement scenario should watch this.
 - The BDD harness stops the app right after the last step, so the final span batch of a BDD run is not exported.
   Telemetry evidence comes from manual runs held 35 s after the last step.
+
+### Slice A2 — `3e85cf72024ff082530acd1ca273f1712f815c16` (2026-11-13)
+
+**Runs:** BDD `6a5e07d7-4166-48f4-9375-b9e7e2c1ab1b`; probe `c669bbde-4bad-4d9a-933a-292bbf3a789b` (the telemetry
+record).
+
+**Conditions:** a detached verifier worktree; a production build; local Redis, the tracked Keycloak realm, and
+otel-lgtm with OTEL enabled and the harness `service.version` and `service.instance.id`. Browser tracing was off,
+because A2 has no browser rows. Each run used its own `preets:verify:<run>:` Redis prefix. The visitor signed in
+through the tracked provider in the harness's proxied Chromium. Each form submission carried a verifier `traceparent`.
+
+**Module evidence:** frontend-services `test` 489/489, `test:integration` 42/42, frontend `test:unit` 72/72, including
+`reference-session-enforcement.test.ts` 9/9.
+
+**BDD:** dry run discovered 80 scenarios. `--name "protected form submission"` ran 3 scenarios (41 steps), passing on
+3 consecutive runs.
+
+**Feasibility gate (research D4):** confirmed independently.
+
+- The server-rendered form is `action=""`, `multipart/form-data`, `POST`. It carries `$ACTION_REF_1`, `$ACTION_1:0`,
+  `$ACTION_1:1`, `$ACTION_KEY`, and the tag field.
+- No `javascript:` action appears anywhere in the document.
+- With scripts disabled and a usable session, the submission is a navigation `POST` answered 200. The status reads "The
+  reference operation finished.", the receipt is set, and the console has no errors.
+
+| Claim                               | Result                                        | Observation                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ----------------------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| V-006 (full)                        | established                                   | Scripts-disabled Chromium, keyboard Enter: a navigation `POST`, `multipart/form-data`, no `next-action`, 401. The displayed page has exactly one `h1`, "Your session is no longer available". The form is gone and the browser holds no receipt. The first Tab reaches "Log in again" with `:focus-visible` and an `auto` outline (computed style). Enter navigates `GET /`, and the server answers with the fresh-entry login redirect. T-001: `denied_unauthenticated`, `server_action = document`, `denial_cause = unknown`. |
+| V-004 (scripts off, removed record) | established                                   | Same run: "no longer available" for a record removed before its deadline. Server-observed "expired" remains L-2 (A1).                                                                                                                                                                                                                                                                                                                                                                                                           |
+| V-001 (action-level path)           | established (module); not observed at runtime | The module test shows `unauthorized()` on `NoUsableSession` with no receipt. At runtime the gate's denials never reached the action. A usable control shows `authorizeSessionAction` `authorized`. The race was not reproduced (L-3, as planned).                                                                                                                                                                                                                                                                               |
+
+**§A2.3 (scripts enabled, removed record):** the BDD delays `/session/activity` by 2 s and passed 3/3. Five
+undelayed probe runs each gave a fetch 401 (`server_action = fetch`, `unknown`), no receipt, and the tab ended on "You
+are signed out". "The operation was not performed." was announced first in 4 of the 5. In the fifth, the refused
+activity report ended the tab first, the race that predates A2. No run had a `pageerror`.
+
+No instrumentation was missing or unusable. No forbidden data was observed: span keys are within allowed classes, no
+span has a query string, and resources carry only `service.*` and `telemetry.sdk.*`.
+
+**Cleanup:** one leftover owned session key was deleted, the app was stopped, and the scratch tenant was removed.

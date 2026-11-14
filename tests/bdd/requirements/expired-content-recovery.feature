@@ -8,9 +8,13 @@ Feature: Expired-content protection for denied Server Actions
   without scripts, sent as a browser form navigation, receives the accessible recovery document
   in that 401 response: one heading that explains the session is no longer available, and a Log
   in again link to the application entry. A script-driven submission still receives an empty
-  401 here. It does not establish what a browser displays, a real scripts-disabled browser
-  submission, in-place recovery in a running tab, the expiration modal, or Log in itself; those
-  are later slices of #157. The server observes an expired record only briefly before the store
+  401 here. In a real browser with scripts disabled, the protected reference form submits as a
+  form navigation: with a usable session it succeeds, and after the record was removed the
+  browser displays the recovery document, whose Log in again link is reachable and operable by
+  keyboard. With scripts enabled, that denial is still announced as not performed and the tab
+  then shows the signed-out notice. It does not establish in-place recovery in a running tab,
+  the expiration modal, or what happens after Log in; those are later slices of #157. The server observes an expired
+  record only briefly before the store
   evicts it, so a request after the deadline is usually explained as no longer available.
 
   Background:
@@ -55,3 +59,35 @@ Feature: Expired-content protection for denied Server Actions
     And the response issues no application or correlation cookie
     And the response contains no protected application content
     And the response reveals no session reference, identity, or tenant
+
+  Scenario: Without scripts, a protected form submission after the record was removed displays the recovery document
+    Given the visitor has signed in at "springfield.localhost:3000" through the provider
+    And the visitor opens the application entry at "springfield.localhost:3000" with scripts disabled
+    And the visitor's session record is removed by logging out in another browser
+    When the visitor submits the reference form by keyboard
+    Then the form submission is a document request answered with status 401
+    And the browser holds no reference-operation receipt
+    And the page displays the recovery document explaining "Your session is no longer available"
+    And "Log in again" is reachable by keyboard with visible focus and opens the application entry
+
+  Scenario: Without scripts, a protected form submission with a usable session performs the operation
+    Given the visitor has signed in at "springfield.localhost:3000" through the provider
+    And the visitor opens the application entry at "springfield.localhost:3000" with scripts disabled
+    When the visitor submits the reference form by keyboard
+    Then the form submission is a document request answered with status 200
+    And the page shows the status "The reference operation finished."
+    And the browser holds a reference-operation receipt
+
+  Scenario: With scripts, a protected form submission after the record was removed is not performed
+    The keyboard submission is also activity, and a refused activity report ends the tab by itself,
+    so this scenario delays those reports to observe the denied action's own outcome.
+
+    Given the visitor has signed in at "springfield.localhost:3000" through the provider
+    And the visitor opens the application entry at "springfield.localhost:3000" with scripts enabled
+    And the visitor's activity reports reach the server 2 seconds late
+    And the visitor's session record is removed by logging out in another browser
+    And the visitor's page records its status announcements
+    When the visitor submits the reference form by keyboard
+    Then the form submission is a fetch request answered with status 401
+    And the browser holds no reference-operation receipt
+    And the page announced "The operation was not performed." and then shows the signed-out notice

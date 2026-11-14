@@ -83,22 +83,35 @@ V-024 (response part). `Contributes to #157`.
 
 Advances V-006 (full), V-004 (scripts-off removed record), and V-001 (action-level path).
 
-- [ ] T012 Feasibility gate (research D4), first: in a production build, record that the server-rendered reference
+- [x] T012 Feasibility gate (research D4), first: in a production build, record that the server-rendered reference
       form carries React's action fields and no `javascript:` action, that a no-script submission reaches the gate as
       a form-encoded navigation `POST`, and that a rejected fetch action reaches an error boundary without an
       unhandled rejection. If (a) or (b) fails, stop and correct the plan through the corrections path.
-- [ ] T013 Replace `useSessionConfirmedActionState` with `ProtectedActionForm` in
+      Record (2026-11-13, production build of the A2 branch, scripts-disabled Chromium): (a) the reference form is
+      `<form action="" enctype="multipart/form-data" method="POST">` with React's `$ACTION_REF_1`, `$ACTION_1:0`,
+      `$ACTION_1:1`, and `$ACTION_KEY` fields and the tag field; no `javascript:` action. (b) Enter on the submit
+      button sends a `multipart/form-data` navigation `POST` to `/`; the gate answers it (401 recovery document after
+      a removed record; 200 with the result state and receipt with a usable session). (c) With scripts, the rejected
+      fetch action produced React's caught-error console report and no `pageerror`. Gate passed.
+- [x] T013 Replace `useSessionConfirmedActionState` with `ProtectedActionForm` in
       `fe/src/providers/session-confirmation.tsx` (`useActionState` with the Server Function, the tag field, a private
       error boundary settling as `notPerformed`, confirmation in an effect after each settled state).
-- [ ] T014 Move `fe/src/features/session-reference/reference-operation.tsx` and
+- [x] T014 Move `fe/src/features/session-reference/reference-operation.tsx` and
       `fe/src/features/coordination-fixtures/roster.tsx` to `ProtectedActionForm`; remove the old hook.
-- [ ] T015 `admitSubmission` in `fe/src/app/(app)/session-request.ts` returns the `AuthorizedSessionAction` tag;
+      `CoordinationTagField` is now private: `ProtectedActionForm` renders it and no other consumer remains
+      (check:unused).
+- [x] T015 `admitSubmission` in `fe/src/app/(app)/session-request.ts` returns the `AuthorizedSessionAction` tag;
       `fe/src/app/(app)/actions.ts` and `fe/src/app/(app)/coordination/actions.ts` call `unauthorized()` on
-      `NoUsableSession` and keep `Denied` on `SessionChanged`.
-- [ ] T016 `fe/tests/unit/reference-session-enforcement.test.ts`: `unauthorized()` on `NoUsableSession`, no receipt.
-- [ ] T017 Extend the feature and steps with a `javaScriptEnabled: false` context: keyboard submission after a removed
+      `NoUsableSession` and keep `Denied` on `SessionChanged`. Deviation: `admitSubmission` calls `unauthorized()`
+      itself and still returns whether the action is authorized, so both actions keep their `Denied` branch unchanged.
+      Calling it in each action duplicated the same nine lines (check:changes). Behavior matches research D5.
+- [x] T016 `fe/tests/unit/reference-session-enforcement.test.ts`: `unauthorized()` on `NoUsableSession`, no receipt.
+- [x] T017 Extend the feature and steps with a `javaScriptEnabled: false` context: keyboard submission after a removed
       record shows the recovery document with keyboard-operable Log in; a valid session submits successfully; scripts
-      enabled still shows "The operation was not performed." then the signed-out notice (quickstart §A2).
+      enabled still shows "The operation was not performed." then the signed-out notice (quickstart §A2). The
+      scripts-enabled scenario delays the tab's `/session/activity` reports by 2 s. The keyboard submission is also
+      activity, and its refused report can end the tab first (about 1 run in 5), so "not performed" never renders.
+      That race predates A2: the removed hook had it too.
 - [ ] T018 Checks, draft pull request, verification of §A2, results recorded.
 
 ## Slice A3 — In-tab recovery after a denied action (`383-expired-content-recovery-impl-a3`)

@@ -1,6 +1,18 @@
 "use client"
 
-import { createContext, type ReactNode, useActionState, useContext, useMemo } from "react"
+import { Form } from "@pathableai/react"
+import {
+  Component,
+  createContext,
+  type ReactNode,
+  useActionState,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState
+} from "react"
 
 import { COORDINATION_TAG_FIELD } from "./coordination-tag-field.ts"
 
@@ -18,10 +30,57 @@ const SessionConfirmation = createContext<SessionConfirmationValue>({
   coordinationTag: undefined
 })
 
-/** The hidden field carrying the tab's observed coordination tag in a protected Server Action form (research D2). */
-export function CoordinationTagField(): ReactNode {
-  const { coordinationTag } = useContext(SessionConfirmation)
-  return <input name={COORDINATION_TAG_FIELD} type="hidden" value={coordinationTag ?? ""} />
+/** Catches the rejection React rethrows from a failed action; renders nothing until the form is started again. */
+class RejectionBoundary extends Component<
+  { readonly children: ReactNode; readonly onRejected: () => void },
+  { readonly rejected: boolean }
+> {
+  override state = { rejected: false }
+
+  static getDerivedStateFromError() {
+    return { rejected: true }
+  }
+
+  override componentDidCatch() {
+    this.props.onRejected()
+  }
+
+  override render() {
+    return this.state.rejected ? null : this.props.children
+  }
+}
+
+/**
+ * A progressively enhanced protected action form (research D4). The Server Function goes to `useActionState`
+ * unwrapped, so the server-rendered form submits without scripts as a navigation `POST` that Next decodes as the
+ * action. A rejected invocation (gate 401, 403, 503, or a transport failure) reaches a private error boundary and the
+ * form starts again from `notPerformed`; nothing retries. The tab confirms its session after every settled action,
+ * because the gate's renewal is otherwise invisible to other tabs (research D6).
+ */
+export function ProtectedActionForm<State>({
+  action,
+  children,
+  initialState,
+  notPerformed
+}: {
+  readonly action: ProtectedFormAction<Awaited<State>>
+  readonly children: (state: Awaited<State>, pending: boolean) => ReactNode
+  readonly initialState: Awaited<State>
+  readonly notPerformed: Awaited<State>
+}): ReactNode {
+  const { confirm } = useContext(SessionConfirmation)
+  const [rejections, setRejections] = useState(0)
+  const settleRejection = useCallback(() => {
+    setRejections((count) => count + 1)
+    void confirm()
+  }, [confirm])
+  return (
+    <RejectionBoundary key={rejections} onRejected={settleRejection}>
+      <ActionForm action={action} initialState={rejections === 0 ? initialState : notPerformed}>
+        {children}
+      </ActionForm>
+    </RejectionBoundary>
+  )
 }
 
 /**
@@ -41,19 +100,31 @@ export function SessionConfirmationProvider({
   return <SessionConfirmation value={value}>{children}</SessionConfirmation>
 }
 
-/**
- * `useActionState` for a protected Server Action whose form renders {@link CoordinationTagField}. A rejected invocation settles as `notPerformed`; either way the tab then confirms its
- * session, because the gate's renewal is otherwise invisible to other tabs (research D6).
- */
-export function useSessionConfirmedActionState<State>(
-  action: ProtectedFormAction<Awaited<State>>,
-  initialState: Awaited<State>,
-  notPerformed: Awaited<State>
-) {
+function ActionForm<State>({
+  action,
+  children,
+  initialState
+}: {
+  readonly action: ProtectedFormAction<Awaited<State>>
+  readonly children: (state: Awaited<State>, pending: boolean) => ReactNode
+  readonly initialState: Awaited<State>
+}): ReactNode {
   const { confirm } = useContext(SessionConfirmation)
-  return useActionState(async (previousState: Awaited<State>, formData: FormData) => {
-    const settled = await action(previousState, formData).catch(() => notPerformed)
-    await confirm()
-    return settled
-  }, initialState)
+  const [state, submit, pending] = useActionState(action, initialState)
+  const mountedState = useRef(state)
+  useEffect(() => {
+    if (state !== mountedState.current) void confirm()
+  }, [confirm, state])
+  return (
+    <Form action={submit}>
+      <CoordinationTagField />
+      {children(state, pending)}
+    </Form>
+  )
+}
+
+/** The hidden field carrying the tab's observed coordination tag in a protected Server Action form (research D2). */
+function CoordinationTagField(): ReactNode {
+  const { coordinationTag } = useContext(SessionConfirmation)
+  return <input name={COORDINATION_TAG_FIELD} type="hidden" value={coordinationTag ?? ""} />
 }
