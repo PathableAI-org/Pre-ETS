@@ -329,17 +329,7 @@ export class TabCoordination {
     const outcome = await recordContinueActivation().run(() =>
       sendActivity("continue-session", this.#tag, CONTINUE_TIMEOUT_MILLISECONDS)
     )
-    if (!this.#live()) return
-    if (outcome._tag === "Usable") {
-      this.#calibrate(outcome)
-      this.#adoptSnapshot(outcome.snapshot, true, "continue")
-    }
-    if (outcome._tag === "Ended") {
-      // The ended path replaces the warning; until it does, Continue stays busy rather than offering a refused renewal.
-      this.#activityEnded(outcome.serverTime)
-      return
-    }
-    if (this.#continuing()) this.#setContinuation(outcome._tag === "Usable" ? "idle" : "failed")
+    if (this.#live()) this.#applyContinueAnswer(outcome)
   }
 
   /**
@@ -492,6 +482,21 @@ export class TabCoordination {
     return true
   }
 
+  /** Acts on the answer to this tab's Continue (#156 research D6). */
+  #applyContinueAnswer(outcome: SessionOutcome) {
+    if (outcome._tag === "Ended") {
+      // The ended path replaces the warning; until it does, Continue stays busy rather than offering a refused renewal.
+      this.#activityEnded(outcome.serverTime)
+      return
+    }
+    if (outcome._tag === "Usable") {
+      this.#calibrate(outcome)
+      // The server just confirmed this session, so a concealed tab shows its content again, as on any adopted answer.
+      if (this.#adoptSnapshot(outcome.snapshot, true, "continue")) this.#reveal()
+    }
+    if (this.#continuing()) this.#setContinuation(outcome._tag === "Usable" ? "idle" : "failed")
+  }
+
   #applyDeadline() {
     if (this.#held === undefined) return
     this.#deadline = this.#held.idleDeadlineEpochMilliseconds - this.#serverOffset
@@ -601,13 +606,32 @@ export class TabCoordination {
     form.requestSubmit(submitter)
   }
 
-  /** Records the threshold fact and reads the session inside its scope, so the read is its child (T-001). */
+  /**
+   * The threshold read (#156 research D3): the tab reads without concealing, and an unanswered read leaves the content
+   * as it is and checks again after the retry interval. The deadline still conceals and confirms on its own.
+   */
+  async #confirmThreshold(): Promise<void> {
+    if (!this.#running()) return
+    const startedAt = Date.now()
+    const outcome = await readSessionStatus(this.#cancel.signal)
+    if (!this.#live()) return
+    if (outcome._tag !== "Undetermined") {
+      this.#applyStatus(outcome, startedAt, "deadline")
+      return
+    }
+    this.#schedule("warning", Date.now() + CONFIRMATION_RETRY_MILLISECONDS, () => {
+      this.#reachThreshold()
+    })
+  }
+
+  /**
+   * Records the threshold fact and reads the session inside its scope, so the read is its child (T-001). On resume the
+   * read is the resume confirmation, unchanged; at the threshold it never conceals.
+   */
   #confirmWarning(cause: "resume" | "threshold") {
     this.#stopTimer("warning")
-    const timing = this.#warningTiming(undefined)
-    const scope = timing === undefined ? CURRENT_SCOPE : recordWarningThreshold(cause, timing)
-    scope.run(() => {
-      this.#guard(this.#confirm(cause === "resume" ? "resume" : "deadline"))
+    this.#thresholdFact(cause).run(() => {
+      this.#guard(cause === "resume" ? this.#confirm("resume") : this.#confirmThreshold())
     })
   }
 
@@ -881,12 +905,12 @@ export class TabCoordination {
       this.#confirmWarning("threshold")
       return
     }
+    // The fact's scope is entered again inside the window lock, so the report it sends is still its child (T-001).
+    const fact = this.#thresholdFact("threshold")
     this.#withWindow(() => {
-      if (this.#readWindow()?.pendingSince === undefined) this.#pendingActivity = undefined
-      else this.#decide(activity, Date.now())
-    })
-    this.#schedule("warning", Date.now() + THRESHOLD_RECHECK_MILLISECONDS, () => {
-      if (this.#warnable()) this.#confirmWarning("threshold")
+      fact.run(() => {
+        this.#sendPendingAtThreshold(activity)
+      })
     })
   }
 
@@ -1026,6 +1050,23 @@ export class TabCoordination {
     )
   }
 
+  /**
+   * Under the window lock at the threshold: sends the coalesced activity at once and confirms within a second unless
+   * its renewal moved the threshold meanwhile. When another tab already sent it, confirms now (#156 research D5).
+   */
+  #sendPendingAtThreshold(activity: InPageSessionActivity) {
+    if (!this.#live()) return
+    if (this.#readWindow()?.pendingSince === undefined) {
+      this.#pendingActivity = undefined
+      this.#guard(this.#confirmThreshold())
+      return
+    }
+    this.#decide(activity, Date.now())
+    this.#schedule("warning", Date.now() + THRESHOLD_RECHECK_MILLISECONDS, () => {
+      if (this.#warnable()) this.#confirmWarning("threshold")
+    })
+  }
+
   /** Server time on this tab's calibrated estimate (#157 research D7). */
   #serverNow(): number {
     return Date.now() + this.#serverOffset
@@ -1111,6 +1152,12 @@ export class TabCoordination {
     return true
   }
 
+  /** Records T-001 with the held deadline, the tab's estimate, and the held lead, and answers its scope. */
+  #thresholdFact(cause: "resume" | "threshold"): TraceScope {
+    const timing = this.#warningTiming(undefined)
+    return timing === undefined ? CURRENT_SCOPE : recordWarningThreshold(cause, timing)
+  }
+
   /** The held deadline and this tab's best server-time estimate, both on the server clock (#157 T-003). */
   #timing(serverTime: number | undefined): TransitionTiming | undefined {
     if (this.#held === undefined) return undefined
@@ -1175,8 +1222,14 @@ export class TabCoordination {
 
   /** `#timing` with the held warning lead, for threshold facts and warning transitions (#156 T-001, T-002). */
   #warningTiming(serverTime: number | undefined): TransitionTiming | undefined {
-    const timing = this.#timing(serverTime)
-    return timing === undefined ? undefined : { ...timing, warningLeadMinutes: this.#held?.warningLeadMinutes }
+    const timing = this.#timing(undefined)
+    if (timing === undefined) return undefined
+    // On opening, the confirming answer's server time; otherwise the tab's estimate (#156 T-002).
+    return {
+      ...timing,
+      serverTimeMs: serverTime ?? timing.serverTimeMs,
+      warningLeadMinutes: this.#held?.warningLeadMinutes
+    }
   }
 
   /**

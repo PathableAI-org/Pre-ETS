@@ -263,8 +263,9 @@ With a positive held warning lead, each tab warns before its session expires
 the lead, on the server clock; a lead of `0` has none. When a tab applies a deadline it schedules a check at its
 local threshold. There, any coalesced activity it still holds is sent at once and the check repeats within a second,
 so interaction just before the threshold renews instead of hiding behind a warning. Otherwise the tab reads
-`GET /session/status` without hiding content, and on resume past its local threshold it does the same (inside the
-resume concealment when it is also past its deadline). It opens the warning only on a usable answer to its own read
+`GET /session/status` without hiding content; an unanswered read leaves the content as it is and checks again five
+seconds later, while the deadline still hides content and confirms on its own. On resume past its local threshold
+the tab confirms as any resumed tab does (inside the resume concealment when it is also past its deadline). It opens the warning only on a usable answer to its own read
 that describes the snapshot it holds and whose server time is in the warning period. A later deadline in that answer,
 from a renewal another tab or browser made, prevents the warning and moves the threshold. An answer before the server's
 threshold checks again when that threshold arrives, at least 250 ms later. No cross-tab message opens a warning:
@@ -277,7 +278,8 @@ time. Nothing but a renewal or the session's end closes it: Escape and the libra
 blocking slice removes it ([#400](https://github.com/PathableAI-org/Pre-ETS/issues/400)). Continue sends
 `continue-session` at once, outside the activity window, and gives up after 10 seconds; activating it again while
 a request is in flight sends nothing. A renewal is adopted and broadcast as `renewed`, so the warning closes in this
-tab and in every sharing tab that adopts the higher revision; any other adopted renewal, such as a page load in
+tab, which shows its content again if a confirmation had hidden it, and in every sharing tab that adopts the higher
+revision; any other adopted renewal, such as a page load in
 another tab, closes it the same way (a page-load renewal reaches other tabs only after hydration, gap G2). A 401 or
 409 follows the ended path of an activity report, so the expiration modal or the signed-out notice replaces the
 warning. Any other answer leaves the warning open in every tab with "We could not continue your session. Try

@@ -1077,7 +1077,7 @@ describe("TabCoordination warning (#156 research D3–D7) [PREETS-SESSION-011]",
     expect(latest()?.deadline).toBe(THRESHOLD + TIMEOUT)
   })
 
-  it("checks again when the server's own threshold arrives after its estimate ran early", async () => {
+  it("moves its threshold check to the server's clock when an early answer recalibrates it", async () => {
     const requests = serve({ status: [held] }, -300)
     start(warned)
 
@@ -1088,6 +1088,54 @@ describe("TabCoordination warning (#156 research D3–D7) [PREETS-SESSION-011]",
     await vi.advanceTimersByTimeAsync(300)
     expect(statusReads(requests)).toHaveLength(2)
     expect(latest()?.warning).toStrictEqual({ continuation: "idle" })
+  })
+
+  it("checks again at the server's threshold when an answer just before it keeps the clock offset", async () => {
+    /**
+     * Each read takes `latency` on the tab's clock and is stamped by the server. The first fixes the offset at 0 with a
+     * 200 ms round trip. The threshold read takes 400 ms and is stamped 50 ms before the server's threshold; its
+     * interval overlaps the held estimate, so the offset and the timers stay as they are.
+     */
+    const reads = [
+      { latency: 200, stamp: (sentAt: number) => sentAt + 100 },
+      { latency: 400, stamp: () => THRESHOLD - 50 },
+      { latency: 20, stamp: (sentAt: number) => sentAt + 10 }
+    ]
+    const fetch = vi.fn(() => {
+      const read = reads[Math.min(fetch.mock.calls.length - 1, reads.length - 1)] ?? reads[2]
+      const sentAt = Date.now()
+      vi.setSystemTime(sentAt + (read?.latency ?? 0))
+      return Promise.resolve(held(read?.stamp(sentAt) ?? sentAt))
+    })
+    vi.stubGlobal("fetch", fetch)
+    const coordination = start(warned)
+    await coordination.confirm()
+
+    await vi.advanceTimersByTimeAsync(THRESHOLD - Date.now())
+    expect(fetch).toHaveBeenCalledTimes(2)
+    expect(latest()?.warning).toBeUndefined()
+    await vi.advanceTimersByTimeAsync(249)
+    expect(fetch).toHaveBeenCalledTimes(2)
+
+    await vi.advanceTimersByTimeAsync(1)
+    expect(fetch).toHaveBeenCalledTimes(3)
+    expect(latest()?.warning).toStrictEqual({ continuation: "idle" })
+  })
+
+  it("keeps its content visible when the threshold read goes unanswered, and checks again later", async () => {
+    const requests = serve({ status: [failed, held] })
+    start(warned)
+
+    await vi.advanceTimersByTimeAsync(THRESHOLD - NOW)
+    expect(statusReads(requests)).toHaveLength(1)
+    expect(latest()?.warning).toBeUndefined()
+    await vi.advanceTimersByTimeAsync(4_999)
+    expect(statusReads(requests)).toHaveLength(1)
+
+    await vi.advanceTimersByTimeAsync(1)
+    expect(statusReads(requests)).toHaveLength(2)
+    expect(latest()).toMatchObject({ concealed: false, warning: { continuation: "idle" } })
+    expect(harness.states.some((state) => state.concealed)).toBe(false)
   })
 
   it("never confirms or warns before the deadline with a lead of 0", async () => {
@@ -1217,6 +1265,18 @@ describe("TabCoordination warning (#156 research D3–D7) [PREETS-SESSION-011]",
     expect(activityKinds(requests)).toStrictEqual(["continue-session", "continue-session"])
   })
 
+  it("shows its content again when Continue renews while the tab is concealed", async () => {
+    const { coordination } = await openWarning()
+    serve({ activity: [renewed], status: [failed] })
+    await coordination.confirm()
+    expect(latest()).toMatchObject({ concealed: true, warning: { continuation: "idle" } })
+
+    await coordination.continueSession()
+
+    expect(latest()).toMatchObject({ concealed: false, view: "active" })
+    expect(latest()?.warning).toBeUndefined()
+  })
+
   it("replaces the warning with the expired outcome when the server refused a late Continue", async () => {
     const { coordination } = await openWarning({ activity: [() => ended(WARNED_DEADLINE + 1_000)] })
 
@@ -1225,15 +1285,16 @@ describe("TabCoordination warning (#156 research D3–D7) [PREETS-SESSION-011]",
     expect(latest()).toStrictEqual({ concealed: true, endedHere: false, view: "expired" })
   })
 
-  it("still conceals and confirms at the deadline behind an open warning", async () => {
-    const { requests } = await openWarning()
-    serve({ status: [ended] })
+  it("still conceals and confirms at the deadline behind an open warning, reading nothing before it", async () => {
+    await openWarning()
+    const reads = serve({ status: [ended] })
 
     await vi.advanceTimersByTimeAsync(WARNED_DEADLINE - THRESHOLD - 1)
     expect(latest()).toMatchObject({ concealed: false, warning: { continuation: "idle" } })
-    expect(statusReads(requests)).toHaveLength(1)
+    expect(statusReads(reads)).toStrictEqual([])
     await vi.advanceTimersByTimeAsync(1)
 
+    expect(statusReads(reads)).toHaveLength(1)
     expect(latest()).toStrictEqual({ concealed: true, endedHere: false, view: "expired" })
   })
 })
