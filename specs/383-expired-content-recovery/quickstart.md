@@ -242,3 +242,45 @@ tenant directory, restart Keycloak if it was stopped, and stop owned processes.
 
 No results recorded yet. Each slice records the revision, run UUID, environment, result per claim (`established`,
 `violated`, `not established`, or `blocked`), cleanup, and limitations. Superseded results stay, marked stale.
+
+### Slice A1 — `860f6204f89b5ade26152cc48ca069b6cee06da6` (2026-11-13)
+
+**Runs:** BDD `0c6bcfb2-8a93-4153-bdcd-0adae51fd62a`; manual `79b28959-742b-4ba0-84dc-e25bb8a345dc` and
+`59161d0e-59d5-4379-8d7c-736a2fd48c5b` (the telemetry record).
+
+**Conditions:** a detached verifier worktree; a production build; local Redis, the tracked Keycloak realm, and
+otel-lgtm with OTEL enabled and the harness `service.version` and `service.instance.id`. Browser tracing was off,
+because A1 has no browser rows. A scratch tenant copy set Springfield's `idleTimeoutMinutes` to 5, and each run used
+its own `preets:verify:<run>:` Redis prefix. Each `POST` carried a verifier `traceparent`, and the visitor signed in
+through the tracked provider.
+
+**Module evidence:** frontend-services `test` 489/489, `test:integration` 42/42, frontend `test:unit` 72/72.
+
+**BDD:** dry run discovered 77 scenarios; `@preets-session-007` ran 4 scenarios (70 steps), all passed.
+
+| Claim                     | Result                                                       | Observation                                                                                                                                                                                                                                                   |
+| ------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| V-001 (gate)              | established                                                  | A removed record and a request about 5 s after the deadline, each as a fetch action and as a no-script navigation, all gave 401 with no `Set-Cookie` (no receipt). T-001 recorded `denied_unauthenticated`, and the run had no `authorizeSessionAction` span. |
+| V-002 (HTTP and server)   | established                                                  | The fetch body was empty, and the document body held only recovery content. No `Location`, and no correlation or transaction cookie. `prepareAuthentication` appears only at the deliberate sign-ins, before the denials, never after them.                   |
+| V-004 (no-script unknown) | established; server-observed "expired" not established (L-2) | The removed and evicted records showed "Your session is no longer available", with `denial_cause = unknown` and a `missing` child read. Two window probes either missed the pre-eviction window or arrived before the deadline.                               |
+| V-005 (HTTP part)         | established                                                  | A navigation `POST` received about 5 s after the deadline got the 401 recovery document and no receipt. A sub-second in-flight request was not observed.                                                                                                      |
+| V-006 (HTTP part)         | established                                                  | `text/html; charset=utf-8`, `private, no-store`, exactly one `h1`, and a "Log in again" link to `/`. This used a raw HTTP request, not a scripts-disabled browser, and keyboard operation is A2.                                                              |
+| V-024 (response part)     | established                                                  | No body or header held a session reference, `pathable-session`, a tenant name, identity, or token strings.                                                                                                                                                    |
+| V-003, V-007–V-023        | not run (later slices); V-019–V-022 incomplete, as permitted | —                                                                                                                                                                                                                                                             |
+
+T-001 was present and usable. `server_action` was `fetch` or `document` on candidates and `none` on other gated
+requests. `denial_cause` appeared only on denials. No forbidden data was observed.
+
+**Cleanup:** no owned keys were left, the app was stopped, and the scratch tenants were removed.
+
+**Notes for later slices:**
+
+- The §A1 command `pnpm test:bdd -- --tags "@preets-session-007"` passes a literal `--` that cucumber reads as a path.
+  `pnpm test:bdd --tags "@preets-session-007"` works. The step text is unchanged here, because changing it would need
+  a new verification request.
+- The removed-record and after-deadline cases are in `expired-content-recovery.feature`, not in the
+  `default-entry-protection.feature` outline.
+- An admitted no-script `POST` with the synthetic `$ACTION_ID_` body returned 500 (no operation ran). A2's
+  progressive-enhancement scenario should watch this.
+- The BDD harness stops the app right after the last step, so the final span batch of a BDD run is not exported.
+  Telemetry evidence comes from manual runs held 35 s after the last step.

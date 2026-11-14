@@ -63,8 +63,8 @@ Server Action calls, and requests without Fetch Metadata, is an **application re
 Next strips Flight headers before the proxy, so they are not used.
 
 The gate resolves the request tenant first, then reads the session for that tenant. Every
-response it returns carries `Cache-Control: private, no-store`; its denials have empty
-bodies and set no cookie.
+response it returns carries `Cache-Control: private, no-store`; its denials set no cookie
+and have empty bodies, except the recovery document below.
 
 | Outcome (in order)                | Document entry                           | Application request |
 | --------------------------------- | ---------------------------------------- | ------------------- |
@@ -80,6 +80,15 @@ same `ForbiddenNotice` that `forbidden()` shows, with status 403 and
 `content-type: text/html; charset=utf-8`. Next normalizes loopback hosts to `localhost`, so a
 rewrite would become an external proxy when Next binds `127.0.0.1`
 ([#356](https://github.com/PathableAI-org/Pre-ETS/issues/356)).
+
+A denied Server Action candidate starts no login. When it was submitted without scripts, as a
+form-encoded navigation `POST` without `next-action`, the 401 carries the host's recovery
+document instead of an empty body: a self-contained page whose one heading explains that the
+session expired or is no longer available, with a "Log in again" link to `/`. The gate
+supplies the status and headers whatever the host returns. The explanation says "expired" only
+when the session read returned the record past its deadline. Records are evicted at their
+deadline, so a later request is explained as "no longer available"
+([#157](https://github.com/PathableAI-org/Pre-ETS/issues/157)).
 
 A defect rejects the proxy promise (Next answers 500); nothing passes through on failure.
 A document entry renews a usable session as `deliberate-page-request` through `refreshForTenant`
@@ -106,8 +115,8 @@ designated above.
 
 Known gaps: `/_next/static/**` is publicly served and `/favicon.ico`, metadata routes, and
 `/_next/image` answer 401 without a session until the public-asset decision is made.
-Expired- or missing-session recovery content and Server Action 401 recovery belong to
-[#157](https://github.com/PathableAI-org/Pre-ETS/issues/157).
+In-page recovery after a denied action in a running tab, and the expiration modal, belong to
+[#157](https://github.com/PathableAI-org/Pre-ETS/issues/157)'s later slices.
 
 ## Cross-tab activity and logout coordination
 
@@ -262,11 +271,17 @@ created. No signal carries the session reference, cookie, coordination tag, issu
 
 ### Host adapter spans
 
-| Span                                         | `preets.outcome`                                                                                                                                                         | Other attributes                                                                                                                              |
-| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `protectRequest`                             | `admitted`, `redirected_login`, `denied_unauthenticated`, `denied_forbidden`, `unavailable`, `tenant_failure`                                                            | `preets.protection.entry` (`document`, `application`), `preets.protection.renewal` (`deliberate-page-request`, `none`), `preets.tenant.alias` |
-| `sessionActivity`, `sessionStatus`, `logout` | `ok`, `unauthenticated`, `tag_mismatch`, `cross_origin`, `unsupported_content_type`, `invalid_body`, `rejected_late`, `tenant_mismatch`, `unavailable`, `tenant_failure` | `preets.tenant.alias` once the tenant resolved                                                                                                |
-| `authorizeSessionAction`                     | `authorized`, `session_changed`, `no_session`, `tenant_mismatch`, `unavailable`, `tenant_failure`                                                                        | `preets.tenant.alias`                                                                                                                         |
+| Span                                         | `preets.outcome`                                                                                                                                                         | Other attributes                                                                                                                                                                                                   |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `protectRequest`                             | `admitted`, `redirected_login`, `denied_unauthenticated`, `denied_forbidden`, `unavailable`, `tenant_failure`                                                            | `preets.protection.entry` (`document`, `application`), `preets.protection.renewal` (`deliberate-page-request`, `none`), `preets.protection.server_action`, `preets.protection.denial_cause`, `preets.tenant.alias` |
+| `sessionActivity`, `sessionStatus`, `logout` | `ok`, `unauthenticated`, `tag_mismatch`, `cross_origin`, `unsupported_content_type`, `invalid_body`, `rejected_late`, `tenant_mismatch`, `unavailable`, `tenant_failure` | `preets.tenant.alias` once the tenant resolved                                                                                                                                                                     |
+| `authorizeSessionAction`                     | `authorized`, `session_changed`, `no_session`, `tenant_mismatch`, `unavailable`, `tenant_failure`                                                                        | `preets.tenant.alias`                                                                                                                                                                                              |
+
+`preets.protection.server_action` is set on every gated request: `fetch` when the request carries `next-action`,
+`document` for a Server Action candidate sent as a navigation without it (a no-script submission), and `none`
+otherwise. `preets.protection.denial_cause` is set only with `denied_unauthenticated` on a Server Action candidate:
+`expired` when the child `SessionService.read` returned the record past its deadline, and `unknown` otherwise. A gate
+denial has no `authorizeSessionAction` span in its trace, because the action never runs.
 
 The session-service span under each adapter span carries the session facts for that request. `rejected_late`
 appears only on `logout`. A request the gate denies never reaches its handler. For example, activity after expiry or
@@ -307,6 +322,7 @@ Filter every query by the run's `service.version` and `service.instance.id`:
 ```text
 { resource.service.instance.id = "<run-uuid>" && name = "SessionService.refreshForTenant" && span.preets.outcome = "renewed" }
 { resource.service.instance.id = "<run-uuid>" && name = "protectRequest" } | select(span.preets.outcome, span.preets.protection.entry)
+{ resource.service.instance.id = "<run-uuid>" && name = "protectRequest" && span.preets.protection.server_action != "none" } | select(span.preets.outcome, span.preets.protection.server_action, span.preets.protection.denial_cause)
 { resource.service.instance.id = "<run-uuid>" && name = "SessionService.invalidate" && span.preets.outcome = "rejected_late" }
 { resource.service.instance.id = "<run-uuid>" && name = "AuthenticationService.complete" } | select(span.preets.outcome, span.preets.authentication.freshness_position)
 ```

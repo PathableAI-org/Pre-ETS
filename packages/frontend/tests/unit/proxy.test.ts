@@ -75,3 +75,46 @@ describe("proxy [PREETS-SESSION-001]", () => {
     expect(head).toMatch(/<meta (?=[^>]*name="viewport")(?=[^>]*content="width=device-width, initial-scale=1")[^>]*>/)
   })
 })
+
+describe("proxy recovery document [PREETS-SESSION-007]", () => {
+  const recover = async (cause: "expired" | "unknown") => {
+    const recoveryDocument = gate.responses?.recoveryDocument
+    if (recoveryDocument === undefined) throw new Error("proxy did not create the gate")
+    const response = await recoveryDocument({ cause })
+    return { body: await response.text(), response }
+  }
+
+  it.each(
+    [
+      {
+        cause: "expired",
+        explanation: "For your security, your session ended after a period of inactivity.",
+        heading: "Your session expired"
+      },
+      { cause: "unknown", explanation: "To continue, log in again.", heading: "Your session is no longer available" }
+    ] as const
+  )("renders a self-contained private 401 document explaining the $cause cause", async (row) => {
+    const { body, response } = await recover(row.cause)
+
+    expect(response.status).toBe(401)
+    expect(response.headers.get("content-type")).toBe("text/html; charset=utf-8")
+    expect(response.headers.get("cache-control")).toBe("private, no-store")
+    expect(response.headers.get("location")).toBeNull()
+    expect(response.headers.getSetCookie()).toEqual([])
+    expect(body.match(/<h1[\s>]/g)).toHaveLength(1)
+    expect(body).toMatch(new RegExp(`<h1[^>]*>${row.heading}</h1>`))
+    expect(body).toContain(row.explanation)
+    expect(body).toMatch(/<a[^>]*href="\/"[^>]*>Log in again<\/a>/)
+    const head = /<head>(.*)<\/head>/s.exec(body)?.[1] ?? ""
+    expect(head).toContain(`<title>${row.heading} – Pre-ETS</title>`)
+    expect(head).toMatch(/<meta charSet="utf-8"\/>/)
+    expect(head).not.toMatch(/<link[^>]*stylesheet/)
+  })
+
+  it("claims no cause when the cause is unknown, and names no tenant or session", async () => {
+    const { body } = await recover("unknown")
+
+    expect(body).not.toMatch(/expired|inactivity/i)
+    expect(body).not.toMatch(/springfield|shelbyville|pathable-session|<form/i)
+  })
+})
