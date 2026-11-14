@@ -8,6 +8,13 @@ import type { AppWorld } from "../support/world.ts"
 
 import { responseJson } from "../support/response.ts"
 
+type TenantIdentity = AppWorld["tenantIdentities"][number]
+
+const readTenantIdentity = async (file: string): Promise<TenantIdentity> => {
+  const tenant = JSON.parse(await fs.readFile(file, "utf8")) as { displayName: string; oidc: { clientId: string } }
+  return { clientId: tenant.oidc.clientId, displayName: tenant.displayName }
+}
+
 Given("production tenant sites for Springfield and Shelbyville", async function(this: AppWorld) {
   assert.ok(this.directory)
   const sourceDirectory = this.directory
@@ -16,6 +23,8 @@ Given("production tenant sites for Springfield and Shelbyville", async function(
   await fs.cp(sourceDirectory, this.directory, { recursive: true })
   await fs.access(path.join(this.directory, "springfield.json"))
   await fs.access(path.join(this.directory, "shelbyville.json"))
+  const files = (await fs.readdir(this.directory)).filter((file) => file.endsWith(".json"))
+  this.tenantIdentities = await Promise.all(files.map((file) => readTenantIdentity(path.join(this.directory, file))))
 })
 /** Adds a scenario-owned tenant on one of the tracked provider's fixture clients, sharing Springfield's issuer. */
 const addFixtureTenant = async (world: AppWorld, alias: string, displayName: string, clientId: string) => {
@@ -28,6 +37,7 @@ const addFixtureTenant = async (world: AppWorld, alias: string, displayName: str
     JSON.stringify({ displayName, oidc: { clientAuth: "public", clientId, issuer: springfield.oidc.issuer } })
   )
   world.callbackOrigins = { ...world.callbackOrigins, [alias]: `http://${alias}.localhost:3000` }
+  world.tenantIdentities = [...world.tenantIdentities, { clientId, displayName }]
 }
 /** The `stale-auth-time-web` client's ID tokens always report an authentication time in 2001. */
 Given("a Stale tenant whose provider always reports an old authentication time", async function(this: AppWorld) {
@@ -58,6 +68,20 @@ Then(
     assert.deepEqual(responseJson(this), expected)
   }
 )
+
+/**
+ * A tenant failure must not serve another configured tenant, so no configured tenant's display name or OIDC client
+ * may reach the response body or headers, such as a tenant-config document or a provider redirect's `client_id`.
+ */
+Then("the response contains no fallback tenant", function(this: AppWorld) {
+  assert.ok(this.response)
+  assert.ok(this.tenantIdentities.length > 0, "expected configured tenant sites")
+  const output = `${this.response.body}\n${Object.values(this.response.headers).join("\n")}`
+  for (const { clientId, displayName } of this.tenantIdentities) {
+    assert.ok(!output.includes(displayName), `response contains tenant display name ${displayName}`)
+    assert.ok(!output.includes(clientId), `response contains tenant client ${clientId}`)
+  }
+})
 
 Given("tenant resolution uses {string} mode", function(this: AppWorld, mode: string) {
   assert.ok(mode === "host" || mode === "static")
