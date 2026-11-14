@@ -464,3 +464,60 @@ There was no stall.
 `expiration_modal` are present. No instrumentation was missing or unusable, and no forbidden data was observed.
 
 **Cleanup:** the verifier's keys were deleted, its ports stopped, and the scratch tenants removed.
+
+### Slice B re-verification — `e9382be1dd7360053c2e663d006fd8d9ef72c80b` (2026-11-13)
+
+This run supersedes the `7ad9159` report above. A targeted check at `0f25a29` (run
+`13a67d84-e6f9-4037-ba4e-ac39ab891e9b`) failed V-009. The store answered 401 8–20 ms before `deadline_ms`, and the tabs
+showed the signed-out notice instead of the modal.
+
+Commit `3a48217` fixed this. When an `Ended` answer arrives within 2 s before the held deadline and no logout was
+observed, the tab stays concealed and evaluates D7 when its estimate reaches the deadline. A logout observed meanwhile
+still ends it signed out. The early eviction itself comes from clock-domain drift and is left to S2. `deadline_ms` is on
+the application clock, while Redis expires a relative `PX` on its own clock. Redis measured +86 ms, then +49 ms, against
+the host.
+
+`0f25a29` made the BDD sign-in step accept a same-second provider return, because Keycloak's `auth_time` has
+whole-second resolution.
+
+**Runs:**
+
+- Probes at `e9382be`: main §B `8c4c8d56-af7b-4e05-bfcf-31e893e8bc62`, early-usable
+  `8ace3b6c-0abe-4725-aec4-ba85748714c5`, early-401 `f431cbe9-9dc1-4aea-950a-b3c98877691b`, resume
+  `1ec187ac-bb74-48fa-9e63-ada0ae5572e9`, follow-up `b9de42d7-afb1-4b7c-a85f-b5ad7859ddba`.
+- Full BDD: run `2ddc1656-488a-4d4f-a142-c1e7e0fb1fa4` at slice C `354a1e1`, whose product code is identical to
+  `e9382be` (`git diff --stat e9382be 354a1e1 -- packages` is empty). A Docker restart killed the full run at
+  `e9382be`, so this run replaces it.
+- Re-run probes at that revision: §B `081a55ab…` and resume `dad42da4…`.
+
+**Module evidence:** frontend-services 491/491, integration 42/42, and frontend unit 111/111.
+
+**BDD:** 90 scenarios and 1446 steps passed, including all four `expiration-protection.feature` scenarios.
+
+**Early ended answer:** the verifier deleted the session's own key in its verify prefix just before a deadline check
+that was scheduled early.
+
+- 1.5 s early: a 401 at −1439 ms, then the modal at +5 ms. T-003 went `content_concealed` → `expired` (`deadline`) with
+  no `signed_out`.
+- 1.0 s early: the modal at +5 ms and +13 ms.
+- 3.0 s early, outside the window: the tab signed out at once, as designed.
+- Re-confirmations answered 401 25–32 ms before the deadline showed the modal 3 times out of 3.
+
+**Logout during the hold:** the logout came at −1271 ms, after an early 401. Both tabs signed out, with no modal.
+
+**Early usable answer:** 3 times out of 3 the tab concealed, the content returned, the tab re-confirmed, and the modal
+appeared at the deadline.
+
+**Results per claim:**
+
+- V-009 through V-017 and V-023 are established, with the screen-reader parts of V-013 and V-014 outstanding.
+- The modal parts of V-018 and V-024 are established.
+- Observations matched the earlier reports: V-016 resume at +106 to +113 ms.
+- Submissions 1018, 417, and 168 ms before the deadline were admitted with no concealment.
+
+**Telemetry:** T-003, T-004, and T-005 are present. Step 11 re-inspection found no forbidden data in spans, resources,
+logs, or metric labels.
+
+**Disclosure:** the verifier's C probe stopped the shared Keycloak for about 12 s. The full suite still passed.
+
+**Cleanup:** the verifier's keys were deleted, its ports stopped, and the scratch tenants removed.
