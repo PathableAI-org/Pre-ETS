@@ -109,6 +109,17 @@ so they stop the usual form of a command and are not a security boundary; this
 file's prose still governs. Codex and Cursor do not read this file. Put personal
 overrides in the gitignored `.claude/settings.local.json`.
 
+Agents never connect to a system that can hold protected health information: a
+deployed application's database, session store, logs, or telemetry, in staging or
+production. The repository, its history, and its fixtures hold no such data, so an
+agent works only with the code, local services, and synthetic data. No agent
+environment, local or cloud, holds production or staging credentials, connection
+strings, or network secrets. A cloud environment for agent sessions or scheduled
+tasks allows only the hosts its task needs, and none that reach deployed systems;
+that allowlist enforces this rule, and a task that needs only GitHub uses network
+access None. Changing an agent environment's allowlist or secrets is a decision for
+a person.
+
 ## Tooling and configuration
 
 - [Principle VI](.specify/memory/constitution.md#vi-simplicity-and-verifiable-quality)
