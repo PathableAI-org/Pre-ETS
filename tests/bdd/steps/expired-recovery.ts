@@ -8,7 +8,7 @@ import { setTimeout as delay } from "node:timers/promises"
 
 import type { AppWorld } from "../support/world.ts"
 
-import { applicationBrowser, documentText, signInAtProvider } from "../support/browser.ts"
+import { applicationBrowser, documentText, signInAtProvider, suspendTimers } from "../support/browser.ts"
 import { multipartBody, serverActionId } from "../support/server-actions.ts"
 import { FETCH_METADATA, requestSiteWith, startSite } from "../support/server.ts"
 
@@ -188,12 +188,12 @@ const openEntry = async (world: AppWorld, host: string, options: {
   const context = await visitor.browser.newContext({ javaScriptEnabled: options.scripts })
   await context.addCookies([{ name: "pathable-session", url: `http://${host}/`, value: world.cookie }])
   const page = await context.newPage()
-  if (options.suspendTimers) await page.clock.install()
+  if (options.suspendTimers) await suspendTimers.beforeLoad(page)
   await page.goto(`http://${host}/`)
   await page.getByRole("button", { name: "Record reference operation" }).waitFor({ state: "visible" })
   visitor.renewedAt = Date.now()
   // Timers stop from here on; the tab's clock stands still until a step sets it (research D13).
-  if (options.suspendTimers) await page.clock.pauseAt(Date.now() + 1_000)
+  if (options.suspendTimers) await suspendTimers.afterLoad(page)
   visitor.entry = { page }
 }
 
