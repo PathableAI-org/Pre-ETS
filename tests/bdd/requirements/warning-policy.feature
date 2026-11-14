@@ -64,7 +64,8 @@ Feature: Each tenant's warning policy holds end to end, and a change reaches a s
     The visitor's session has tabs "T1" and "T2"; another browser's session has tab "U1". Both start
     under a five-minute timeout with a lead of 4, and the lead changes before their threshold. In-page
     activity within 60 seconds of the last report waits for that window to end, so the visitor waits
-    75 seconds before typing again; by then a tab still using the lead of 4 would have warned.
+    75 seconds before typing again; by then a tab still using the lead of 4 would have warned. The
+    first typing comes 10 seconds after the Continue, so the renewal it makes moves the deadline.
 
     Given host resolution uses base hostname "localhost"
     And Springfield sessions end after 5 minutes of inactivity
@@ -79,7 +80,8 @@ Feature: Each tenant's warning policy holds end to end, and a change reaches a s
     And tabs "T1" and "T2" hold a warning lead of 0
     And the warning stays open in tab "U1" with its deadline unchanged
     And tab "U1" holds a warning lead of 4
-    When Springfield's tenant file changes to no warning lead set
+    When the visitor waits 10 seconds without acting
+    And Springfield's tenant file changes to no warning lead set
     And the visitor types in tab "T1"
     Then tabs "T1" and "T2" adopt that renewal with a warning lead of 0
     When the visitor waits 75 seconds without acting
