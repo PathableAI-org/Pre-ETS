@@ -199,7 +199,7 @@ Advances V-019–V-022 in full and runs the full verification.md procedure. The 
       evidence).
 - [x] T037 Full verification.md procedure at the C revision; results in quickstart.md; `docs/session-state.md` note
       if the composed run changes it.
-- [ ] T038 Checks, draft pull request, verification of §C plus the full procedure, results recorded.
+- [x] T038 Checks, draft pull request, verification of §C plus the full procedure, results recorded.
 
 ## Dependencies
 

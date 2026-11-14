@@ -522,8 +522,6 @@ logs, or metric labels.
 
 **Cleanup:** the verifier's keys were deleted, its ports stopped, and the scratch tenants removed.
 
-### Slice C — `1da252c` implementation run (2026-11-13, before verification)
-### Slice C — `a92ca38` implementation run (2026-11-13, before verification)
 ### Slice C — `2f91645` implementation run (2026-11-13, before verification)
 
 Recorded by the implementation session; the verifier's report supersedes it. The C test commit is `2f91645` on B's final
@@ -585,3 +583,36 @@ concurrent full BDD suite) every expiring tab confirmed 6–36 ms before the ser
 sent no further confirmation for about 26 s, so no modal appeared. Unloaded runs never took that path. B reproduced it
 deterministically and fixed it in `410582e` (a usable answer with no confirmation pending now always re-confirms at the
 server's deadline); the restacked run above includes that fix.
+
+### Slice C verification — `354a1e118b113180aeae8916a8cdb24b58a22f8f` (2026-11-14)
+
+The verifier's report; it supersedes the implementation run above. The gate passes. B's confirmation at `e9382be` came
+from the same full run, whose product code is identical.
+
+**Runs:** full BDD `2ddc1656-488a-4d4f-a142-c1e7e0fb1fa4`; C probe `64c46d0a-482e-4888-9672-4834fadd9308`; §B main
+`081a55ab-1fce-4b50-9b07-1176c2122390`; resume `dad42da4-9935-4e82-8f7e-36f1487d9ad7`; A2 and A3 probes.
+
+**Conditions:** a detached verifier worktree; a production build; shared Redis, Keycloak, and otel-lgtm 0.41.0 with
+OTEL enabled and the harness `service.version` and `service.instance.id`; browser tracing on, except the A2 probe; a
+5-minute Springfield scratch tenant.
+
+**Module evidence:** frontend-services 491/491, integration 42/42, frontend unit 111/111.
+
+**BDD:** the full suite, 90 scenarios and 1446 steps, passed, including the 3 scenarios (4 pickles) of
+`expired-recovery-login.feature`.
+
+| Claim | Result      | Observation                                                                                                                                                                                                                                                                                                                                                                                              |
+| ----- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| V-019 | established | Keyboard Log in from the modal and from expired recovery: `/auth/login`, then the provider at `max_age=0`. With provider SSO held, the provider still presented a password-only step. A new session followed, and the earlier reference was answered 307 to login. Server: T-005, `prepareAuthentication`, `AuthenticationService.complete` confirmed (`inside`), `SessionService.establish`.            |
+| V-020 | established | Five tabs: no `/auth` or provider request in the 5 s after display, and no `prepareAuthentication` between display and T-005.                                                                                                                                                                                                                                                                            |
+| V-021 | established | A real provider error, with Keycloak stopped about 12 s, from the modal and from unknown-cause recovery: no protected content, the held reference not admitted, and no completion or establishment. After a restart, Log in from both succeeded. BDD covers the emulated cancel and provider error from both entry points. Stale and missing `auth_time` remain the approved verification.md limitation. |
+| V-022 | established | 3 s after M1's login, M2 still showed the modal with no protected text and no login traffic. Its own Log in loaded `/` as a new document with no provider request.                                                                                                                                                                                                                                       |
+
+**Composed procedure (steps 1–12):** prior-slice claims were re-observed as in the A1–B reports: A2 scripts-off
+recovery; A3 unknown 5/5, expired 2/2, logout precedence during the hold 75–80 ms; §B modal timing, isolation, bypass,
+focus, history, and logout precedence; and the B5 resume cases. Step 11 found no query strings or `url.full`, span keys
+within the allowed classes, resources only `service.*` and `telemetry.sdk.*`, and no tokens, cookies, codes, or
+claims. Screen-reader steps 4 and 7 are outstanding for a person. No instrumentation was missing or unusable, and no
+forbidden data was observed.
+
+**Cleanup:** owned keys deleted, ports stopped, scratch tenants removed, and Keycloak healthy.
