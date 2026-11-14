@@ -26,7 +26,7 @@ asserts neither V-014 nor V-015. `Contributes to #156`.
 
 ### Baseline
 
-- [ ] T001 Re-verify the installed facts the contracts rely on (modules.md "Status"): Effect 4.1.4 `Schema.Literals`
+- [x] T001 Re-verify the installed facts the contracts rely on (modules.md "Status"): Effect 4.1.4 `Schema.Literals`
       and its `literals` member; `@pathableai/react` 0.3.0 `Modal` (`open`, `onClose`, `title`, `description`, `footer`,
       `initialFocusRef`, always-rendered close button, Escape calls `onClose`, Tab cycles only inside) and `Button`
       (no ref); `refreshForTenant` already accepts `continue-session` (research F2); the web SDK's default context
@@ -34,44 +34,44 @@ asserts neither V-014 nor V-015. `Contributes to #156`.
 
 ### Continue reaches the server (US1, FR-008, research D1; T-005)
 
-- [ ] T002 [US1] In `fs/src/next/coordination.ts`, accept `continue-session` in the activity body:
+- [x] T002 [US1] In `fs/src/next/coordination.ts`, accept `continue-session` in the activity body:
       `SessionActivityRequestBody.activity` becomes `"continue-session" | InPageSessionActivity`, still derived from the
       handler's schema; `InPageSessionActivity` keeps its five members. Every other check (same origin, JSON, excess
       properties, the observed session's tag, the tenant's effective policy) is unchanged. T-005 becomes reachable
       with `preets.session.activity = continue-session` on the existing `SessionService.refreshForTenant` span.
-- [ ] T003 [US1] In `fs/tests/unit/coordination.test.ts`, extend the binding property's activity arbitrary to include
+- [x] T003 [US1] In `fs/tests/unit/coordination.test.ts`, extend the binding property's activity arbitrary to include
       `continue-session`, so origin, content type, and tag decide its renewal exactly as for in-page kinds, and add a
       renewal example: a `continue-session` body renews with that activity and the tenant's effective policy and
       answers the snapshot without a cookie (modules.md contract evidence, row 1).
 
 ### Warning period (US1, US3, FR-001, FR-005, research D2)
 
-- [ ] T004 [P] [US1] Create `fe/src/features/session-coordination/warning-period.ts` with
+- [x] T004 [P] [US1] Create `fe/src/features/session-coordination/warning-period.ts` with
       `warningThreshold(snapshot): number | undefined` (deadline minus lead minutes on the server clock; `undefined` at
       lead 0) and `inWarningPeriod(snapshot, serverTime): boolean` (lead positive, `serverTime` at or after the
       threshold and before the deadline), over
       `Pick<SessionCoordinationSnapshot, "idleDeadlineEpochMilliseconds" | "warningLeadMinutes">`.
-- [ ] T005 [P] [US1] In `fe/tests/unit/session-coordination.test.ts`, a Fast-Check property over deadline, lead, and
+- [x] T005 [P] [US1] In `fe/tests/unit/session-coordination.test.ts`, a Fast-Check property over deadline, lead, and
       server time (none at lead 0; the period is `[threshold, deadline)`) with boundary examples at the threshold, one
       millisecond before it, and at the deadline (modules.md contract evidence, row 3).
 
 ### Browser facts (T-001 to T-004)
 
-- [ ] T006 [US1] In `fe/src/shared/browser-tracing.ts`, add `FocusTarget` `warning_continue` (T-004), `TransitionCause`
+- [x] T006 [US1] In `fe/src/shared/browser-tracing.ts`, add `FocusTarget` `warning_continue` (T-004), `TransitionCause`
       `continue`, `renewal`, and `threshold`, `UiState` `warning_shown`, optional `TransitionTiming.warningLeadMinutes`
       recorded as `preets.session.warning_lead_minutes` (T-002), `recordWarningThreshold(cause, timing): TraceScope`
       recording `TabCoordination.threshold` with `preets.outcome = reached` (T-001), and
       `recordContinueActivation(): TraceScope` recording `Interaction.continue` with `preets.outcome = activated`
       (T-003). No recorder accepts free text.
-- [ ] T007 [US1] In `fe/src/shared/browser-tracing/export-filter.ts`, allow-list `TabCoordination.threshold`,
+- [x] T007 [US1] In `fe/src/shared/browser-tracing/export-filter.ts`, allow-list `TabCoordination.threshold`,
       `Interaction.continue`, and `preets.session.warning_lead_minutes`.
 
 ### Opening, closing, and Continue in a tab (US1, US2, FR-005, FR-006, FR-008–FR-011, FR-018, research D3–D7)
 
-- [ ] T008 [US1] In `fe/src/features/session-coordination/session-endpoints.ts`, widen
+- [x] T008 [US1] In `fe/src/features/session-coordination/session-endpoints.ts`, widen
       `sendActivity(activity: SessionActivityRequestBody["activity"], coordinationTag, timeout?)`; with a timeout the
       request is undetermined when no answer arrives in time.
-- [ ] T009 [US1] In `fe/src/features/session-coordination/tab-coordination.ts`, add the warning behind the unchanged
+- [x] T009 [US1] In `fe/src/features/session-coordination/tab-coordination.ts`, add the warning behind the unchanged
       public entry: `TabViewState.warning?: { continuation: "failed" | "idle" | "sending" } | undefined`, and
       `continueSession(): Promise<void>`, which never throws. - Opening (D3): applying a deadline with a positive held lead schedules a `warning` timer at the local threshold.
       When it fires, pending coalesced activity is sent first under the window lock and the threshold is checked
@@ -86,7 +86,7 @@ asserts neither V-014 nor V-015. `Contributes to #156`.
       with a 10-second limit, outside the activity window; activations while it is in flight send nothing. `Usable`
       adopts and broadcasts; `Ended` follows the existing ended path of an activity report; anything else leaves the
       warning open with `continuation: "failed"`.
-- [ ] T010 [US1] In `fe/tests/unit/session-coordination.test.ts`, controller examples with fake timers and stubbed
+- [x] T010 [US1] In `fe/tests/unit/session-coordination.test.ts`, controller examples with fake timers and stubbed
       answers (modules.md contract evidence, rows 4–7): no read and no warning before the threshold, a read at it, and
       a warning only on an in-period answer; a later deadline in the answer prevents the warning and moves the
       threshold; no warning at lead 0; pending activity at the threshold is sent before any read; a key press in the
@@ -98,20 +98,20 @@ asserts neither V-014 nor V-015. `Contributes to #156`.
 
 ### Warning dialog (US1, US5 in part, FR-007, FR-014 in part, FR-015 in part, research D8, D9)
 
-- [ ] T011 [US1] Create `fe/src/features/session-coordination/warning-modal.tsx`:
+- [x] T011 [US1] Create `fe/src/features/session-coordination/warning-modal.tsx`:
       `WarningModal({ continuation, onContinue })` renders the library `Modal` with title "Your session is about to
       expire", description "For your security, your session will end soon because of inactivity. Select Continue to
       keep working.", a no-op `onClose`, and library `Button` "Continue" in `footer` as `initialFocusRef`, focused
       through `moveFocus(…, "warning_continue")` (T-004); with `failed` it shows the alert "We could not continue your
       session. Try again." inside the dialog. The close control stays visible and does nothing until slice B.
-- [ ] T012 [US1] In `fe/src/features/session-coordination/coordinator.tsx`, render `WarningModal` while
+- [x] T012 [US1] In `fe/src/features/session-coordination/coordinator.tsx`, render `WarningModal` while
       `state.warning` is present in a running view and pass `continueSession`; `SessionCoordinator` keeps its props.
 
 ### Feature evidence and documentation
 
-- [ ] T013 [US3] In `tests/bdd/steps/expired-recovery.ts`, add a step that sets the Springfield tenant's
+- [x] T013 [US3] In `tests/bdd/steps/expired-recovery.ts`, add a step that sets the Springfield tenant's
       `warningLeadMinutes` in the scenario-owned tenant file, beside the timeout step.
-- [ ] T014 [US1] Create `tests/bdd/requirements/expiration-warning.feature` (`@preets-session-011`) and
+- [x] T014 [US1] Create `tests/bdd/requirements/expiration-warning.feature` (`@preets-session-011`) and
       `tests/bdd/steps/warning.ts` for quickstart §A cases 1–6: two sharing tabs, a Shelbyville tab, and a second
       browser open the warning within 2 s of their own thresholds with focus on Continue; Escape and an outside press
       leave it open and the deadline unchanged; a Continue answered 503 by request routing leaves both open with the
@@ -120,7 +120,7 @@ asserts neither V-014 nor V-015. `Contributes to #156`.
       and adopts the later deadline. Reuse the multi-tab, sharing-browser, and timing helpers in
       `tests/bdd/steps/expiration.ts` by exporting them (planned for C; needed here because the warning steps act on
       those tabs).
-- [ ] T015 [P] [US1] Document T-001 to T-004 in `docs/observability.md` (browser harness facts) and the warning,
+- [x] T015 [P] [US1] Document T-001 to T-004 in `docs/observability.md` (browser harness facts) and the warning,
       Continue, and T-005's `continue-session` in `docs/session-state.md`.
 - [ ] T016 Run the A checks and module evidence (quickstart "Module evidence"), `pnpm test:bdd:dry`, and the §A BDD
       scenarios; commit; push the draft pull request; request verification of §A and review of the slice. Address the
