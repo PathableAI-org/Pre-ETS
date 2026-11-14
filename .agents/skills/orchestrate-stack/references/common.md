@@ -15,7 +15,9 @@ branches, reads code, merges, or approves. A person approves and merges every ph
 Rules for every role:
 
 - Read [AGENTS.md](AGENTS.md) and follow its routing table to the owning documents for your task.
-- Use only synthetic tenants, fixtures, and data from the repository. Never real client records or credentials.
+- Use only synthetic tenants, fixtures, and data from the repository. Never real client records or credentials, and
+  never connect to a system that can hold protected health information, as
+  [Enforced agent guardrails](AGENTS.md#enforced-agent-guardrails) requires.
 - Do Git and pull request work only through the `speckit-stack` skill, and only on branches this brief gives you.
   Never merge, force-push, or hard-reset. Never add check suppressions.
 - One writing session owns a set of files. {{hot_spots}}

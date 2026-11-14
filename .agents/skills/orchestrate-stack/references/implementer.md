@@ -34,7 +34,8 @@ no feature directory or slices; drop the slice lines then.
 3. Answer every verification result and review finding: fix and push a new SHA with a new request to both, or write a
    justification. Classify Copilot findings as accepted, rejected with a reason, or waiting on a person; they do not
    gate.
-4. When the latest report passes `pnpm verify:gate` and `pnpm review:show <sha>` exits 0 at the same SHA, run
+4. When `pnpm verify:gate` passes on the slice branch (it checks the latest verification report and code review), or
+   for a one-pull-request High fix the report passes and `pnpm review:show <sha>` exits 0, run
    `pnpm verify:render --write`, commit the evidence-only result, push, and write the pull request body with
    Decisions for the reviewer first. Report `verified`.
 5. Start the next slice when the orchestrator says the current one is green, stacked on it with `gh stack add`. Fix
