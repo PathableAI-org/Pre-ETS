@@ -28,8 +28,11 @@ const EXPIRED_COPY = {
   heading: "Your session expired",
   logIn: "Log in again"
 }
-/** B5: concealment and the modal within 2 s of the deadline, or of the return for a resumed tab. */
-const BOUND_MILLISECONDS = 2_000
+/**
+ * B5: concealment and the modal within 2 s of the deadline, or of the return for a resumed tab; the warning within 2 s
+ * of its threshold, and its close within 2 s of a renewal response (#156).
+ */
+export const BOUND_MILLISECONDS = 2_000
 
 declare global {
   interface Window {
@@ -118,8 +121,15 @@ const sessionOf = async (tab: Tab): Promise<string | undefined> =>
 /** Waits for the protected page and reads the tab's held local deadline from its header. */
 const readDeadline = async (page: Page): Promise<number> => {
   await page.getByRole("button", { name: PROTECTED_CONTROL }).waitFor({ state: "visible" })
-  const value = await page.locator("header[data-session-deadline]").getAttribute("data-session-deadline")
-  const deadline = Number(value)
+  return heldDeadline(page)
+}
+
+/** The session header the coordinator renders, which carries the held deadline and warning lead as evidence. */
+export const sessionHeader = (page: Page): Locator => page.locator("header[data-session-deadline]")
+
+/** The tab's held local deadline, read from its header as it is now. */
+export const heldDeadline = async (page: Page): Promise<number> => {
+  const deadline = Number(await sessionHeader(page).getAttribute("data-session-deadline"))
   assert.ok(Number.isFinite(deadline), "expected the tab to hold a deadline")
   return deadline
 }

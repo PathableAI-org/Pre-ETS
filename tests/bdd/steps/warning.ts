@@ -7,12 +7,15 @@ import { setTimeout as delay } from "node:timers/promises"
 import type { AppWorld } from "../support/world.ts"
 
 import {
+  BOUND_MILLISECONDS,
+  heldDeadline,
   namesOf,
   OFFSET_TOLERANCE_MILLISECONDS,
   openTabIn,
   openTabs,
   pressEnterAndAwaitPost,
   pressEscapeAndClickOutside,
+  sessionHeader,
   SPRINGFIELD,
   type Tab,
   tabOf,
@@ -26,8 +29,6 @@ const WARNING = {
   failure: "We could not continue your session. Try again.",
   heading: "Your session is about to expire"
 }
-/** B5: the warning opens within 2 s of the threshold, and closes in other tabs within 2 s of a renewal response. */
-const BOUND_MILLISECONDS = 2_000
 const MINUTE_MILLISECONDS = 60_000
 /** How long after a threshold or renewal a step waits for the warning to open or close before failing. */
 const OBSERVATION_MILLISECONDS = 15_000
@@ -105,20 +106,11 @@ const changeAfter = async (tab: Tab, open: boolean, from: number, until: number)
   }
 }
 
-const header = (page: Page) => page.locator("header[data-session-deadline]")
-
-/** The tab's held local deadline, from its header. */
-const heldDeadline = async (tab: Tab): Promise<number> => {
-  const deadline = Number(await header(tab.page).getAttribute("data-session-deadline"))
-  assert.ok(Number.isFinite(deadline), "expected the tab to hold a deadline")
-  return deadline
-}
-
 /** The tab's warning threshold on the test's clock: its held deadline minus its held lead (#156 research D2). */
 const heldThreshold = async (tab: Tab): Promise<number> => {
-  const lead = Number(await header(tab.page).getAttribute("data-session-warning-lead"))
+  const lead = Number(await sessionHeader(tab.page).getAttribute("data-session-warning-lead"))
   assert.ok(lead > 0, "expected the tab to hold a positive warning lead")
-  tab.deadline = await heldDeadline(tab)
+  tab.deadline = await heldDeadline(tab.page)
   return tab.deadline - lead * MINUTE_MILLISECONDS
 }
 
@@ -198,7 +190,7 @@ Then("tabs {} show no warning", async function(this: AppWorld, list: string) {
 
 /** The tab's held deadline is the one last read, within its clock-offset estimate: nothing renewed the session. */
 const assertDeadlineUnchanged = async (tab: Tab, name: string) => {
-  const drift = Math.abs((await heldDeadline(tab)) - tab.deadline)
+  const drift = Math.abs((await heldDeadline(tab.page)) - tab.deadline)
   assert.ok(drift <= OFFSET_TOLERANCE_MILLISECONDS, `the deadline of tab "${name}" moved by ${String(drift)} ms`)
 }
 
@@ -289,7 +281,7 @@ Then(
       )
       assert.ok(closed - renewedAt <= BOUND_MILLISECONDS, `tab "${name}" closed ${String(closed - renewedAt)} ms late`)
       assert.equal(await warningIn(tab.page).count(), 0)
-      tab.deadline = await heldDeadline(tab)
+      tab.deadline = await heldDeadline(tab.page)
       assert.ok(tab.deadline > earlier, `tab "${name}" still holds the earlier deadline`)
     }
     const deadlines = tabs.map(({ tab }) => tab.deadline)
@@ -329,7 +321,7 @@ Then(
         renewedAt + OBSERVATION_MILLISECONDS
       )
       this.attach(`tab "${name}" closed ${String(closed - renewedAt)} ms after the page-load response (gap G2)`)
-      tab.deadline = await heldDeadline(tab)
+      tab.deadline = await heldDeadline(tab.page)
       const drift = Math.abs(tab.deadline - renewing.deadline)
       assert.ok(drift <= OFFSET_TOLERANCE_MILLISECONDS, `tab "${name}" did not adopt the deadline of tab "${source}"`)
     }
@@ -363,8 +355,8 @@ Then(
     await untilBefore(measure.threshold, -5_000)
     const tab = tabOf(this, name)
     await assertNoWarning(tab, name)
-    const renewed = await heldDeadline(tabOf(this, source))
-    const drift = Math.abs((await heldDeadline(tab)) - renewed)
+    const renewed = await heldDeadline(tabOf(this, source).page)
+    const drift = Math.abs((await heldDeadline(tab.page)) - renewed)
     assert.ok(drift <= OFFSET_TOLERANCE_MILLISECONDS, `tab "${name}" did not adopt the later deadline`)
   }
 )
