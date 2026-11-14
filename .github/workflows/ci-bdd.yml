@@ -21,7 +21,9 @@ jobs:
     name: CI / BDD
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # The expiration-warning scenarios wait in real time (#156 research D13); the @long-idle one alone takes about
+    # 31 minutes.
+    timeout-minutes: 150
     services:
       redis:
         image: redis:8.10.3

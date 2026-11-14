@@ -139,11 +139,17 @@ const reachThresholds = async (world: AppWorld, names: readonly string[]) => {
   await untilBefore(Math.max(...thresholds), 0)
 }
 
-When("tabs {} reach their warning threshold", { timeout: 7 * 60_000 }, async function(this: AppWorld, list: string) {
+/** Long enough for the default policy's threshold, 25 minutes after the session's last renewal (#156 slice D). */
+const LONG_IDLE_TIMEOUT = 32 * 60_000
+
+When("tabs {} reach their warning threshold", { timeout: LONG_IDLE_TIMEOUT }, async function(
+  this: AppWorld,
+  list: string
+) {
   await reachThresholds(this, namesOf(list))
 })
 
-When("tab {string} reaches its warning threshold", { timeout: 7 * 60_000 }, async function(
+When("tab {string} reaches its warning threshold", { timeout: LONG_IDLE_TIMEOUT }, async function(
   this: AppWorld,
   name: string
 ) {
@@ -726,7 +732,7 @@ Then("no request from tab {string} was answered 200 since then", async function(
  */
 Then(
   "tabs {} showed no dialog before their deadline, then the expiration modal within 2 seconds of it",
-  { timeout: 8 * 60_000 },
+  { timeout: LONG_IDLE_TIMEOUT },
   async function(this: AppWorld, list: string) {
     for (const name of namesOf(list)) {
       const tab = tabOf(this, name)
@@ -741,16 +747,55 @@ Then(
   }
 )
 
+/** The scenario-owned tenant file a step names; sessions established or renewed afterwards adopt its policy. */
+const tenantNamed = (name: string) => {
+  assert.ok(name === "Springfield" || name === "Shelbyville", `expected Springfield or Shelbyville, not ${name}`)
+  return name === "Springfield" ? "springfield" : "shelbyville"
+}
+
 Given(
-  "Shelbyville sessions end after {int} minutes of inactivity, with no warning lead set",
-  async function(this: AppWorld, minutes: number) {
-    await setTenantPolicy(this, "shelbyville", { idleTimeoutMinutes: minutes, warningLeadMinutes: undefined })
+  "{word}'s tenant file changes to a {int}-minute timeout with a warning lead of {int}",
+  async function(this: AppWorld, tenant: string, minutes: number, lead: number) {
+    await setTenantPolicy(this, tenantNamed(tenant), { idleTimeoutMinutes: minutes, warningLeadMinutes: lead })
   }
 )
 
 Given(
-  "Shelbyville's tenant file changes to a {int}-minute timeout with a warning lead of {int}",
-  async function(this: AppWorld, minutes: number, lead: number) {
-    await setTenantPolicy(this, "shelbyville", { idleTimeoutMinutes: minutes, warningLeadMinutes: lead })
+  "{word}'s tenant file changes to a {int}-minute timeout with no warning lead set",
+  async function(this: AppWorld, tenant: string, minutes: number) {
+    await setTenantPolicy(this, tenantNamed(tenant), { idleTimeoutMinutes: minutes, warningLeadMinutes: undefined })
   }
 )
+
+Given("{word}'s tenant file changes to a warning lead of {int}", async function(
+  this: AppWorld,
+  tenant: string,
+  lead: number
+) {
+  await setTenantPolicy(this, tenantNamed(tenant), { warningLeadMinutes: lead })
+})
+
+Given("{word}'s tenant file changes to no warning lead set", async function(this: AppWorld, tenant: string) {
+  await setTenantPolicy(this, tenantNamed(tenant), { warningLeadMinutes: undefined })
+})
+
+/** Both fields omitted: the default policy, a 30-minute timeout with a 5-minute warning lead. */
+Given("{word}'s tenant file sets no idle timeout and no warning lead", async function(this: AppWorld, tenant: string) {
+  await setTenantPolicy(this, tenantNamed(tenant), { idleTimeoutMinutes: undefined, warningLeadMinutes: undefined })
+})
+
+/** FR-001, FR-002, FR-004 (V-001 to V-005): each named tab holds the warning lead its session last adopted. */
+const assertHeldLead = async (world: AppWorld, names: readonly string[], lead: number) => {
+  for (const name of names) {
+    const held = await sessionHeader(tabOf(world, name).page).getAttribute("data-session-warning-lead")
+    assert.equal(held, String(lead), `the warning lead tab "${name}" holds`)
+  }
+}
+
+Then("tabs {} hold a warning lead of {int}", async function(this: AppWorld, list: string, lead: number) {
+  await assertHeldLead(this, namesOf(list), lead)
+})
+
+Then("tab {string} holds a warning lead of {int}", async function(this: AppWorld, name: string, lead: number) {
+  await assertHeldLead(this, [name], lead)
+})
