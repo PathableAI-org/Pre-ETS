@@ -267,10 +267,12 @@ The closed sets:
   `recovery_heading`, `signed_out_heading`, `warning_continue`.
 
 `preets.focus.cause` is `application` only for a move the code makes through
-`moveFocus`. Focus on the signed-out heading, on the recovery heading, on the
-expiration modal's Log in again link, on the warning's Continue when the warning
-opens, and the participant fixture's "Focus later" move are `application`. Every other change, such as a keyboard
-move, is `user`.
+`moveFocus` or `restoreFocusAsApplication`. Focus on the signed-out heading, on the
+recovery heading, on the expiration modal's Log in again link, on the warning's
+Continue when the warning opens and when focus found outside the warning returns to
+it, focus given back to a marked target after the warning closes, and the
+participant fixture's "Focus later" move are `application`. Every other change, such
+as a keyboard move, is `user`.
 
 The cross-tab match identifier is a UUID that the facade generates for each send.
 It is used only for telemetry and is carried in the posted message's `telemetryId`
