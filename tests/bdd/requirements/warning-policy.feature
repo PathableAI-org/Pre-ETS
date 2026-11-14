@@ -62,7 +62,9 @@ Feature: Each tenant's warning policy holds end to end, and a change reaches a s
 
   Scenario: A changed lead reaches a session only when it renews
     The visitor's session has tabs "T1" and "T2"; another browser's session has tab "U1". Both start
-    under a five-minute timeout with a lead of 4, and the lead changes before their threshold.
+    under a five-minute timeout with a lead of 4, and the lead changes before their threshold. In-page
+    activity within 60 seconds of the last report waits for that window to end, so the visitor waits
+    it out before typing again.
 
     Given host resolution uses base hostname "localhost"
     And Springfield sessions end after 5 minutes of inactivity
@@ -80,7 +82,8 @@ Feature: Each tenant's warning policy holds end to end, and a change reaches a s
     When Springfield's tenant file changes to no warning lead set
     And the visitor types in tab "T1"
     Then tabs "T1" and "T2" hold a warning lead of 0
-    When Springfield's tenant file changes to a warning lead of 1
+    When the visitor waits 60 seconds without acting
+    And Springfield's tenant file changes to a warning lead of 1
     And the visitor types in tab "T1"
     Then tabs "T1" and "T2" hold a warning lead of 1
     When tabs "T1" and "T2" reach their warning threshold
