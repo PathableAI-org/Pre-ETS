@@ -152,7 +152,7 @@ L-3). No telemetry rows. `Contributes to #156`.
 - [x] T022 [P] [US5] Document the blocking behavior and its removal condition in `docs/session-state.md`, and extend
       #400 to name the warning (a person or the owning workflow updates the issue; this task records the request in
       the pull request body).
-- [ ] T023 Run the B checks and module evidence, commit, push the draft, request verification of §B and review, and
+- [x] T023 Run the B checks and module evidence, commit, push the draft, request verification of §B and review, and
       record the final report as in T016. The screen-reader parts stay an outstanding manual check (L-3).
 
 ## Slice C — Expiration still wins (`384-expiration-warning-continue-impl-c`)
@@ -161,14 +161,14 @@ Resumed tabs confirm first, a late Continue is refused into the expired outcome,
 Asserts V-011, V-012, V-013, V-016, and V-017 in full. No product change unless the evidence finds a defect.
 `Contributes to #156`.
 
-- [ ] T024 [P] [US7] In `fs/tests/lib/session.test.ts`, a Fast-Check property with `TestClock`: a `continue-session`
+- [x] T024 [P] [US7] In `fs/tests/lib/session.test.ts`, a Fast-Check property with `TestClock`: a `continue-session`
       refresh renews exactly when received before the deadline, never at or after it (research D15; V-011).
-- [ ] T025 [P] [US7] In `fs/tests/unit/coordination.test.ts`, handler examples for a `continue-session` body exactly at
+- [x] T025 [P] [US7] In `fs/tests/unit/coordination.test.ts`, handler examples for a `continue-session` body exactly at
       and after the deadline answering 401 with no renewal (research D15; V-011).
-- [ ] T026 [US6] Extend `tests/bdd/requirements/expiration-warning.feature` and `tests/bdd/steps/warning.ts` for
+- [x] T026 [US6] Extend `tests/bdd/requirements/expiration-warning.feature` and `tests/bdd/steps/warning.ts` for
       quickstart §C cases 1–6 (three resume cases, late Continue held past the deadline, resume after the end, and
       disabled warnings), reusing the resume helpers exported from `tests/bdd/steps/expiration.ts`.
-- [ ] T027 [P] [US7] Update `docs/session-state.md` only if the composed run changes what it states.
+- [x] T027 [P] [US7] Update `docs/session-state.md` only if the composed run changes what it states.
 - [ ] T028 Run the C checks and module evidence, commit, push the draft, request verification of §C and review, and
       record the final report as in T016.
 

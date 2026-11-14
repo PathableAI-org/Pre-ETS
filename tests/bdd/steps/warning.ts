@@ -1,4 +1,4 @@
-import type { Page, Request as PlaywrightRequest } from "playwright"
+import type { Page, Request as PlaywrightRequest, Response as PlaywrightResponse } from "playwright"
 
 import { Given, Then, When } from "@cucumber/cucumber"
 import assert from "node:assert/strict"
@@ -9,6 +9,7 @@ import type { AppWorld } from "../support/world.ts"
 import { exposedControls } from "../support/browser.ts"
 import {
   BOUND_MILLISECONDS,
+  EXPIRED_COPY,
   heldDeadline,
   namesOf,
   OFFSET_TOLERANCE_MILLISECONDS,
@@ -16,6 +17,8 @@ import {
   openTabs,
   pressEscapeAndClickOutside,
   pressKeyAndAwaitPost,
+  PROTECTED_CONTROL,
+  resumptionOf,
   sessionHeader,
   SPRINGFIELD,
   type Tab,
@@ -23,6 +26,7 @@ import {
   typeIn,
   untilBefore
 } from "./expiration.ts"
+import { setTenantPolicy } from "./expired-recovery.ts"
 
 /** The warning's name and the alert after a Continue that did not renew (#156 research D9). */
 const WARNING = {
@@ -519,3 +523,205 @@ Then("tabs {} expose their header and controls again", async function(this: AppW
     assert.ok(!exposed.includes(`button: ${WARNING.action}`), `tab "${name}" still shows the warning`)
   }
 })
+
+/** Expiration still wins (#156 slice C, quickstart §C). */
+
+When(
+  "the visitor waits until {int} seconds after the warning threshold of tab {string}",
+  { timeout: 7 * 60_000 },
+  async function(this: AppWorld, seconds: number, name: string) {
+    await observeAllTabs(this)
+    await untilBefore(await heldThreshold(tabOf(this, name)), -seconds * 1_000)
+  }
+)
+
+Then("tab {string} kept its protected content on resuming", function(this: AppWorld, name: string) {
+  assert.equal(resumptionOf(this, name).hiddenAtOnce, false, `tab "${name}" hid its content on resuming`)
+})
+
+/** The first session status answer the tab received since `from`, on the test's clock; fails after 10 seconds. */
+const statusAnswerSince = async (tab: Tab, from: number) => {
+  const until = Date.now() + 10_000
+  for (;;) {
+    const answer = tab.statusAnswers.find((candidate) => candidate.at >= from)
+    if (answer !== undefined) return answer
+    assert.ok(Date.now() < until, "expected the tab to confirm with the server")
+    await delay(50)
+  }
+}
+
+/**
+ * FR-007, FR-012 (V-012, V-013): after resuming, the tab confirmed with the server, which answered the session usable,
+ * and only then opened the warning, within 2 s of the resume, over its protected content and with no expiration modal.
+ */
+Then(
+  "tab {string} confirms with the server, then shows the warning over its protected content within 2 seconds of resuming",
+  async function(this: AppWorld, name: string) {
+    const tab = tabOf(this, name)
+    const { startedAt } = resumptionOf(this, name)
+    await warningIn(tab.page).waitFor({ state: "visible", timeout: 10_000 })
+    const shownAt = Date.now()
+    assert.ok(shownAt - startedAt <= BOUND_MILLISECONDS, `tab "${name}" warned ${String(shownAt - startedAt)} ms late`)
+    const answer = await statusAnswerSince(tab, startedAt)
+    assert.ok(answer.status === 200 && answer.at <= shownAt, `tab "${name}" warned before the server confirmed`)
+    await tab.page.getByRole("button", { name: PROTECTED_CONTROL }).waitFor({ state: "visible" })
+    assert.equal(await tab.page.getByRole("dialog", { name: EXPIRED_COPY.heading }).count(), 0)
+  }
+)
+
+/** FR-006, FR-012 (V-012): the tab confirmed, learned of the later renewal, and shows no warning. */
+Then(
+  "tab {string} confirms with the server, shows no warning, and adopts the deadline of tab {string}",
+  async function(this: AppWorld, name: string, source: string) {
+    const tab = tabOf(this, name)
+    const answer = await statusAnswerSince(tab, resumptionOf(this, name).startedAt)
+    assert.equal(answer.status, 200)
+    const renewed = await heldDeadline(tabOf(this, source).page)
+    await tab.page.waitForFunction(
+      ({ held, tolerance }) =>
+        Math.abs(Number(document.querySelector("header")?.getAttribute("data-session-deadline")) - held) <= tolerance,
+      { held: renewed, tolerance: OFFSET_TOLERANCE_MILLISECONDS },
+      { polling: 50, timeout: 5_000 }
+    )
+    await delay(1_000)
+    await assertNoWarning(tab, name)
+  }
+)
+
+/** The late Continue's answer and when it arrived, on the test's clock, with the deadline it missed. */
+interface LateContinue {
+  readonly answeredAt: number
+  readonly deadline: number
+  readonly status: number
+}
+
+const lateContinues = new WeakMap<AppWorld, LateContinue>()
+
+/**
+ * Activates Continue shortly before the tab's deadline; request routing holds the request until a second after the
+ * deadline, then releases it to the server unchanged (V-011). The hold is shorter than Continue's 10 s limit.
+ */
+When(
+  "the visitor activates Continue in tab {string} {int} seconds before its deadline, and the request reaches the server after it",
+  { timeout: 7 * 60_000 },
+  async function(this: AppWorld, name: string, lead: number) {
+    const tab = tabOf(this, name)
+    const deadline = await heldDeadline(tab.page)
+    tab.deadline = deadline
+    await untilBefore(deadline, lead * 1_000)
+    await tab.page.route("**/session/activity", async (route) => {
+      await untilBefore(deadline, -1_000)
+      await route.continue()
+    })
+    try {
+      const answered = tab.page.waitForResponse(
+        (response) => new URL(response.url()).pathname === "/session/activity",
+        { timeout: (lead + 10) * 1_000 }
+      )
+      await warningIn(tab.page).getByRole("button", { name: WARNING.action }).press("Enter")
+      const response = await answered
+      lateContinues.set(this, { answeredAt: Date.now(), deadline, status: response.status() })
+    } finally {
+      await tab.page.unroute("**/session/activity")
+    }
+  }
+)
+
+Then("the late Continue in tab {string} was answered 401 after its deadline", function(this: AppWorld, name: string) {
+  const late = lateContinues.get(this)
+  assert.ok(late, `expected a late Continue in tab "${name}"`)
+  assert.ok(late.answeredAt > late.deadline, "expected the Continue to be answered after the deadline")
+  assert.equal(late.status, 401)
+})
+
+/**
+ * FR-011, FR-012 (V-017): each tab shows the expiration modal and no warning, and its warning, once last opened, stayed
+ * open until the deadline: no tab closed it as renewed.
+ */
+Then(
+  "tabs {} replaced the warning with the expiration modal, never closing it as renewed",
+  { timeout: 60_000 },
+  async function(this: AppWorld, list: string) {
+    for (const name of namesOf(list)) {
+      const tab = tabOf(this, name)
+      await tab.page.getByRole("dialog", { name: EXPIRED_COPY.heading }).waitFor({ state: "visible", timeout: 10_000 })
+      assert.equal(await warningIn(tab.page).count(), 0, `tab "${name}" still shows the warning`)
+      const [opened, closed] = (await warningLog(tab.page)).slice(-2)
+      assert.equal(opened?.open, true, `expected the warning to have been open in tab "${name}"`)
+      assert.ok(
+        closed !== undefined && !closed.open && closed.at >= tab.deadline - OFFSET_TOLERANCE_MILLISECONDS,
+        `tab "${name}" closed its warning before its deadline`
+      )
+    }
+  }
+)
+
+/** The tab's own same-origin request for its session status, with its cookie and Fetch Metadata, answers 401. */
+Then("the session status of tab {string} answers 401", async function(this: AppWorld, name: string) {
+  const status = await tabOf(this, name).page.evaluate(async () => (await fetch("/session/status")).status)
+  assert.equal(status, 401)
+})
+
+/** Per scenario: each application request the tab sent after the interaction began, with its answer's status. */
+const answeredAfterInteraction = new WeakMap<AppWorld, { readonly answered: string[]; readonly stop: () => void }>()
+
+/** Character keys and Escape in the tab; requests the tab sends from here on are recorded until the next check. */
+When("the visitor presses character keys and Escape in tab {string}", async function(this: AppWorld, name: string) {
+  const tab = tabOf(this, name)
+  const answered: string[] = []
+  const record = (response: PlaywrightResponse) => {
+    const url = new URL(response.url())
+    const kind = response.request().resourceType()
+    if (url.host === tab.host && (kind === "document" || kind === "fetch" || kind === "xhr")) {
+      answered.push(`${String(response.status())} ${response.request().method()} ${url.pathname}`)
+    }
+  }
+  tab.page.on("response", record)
+  answeredAfterInteraction.set(this, { answered, stop: () => tab.page.off("response", record) })
+  for (const key of ["a", "1", "Escape"]) await tab.page.keyboard.press(key)
+})
+
+/** FR-012 (V-013): no interaction since revived the ended session; nothing the tab sent was answered 200. */
+Then("no request from tab {string} was answered 200 since then", async function(this: AppWorld, name: string) {
+  const recorded = answeredAfterInteraction.get(this)
+  assert.ok(recorded, `expected interaction in tab "${name}"`)
+  await delay(2_000)
+  recorded.stop()
+  assert.deepEqual(recorded.answered.filter((entry) => entry.startsWith("200 ")), [])
+})
+
+/**
+ * FR-003 with a disabled warning (V-016): no dialog was in each tab before its deadline, and the first was the
+ * expiration modal, within 2 s of it. Read from the dialog watcher, so the tabs need not be watched while other steps
+ * run.
+ */
+Then(
+  "tabs {} showed no dialog before their deadline, then the expiration modal within 2 seconds of it",
+  { timeout: 8 * 60_000 },
+  async function(this: AppWorld, list: string) {
+    for (const name of namesOf(list)) {
+      const tab = tabOf(this, name)
+      await untilBefore(tab.deadline, -(BOUND_MILLISECONDS + 1_000))
+      const first = await tab.page.evaluate(() => globalThis.window.preetsFirstDialog)
+      assert.ok(first, `expected a dialog in tab "${name}"`)
+      assert.equal(first.name, EXPIRED_COPY.heading, `the first dialog in tab "${name}"`)
+      const late = first.at - tab.deadline
+      assert.ok(late >= -OFFSET_TOLERANCE_MILLISECONDS, `tab "${name}" showed a dialog ${String(-late)} ms early`)
+      assert.ok(late <= BOUND_MILLISECONDS, `tab "${name}" showed the expiration modal ${String(late)} ms late`)
+    }
+  }
+)
+
+Given(
+  "Shelbyville sessions end after {int} minutes of inactivity, with no warning lead set",
+  async function(this: AppWorld, minutes: number) {
+    await setTenantPolicy(this, "shelbyville", { idleTimeoutMinutes: minutes, warningLeadMinutes: undefined })
+  }
+)
+
+Given(
+  "Shelbyville's tenant file changes to a {int}-minute timeout with a warning lead of {int}",
+  async function(this: AppWorld, minutes: number, lead: number) {
+    await setTenantPolicy(this, "shelbyville", { idleTimeoutMinutes: minutes, warningLeadMinutes: lead })
+  }
+)
