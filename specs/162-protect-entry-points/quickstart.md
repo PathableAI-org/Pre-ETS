@@ -423,8 +423,11 @@ fresh-entry and no-session action scenarios of `default-entry-protection.feature
 scenarios of `expired-content-recovery.feature`. At `f046a3f`, a mutation check on an uncommitted build in which the
 gate admitted a tenant mismatch failed every forbidding scenario on its 403 assertion and passed the admitting ones;
 the build was reverted and rebuilt, and those 403 assertions are unchanged at `70941a7`. The forbidden page's keyboard
-and focus behaviour (V-018) is not asserted here; the 2026-11-09 addendum's manual observation stands. The pull
-request for #440 records the full-suite runs.
+and focus behaviour (V-018) is not asserted here; the 2026-11-09 addendum's manual observation stands. Verification: the
+verification session's run `912b4c1e-5e2d-422d-a7b0-af2f0ed8bcba` at `962271a` (`refs/notes/verification`, slice
+`fix440`, the #440 claims C-1 to C-5 as V-001 to V-005) established every claim through these targeted scenarios, with
+no forbidden data and no escalation. A person waived the full suite and the `ci-bdd.yml` run that #440 named as
+completion evidence, in favour of these targeted runs.
 
 ### Still incomplete
 
