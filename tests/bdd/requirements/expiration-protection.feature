@@ -59,7 +59,7 @@ Feature: Expired content concealed behind a blocking expiration modal
     When the visitor navigates back in tab "S3"
     Then tab "S3" follows fresh entry to the provider without the modal or protected content
     When the visitor navigates back in tab "History"
-    Then tab "History" is restored from the back/forward cache and follows fresh entry to the provider without the modal or protected content
+    Then tab "History" is restored from the back-forward cache and follows fresh entry to the provider without the modal or protected content
     When the visitor activates "Log in again" by keyboard in tab "S1"
     Then tab "S1" follows fresh entry to the provider without the modal or protected content
     And tab "Signed out" still shows the signed-out notice and no expiration modal after its former deadline

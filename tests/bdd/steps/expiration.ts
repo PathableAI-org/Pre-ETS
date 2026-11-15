@@ -613,7 +613,7 @@ Then(
 
 /** As fresh entry, after the browser restored the protected page from its back/forward cache rather than loading it. */
 Then(
-  "tab {string} is restored from the back/forward cache and follows fresh entry to the provider without the modal or protected content",
+  "tab {string} is restored from the back-forward cache and follows fresh entry to the provider without the modal or protected content",
   async function(this: AppWorld, name: string) {
     const tab = tabOf(this, name)
     await assertFreshEntry(tab)
