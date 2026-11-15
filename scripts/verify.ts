@@ -2,15 +2,24 @@
  * Verification handoff commands. Run through the `verify:*` package scripts:
  *
  *   pnpm verify:request --slice A1 [--feature specs/383-x] [--sha <rev>]   print the slice's request as JSON
- *   pnpm verify:record <report.json | ->                                   validate a report and add it to notes
+ *   pnpm verify:record <report.json | -> [--pr <n>]                        validate a report, add it to notes, and
+ *                                                                          post it on the verified SHA's pull request
  *   pnpm verify:show [<rev>]                                               print the latest report on a commit
  *   pnpm verify:gate                                                       check the branch against the gate
  *   pnpm verify:render [<rev>] [--write]                                   render quickstart execution results
+ *
+ * `show` and `gate` first sync the checked-out branch's pull request comments into the local notes, and read the
+ * local notes as they are when there is no pull request or GitHub cannot be reached. See scripts/note-sync.ts.
  */
 import { readFileSync, writeFileSync } from "node:fs"
 import { parseArgs } from "node:util"
 
+import { runCommand } from "./cli.ts"
+import { ghRest } from "./github-access.ts"
+import { publishRecordedReport, syncCheckedOutBranch } from "./note-sync.ts"
+import { defaultNotesRef } from "./review-findings.ts"
 import {
+  checkedOut,
   featureForBranch,
   generateRequest,
   notesRef,
@@ -27,6 +36,7 @@ const { positionals, values } = parseArgs({
   allowPositionals: true,
   options: {
     feature: { type: "string" },
+    pr: { type: "string" },
     sha: { default: "HEAD", type: "string" },
     slice: { type: "string" },
     write: { default: false, type: "boolean" }
@@ -34,6 +44,14 @@ const { positionals, values } = parseArgs({
 })
 
 const [command, argument] = positionals
+const rest = ghRest(cwd)
+
+/** Syncs the branch's pull request into the local notes, and returns that pull request's labels when it has one. */
+const syncFirst = (): readonly string[] | undefined => {
+  const context = syncCheckedOutBranch({ cwd, refs: { review: defaultNotesRef }, rest })
+  process.stderr.write(context.notice)
+  return context.pull?.labels
+}
 
 const print = (value: unknown): void => {
   process.stdout.write(typeof value === "string" ? value : `${JSON.stringify(value, null, 2)}\n`)
@@ -62,16 +80,18 @@ const request = (): number => {
 
 const record = (): number => {
   const json = readFileSync(argument === undefined || argument === "-" ? 0 : argument, "utf8")
-  return finish(recordReport(cwd, json), (report) => {
-    print(
-      `Recorded run ${report.runId} for slice ${report.sliceId} on ${report.verifiedSha} in ${notesRef}.\n`
-        + `Pointer for the implementation session: ${notesRef} @ ${report.verifiedSha} (run ${report.runId}).\n`
-    )
-  }, "Report not recorded")
+  const recorded = recordReport(cwd, json)
+  if (!recorded.ok) return finish(recorded, print, "Report not recorded")
+  const report = recorded.value
+  print(
+    `Recorded run ${report.runId} for slice ${report.sliceId} on ${report.verifiedSha} in ${notesRef}.\n`
+      + `Pointer for the implementation session: ${notesRef} @ ${report.verifiedSha} (run ${report.runId}).\n`
+  )
+  return publishRecordedReport({ cwd, pr: values.pr, rest }, report)
 }
 
 const gate = (): number =>
-  finish(runGate(cwd), (pass) => {
+  finish(runGate(cwd, checkedOut(cwd, syncFirst())), (pass) => {
     const via = pass.report.verifiedSha === pass.head ? "HEAD" : `${pass.report.verifiedSha} plus evidence-only commits`
     print(
       `Verification gate passed for ${pass.branch}: slice ${pass.report.sliceId}, run ${pass.report.runId}, via ${via}.\n`
@@ -90,14 +110,12 @@ const commands: Readonly<Record<string, () => number>> = {
   record,
   render,
   request,
-  show: () =>
-    finish(reportAt(cwd, argument ?? "HEAD"), (report) => {
+  show: () => {
+    syncFirst()
+    return finish(reportAt(cwd, argument ?? "HEAD"), (report) => {
       print(report ?? "No report on that commit.\n")
     }, "No report")
+  }
 }
 
-const run = commands[command ?? ""]
-if (run === undefined) {
-  process.stderr.write("Usage: verify.ts request|record|show|gate|render (see the header of scripts/verify.ts)\n")
-  process.exitCode = 2
-} else process.exitCode = run()
+runCommand(commands, command, "Usage: verify.ts request|record|show|gate|render (see the header of scripts/verify.ts)")

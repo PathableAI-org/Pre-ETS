@@ -12,15 +12,18 @@ import {
   ancestorLimit,
   changedPaths,
   currentBranch,
+  isCommit,
   nearestAnnotated,
   readAtSha,
   repositoryRoot,
   resolveSha
 } from "./git-access.ts"
-import { latestEntry, recordEntry } from "./note-store.ts"
-import { nearestReview, defaultNotesRef as reviewNotesRef, reviewProblems } from "./review-findings.ts"
+import { importEntry, latestEntry, recordEntry } from "./note-store.ts"
+import { nearestReview, type Review, defaultNotesRef as reviewNotesRef, reviewProblems } from "./review-findings.ts"
+import { isFixSlice } from "./schema-checks.ts"
 import {
   evidenceOnlyFindings,
+  fixReportFindings,
   gateForBranch,
   type ImplementationBranch,
   implementationBranch,
@@ -45,6 +48,9 @@ const fail = (...problems: readonly string[]): { readonly ok: false; readonly pr
   problems
 })
 
+/** Whether `branch` is an implementation-slice branch, `{number}-{slug}-impl` or `{number}-{slug}-impl-<slice>`. */
+export const isImplementationBranch = (branch: string): boolean => implementationBranch(branch) !== undefined
+
 /** The feature directory of the checked-out implementation-slice branch. */
 export const featureForBranch = (cwd: string): string | undefined =>
   implementationBranch(currentBranch(cwd))?.featureDir
@@ -62,8 +68,19 @@ export const generateRequest = (
 
 const reports = (cwd: string) => ({ cwd, kind: reportNotes, ref: notesRef })
 
+const verifiedShaExists = (cwd: string) => (report: VerificationReport): readonly string[] =>
+  isCommit(cwd, report.verifiedSha) ? [] : [`${report.verifiedSha} is not a commit in this repository`]
+
 /** Validates a report and appends it to the note on its verified SHA. */
-export const recordReport = (cwd: string, json: string): Outcome<VerificationReport> => recordEntry(reports(cwd), json)
+export const recordReport = (cwd: string, json: string): Outcome<VerificationReport> =>
+  recordEntry(reports(cwd), json, verifiedShaExists(cwd))
+
+/** Validates a report recorded in another clone and appends it unless its run ID is already on that SHA. */
+export const importReport = (
+  cwd: string,
+  json: string
+): Outcome<{ readonly entry: VerificationReport; readonly written: boolean }> =>
+  importEntry(reports(cwd), json, verifiedShaExists(cwd))
 
 /** The latest report on `revision`, if its note is valid. */
 export const reportAt = (cwd: string, revision: string): Outcome<undefined | VerificationReport> =>
@@ -89,11 +106,11 @@ const nearestReport = (cwd: string, head: string): Outcome<VerificationReport> =
 /** Findings for commits after `evidence.sha` other than the feature's quickstart execution results. */
 const driftFindings = (
   cwd: string,
-  evidence: { readonly featureDir: string; readonly label: "reviewed" | "verified"; readonly sha: string },
+  evidence: { readonly featureDir: string | undefined; readonly label: "reviewed" | "verified"; readonly sha: string },
   head: string
 ): readonly string[] => {
   if (evidence.sha === head) return []
-  const quickstart = `${evidence.featureDir}/quickstart.md`
+  const quickstart = `${evidence.featureDir ?? ""}/quickstart.md`
   return evidenceOnlyFindings(evidence, changedPaths(cwd, evidence.sha, head), {
     head: readAtSha(cwd, head, quickstart),
     verified: readAtSha(cwd, evidence.sha, quickstart)
@@ -101,38 +118,114 @@ const driftFindings = (
 }
 
 /** The code review half of the gate: the nearest review passes, matches the branch, and covers HEAD. */
-const reviewFindings = (cwd: string, branch: ImplementationBranch, head: string): readonly string[] => {
+const reviewFindings = (
+  cwd: string,
+  head: string,
+  matches: (review: Review) => readonly string[],
+  featureDir: (review: Review) => string | undefined
+): readonly string[] => {
   const review = nearestReview(cwd, reviewNotesRef, head)
   if (!review.ok) return review.problems.map((problem) => `code review: ${problem}`)
-  const { featureDir, reviewedSha, sliceId } = review.value
   return [
     ...reviewProblems(review.value),
-    ...sliceMatchesBranch({ featureDir, label: "review", sliceId }, branch),
-    ...driftFindings(cwd, { featureDir, label: "reviewed", sha: reviewedSha }, head)
+    ...matches(review.value),
+    ...driftFindings(
+      cwd,
+      { featureDir: featureDir(review.value), label: "reviewed", sha: review.value.reviewedSha },
+      head
+    )
   ].map((problem) => `code review: ${problem}`)
 }
 
-/** The gate for the checked-out implementation-slice branch. */
-export const runGate = (cwd: string): Outcome<GatePass> => {
-  const branchName = currentBranch(cwd)
-  const branch = implementationBranch(branchName)
-  if (branch === undefined || branchName === undefined) {
-    return fail(`${branchName ?? "a detached HEAD"} is not an implementation-slice branch`)
-  }
-  const head = resolveSha(cwd, "HEAD")
-  const report = nearestReport(cwd, head)
+/** The branch and commit the gate judges, and the labels of its pull request when one was found. */
+export interface GateTarget {
+  readonly branch: string | undefined
+  readonly head: string
+  readonly labels?: readonly string[] | undefined
+}
+
+/** The checked-out branch at HEAD. */
+export const checkedOut = (cwd: string, labels?: readonly string[]): GateTarget => ({
+  branch: currentBranch(cwd),
+  head: resolveSha(cwd, "HEAD"),
+  labels
+})
+
+const highFixLabel = "risk:high"
+
+/** Whether marking this branch's pull request ready needs the gate: an implementation slice or a High fix. */
+export const gateApplies = (branch: string, labels: readonly string[]): boolean =>
+  isImplementationBranch(branch) || labels.includes(highFixLabel)
+
+const slicePass = (cwd: string, branch: ImplementationBranch, target: GateTarget): Outcome<VerificationReport> => {
+  const report = nearestReport(cwd, target.head)
   if (!report.ok) return report
-  const request = generateRequest(cwd, { ...report.value, revision: report.value.verifiedSha })
-  if (!request.ok) return request
   const { featureDir, verifiedSha } = report.value
+  // A report without a feature directory fails gateForBranch's branch check; the branch's own one builds the request.
+  const request = generateRequest(cwd, {
+    featureDir: featureDir ?? branch.featureDir,
+    revision: verifiedSha,
+    sliceId: report.value.sliceId
+  })
+  if (!request.ok) return request
   const problems = [
-    ...driftFindings(cwd, { featureDir, label: "verified", sha: verifiedSha }, head),
+    ...driftFindings(cwd, { featureDir, label: "verified", sha: verifiedSha }, target.head),
     ...gateForBranch(report.value, request.value, branch),
-    ...reviewFindings(cwd, branch, head)
+    ...reviewFindings(
+      cwd,
+      target.head,
+      (review) =>
+        sliceMatchesBranch({ featureDir: review.featureDir, label: "review", sliceId: review.sliceId }, branch),
+      (review) => review.featureDir
+    )
   ]
-  return problems.length > 0
-    ? fail(...problems)
-    : { ok: true, value: { branch: branchName, head, report: report.value } }
+  return problems.length > 0 ? fail(...problems) : report
+}
+
+/**
+ * The gate for a High fix's single pull request. There is no plan, so no request: the report must pass on its own
+ * terms, and only a commit that changes no path counts as evidence-only after the verified or reviewed SHA.
+ */
+const fixPass = (cwd: string, target: GateTarget): Outcome<VerificationReport> => {
+  const report = nearestReport(cwd, target.head)
+  if (!report.ok) return report
+  const problems = [
+    ...driftFindings(cwd, { featureDir: undefined, label: "verified", sha: report.value.verifiedSha }, target.head),
+    ...fixReportFindings(report.value),
+    ...reviewFindings(
+      cwd,
+      target.head,
+      (review) =>
+        isFixSlice(review.sliceId) ? [] : [`the review is for slice ${review.sliceId}, not a High fix (slice fix)`],
+      () => undefined
+    )
+  ]
+  return problems.length > 0 ? fail(...problems) : report
+}
+
+const nameOf = (target: GateTarget): string => target.branch ?? "a detached HEAD"
+
+const passFor = (cwd: string, target: GateTarget): Outcome<VerificationReport> => {
+  const branch = implementationBranch(target.branch)
+  if (branch !== undefined) return slicePass(cwd, branch, target)
+  if (target.labels === undefined) {
+    return fail(
+      `${nameOf(target)} is not an implementation-slice branch, and no pull request was found to show a High fix`
+    )
+  }
+  return target.labels.includes(highFixLabel)
+    ? fixPass(cwd, target)
+    : fail(`${nameOf(target)} is not an implementation-slice branch or a High fix labelled ${highFixLabel}`)
+}
+
+/**
+ * The gate for `target`, by default the checked-out branch: the slice gate on an implementation-slice branch, the
+ * fix gate on a branch whose pull request is labelled risk:high. Labels come from the pull request; without them only
+ * an implementation-slice branch can be judged.
+ */
+export const runGate = (cwd: string, target: GateTarget = checkedOut(cwd)): Outcome<GatePass> => {
+  const pass = passFor(cwd, target)
+  return pass.ok ? { ok: true, value: { branch: nameOf(target), head: target.head, report: pass.value } } : pass
 }
 
 export interface RenderedResults {
@@ -148,9 +241,15 @@ export const renderResults = (cwd: string, revision: string): Outcome<RenderedRe
   const report = reportAt(cwd, revision)
   if (!report.ok) return report
   if (report.value === undefined) return fail(`no verification report on ${revision}`)
-  const path = join(repositoryRoot(cwd), report.value.featureDir, "quickstart.md")
+  const { featureDir, sliceId, verifiedSha } = report.value
+  if (featureDir === undefined) {
+    return fail(
+      `the report on ${revision} is for a High fix with no feature directory, so it has no quickstart results`
+    )
+  }
+  const path = join(repositoryRoot(cwd), featureDir, "quickstart.md")
   const quickstart = existsSync(path) ? readFileSync(path, "utf8") : ""
-  const request = generateRequest(cwd, { ...report.value, revision: report.value.verifiedSha })
+  const request = generateRequest(cwd, { featureDir, revision: verifiedSha, sliceId })
   const rendered = renderReport(report.value, {
     earlierSha: earlierResultSha(quickstart, report.value.sliceId),
     request: request.ok ? request.value : undefined

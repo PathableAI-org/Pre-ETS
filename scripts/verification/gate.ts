@@ -5,6 +5,7 @@ import type { VerificationRequest } from "./request.ts"
  * The verification gate from docs/engineering/verification-harness.md#gate-and-escalation, applied to a report and
  * the request regenerated at the report's verified SHA.
  */
+import { isFixSlice } from "../schema-checks.ts"
 import { withoutSection } from "./markdown.ts"
 
 export interface ImplementationBranch {
@@ -21,11 +22,15 @@ export const implementationBranch = (branch: string | undefined): Implementation
 
 /** Whether a report or review names this branch's feature and, for a suffixed branch, its slice. */
 export const sliceMatchesBranch = (
-  evidence: { readonly featureDir: string; readonly label: string; readonly sliceId: string },
+  evidence: { readonly featureDir?: string | undefined; readonly label: string; readonly sliceId: string },
   branch: ImplementationBranch
 ): readonly string[] => {
   if (evidence.featureDir !== branch.featureDir) {
-    return [`the ${evidence.label} is for ${evidence.featureDir}, but this branch belongs to ${branch.featureDir}`]
+    return [
+      `the ${evidence.label} is for ${
+        evidence.featureDir ?? "no feature directory"
+      }, but this branch belongs to ${branch.featureDir}`
+    ]
   }
   const expected = branch.sliceSuffix
   return expected !== undefined && expected.toLowerCase() !== evidence.sliceId.toLowerCase()
@@ -77,6 +82,13 @@ const telemetryFindings = (report: VerificationReport, request: VerificationRequ
     (row) => row.status === "present" ? [] : [`telemetry row ${row.id} is ${row.status}`]
   )
 
+/** What blocks any report, whatever was requested: a violation seen outside the claims, forbidden data, escalations. */
+const reportBlockers = (report: VerificationReport): readonly string[] => [
+  ...report.unrequestedViolations.map((claim) => `${claim.id} was observed violated outside the request`),
+  ...report.forbiddenData.map((finding) => `forbidden data in ${finding.signal} field ${finding.field}`),
+  ...report.escalations.map((escalation) => `open escalation (${escalation.kind}): ${escalation.detail}`)
+]
+
 /** Every reason the report fails the gate for the request. An empty list passes. */
 const evaluateGate = (report: VerificationReport, request: VerificationRequest): readonly string[] => [
   ...request.warnings.map((warning) => `the request cannot be generated reliably: ${warning}`),
@@ -87,9 +99,7 @@ const evaluateGate = (report: VerificationReport, request: VerificationRequest):
   ...claimsCoverRequest(report, request),
   ...unrequestedClaims(report, request),
   ...telemetryFindings(report, request),
-  ...report.unrequestedViolations.map((claim) => `${claim.id} was observed violated outside the request`),
-  ...report.forbiddenData.map((finding) => `forbidden data in ${finding.signal} field ${finding.field}`),
-  ...report.escalations.map((escalation) => `open escalation (${escalation.kind}): ${escalation.detail}`)
+  ...reportBlockers(report)
 ]
 
 export const gateForBranch = (
@@ -101,22 +111,40 @@ export const gateForBranch = (
   ...evaluateGate(report, request)
 ]
 
+/**
+ * Every reason a High fix's latest report does not pass. A fix has no plan to regenerate a request from, so the report
+ * must name at least one claim, establish every claim it names, find every telemetry row it lists present, and show
+ * no violation, forbidden data, or open escalation. No limitation can excuse a claim, because none is approved.
+ */
+export const fixReportFindings = (report: VerificationReport): readonly string[] => [
+  ...(isFixSlice(report.sliceId) ? [] : [`the report is for slice ${report.sliceId}, not a High fix (slice fix)`]),
+  ...(report.claims.length === 0 ? ["the report names no claim"] : []),
+  ...report.claims.flatMap((claim) =>
+    claim.result === "established" ? [] : [`${claim.id} is ${claim.result}; a High fix must establish every claim`]
+  ),
+  ...report.telemetryRows.flatMap((row) =>
+    row.status === "present" ? [] : [`telemetry row ${row.id} is ${row.status}`]
+  ),
+  ...reportBlockers(report)
+]
+
 const executionResults = /^execution results$/i
 
 /**
  * Whether the commits from the verified or reviewed SHA to HEAD are evidence-only: they change nothing but the
- * feature's `quickstart.md` execution results.
+ * feature's `quickstart.md` execution results. Without a feature directory, as for a High fix, they must change
+ * nothing at all.
  */
 export const evidenceOnlyFindings = (
-  evidence: { readonly featureDir: string; readonly label: "reviewed" | "verified" },
+  evidence: { readonly featureDir: string | undefined; readonly label: "reviewed" | "verified" },
   paths: readonly string[],
   quickstartAt: { readonly head: string | undefined; readonly verified: string | undefined }
 ): readonly string[] => {
-  const quickstart = `${evidence.featureDir}/quickstart.md`
+  const quickstart = evidence.featureDir === undefined ? undefined : `${evidence.featureDir}/quickstart.md`
   const after = `commits after the ${evidence.label} SHA change`
   const other = paths.filter((path) => path !== quickstart)
   if (other.length > 0) return [`${after} ${other.join(", ")}`]
-  if (!paths.includes(quickstart)) return []
+  if (quickstart === undefined || !paths.includes(quickstart)) return []
   const outside = (content: string | undefined): string => withoutSection(content ?? "", executionResults)
   return outside(quickstartAt.verified) === outside(quickstartAt.head)
     ? []
