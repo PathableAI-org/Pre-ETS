@@ -167,8 +167,8 @@ closure, merge, generated scenarios, dry runs, and static checks are not require
 ## Limitations and incomplete claims
 
 - V-007, V-008, the valid-session joining part of V-014, the viewed-under-a-session precondition of V-015 (step 7b),
-  and the confirmed-versus-unconfirmed distinction in V-006 remain incomplete until #158's B6 freshness confirmation
-  permits live session establishment.
+  and the confirmed-versus-unconfirmed distinction in V-006 were gated on #158's B6 freshness confirmation and remain
+  incomplete in this record; #440's scenarios do not exercise them.
 - (Updated for #440.) Real-login tenant binding is no longer limited to prepared sessions: the requirements-backed
   scenarios in `tests/bdd/requirements/tenant-session-binding.feature` present a session established through real
   provider sign-in to protected requests in host and static modes. Matching admission (SESSION-005 AC1), HTTP 403
