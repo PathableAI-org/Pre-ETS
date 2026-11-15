@@ -96,6 +96,8 @@ verification harness and code review guides require. Your part:
      itself.
    - **Later pushes:** if the report says it did not send both requests, send them yourself. Keep the verifier's and
      reviewer's SHAs the same.
+   - The report lists the [pre-push self-review](../../../docs/engineering/code-review.md#pre-push-self-review)
+     findings for measurement. Keep them out of every verification and review brief and request.
 2. **Results.** The verifier and reviewer reply to the implementation session with pointers, and message you only to
    escalate or report `blocked` or `failed`. The implementation session reports `verified` when the gate passes.
    Read the notes with the status step, not their messages.
