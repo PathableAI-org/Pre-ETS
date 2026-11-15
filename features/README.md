@@ -1,8 +1,8 @@
 # Requirements BDD
 
 Executable acceptance scenarios live under [`tests/bdd/requirements/`](../tests/bdd/requirements/).
-They observe a running Next.js application over HTTP and in Chromium for missing-page presentation, real-provider delegation,
-and session expiration and recovery journeys.
+They observe a running Next.js application over HTTP and in Chromium for missing-page and forbidden-page presentation,
+real-provider delegation, and session expiration and recovery journeys.
 Tests never connect to Redis or other backing services directly; Compose (or CI services) may still run for the app process.
 
 Before authoring or reviewing scenarios and their steps, read

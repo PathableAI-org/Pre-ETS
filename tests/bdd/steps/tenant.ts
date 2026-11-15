@@ -1,4 +1,4 @@
-import { Given, Then } from "@cucumber/cucumber"
+import { Given, Then, When } from "@cucumber/cucumber"
 import assert from "node:assert/strict"
 import fs from "node:fs/promises"
 import os from "node:os"
@@ -7,6 +7,7 @@ import path from "node:path"
 import type { AppWorld } from "../support/world.ts"
 
 import { responseJson } from "../support/response.ts"
+import { startSite, stopSite } from "../support/server.ts"
 
 type TenantIdentity = AppWorld["tenantIdentities"][number]
 
@@ -58,6 +59,17 @@ Given("static resolution selects Shelbyville", function(this: AppWorld) {
 })
 Given("static resolution selects an alias with no tenant file", function(this: AppWorld) {
   this.staticAlias = "capital-city"
+})
+/** Stops the scenario's instances and starts one in static mode; it keeps the scenario's session store prefix. */
+When("the application restarts with static resolution selecting {string}", async function(
+  this: AppWorld,
+  alias: string
+) {
+  await fs.access(path.join(this.directory, `${alias}.json`))
+  await stopSite(this)
+  this.staticAlias = alias
+  this.baseHostname = undefined
+  await startSite(this)
 })
 Then(
   "the response JSON equals the independently parsed {string} tenant file",

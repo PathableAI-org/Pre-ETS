@@ -6,10 +6,11 @@ Step implementations and shared helpers must establish that outcome without addi
 Feature-level `@partial` limits evidence scope; it does not permit pending or failing steps.
 
 Steps interact with the owned Next.js process over HTTP and in a real Chromium browser. Browser steps establish
-missing-page presentation, provider arrival and callback delivery, and the session journeys: cross-tab expiration,
-history protection, and recovery after expiry. They must not open Redis clients, session stores, or mock identity
-providers. Redis is observed only through application outcomes. Browser requests preserve the logical Host header
-while routing to the owned loopback process, so no step establishes infrastructure ingress behavior.
+missing-page and forbidden-page presentation, provider arrival and callback delivery, and the session journeys:
+cross-tab expiration, history protection, and recovery after expiry. They must not open Redis clients, session
+stores, or mock identity providers. Redis is observed only through application outcomes. Browser requests preserve
+the logical Host header while routing to the owned loopback process, so no step establishes infrastructure ingress
+behavior.
 
 Shared support under `tests/bdd/support/` owns temporary tenant directories, spawning/stopping the
 frontend, recording the last HTTP response, the scoped browser transport, and the browser helpers in
@@ -21,7 +22,7 @@ frontend, recording the last HTTP response, the scoped browser transport, and th
 | ------------------------- | ------------------------------------------------------------------------------------------------------- |
 | `http.ts`                 | Generic requests and responses                                                                          |
 | `tenant.ts`               | Tenant configuration setup and tenant-specific observations                                             |
-| `presentation.ts`         | Rendered missing-page content after navigation                                                          |
+| `presentation.ts`         | Rendered missing-page and forbidden-page content after navigation                                       |
 | `authentication.ts`       | Provider destination/protocol, callback delivery, and public sign-in observations                       |
 | `session-coordination.ts` | Raw in-page activity communications sent without a browser                                              |
 | `expiration.ts`           | Idle expiration across named tabs: concealment, the expiration modal, resumed tabs, logout, and history |

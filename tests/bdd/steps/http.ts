@@ -131,3 +131,7 @@ Then("the response does not re-emit controlled provider callback data", function
   const output = `${this.response.body}\n${Object.values(this.response.headers).join("\n")}`
   assert.doesNotMatch(output, /access_denied|controlled-private-value/i)
 })
+Then("the response shows the protected application", function(this: AppWorld) {
+  assert.equal(this.response?.status, 200)
+  assert.match(this.response.body, /Reference session/)
+})

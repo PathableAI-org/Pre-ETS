@@ -1,6 +1,30 @@
-import type { Page } from "playwright"
+import type { BrowserContext, Page } from "playwright"
+
+import { applicationBrowser } from "./harness.ts"
 
 export { applicationBrowser } from "./harness.ts"
+
+/**
+ * Runs `use` in a new context of an owned application browser for `host` whose cookie jar presents the session
+ * reference, when there is one, and closes the browser afterwards.
+ */
+export const withSessionContext = async <A>(
+  port: number,
+  host: string,
+  reference: string | undefined,
+  use: (context: BrowserContext) => Promise<A>
+): Promise<A> => {
+  const owned = await applicationBrowser(port, [host])
+  try {
+    const context = await owned.browser.newContext()
+    if (reference !== undefined) {
+      await context.addCookies([{ name: "pathable-session", url: `http://${host}/`, value: reference }])
+    }
+    return await use(context)
+  } finally {
+    await owned.close()
+  }
+}
 
 /** Submits the tracked realm's synthetic user on the provider's sign-in form. */
 export const signInAtProvider = async (page: Page): Promise<void> => {
