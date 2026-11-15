@@ -264,6 +264,9 @@ const HISTORY_LAUNCH = {
   ignoreDefaultArgs: ["--disable-back-forward-cache"]
 }
 
+/** Launches Playwright's default browser without the application proxy, for a journey that reaches only the provider. */
+export const providerBrowser = (): Promise<Browser> => chromium.launch(ORDINARY_LAUNCH)
+
 /**
  * Launches Chromium behind an owned local proxy so every application hop stays
  * on the loopback transport while external (Keycloak) HTTPS keeps its real

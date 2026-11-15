@@ -1,8 +1,9 @@
 import type { BrowserContext, Page } from "playwright"
 
 import assert from "node:assert/strict"
+import { createHash, randomBytes } from "node:crypto"
 
-import { applicationBrowser } from "./harness.ts"
+import { applicationBrowser, providerBrowser } from "./harness.ts"
 
 export { applicationBrowser } from "./harness.ts"
 
@@ -33,6 +34,75 @@ export const signInAtProvider = async (page: Page): Promise<void> => {
   await page.getByRole("textbox", { name: /username|email/i }).fill("demo")
   await page.getByRole("textbox", { exact: true, name: "Password" }).fill("demo")
   await page.getByRole("button", { name: /sign in/i }).click({ noWaitAfter: true })
+}
+
+/**
+ * The authorization code in the provider's answer to a sign-in, which must lead back to `redirectUri`. These checks use
+ * `assert.fail`, whose message Cucumber shows; for `assert.ok` it shows only the diff.
+ */
+const returnedCode = (answer: string | undefined, redirectUri: string): string => {
+  const code = answer?.startsWith(`${redirectUri}?`) === true ? new URL(answer).searchParams.get("code") : null
+  if (code === null || code === "") {
+    assert.fail("expected the provider to answer the sign-in with a code for the redirect URI")
+  }
+  return code
+}
+
+/**
+ * Signs the tracked realm's synthetic user in at `issuer` for `clientId` without the application, and answers the
+ * claims of the ID token the provider issues. The browser never requests `redirectUri`: the provider's answer to the
+ * sign-in is read without being followed, and its code is exchanged directly. Setup uses this to check a fixture
+ * client's prerequisite; it observes nothing about the application.
+ */
+export const providerIdTokenClaims = async (request: {
+  readonly clientId: string
+  readonly issuer: string
+  readonly redirectUri: string
+}): Promise<Record<string, unknown>> => {
+  const verifier = randomBytes(32).toString("base64url")
+  const authorization = new URL(`${request.issuer}/protocol/openid-connect/auth`)
+  authorization.search = new URLSearchParams({
+    client_id: request.clientId,
+    code_challenge: createHash("sha256").update(verifier).digest("base64url"),
+    code_challenge_method: "S256",
+    max_age: "0",
+    redirect_uri: request.redirectUri,
+    response_type: "code",
+    scope: "openid",
+    state: randomBytes(16).toString("base64url")
+  }).toString()
+  const browser = await providerBrowser()
+  try {
+    const page = await browser.newPage()
+    const isAuthentication = (url: URL) => url.href.startsWith(`${request.issuer}/login-actions/authenticate`)
+    // Playwright cannot route a redirect, so the browser must not follow the provider's: it would deliver the code to
+    // whatever listens at `redirectUri`.
+    const answers: string[] = []
+    await page.route(isAuthentication, async (route) => {
+      answers.push((await route.fetch({ maxRedirects: 0 })).headers().location ?? "")
+      await route.fulfill({ status: 204 })
+    }, { times: 1 })
+    await page.goto(authorization.href)
+    const answered = page.waitForResponse((response) => isAuthentication(new URL(response.url())))
+    await signInAtProvider(page)
+    await answered
+    const code = returnedCode(answers[0], request.redirectUri)
+    const response = await fetch(`${request.issuer}/protocol/openid-connect/token`, {
+      body: new URLSearchParams({
+        client_id: request.clientId,
+        code,
+        code_verifier: verifier,
+        grant_type: "authorization_code",
+        redirect_uri: request.redirectUri
+      }),
+      method: "POST"
+    })
+    if (!response.ok) assert.fail(`expected the provider to issue tokens, got HTTP ${String(response.status)}`)
+    const { id_token: idToken } = (await response.json()) as { id_token: string }
+    return JSON.parse(Buffer.from(idToken.split(".")[1] ?? "", "base64url").toString("utf8")) as Record<string, unknown>
+  } finally {
+    await browser.close()
+  }
 }
 
 /**

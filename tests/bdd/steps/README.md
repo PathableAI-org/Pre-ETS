@@ -8,7 +8,10 @@ Feature-level `@partial` limits evidence scope; it does not permit pending or fa
 Steps interact with the owned Next.js process over HTTP and in a real Chromium browser. Browser steps establish
 missing-page and forbidden-page presentation, provider arrival and callback delivery, and the session journeys:
 renewal by qualifying activity, cross-tab expiration, history protection, and recovery after expiry. They must not open Redis clients, session
-stores, or mock identity providers. Redis is observed only through application outcomes. Browser requests preserve
+stores, or mock identity providers. Setup may sign in at the real provider without the application, to arrange a
+provider session or to check a fixture client's prerequisite, as the Stale tenant step does with
+`providerIdTokenClaims`; that is not evidence about the application. Redis is observed only through application
+outcomes. Browser requests preserve
 the logical Host header while routing to the owned loopback process, so no step establishes infrastructure ingress
 behavior.
 
