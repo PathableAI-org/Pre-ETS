@@ -187,6 +187,26 @@ const interactionTimes = fc
   .array(fc.integer({ max: 600_000, min: 0 }), { maxLength: 40, minLength: 1 })
   .map((times) => [...times].sort((left, right) => left - right))
 
+/**
+ * A window record as any tab may have left it, relative to `now`: no record, a closed or an open window, with or
+ * without coalesced activity pending since some earlier interaction.
+ */
+const windowRecordAt = fc.option(
+  fc.record({
+    lastCommunicatedAgo: fc.option(fc.integer({ max: 2 * WINDOW, min: 0 }), { nil: undefined }),
+    pendingAgo: fc.option(
+      fc.tuple(fc.integer({ max: WINDOW, min: 0 }), fc.integer({ max: WINDOW, min: 0 }))
+        .map(([latest, extra]) => ({ latest, since: latest + extra })),
+      { nil: undefined }
+    )
+  }).map(({ lastCommunicatedAgo, pendingAgo }) => (now: number): ActivityWindowRecord => ({
+    lastCommunicatedAt: lastCommunicatedAgo === undefined ? undefined : now - lastCommunicatedAgo,
+    pendingLatest: pendingAgo === undefined ? undefined : now - pendingAgo.latest,
+    pendingSince: pendingAgo === undefined ? undefined : now - pendingAgo.since
+  })),
+  { nil: undefined }
+)
+
 describe("decideActivityCommunication (research D5, B5-W) [PREETS-SESSION-009]", () => {
   it.prop([
     interactionTimes,
@@ -222,6 +242,27 @@ describe("decideActivityCommunication (research D5, B5-W) [PREETS-SESSION-009]",
       })
     }
   )
+
+  it.prop([fc.integer({ max: 4_000_000_000_000, min: 0 }), windowRecordAt, fc.integer({ max: WINDOW - 1, min: 0 })], {
+    numRuns: 500
+  })(
+    "sends an interaction less than 60 s before the deadline at once, communicating any pending activity with it",
+    (now, recordAt, untilDeadline) => {
+      expect(decideActivityCommunication(recordAt?.(now), { deadline: now + untilDeadline, now })).toStrictEqual({
+        _tag: "SendNow",
+        record: { lastCommunicatedAt: now, pendingLatest: undefined, pendingSince: undefined }
+      })
+    }
+  )
+
+  it.each([
+    ["59.999 s", "SendNow", WINDOW - 1],
+    ["exactly 60 s", "Coalesce", WINDOW]
+  ])("in a window opened 10 s ago, decides an interaction %s before the deadline as %s", (_label, tag, until) => {
+    const now = 1_000_000
+    const record = { lastCommunicatedAt: now - 10_000, pendingLatest: undefined, pendingSince: undefined }
+    expect(decideActivityCommunication(record, { deadline: now + until, now })._tag).toBe(tag)
+  })
 })
 
 const snapshot = (revision: number, idleDeadlineEpochMilliseconds: number, observedAtEpochMilliseconds = 1_000) => ({
@@ -568,6 +609,55 @@ const coordinationHarness = () => {
 
 /** Lets queued channel deliveries arrive before asserting none came. */
 const deliveries = () => new Promise((resolve) => setImmediate(resolve))
+
+/**
+ * Protected content standing in for the DOM element: it keeps the coordinator's listeners, and `press` delivers a
+ * trusted character key on a text input inside it.
+ */
+const protectedContent = () => {
+  const listeners = new Map<string, (event: Event) => void>()
+  const content = {
+    addEventListener: (type: string, listener: (event: Event) => void) => listeners.set(type, listener),
+    contains: () => false,
+    hidden: false,
+    inert: false,
+    removeEventListener: () => undefined
+  }
+  return {
+    content: content as unknown as HTMLElement,
+    press: () => listeners.get("keydown")?.(domEvent("keydown", textInput, { key: "a" }))
+  }
+}
+
+describe("TabCoordination near-deadline activity (research D5, B5-W) [PREETS-SESSION-009]", () => {
+  const { start } = coordinationHarness()
+
+  /**
+   * The first key press is communicated at once and opens a window, but the server cannot answer it (503), so the
+   * deadline stays where it was. A second press 40 s later falls inside that window.
+   */
+  it.each([
+    ["50 s before the deadline is sent at once", 90_000, [NOW, NOW + 40_000]],
+    ["61 s before the deadline is held, not sent at once", 101_000, [NOW]]
+  ])("with a window open, a key press %s", async (_label, untilDeadline, expected) => {
+    const activitySentAt: number[] = []
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((path: string) => {
+        if (path === "/session/activity") activitySentAt.push(Date.now())
+        return Promise.resolve(new Response(null, { status: 503 }))
+      })
+    )
+    const { content, press } = protectedContent()
+    start({ ...coordinated, idleDeadlineEpochMilliseconds: NOW + untilDeadline }, content)
+    press()
+    await vi.advanceTimersByTimeAsync(40_000)
+    press()
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(activitySentAt).toStrictEqual(expected)
+  })
+})
 
 describe("TabCoordination.deny (#157 research D6, D7) [PREETS-SESSION-007]", () => {
   const { harness, start, statusAnswers: answers } = coordinationHarness()
@@ -984,25 +1074,6 @@ describe("TabCoordination warning (#156 research D3–D7) [PREETS-SESSION-011]",
   const statusReads = (requests: readonly Served[]) => requests.filter((request) => request.path === "/session/status")
   const activityKinds = (requests: readonly Served[]) =>
     requests.filter((request) => request.path === "/session/activity").map((request) => request.activity)
-
-  /**
-   * Protected content standing in for the DOM element: it keeps the coordinator's listeners, and `press` delivers a
-   * trusted character key on a text input inside it.
-   */
-  const protectedContent = () => {
-    const listeners = new Map<string, (event: Event) => void>()
-    const content = {
-      addEventListener: (type: string, listener: (event: Event) => void) => listeners.set(type, listener),
-      contains: () => false,
-      hidden: false,
-      inert: false,
-      removeEventListener: () => undefined
-    }
-    return {
-      content: content as unknown as HTMLElement,
-      press: () => listeners.get("keydown")?.(domEvent("keydown", textInput, { key: "a" }))
-    }
-  }
 
   /** Starts a tab under the enabled policy and runs it to the threshold, where its confirmation opens the warning. */
   const openWarning = async (answers: { readonly activity?: readonly Answer[] } = {}) => {

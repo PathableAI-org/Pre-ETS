@@ -6,11 +6,11 @@ Feature: Cross-tab activity coordination
   protected page. It does not establish refusal for a stored record that has expired or been
   removed; that evidence is the real-Redis coordination integration tests in
   frontend-services ("does not revive an expired session through activity" and "does not
-  revive a session through activity after logout"). It also does not establish renewal of a real session by
-  qualifying activity, the 60-second communication windows, exclusion of pointer movement and
-  programmatic focus, multi-tab synchronization, logout, or session isolation: each needs a
-  real session, which cannot be established until freshness confirmation exists (#158).
-  Warning, continuation, and expiration presentation belong to #156 and #157.
+  revive a session through activity after logout"). Renewal of a real session by qualifying
+  activity, the 60-second communication windows, and the exclusion of pointer movement,
+  programmatic focus, and background requests are the qualifying activity feature's evidence.
+  Multi-tab synchronization, logout, and session isolation are not established here. Warning,
+  continuation, and expiration presentation belong to #156 and #157.
 
   Scenario Outline: Activity without a usable session does not revive access
     Given production tenant sites for Springfield and Shelbyville

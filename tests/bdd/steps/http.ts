@@ -67,11 +67,11 @@ Given(
   }
 )
 
-/** A script-driven invocation of the built Server Action `exportedName`, posted to the page at `path` as its form is. */
-const invokeAction = async (world: AppWorld, exportedName: string, host: string, path: string) => {
+/** A script-driven invocation of the built Server Action `exportedName` at `path`, as its form posts it. */
+export const actionRequest = async (world: AppWorld, exportedName: string, host: string, path: string) => {
   const action = await serverActionId(exportedName)
   const { body, contentType } = await multipartBody(referenceActionArguments(world.coordinationTag))
-  await requestSiteWith(world, {
+  return {
     body,
     headers: {
       ...FETCH_METADATA.application,
@@ -84,7 +84,11 @@ const invokeAction = async (world: AppWorld, exportedName: string, host: string,
     host,
     method: "POST",
     path
-  })
+  }
+}
+
+const invokeAction = async (world: AppWorld, exportedName: string, host: string, path: string) => {
+  await requestSiteWith(world, await actionRequest(world, exportedName, host, path))
 }
 
 When("a visitor invokes the protected reference action at {string}", async function(this: AppWorld, host: string) {

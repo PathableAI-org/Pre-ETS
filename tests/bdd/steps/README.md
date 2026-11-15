@@ -7,7 +7,7 @@ Feature-level `@partial` limits evidence scope; it does not permit pending or fa
 
 Steps interact with the owned Next.js process over HTTP and in a real Chromium browser. Browser steps establish
 missing-page and forbidden-page presentation, provider arrival and callback delivery, and the session journeys:
-cross-tab expiration, history protection, and recovery after expiry. They must not open Redis clients, session
+renewal by qualifying activity, cross-tab expiration, history protection, and recovery after expiry. They must not open Redis clients, session
 stores, or mock identity providers. Redis is observed only through application outcomes. Browser requests preserve
 the logical Host header while routing to the owned loopback process, so no step establishes infrastructure ingress
 behavior.
@@ -18,17 +18,17 @@ frontend, recording the last HTTP response, the scoped browser transport, and th
 
 ## Step ownership
 
-| File                      | Owns                                                                                                    |
-| ------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `http.ts`                 | Generic requests and responses                                                                          |
-| `tenant.ts`               | Tenant configuration setup and tenant-specific observations                                             |
-| `presentation.ts`         | Rendered missing-page and forbidden-page content after navigation                                       |
-| `authentication.ts`       | Provider destination/protocol, callback delivery, and public sign-in observations                       |
-| `session-coordination.ts` | Raw in-page activity communications sent without a browser                                              |
-| `expiration.ts`           | Idle expiration across named tabs: concealment, the expiration modal, resumed tabs, logout, and history |
-| `expired-recovery.ts`     | Recovery from an expired or removed session: recovery documents, form submissions, and second tabs      |
-| `fresh-recovery.ts`       | Fresh authentication with a provider single sign-on session: logout, history, and session replacement   |
-| `shared-session.ts`       | Named sessions presented to two instances: admission, renewal, and expiration through either            |
+| File                      | Owns                                                                                                                         |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `http.ts`                 | Generic requests and responses                                                                                               |
+| `tenant.ts`               | Tenant configuration setup and tenant-specific observations                                                                  |
+| `presentation.ts`         | Rendered missing-page and forbidden-page content after navigation                                                            |
+| `authentication.ts`       | Provider destination/protocol, callback delivery, and public sign-in observations                                            |
+| `session-coordination.ts` | In-page activity sent without a browser, and what renews a real session: tab interactions and requests, read from its status |
+| `expiration.ts`           | Idle expiration across named tabs: concealment, the expiration modal, resumed tabs, logout, and history                      |
+| `expired-recovery.ts`     | Recovery from an expired or removed session: recovery documents, form submissions, and second tabs                           |
+| `fresh-recovery.ts`       | Fresh authentication with a provider single sign-on session: logout, history, and session replacement                        |
+| `shared-session.ts`       | Named sessions presented to two instances: admission, renewal, and expiration through either                                 |
 
 Add a step to the file that owns its journey. A browser journey that keeps state across steps (its browser, named
 tabs or contexts, observed traffic) keeps it in a module-level `WeakMap` keyed by the world and closes its browser
