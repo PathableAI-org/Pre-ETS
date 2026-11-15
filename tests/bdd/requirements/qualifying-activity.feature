@@ -65,7 +65,8 @@ Feature: Qualifying activity renews a session; pointer movement and background r
     Tabs "T1" and "T2" share one session. The window is the session's, whichever tab interacts.
     An arrow key in a focused field opens the first window, because it is one interaction; a click
     on a control without focus is two, the focus move and the click, and the click would keep a
-    window open past the minute of silence.
+    window open past the minute of silence. The interactions held in the second window come two
+    seconds into it, after its first renewal has reached the tab.
 
     Given the visitor has signed in at "springfield.localhost:3000" and opened tabs "T1" and "T2"
     And tabs "T1" and "T2" show the participant page
@@ -75,6 +76,7 @@ Feature: Qualifying activity renews a session; pointer movement and background r
     And the visitor clicks the acknowledgement checkbox in tab "T2"
     Then the session is renewed at once
     When tab "T2" holds that renewal
+    And the visitor waits 2 seconds without acting
     And the visitor clicks the acknowledgement checkbox in tab "T2"
     And the visitor types in the goal field in tab "T1"
     Then the session keeps its deadline until that window ends, then is renewed once, no later than 60 seconds after the first of those interactions
