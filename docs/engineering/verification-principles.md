@@ -126,6 +126,79 @@ results at the release revision, any accepted substitutes, and runtime signals. 
 checks, appear as gaps. The record is never maintained by hand inside the requirements. Durable requirements decides
 when such a derived view is introduced. This guide states the direction, not the timing.
 
+## The definition changes over time
+
+Accepted requirements are the target. What the product promises at a given revision is that target minus what has not
+been built yet. A new requirement is implemented in steps, so for a while the product promises only part of it.
+Conformance at a revision is always relative to what that revision promises.
+
+Each part of the definition moves through a lifecycle, and its checks move with it:
+
+| State of the part        | Its conformance checks                                                                  |
+| ------------------------ | --------------------------------------------------------------------------------------- |
+| Accepted, not started    | May already exist, written from the requirement, but are not expected to pass. Pending. |
+| In progress              | Gate for the parts that are built; the rest stay pending                                |
+| Implemented              | Gate on every change, for as long as the requirement stands                             |
+| Superseded by a new part | Retired, in the same change that brings in what replaces it                             |
+
+### The promise only grows
+
+The set of parts the product promises grows as work lands and never shrinks quietly. A check that stops gating, or
+gets weaker, is one of two things: a change to the definition that a person approved, referenced as such, or a
+suppression. This is the same rule as never silencing a failing check, applied to the product's definition.
+
+Writing conformance checks early, straight from the requirement, makes progress visible. A pending check that starts
+passing before anyone expected it to is a signal: either the part is now built and the check should start gating, or
+the check cannot fail.
+
+### Behavior between steps
+
+Between steps, users could see behavior that belongs to neither the old definition nor the new one. In order of
+preference:
+
+1. **Keep unfinished behavior out of users' reach** until the steps that complete it have landed, so what users see
+   still matches a definition the product has promised.
+2. **Order the steps so each leaves a coherent product:** add the new behavior beside the old, move to it, then remove
+   the old. Every step is then a product that matches some definition you could stand behind.
+3. **Declare a transitional expectation** only when neither is practical. It is checked like any other part, labeled
+   as transitional, and names the step that removes it. The work is not finished while any remain. A transitional
+   check left in place becomes a permanent test of an intermediate state nobody intended to keep.
+
+Behavior that users can see but that no definition describes is what an auditor will ask about first.
+
+### What a release promises
+
+A release is a revision whose promised parts are what we are willing to stand behind. Its record says which
+requirements are implemented and with what evidence, which are in progress and how their unfinished behavior is kept
+from users, and which are accepted but not started, so that what is not promised is as clear as what is.
+
+## Verifying a change
+
+Checking the whole definition on every change takes too long. A change is verified against what it could affect:
+
+- **No regression:** every promised part the change puts at risk still holds.
+- **Its own claims:** the parts this change says it delivers now hold, and their checks start gating.
+- **The promise only grows,** unless a person approved a change to the definition.
+
+### Choosing what is at risk is itself a claim
+
+Deciding which parts a change puts at risk is a claim, and it can be wrong. A regression usually lands in the part the
+author did not think about. So:
+
+- What is at risk is decided from the change itself, in a way anyone can repeat. An author's or agent's statement of
+  what a change affects may add parts to check, but never removes any.
+- A change to something everything depends on puts everything at risk.
+- A small set of the most consequential parts is checked on every change, whatever the selection says. It is cheap
+  insurance against a selection that is quietly wrong.
+- The whole definition is still checked regularly, and always on a release. That full check is the backstop.
+- When the full check finds a regression that change-level selection did not check, treat it as a defect in the
+  selection as well as in the code, and fix the selection so the same kind of change catches it next time. How often
+  this happens is the measure of whether selection works.
+
+Faster checks are better than cleverer selection. Making checks faster adds no new way to be wrong; selecting fewer of
+them does. Weigh any selection scheme's complexity against the time it saves, and start with the least machinery that
+works.
+
 ## Choose techniques for fit, not preference
 
 No technique is good everywhere. Choose by the claim and by what the evidence costs to build and keep.
@@ -154,6 +227,18 @@ different model, and receives a brief the author did not write is more likely to
 Tools run the checks and generate the record; independent judgment decides whether what the record contains means
 anything. An author's own review before sharing work speeds it up but does not count as evidence.
 
+### Where verification runs
+
+Verification that runs automatically on every change should be deterministic, finish in a reasonable time, need only
+setup that can be reproduced, and need no judgment to read. Anything that gates a change should meet that bar, because
+a gate is only as trustworthy as anyone's ability to run it again and get the same answer.
+
+Work that needs judgment or exploration runs in agent sessions instead: assessing whether claims match the
+definition, observing runtime behavior, demonstrating that a check fails, or anything whose setup is too costly to
+repeat on every change. A session's result counts as evidence only when it is recorded with its revision, environment,
+actions, and limits, and even then it is weaker than a result anyone can reproduce. Over time, gating work that can be
+made deterministic should move out of sessions and into the automatic runs.
+
 ## Overhead is a cost
 
 Every check and every layer costs something to build, run, maintain, and read. Each should earn its place by catching
@@ -172,5 +257,6 @@ These are for proposals about the verification system: a new layer, tool, channe
 - Does it produce conformance evidence or implementation evidence, and is it presented as what it is?
 - Which kind of defect does it own that nothing cheaper already catches?
 - Does it run in a deterministic tool, or does it depend on someone remembering?
+- For a change, how does it decide what is at risk, and how would we learn that the decision was wrong?
 - Does it work before release, at runtime, or both?
 - What does it cost to build, run, maintain, and read?
