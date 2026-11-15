@@ -337,12 +337,13 @@ versions. dprint and its plugins, Prettier and its plugins, and Git hook tooling
 have separate update groups. OpenTelemetry API, SDK, experimental packages,
 instrumentation, and semantic conventions share one group, including majors, so
 a single release line is updated together. `@effect/opentelemetry` remains in
-the Effect group. Version ceilings keep that group inside the installed
-wrapper's peer ranges: `@opentelemetry/api` below 1.10.0, experimental packages
-below 0.300.0, the stable SDK below 3.0.0, and semantic conventions below 2.0.0.
-Remove the ceilings in the change that adopts a wrapper whose peers accept the
-next SDK, once the frontend no longer depends on `@opentelemetry/sdk-trace-base`,
-`sdk-trace-node`, or `sdk-trace-web`. React/Next and Vite/Vitest retain their existing
+the Effect group. OpenTelemetry versions must stay inside that wrapper's peer
+ranges, and packages it does not name, such as `sdk-node`, the OTLP exporters,
+and contrib instrumentations, reach the next SDK through their own dependencies.
+Renovate therefore opens pull requests only for OpenTelemetry patch updates.
+Minor and major updates wait for approval on the Dependency Dashboard; bump the
+whole OpenTelemetry catalog by hand in the change that upgrades Effect to a
+wrapper whose peers accept them. React/Next and Vite/Vitest retain their existing
 groups, including Vitest companion packages.
 
 Node types remain declared at the root and grouped with the Node runtime. Keep
