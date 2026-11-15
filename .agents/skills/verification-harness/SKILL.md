@@ -112,7 +112,8 @@ note. Fix any validation problem and record again. If the command says the repor
 fix the cause and run `pnpm notes:publish verification <SHA> [--pr <n>]`. Until then the implementation session
 cannot see the report.
 
-For a High fix, use slice ID `fix` and omit `featureDir` unless the request names one.
+For a High fix, use slice ID `fix`, the claim IDs the pull request body numbers, and omit `featureDir` unless the
+request names one.
 
 Send the implementation session only the pointer the command prints, `refs/notes/verification @ <SHA> (run <uuid>)`,
 plus one line naming any claim that is not `established`, any telemetry row that is not present, and any
