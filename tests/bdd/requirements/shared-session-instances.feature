@@ -2,8 +2,9 @@
 @preets-session-006
 Feature: Session state shared by independently running application instances
   Each scenario starts two production application processes, A and B, independently. They serve the
-  same logical tenant authorities and share only the configured session store. A session is signed
-  in through the tracked provider in a real browser whose every request, the provider return
+  same logical tenant authorities from the same tenant configuration directory and OIDC transaction
+  store; session state reaches either one only through the shared session store. A session is
+  signed in through the tracked provider in a real browser whose every request, the provider return
   included, reaches one named instance; it is then presented over unfollowed HTTP to a named
   instance. Status reads never renew, so they observe a deadline without changing it.
 
@@ -16,7 +17,8 @@ Feature: Session state shared by independently running application instances
   both instances at once at that deadline do not revive the session.
 
   Not established here: PREETS-SESSION-008's timeout domain and default, initial and renewed
-  deadline values, policy adoption on refresh, and background traffic; more than two instances;
+  deadline values, policy adoption on refresh, and background traffic; instances whose tenant
+  policy differs, since both read the one tenant file a scenario sets; more than two instances;
   routing by real infrastructure ingress. Expiration is observed from a tenth of a second after
   the deadline, not at its exact instant.
 

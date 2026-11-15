@@ -4,23 +4,27 @@ import { setTimeout as delay } from "node:timers/promises"
 
 import type { AppWorld } from "../support/world.ts"
 
-import { applicationBrowser, signInAtProvider } from "../support/browser.ts"
-import {
-  FETCH_METADATA,
-  type RecordedResponse,
-  requestInstance,
-  sendRequest,
-  startSecondSite
-} from "../support/server.ts"
+import { applicationBrowser, signInThroughApplication } from "../support/browser.ts"
+import { type RecordedResponse, requestInstance, sendRequest, startSecondSite } from "../support/server.ts"
+import { namesOf } from "./expiration.ts"
 import { assertNoProtectedContent, assertSameOriginLogin } from "./http.ts"
+import { activityCommunication } from "./session-coordination.ts"
 
 /**
  * The port of one of the two independently started application processes: A is the world's site, B its second site.
- * Both serve the same logical tenant authorities and share only the configured session store.
+ * Both serve the same logical tenant authorities from the same configuration; session state reaches either one only
+ * through the shared session store.
  */
 const portOf = (world: AppWorld, instance: string): number => {
   assert.ok(instance === "A" || instance === "B", `Unknown application instance ${instance}`)
   return instance === "A" ? world.port : world.secondaryPort
+}
+
+/** The user and tenant an admitted entry shows. */
+interface EntryIdentity {
+  readonly issuer: string
+  readonly subject: string
+  readonly tenantAlias: string
 }
 
 /** What presents a session to an instance: its cookie, at the tenant authority it was established for. */
@@ -38,6 +42,10 @@ interface SharedSession extends Presentation {
   atDeadline: RecordedResponse[]
   /** The tag the session's own tabs send with activity, read from the session's status. */
   readonly coordinationTag: string
+  /** What the establishing instance's entry showed right after sign-in, before the other instance served it. */
+  readonly establishedIdentity: EntryIdentity
+  /** The instance every request of the sign-in reached. */
+  readonly establishedThrough: string
   /** The deadline right after sign-in, before any later request renewed it. */
   readonly originalDeadline: number
   /** The answers to activity sent through both instances together. */
@@ -60,12 +68,6 @@ const sessionOf = (world: AppWorld, name: string): SharedSession => {
   return session
 }
 
-const namesIn = (list: string): string[] => {
-  const names = [...list.matchAll(/"([^"]+)"/g)].map((match) => match[1] ?? "")
-  assert.ok(names.length > 0, `expected quoted session names in ${list}`)
-  return names
-}
-
 /** `GET /session/status`, an application request: it reads the session and never renews it. */
 const readStatus = (world: AppWorld, instance: string, session: Presentation) =>
   requestInstance(world, portOf(world, instance), session.host, "/session/status", false, session.cookie)
@@ -74,20 +76,11 @@ const readStatus = (world: AppWorld, instance: string, session: Presentation) =>
 const requestEntry = (world: AppWorld, instance: string, session: Presentation) =>
   requestInstance(world, portOf(world, instance), session.host, "/", true, session.cookie)
 
-/** Qualifying in-page activity as the session's own tab sends it: same-origin JSON carrying the session's tag. */
+/** Qualifying in-page activity as the session's own tab sends it, carrying the session's tag. */
 const communicateActivity = (world: AppWorld, instance: string, session: SharedSession) =>
   sendRequest(world, {
-    body: Buffer.from(JSON.stringify({ activity: "keyboard-interaction", coordinationTag: session.coordinationTag })),
+    ...activityCommunication(session.host, "keyboard-interaction", session.coordinationTag),
     cookie: session.cookie,
-    headers: {
-      ...FETCH_METADATA.application,
-      "content-type": "application/json",
-      Origin: `https://${session.host}`,
-      "sec-fetch-site": "same-origin"
-    },
-    host: session.host,
-    method: "POST",
-    path: "/session/activity",
     port: portOf(world, instance)
   })
 
@@ -101,10 +94,10 @@ const snapshotOf = (response: RecordedResponse) => {
 }
 
 /**
- * The user and tenant an admitted entry shows. The reference entry displays the session's subject, issuer, and tenant
- * alias as the first texts after its heading; steps compare them between instances and promise no layout.
+ * The reference entry displays the session's subject, issuer, and tenant alias as the first texts after its heading;
+ * steps compare them between instances and promise no layout.
  */
-const entryIdentity = (response: RecordedResponse) => {
+const entryIdentity = (response: RecordedResponse): EntryIdentity => {
   assert.equal(response.status, 200, "expected the entry to admit the session")
   const heading = response.body.indexOf(">Reference session<")
   assert.ok(heading >= 0, "expected the protected reference entry")
@@ -119,43 +112,44 @@ const renewedDeadlineOf = (session: SharedSession): number => {
   return session.renewedDeadline
 }
 
+/** Waits until two seconds after the latest of the listed sessions' chosen deadlines. */
+const waitPast = async (world: AppWorld, list: string, deadlineOf: (session: SharedSession) => number) => {
+  const names = namesOf(list)
+  assert.ok(names.length > 0, `expected quoted session names in ${list}`)
+  const latest = Math.max(...names.map((name) => deadlineOf(sessionOf(world, name))))
+  await delay(Math.max(0, latest + 2_000 - Date.now()))
+}
+
 /** Steps run after a deadline on the clock these local processes share. */
 const assertPast = (deadline: number): void => {
   assert.ok(Date.now() > deadline, "expected the step to run after the deadline")
 }
 
 /**
- * Signs in through the tracked provider in a real browser whose every request, the provider return included, reaches
- * the instance on `port`, then closes the browser so nothing else renews the session. Answers the session's cookie.
+ * Signs in in a real browser whose every request, the provider return included, reaches one instance, and closes it
+ * so nothing else renews the session. That instance's entry is then read for the identity it shows, and its status
+ * for the session's tag and deadline.
  */
-const signInThrough = async (port: number, host: string): Promise<string> => {
-  const owned = await applicationBrowser(port, [host])
-  try {
-    const context = await owned.browser.newContext()
-    const page = await context.newPage()
-    await page.goto(`http://${host}/`)
-    await signInAtProvider(page)
-    await page.waitForURL((url) => url.host === host)
-    await page.getByRole("button", { name: "Log out" }).waitFor({ state: "visible" })
-    const session = (await context.cookies(`http://${host}/`)).find((entry) => entry.name === "pathable-session")
-    assert.ok(session, "expected an application session after signing in")
-    return `pathable-session=${session.value}`
-  } finally {
-    await owned.close()
-  }
-}
-
 When(
   "the visitor signs in to session {string} at {string} through instance {word}",
   async function(this: AppWorld, name: string, host: string, instance: string) {
     await startSecondSite(this)
-    const cookie = await signInThrough(portOf(this, instance), host)
-    const { coordinationTag, deadline } = snapshotOf(await readStatus(this, instance, { cookie, host }))
+    const owned = await applicationBrowser(portOf(this, instance), [host])
+    let reference: string
+    try {
+      reference = await signInThroughApplication(await owned.browser.newContext(), host)
+    } finally {
+      await owned.close()
+    }
+    const presented = { cookie: `pathable-session=${reference}`, host }
+    const establishedIdentity = entryIdentity(await requestEntry(this, instance, presented))
+    const { coordinationTag, deadline } = snapshotOf(await readStatus(this, instance, presented))
     sessionsOf(this).set(name, {
+      ...presented,
       atDeadline: [],
-      cookie,
       coordinationTag,
-      host,
+      establishedIdentity,
+      establishedThrough: instance,
       originalDeadline: deadline,
       renewals: []
     })
@@ -187,16 +181,14 @@ When("the original deadlines of sessions {} pass", { timeout: 7 * 60_000 }, asyn
   this: AppWorld,
   list: string
 ) {
-  const deadlines = namesIn(list).map((name) => sessionOf(this, name).originalDeadline)
-  await delay(Math.max(0, Math.max(...deadlines) + 2_000 - Date.now()))
+  await waitPast(this, list, (session) => session.originalDeadline)
 })
 
 When("the renewed deadlines of sessions {} pass", { timeout: 7 * 60_000 }, async function(
   this: AppWorld,
   list: string
 ) {
-  const deadlines = namesIn(list).map((name) => renewedDeadlineOf(sessionOf(this, name)))
-  await delay(Math.max(0, Math.max(...deadlines) + 2_000 - Date.now()))
+  await waitPast(this, list, renewedDeadlineOf)
 })
 
 /** Sent together a tenth of a second after the session's authoritative deadline. */
@@ -215,14 +207,19 @@ When(
   }
 )
 
+/** The other instance's first answer for the session is compared with what the establishing one showed before it. */
 Then(
   "instance {word} admits session {string} to the application entry with the same user and tenant as instance {word}",
   async function(this: AppWorld, other: string, name: string, establishing: string) {
     const session = sessionOf(this, name)
-    // The instance that never served this session answers before the establishing one serves it again.
+    assert.equal(
+      session.establishedThrough,
+      establishing,
+      `expected session ${name} established through ${establishing}`
+    )
+    assert.notEqual(other, establishing, "expected the other instance")
     const recognized = entryIdentity(await requestEntry(this, other, session))
-    const established = entryIdentity(await requestEntry(this, establishing, session))
-    assert.deepEqual(recognized, established)
+    assert.deepEqual(recognized, session.establishedIdentity)
     assert.equal(recognized.tenantAlias, session.host.split(".")[0])
   }
 )
