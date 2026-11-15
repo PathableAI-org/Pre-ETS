@@ -1,0 +1,99 @@
+# Verification Telemetry Contract: Configurable Telemetry Export Timing
+
+**Plan**: [plan.md](../plan.md)
+
+**Feature verification**: [verification.md](../verification.md)
+
+**Module contracts**: [modules.md](modules.md)
+
+**Status**: Planned design — this feature adds no instrumentation; every row references a record that exists today
+
+This contract names the existing records a verification agent reads for the feature's telemetry-channel claims. It
+follows the [verification telemetry conventions](../../../docs/observability.md#verification-telemetry-conventions)
+and the [verification harness](../../../docs/engineering/verification-harness.md). The specification excludes new
+signals, attributes, and resource attributes (FR-009), so no row is new and no slice commits instrumentation.
+Durable tests do not assert any row.
+
+## Observation coverage
+
+Every claim in `verification.md` whose evidence channel is server or browser telemetry appears here. Claims
+observed only at the temporary receiver, through browser interaction, or by module tests are listed under
+[Facts not emitted](#facts-not-emitted).
+
+| Claim IDs | Required observation (from `verification.md`)                                                               | Signal rows         | Slice         |
+| --------- | ----------------------------------------------------------------------------------------------------------- | ------------------- | ------------- |
+| V-003     | A sampled request's trace and log records are found, by run and revision, within 10 seconds of the response | T-001, T-002        | A (part), F   |
+| V-004     | A sampled interaction's browser record is found in the trace store within 10 seconds                        | T-003               | B             |
+| V-011     | A requirements BDD run's trace and log records are found, selected by the run's identifiers                 | T-001, T-002        | D             |
+| V-012     | Records of the operations a unit selection and an integration selection exercise are found for the run      | T-004               | E             |
+| V-014     | A run with supplied identifiers is selected by exactly those values; a concurrent run with others is not    | T-001               | D             |
+| V-017     | The record of an interaction that navigates at once is found, under each timing                             | T-003               | B             |
+| V-019     | The record names, attribute names, and resource attributes of a journey are equal under both timings        | T-001, T-002, T-003 | A (server), B |
+| V-020     | Every exported field of the run's server and browser records holds no probe value and no forbidden class    | T-001, T-002, T-003 | A (server), B |
+| V-023     | Following only the documentation yields the V-001 and V-003 observations                                    | T-001, T-002        | F             |
+
+## Signals
+
+All four rows are existing records. "Emitted by" names today's owner; this feature changes none of them.
+
+| ID    | Signal       | Name                                                                                                                                         | Emitted by                                                                                       | Attributes or fields and data class                                                                                                                                                                                                                                                     | Correlation                                                                                                             | Verifier query                                                                                                                                        | Expected negative observation                                                                                                                                     |
+| ----- | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| T-001 | Span (trace) | The HTTP server span of an incoming request, with the Next.js and `Effect.fn` spans below it                                                 | Node SDK HTTP instrumentation and the Effect bridge, through `observability/sdk.ts`              | The attributes in [Required span attributes and redaction](../../../docs/observability.md#required-span-attributes-and-redaction) and [Verification signals](../../../docs/session-state.md#verification-signals): method, route template, status, closed-set outcomes. No query string | The W3C `traceparent` the verifier sends with the request; `service.version`; `service.instance.id`                     | `{ RUN && resource.telemetry.sdk.language = "nodejs" && kind = server && trace:id = "<trace-id>" }`                                                   | No result 10 seconds after the response although the receiver saw the trace export: `not established` under L-stack. No export at the receiver: V-001 is violated |
+| T-002 | Log          | `Reading tenant configuration`, at debug level                                                                                               | `TenantConfigService.getConfigFromAlias` in `tenant.ts`, on each tenant-resolving request        | The fixed message and the standard resource. No annotation, no file content, no alias                                                                                                                                                                                                   | `service.instance.id` (index label), `service.version` (structured metadata), the request's trace context, arrival time | `{service_name="pre-ets-frontend", service_instance_id="<run-uuid>"} \|= "Reading tenant configuration" \| service_version="<sha>"`                   | No new record after a sampled request. Check `LOG_LEVEL=Debug` was set before reporting                                                                           |
+| T-003 | Span (trace) | The browser records: `documentLoad`, `documentFetch`, fetch spans, and the harness facts such as `Interaction.login` and `Router.transition` | The web SDK and the facade in `shared/browser-tracing.ts`, after the export filter               | The allow-listed attributes in [Browser export](../../../docs/observability.md#browser-export) and [Browser harness facts](../../../docs/observability.md#browser-harness-facts): closed-set values and `url.path`                                                                      | The document's server trace, `service.version`, `service.instance.id`, and `resource.telemetry.sdk.language = "webjs"`  | `{ RUN && resource.telemetry.sdk.language = "webjs" && name = "<record>" }`, for example `name = "Router.transition"` or `name = "Interaction.login"` | The page's export request was seen by Playwright but no record is found after 10 seconds: `not established` under L-stack. No export request: V-004 is violated   |
+| T-004 | Span and log | The `Effect.fn` spans of the services a test exercises, such as `SessionService.establish` and `TenantConfigService.getConfigFromAlias`      | The service modules, exported from a test process through `tests/helpers/telemetry.ts` (slice E) | The same attributes those spans carry in the application ([Verification signals](../../../docs/session-state.md#verification-signals)). Synthetic test values only                                                                                                                      | `service.instance.id` of the test run (generated by the command or supplied), `service.version` when supplied           | `{ resource.service.instance.id = "<run-uuid>" && name = "SessionService.establish" }` and the T-002 LogQL form with the run's identifier             | No span for an operation the selected tests run through a provision point                                                                                         |
+
+`RUN` stands for `resource.service.version = "<sha>" && resource.service.instance.id = "<run-uuid>"`. Every verifier
+query filters by both run resource attributes, except that a test run started without a supplied revision is
+selected by `service.instance.id` alone, because its `service.version` is `UNKNOWN`. Verification runs supply both.
+In Loki, `service_instance_id` is an index label and `service_version` is structured metadata, as
+[Session state](../../../docs/session-state.md#verification-signals) notes.
+
+### Outcome values
+
+No row is added, so no outcome set is defined here. T-001 and T-004 spans keep the `preets.outcome` sets listed in
+[Session state](../../../docs/session-state.md#verification-signals). T-003 records keep the sets in
+[Browser export](../../../docs/observability.md#browser-export) and
+[Browser harness facts](../../../docs/observability.md#browser-harness-facts). T-002 is a log and carries none.
+
+## Facts not emitted
+
+| Claim IDs                                | Fact                                                                 | Why it is not emitted                                                | How it is verified instead                                                                                    |
+| ---------------------------------------- | -------------------------------------------------------------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| V-001, V-002, V-005, V-015, V-016, V-021 | When an export request leaves a server or test process, and how many | Telemetry cannot record its own timing; a new attribute is excluded  | Arrival times and counts at the temporary local receiver                                                      |
+| V-004, V-006                             | When the page's export request leaves, and how many                  | The same                                                             | Playwright's record of the page's requests to the collector address                                           |
+| V-007                                    | The effective export timing                                          | The specification establishes it by decoding tests and by its effect | Config decoding examples and property; one development-mode start at the receiver                             |
+| V-008                                    | That an unrecognized value refused startup                           | A process that never starts exports nothing                          | Config decoding property; one real start per case, observed by exit status and the startup log                |
+| V-009, V-010, V-014                      | That nothing was exported                                            | Absence is not observable in telemetry                               | A zero request count at the receiver; the received document has no tracing configuration                      |
+| V-013                                    | Per-test results                                                     | Not telemetry                                                        | The suites' own results, compared across three runs                                                           |
+| V-018                                    | Responses and visible outcomes with the collector unreachable        | Nothing can be exported in that condition                            | Browser interaction, and the process's exit                                                                   |
+| V-022                                    | The configuration a protected document carries                       | It is page content                                                   | The received document, read through Playwright                                                                |
+| V-019, V-020                             | Collector header values, query strings, fragments, forbidden classes | Forbidden data classes                                               | The receiver records only whether the synthetic header is present; exhaustive inspection finds no probe value |
+
+## Metrics cardinality
+
+No metrics. The feature adds none and reads none through this contract. V-021 counts metric export requests at the
+receiver.
+
+## Verifier environment
+
+Beyond the standard [harness environment](../../../docs/engineering/verification-harness.md#environment):
+
+- `TELEMETRY_EXPORT_TIMING=immediate` for the production build under verification, except in the steps that
+  observe `batch` or the production default.
+- `LOG_LEVEL=Debug`, so each tenant-resolving request emits T-002.
+- `OTEL_EXPORTER_OTLP_ENDPOINT` names the temporary receiver in the steps that observe export timing, counts, or
+  absence, and the local stack otherwise. The receiver's forwarding mode serves the steps that need both.
+- The application is started through the frontend workspace's `start` script, which sets
+  `NEXT_MANUAL_SIG_HANDLE=true` from slice C on.
+- A synthetic collector header value for V-019, never a real credential and never copied into a report.
+- With immediate timing there is no batch-interval wait before a trace or log query. The 60-second metric interval
+  still applies to V-021.
+
+## Readiness review
+
+- [x] Every telemetry-channel claim in `verification.md` maps to at least one signal row or a stated alternative.
+- [x] Every signal names its emitting module, its query, and the observation that shows a violation.
+- [x] No attribute or field falls in a forbidden data class.
+- [x] Metric attributes are low-cardinality (no metrics).
+- [x] Every signal is assigned to the implementation slice that implements the behavior it observes.
