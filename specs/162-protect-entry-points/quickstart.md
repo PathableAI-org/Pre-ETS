@@ -389,3 +389,41 @@ Application code is unchanged from `d4da131` through `99d479b`; the later commit
 V-004 (pending F-1); steps 7b, 9, and 10, V-007, V-008, V-014 joining, the V-006 confirmed/unconfirmed distinction,
 and real-login SESSION-005 AC1 (pending #158); SESSION-004 AC2 recovery composition (#157); store-outage recovery
 (earlier Finding 2). F-3's residual narrowing awaits maintainer acknowledgement on #353 (research F-3).
+
+## Results addendum (2026-11-15, #440, revision `f046a3f`)
+
+Recorded for delivery issue #440 once #158's freshness confirmation let the BDD harness establish real sessions.
+Results only; the procedure above is unchanged. For V-009 and V-010 it supersedes the claim map's "Running-app
+automated mismatch gated on #158 (F-2)" and the real-login SESSION-005 AC1 item under Limitations and the earlier
+"incomplete" lists; those stay above as history. It changes no other claim's status.
+
+### Conditions
+
+- Revision `f046a3f` on `440-session-005-forbidden-evidence`. Executed 2026-11-15 UTC.
+- Node.js 26.13.1, pnpm 12.21.0, Next.js 16.4.6 production build started by the harness (`next start -H 127.0.0.1`),
+  Playwright 1.65.1 bundled Chromium (headless). Shared local Redis 8.10.3 and Keycloak 26.8.2 (realm `pre-ets`),
+  each scenario under its own `preets:bdd:session:<uuid>:` and `preets:bdd:oidc-tx:<uuid>:` prefixes;
+  `OTEL_SDK_DISABLED=true`.
+- Tenants `springfield` and `shelbyville` from `fixtures/tenant-config/` and the realm's synthetic user. Every session
+  comes from real provider sign-in, with the return delivered to a second instance; no prepared records.
+
+### Requirements-backed BDD (`tests/bdd/requirements/tenant-session-binding.feature`, `@preets-session-005`)
+
+| Scenario                                                  | Observation                                                                                                                            | Result                      |
+| --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- |
+| The session's own tenant admits it                        | Springfield session, host mode, `GET /` navigation at `springfield.localhost:3000` → 200 with the reference session page               | Pass (SESSION-005 AC1)      |
+| Another tenant forbids the session with HTTP 403 (3 rows) | At `shelbyville.localhost:3000`: `GET /` navigation, `GET /` application request, `GET /session/status` → 403, no protected content    | Pass (AC2, V-009)           |
+| Another tenant forbids the session's protected action     | `runReferenceOperation` invoked at `shelbyville.localhost:3000` → 403, no reference-operation receipt                                  | Pass (AC2, V-009)           |
+| The browser shows the forbidden page                      | Chromium at `shelbyville.localhost:3000/` presenting the session → document 403, level-1 heading "Access denied", no protected content | Pass (AC2, V-009)           |
+| A static selection of another tenant forbids the session  | Restarted with static alias `shelbyville`; `GET /` navigation with Host `springfield.localhost:3000` → 403, no protected content       | Pass (AC3, AC4, V-010)      |
+| A static selection of the session's tenant admits it      | Restarted with static alias `springfield`; `GET /` navigation with Host `shelbyville.localhost:3000` → 200 reference session page      | Pass (AC1, AC3, AC4, V-010) |
+
+At `f046a3f` the eight scenarios passed, together with the fresh-entry scenario whose browser helper they now share:
+9 scenarios, 105 steps. A mutation check on an uncommitted build, in which the gate admitted a tenant mismatch, failed
+the six forbidding scenarios and passed the two admitting ones; the build was reverted and rebuilt before the recorded
+run. The forbidden page's keyboard and focus behaviour (V-018) is not asserted here; the 2026-11-09 addendum's manual
+observation stands. The pull request for #440 records the full-suite runs.
+
+### Still incomplete
+
+V-004 (pending F-1).
