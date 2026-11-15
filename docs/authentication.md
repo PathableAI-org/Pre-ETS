@@ -137,8 +137,8 @@ REDIS_URL=redis://127.0.0.1:6379
 
 Host-mode browser checks use the registered `springfield.localhost:3000` and
 `shelbyville.localhost:3000` origins. BDD supplies those explicit callback origins
-independently of its logical request Hosts and random application ports. Nightly/manual
-BDD remains main-only and provisions pinned Redis and Keycloak dependencies with bounded
+independently of its logical request Hosts and random application ports. CI BDD, nightly on
+`main` or manually dispatched on any branch, provisions pinned Redis and Keycloak dependencies with bounded
 readiness, scenario-owned transaction prefixes, diagnostics and unconditional owned
 provider cleanup. Callback scenarios compose two independent Next processes on the same
 registered authority to prove cross-instance recovery.

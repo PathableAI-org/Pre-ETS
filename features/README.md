@@ -35,7 +35,10 @@ pnpm exec playwright install chromium
 pnpm test:bdd
 ```
 
-`REDIS_URL` defaults to `redis://127.0.0.1:6379` for the owned Next process. Each scenario owns a
+`REDIS_URL` defaults to `redis://127.0.0.1:6379` for the owned Next process. That process otherwise takes its
+server configuration from the shell and `packages/frontend/.env.local`, so OTEL needs either `OTEL_SDK_DISABLED=true`,
+which CI sets, or both `OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_SERVICE_NAME`
+([Observability](../docs/observability.md#environment-variables)). Each scenario owns a
 temporary tenant directory and explicit callback origins/loopback permission. Cleanup removes only that
 scenario's resources. The registered `http://springfield.localhost:3000` and
 `http://shelbyville.localhost:3000` callback origins do not follow Next's random transport port or logical
@@ -71,7 +74,8 @@ See [step guidance](../tests/bdd/steps/README.md).
 
 CI provisions the pinned real Keycloak realm with bounded readiness and cleanup. It runs requirements BDD
 and the production safeguard smoke nightly at 06:17 UTC on `main`.
-Manual dispatch is also restricted to `main`; there is no CI dry-run job.
+Manual dispatch may also run it on another branch, for example to show a harness fix before it merges;
+there is no CI dry-run job.
 
 ## Gherkin linting and formatting
 
