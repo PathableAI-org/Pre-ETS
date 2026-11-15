@@ -1,7 +1,8 @@
 # Testing as evidence
 
 This guide helps humans and agents choose tests for Pre-ETS. Start with the expectation someone depends on,
-then choose evidence that could reveal a meaningful violation. For a practical introduction to generated tests,
+then choose evidence that could reveal a meaningful violation. [Verification principles](../verification-principles.md) explains
+the reasoning behind this guide: the product's definition, conformance and implementation evidence, and runtime signals. For a practical introduction to generated tests,
 read [Property-based testing with fast-check](property-based-testing.md).
 For requirements scenarios, steps, and supporting helpers, also read
 [Requirements-backed BDD](requirements-bdd.md) for main-branch sources, semantic scope, requirement tags, and `@partial`.
