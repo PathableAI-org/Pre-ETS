@@ -305,7 +305,10 @@ configuration strings.
 Shared Fallow configuration enables type-aware analysis for every scope. Each scope
 uses its own `tsconfig.json` in best-effort mode: root tests, and the frontend,
 backend, and domain typecheck projects. Compiler-option bases and package emit
-configs stay out of that pass. Type-aware analysis confirms symbol use for Fallow
+configs stay out of that pass. The root declares the `fallow-type-aware` companion at
+the same exact version as `fallow`, which no longer installs it. Without it, Fallow
+reports conservative syntactic findings, such as class members used only through a
+React ref. Type-aware analysis confirms symbol use for Fallow
 findings. It does not replace `pnpm typecheck`. When the checker result is partial
 or unavailable, the original finding remains and is not evidence that the symbol
 can be deleted. `private-type-leaks` is an error, so an exported signature
