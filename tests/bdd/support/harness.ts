@@ -109,6 +109,10 @@ function siteEnv(options: SiteOptions): NodeJS.ProcessEnv {
   }
   if (options.baseHostname === undefined) delete env.BASE_HOSTNAME
   else env.BASE_HOSTNAME = options.baseHostname
+  // An owned `next start` leaves SIGTERM and SIGINT to the application, as the frontend `start` script does, so a
+  // stop flushes pending telemetry before the process exits. `next dev` keeps its own signal handling.
+  if (options.runtime === "production") env.NEXT_MANUAL_SIG_HANDLE = "true"
+  else delete env.NEXT_MANUAL_SIG_HANDLE
   return env
 }
 
