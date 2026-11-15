@@ -61,19 +61,31 @@ export interface PullRequest {
   readonly headSha: string
   readonly labels: readonly string[]
   readonly number: number
+  /** The web URL of the pull request's repository, such as https://github.com/owner/name, for links into it. */
+  readonly repositoryUrl: string
 }
+
+/** The repository's web URL from a pull request's `html_url`, which is that URL followed by `/pull/<number>`. */
+const repositoryOf = (htmlUrl: unknown): string | undefined =>
+  typeof htmlUrl === "string" ? /^(.+)\/pull\/\d+$/.exec(htmlUrl)?.[1] : undefined
+
+const labelNames = (labels: unknown): readonly string[] =>
+  Array.isArray(labels)
+    ? labels.flatMap((label) => isRecord(label) && typeof label.name === "string" ? [label.name] : [])
+    : []
 
 const readPull = (value: unknown): PullRequest | undefined => {
   if (!isRecord(value) || !isRecord(value.head) || typeof value.number !== "number") return undefined
   const { ref, sha } = value.head
-  if (typeof ref !== "string" || typeof sha !== "string") return undefined
-  const labels = Array.isArray(value.labels) ? value.labels : []
+  const repositoryUrl = repositoryOf(value.html_url)
+  if (typeof ref !== "string" || typeof sha !== "string" || repositoryUrl === undefined) return undefined
   return {
     draft: value.draft === true,
     headRef: ref,
     headSha: sha,
-    labels: labels.flatMap((label) => isRecord(label) && typeof label.name === "string" ? [label.name] : []),
-    number: value.number
+    labels: labelNames(value.labels),
+    number: value.number,
+    repositoryUrl
   }
 }
 
@@ -104,12 +116,14 @@ export interface IssueComment {
   readonly author: string
   readonly body: string
   readonly id: number
+  /** The comment's web URL. */
+  readonly url: string
 }
 
 const readComment = (value: unknown): IssueComment | undefined =>
   isRecord(value) && typeof value.id === "number" && typeof value.body === "string" && isRecord(value.user)
-    && typeof value.user.login === "string"
-    ? { author: value.user.login, body: value.body, id: value.id }
+    && typeof value.user.login === "string" && typeof value.html_url === "string"
+    ? { author: value.user.login, body: value.body, id: value.id, url: value.html_url }
     : undefined
 
 const pageSize = 100

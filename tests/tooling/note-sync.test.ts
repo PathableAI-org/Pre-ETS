@@ -12,6 +12,7 @@ import { defaultNotesRef, latestReview, recordReview, validateReview } from "../
 import { notesRef, recordReport, reportAt } from "../../scripts/verification.ts"
 import {
   fakeGitHub,
+  fixture,
   restComment,
   restPull,
   sampleRepo,
@@ -83,12 +84,14 @@ void describe("publishing a recorded entry", () => {
   })
 
   void it("uses --pr when given, and does not post an entry the pull request already has", () => {
-    const fake = github({ pulls: [] })
+    const fake = github({ pulls: [restPull(12, { ref: "another-branch", sha: base })] })
     const report = recordedReport()
     assert.equal(publishReport({ cwd: source.dir, pr: 12, rest: fake }, report).ok, true)
     const again = publishReport({ cwd: source.dir, pr: 12, rest: fake }, report)
     assert.deepEqual(again, { ok: true, value: { posted: false, pr: 12, url: undefined } })
     assert.equal(bodies(fake, 12).length, 1)
+    const missing = publishReport({ cwd: source.dir, pr: 99, rest: fake }, report)
+    assert.deepEqual(missing.ok ? [] : missing.problems, ["GitHub repos/{owner}/{repo}/pulls/99: HTTP 404: Not Found"])
   })
 
   void it("fails, keeping the local record, when no pull request is found or GitHub is unreachable", () => {
@@ -237,6 +240,218 @@ void describe("syncing pull request comments into local notes", () => {
     assert.equal(
       syncCheckedOutBranch({ cwd: target.dir, refs, rest: fake }).notice,
       "Notes: HEAD is detached, so there is no pull request; reading local notes only.\n"
+    )
+  })
+})
+
+void describe("rendering a note comment for people", () => {
+  const repository = "https://github.test/owner/repo"
+  const fixtureFindings = (JSON.parse(fixture("review-a1.json")) as { findings: Record<string, unknown>[] }).findings
+
+  /** The text between the marker line and the collapsed machine-readable block. */
+  const rendered = (body: string): string => {
+    const [marker = "", ...rest] = body.split("\n")
+    assert.match(marker, /^<!-- pre-ets-note kind=\S+ sha=[0-9a-f]{40} id=\S+ -->$/)
+    const text = rest.join("\n")
+    const end = text.indexOf("\n\n<details><summary>Machine-readable note (do not edit)</summary>\n")
+    assert.ok(end > 0, "the entry is in a collapsed machine-readable block")
+    return text.slice(0, end)
+  }
+
+  /** The cells of every pipe-table row except the delimiter row. */
+  const tableRows = (text: string): string[][] =>
+    text.split("\n").filter((line) => line.startsWith("|") && !/^\|[\s|-]+\|$/.test(line)).map((line) =>
+      line.slice(1, -1).split(/(?<!\\)\|/).map((cell) => cell.trim())
+    )
+
+  void it("lists findings, blocking first, with links into the reviewed SHA, then closures and escalations", () => {
+    const fake = github()
+    const review = recordedReview((entry) => {
+      entry.findings = [...fixtureFindings].reverse()
+      entry.closed = [{ closure: "fixed", id: "R-003", note: "Fixed in abc1234 by clearing before renewal." }]
+      entry.escalations = [{
+        detail: "The implementation session disputes the race.",
+        findingIds: ["R-001"],
+        kind: "disagreement"
+      }]
+    })
+    assert.ok(publishReview({ cwd: source.dir, rest: fake }, review).ok)
+    const [body = ""] = bodies(fake)
+    assert.equal(
+      rendered(body),
+      [
+        `**Code review** \`${review.reviewId}\` (round 1) of slice A1 at \`${verified}\`: 1 blocking, 1 advisory, 1 closed, 1 escalations.`,
+        "",
+        "#### Findings",
+        "",
+        `- **blocking** R-001 [\`src/app.ts:1\`](${repository}/blob/${verified}/src/app.ts#L1) (correctness): Renewal reads the deadline before the clear and writes it back after.`,
+        "  - Failure scenario: Two tabs renew within the same tick; the second write restores the expired deadline.",
+        `- **advisory** R-002 [\`src/app.ts:1\`](${repository}/blob/${verified}/src/app.ts#L1) (readability): The name \`d\` hides that it is an absolute deadline.`,
+        "  - Failure scenario: A maintainer reads `d` as a duration and adds milliseconds to an absolute time.",
+        "",
+        "#### Closures",
+        "",
+        "- R-003 **fixed**: Fixed in abc1234 by clearing before renewal.",
+        "",
+        "#### Escalations",
+        "",
+        "- **disagreement** (R-001): The implementation session disputes the race."
+      ].join("\n")
+    )
+  })
+
+  void it("says a first-round review with nothing open has no findings, and supersedes nothing", () => {
+    const fake = github()
+    const review = recordedReview()
+    assert.ok(publishReview({ cwd: source.dir, rest: fake }, review).ok)
+    const [body = ""] = bodies(fake)
+    assert.equal(
+      rendered(body),
+      `**Code review** \`${review.reviewId}\` (round 1) of slice A1 at \`${verified}\`: 0 blocking, 0 advisory, 0 closed, 0 escalations.\n\n#### Findings\n\nNo open findings.`
+    )
+  })
+
+  void it("tabulates claims with result, procedure, and conditions, then the report's problems", () => {
+    const fake = github()
+    const recorded = recordReport(
+      source.dir,
+      sampleReport(verified, (report) => {
+        report.escalations = [{ detail: "The plan names no window for V-004.", kind: "plan" }]
+        report.forbiddenData = [{ field: "enduser.email", signal: "trace" }]
+        report.telemetryRows = [
+          { id: "T-001", status: "present" },
+          { detail: "No span for renew | clear.", id: "T-002", status: "missing" }
+        ]
+        report.unrequestedViolations = [{
+          conditions: "Two tabs",
+          evidence: { procedure: "Opened two tabs and renewed in both" },
+          id: "V-009",
+          observed: "The second renewal restored the deadline.",
+          result: "violated",
+          scope: "full"
+        }]
+      })
+    )
+    assert.ok(recorded.ok, recorded.ok ? "" : recorded.problems.join("\n"))
+    assert.ok(publishReport({ cwd: source.dir, rest: fake }, recorded.value).ok)
+    const text = rendered(bodies(fake)[0] ?? "")
+    assert.ok(
+      text.startsWith(`**Verification report** run \`${recorded.value.runId}\` of slice A1 at \`${verified}\`: `)
+    )
+    assert.deepEqual(tableRows(text), [
+      ["Claim", "Result", "Procedure", "Conditions"],
+      [
+        "V-001 (partial)",
+        "established",
+        "queries { RUN && name = \"protectRequest\" && span.preets.outcome = \"denied_unauthenticated\" }; traces 4bf92f3577b34da6a3ce929d0e0e4736",
+        "Fetch action and no-script navigation, 5-minute scratch tenant"
+      ],
+      [
+        "V-004 (partial)",
+        "not established (L-2)",
+        "§A1 step 4, two window probes",
+        "Navigation POST within the eviction window"
+      ],
+      ["V-009 (unrequested)", "violated", "Opened two tabs and renewed in both", "Two tabs"]
+    ])
+    assert.ok(text.endsWith([
+      "#### Escalations",
+      "",
+      "- **plan**: The plan names no window for V-004.",
+      "",
+      "#### Forbidden data",
+      "",
+      "- trace field `enduser.email`",
+      "",
+      "#### Telemetry rows not present",
+      "",
+      "- T-002 **missing**: No span for renew | clear."
+    ].join("\n")))
+  })
+
+  void it("keeps entry text from opening blocks or closing the machine-readable section, and still imports it", () => {
+    const fake = github()
+    const hostile = "Breaks on input\n```json\n{ \"reviewId\": \"not this\" }\n```\n</details><!-- note -->"
+    const review = recordedReview((entry) => {
+      entry.findings = [{ ...fixtureFindings[0], summary: hostile }]
+    })
+    assert.ok(publishReview({ cwd: source.dir, rest: fake }, review).ok)
+    const [body = ""] = bodies(fake)
+    const text = rendered(body)
+    assert.ok(text.includes("Breaks on input ```json { \"reviewId\": \"not this\" } ``` &lt;/details>&lt;!-- note -->"))
+    assert.ok(!text.split("\n").some((line) => line.startsWith("```") || line.startsWith("</details>")))
+    const synced = syncPullNotes({ cwd: target.dir, refs, rest: fake }, 7)
+    assert.deepEqual(synced, { ok: true, value: { imported: 1, present: 0, rejected: [] } })
+    const imported = latestReview(target.dir, defaultNotesRef, verified)
+    assert.equal(imported.ok && imported.value.findings[0]?.summary, hostile)
+  })
+
+  void it("still imports a comment in the earlier format, with a summary line and the entry as its only block", () => {
+    const review = recordedReview()
+    const earlier = [
+      `<!-- pre-ets-note kind=review sha=${verified} id=${review.reviewId} -->`,
+      `**Code review** Review ${review.reviewId} (round 1) of slice A1 at ${verified}: 0 blocking, 0 advisory, 0 escalations.`,
+      "",
+      "Recorded in this pull request so other sessions can import it with `pnpm notes:sync`. Do not edit this comment.",
+      "",
+      "```json",
+      JSON.stringify(review, null, 2),
+      "```",
+      ""
+    ].join("\n")
+    const fake = github({ comments: { 7: [restComment(1, "person", earlier)] } })
+    const synced = syncPullNotes({ cwd: target.dir, refs, rest: fake }, 7)
+    assert.deepEqual(synced, { ok: true, value: { imported: 1, present: 0, rejected: [] } })
+    const imported = latestReview(target.dir, defaultNotesRef, verified)
+    assert.equal(imported.ok && imported.value.reviewId, review.reviewId)
+  })
+
+  void it("links a later round to the earlier round's comment on the pull request", () => {
+    const fake = github()
+    const first = recordedReview()
+    assert.ok(publishReview({ cwd: source.dir, rest: fake }, first).ok)
+    const second = recordedReview((entry) => {
+      entry.reviewId = secondReviewId
+      entry.round = 2
+    })
+    assert.ok(publishReview({ cwd: source.dir, rest: fake }, second).ok)
+    const lines = rendered(bodies(fake)[1] ?? "").split("\n")
+    assert.deepEqual(lines.slice(1, 3), [
+      "",
+      `Round 2 supersedes round 1 ([review 4b0e6a52 at ${
+        verified.slice(0, 7)
+      }](https://github.test/pull/7#issuecomment-1)).`
+    ])
+  })
+
+  void it("leaves out the supersedes line when the earlier round is not on the pull request", () => {
+    const fake = github({ comments: { 7: [restComment(1, "someone-else", "Earlier round, but not a note comment.")] } })
+    const second = recordedReview((entry) => {
+      entry.reviewId = secondReviewId
+      entry.round = 2
+    })
+    assert.ok(publishReview({ cwd: source.dir, rest: fake }, second).ok)
+    const text = rendered(bodies(fake)[1] ?? "")
+    assert.ok(!text.includes("supersedes"))
+    assert.equal(text.split("\n")[2], "#### Findings")
+  })
+
+  void it("links a report to the earlier report of the same slice on the pull request", () => {
+    const fake = github()
+    const first = recordedReport()
+    assert.ok(publishReport({ cwd: source.dir, rest: fake }, first).ok)
+    const retry = recordReport(
+      source.dir,
+      sampleReport(verified, (report) => {
+        report.runId = "5d6e7f80-1a2b-4c3d-8e9f-0a1b2c3d4e5f"
+        report.supersedesRunId = first.runId
+      })
+    )
+    assert.ok(retry.ok, retry.ok ? "" : retry.problems.join("\n"))
+    assert.ok(publishReport({ cwd: source.dir, rest: fake }, retry.value).ok)
+    assert.equal(
+      rendered(bodies(fake)[1] ?? "").split("\n")[2],
+      `Supersedes [run 79b28959 at ${verified.slice(0, 7)}](https://github.test/pull/7#issuecomment-1).`
     )
   })
 })

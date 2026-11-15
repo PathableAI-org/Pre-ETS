@@ -82,8 +82,15 @@ comment on the pull request. Never push or fetch `refs/notes/review` itself.
 
 - **Publish.** `pnpm review:record` validates the review, appends it to the local note, then posts it as a comment
   on the open pull request whose head branch has the reviewed SHA at its tip, or on `--pr <n>`. The comment starts
-  with a hidden marker naming the note kind, SHA, and review ID, gives a one-line summary, and holds the review JSON in
-  a fenced block. If no pull request is found or posting fails, the review stays recorded locally and the command
+  with a hidden marker naming the note kind, SHA, and review ID. A markdown rendering generated from the entry
+  follows, so a person reads it without the JSON: each open finding with its severity, a link to its line at the
+  reviewed SHA, its summary, and its failure scenario, then the closures and escalations. A verification report
+  renders as a claims table, then its escalations, forbidden data, and telemetry rows not present. A later entry also
+  links the comment of the entry it supersedes: a review the one it names, or else the same slice's review in the
+  round before; a report the run it names, or else the same slice's latest earlier report. That line is omitted when
+  no such comment by the same account is on the pull request. The JSON itself
+  sits in a collapsed `<details>` block as the comment's last fenced `json` block, and only it is read back; the
+  rendering is never written by hand. If no pull request is found or posting fails, the review stays recorded locally and the command
   exits 1 and says why. `pnpm notes:publish review <sha> [--pr <n>]` posts it once the cause is fixed. A pull request
   never gets the same entry twice.
 - **Sync.** `pnpm notes:sync [<pr>]` reads the pull request's comments through the REST API, page by page. It
