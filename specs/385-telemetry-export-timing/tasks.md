@@ -26,7 +26,7 @@ F), V-019 (server records), and V-020 (server records) in part. `Contributes to 
 
 ### Baseline
 
-- [ ] T001 Re-verify the installed facts research D1–D3 rely on (modules.md "Status"): `effect` 4.1.4
+- [x] T001 Re-verify the installed facts research D1–D3 rely on (modules.md "Status"): `effect` 4.1.4
       `Config.option(Config.Literals(["immediate", "batch"], "TELEMETRY_EXPORT_TIMING"))` decodes absent and empty to
       none under both `ConfigProvider.fromEnv` and `ConfigProvider.fromUnknown`, and fails case-sensitively with an
       error naming the setting; `@opentelemetry/sdk-trace-base` 2.12.0 exports the shim `SimpleSpanProcessor` with the
@@ -37,9 +37,9 @@ F), V-019 (server records), and V-020 (server records) in part. `Contributes to 
 
 ### The setting and its default (US1, US2, FR-001, FR-004–FR-006, research D1)
 
-- [ ] T002 [US2] In `fs/src/config.ts`, export `type ExportTiming = "batch" | "immediate"` and pass the existing
+- [x] T002 [US2] In `fs/src/config.ts`, export `type ExportTiming = "batch" | "immediate"` and pass the existing
       `AppEnv` recipe to the child builder: `otel: otelConfig(withoutEcho, AppEnv)`. Re-export nothing else new.
-- [ ] T003 [US2] In `fs/src/config/otel.ts`, add `readonly exportTiming: ExportTiming` to `OtelEnabled` (documented as
+- [x] T003 [US2] In `fs/src/config/otel.ts`, add `readonly exportTiming: ExportTiming` to `OtelEnabled` (documented as
       `TELEMETRY_EXPORT_TIMING`, or the default for the process's `NODE_ENV`), add
       `exportTiming: Config.option(Config.Literals(["immediate", "batch"], "TELEMETRY_EXPORT_TIMING"))` and `env` to the
       one `Config.all`, and resolve the effective value in the enabled branch: the supplied value, else `batch` when
@@ -48,7 +48,7 @@ F), V-019 (server records), and V-020 (server records) in part. `Contributes to 
 
 ### Module evidence (V-007, V-008)
 
-- [ ] T004 [US2] In `fs/tests/lib/config.test.ts`, add a `StartupConfig export timing (V-007, V-008)` group using the
+- [x] T004 [US2] In `fs/tests/lib/config.test.ts`, add a `StartupConfig export timing (V-007, V-008)` group using the
       existing `startupWith` and `otelOn` helpers:
   - `it.effect.each` over mode (`production`, `development`, `test`, absent) by setting (absent, empty, `immediate`,
     `batch`), asserting the effective `otel.exportTiming` FR-004 states;
@@ -59,7 +59,7 @@ F), V-019 (server records), and V-020 (server records) in part. `Contributes to 
 
 ### Server pipeline (US1, US2, FR-002, FR-003, FR-008–FR-011, research D2–D4; T-001, T-002)
 
-- [ ] T005 [US1] In `fs/src/observability/sdk.ts`, pick the span and log processors from `settings.exportTiming`:
+- [x] T005 [US1] In `fs/src/observability/sdk.ts`, pick the span and log processors from `settings.exportTiming`:
       `batch` constructs exactly today's `BatchSpanProcessor` and `BatchLogRecordProcessor` over today's exporters;
       `immediate` constructs `SimpleSpanProcessor` and `SimpleLogRecordProcessor({ exporter })` over the same OTLP
       protobuf exporters and URLs with `concurrencyLimit: Number.POSITIVE_INFINITY`. `QueryFreeSpanProcessor` wraps
@@ -69,14 +69,14 @@ F), V-019 (server records), and V-020 (server records) in part. `Contributes to 
 
 ### Documentation (FR-028, research D10)
 
-- [ ] T006 [P] [US1] In `docs/observability.md`, document `TELEMETRY_EXPORT_TIMING`: its row in the environment
+- [x] T006 [P] [US1] In `docs/observability.md`, document `TELEMETRY_EXPORT_TIMING`: its row in the environment
       table, its values and mode defaults, that a value in any other letter case or spelling fails startup naming it,
       that it decodes with telemetry off too, the immediate pipeline (simple processors, no in-flight limit, query
       removal and resource unchanged), that metrics keep their 60-second interval, and that production never sets
       `immediate`. Update the runtime summary that names batch processors and the "Startup and export policy"
       paragraph on batch intervals. The "Operating modes" section and the removal of the remaining batch waits are
       slice F's.
-- [ ] T007 [P] [US1] In `fe/.env.example`, add a commented `TELEMETRY_EXPORT_TIMING` line in the OpenTelemetry block
+- [x] T007 [P] [US1] In `fe/.env.example`, add a commented `TELEMETRY_EXPORT_TIMING` line in the OpenTelemetry block
       with its two values and defaults, pointing at `docs/observability.md`.
 
 ### Slice completion
