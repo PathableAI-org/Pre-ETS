@@ -638,7 +638,7 @@ describe("TabCoordination near-deadline activity (research D5, B5-W) [PREETS-SES
    */
   it.each([
     ["50 s before the deadline is sent at once", 90_000, [NOW, NOW + 40_000]],
-    ["61 s before the deadline waits for the window's end", 101_000, [NOW]]
+    ["61 s before the deadline is held, not sent at once", 101_000, [NOW]]
   ])("with a window open, a key press %s", async (_label, untilDeadline, expected) => {
     const activitySentAt: number[] = []
     vi.stubGlobal(
