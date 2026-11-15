@@ -120,7 +120,7 @@ When(
   "the visitor submits the protected reference action without scripts at {string}",
   async function(this: AppWorld, host: string) {
     const action = await serverActionId("runReferenceOperation")
-    const { body, contentType } = await multipartBody({ [`$ACTION_ID_${action}`]: "" })
+    const { body, contentType } = await multipartBody([[`$ACTION_ID_${action}`, ""]])
     await requestSiteWith(this, {
       body,
       headers: {

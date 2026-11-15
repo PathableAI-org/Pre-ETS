@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url"
 
 import type { AppWorld } from "../support/world.ts"
 
-import { applicationBrowser, signInAtProvider as signIn } from "../support/browser.ts"
+import { applicationBrowser, signInAtProvider as signIn, withSessionContext } from "../support/browser.ts"
 import { requestInstance, requestSite, startSecondSite, startSite } from "../support/server.ts"
 
 type RecordedResponse = NonNullable<AppWorld["response"]>
@@ -186,12 +186,7 @@ When(
   "the visitor opens {string} at {string} in a browser, refreshes a page showing it, and opens it in another page",
   async function(this: AppWorld, entryPath: string, host: string) {
     await startSite(this)
-    const owned = await applicationBrowser(this.port, [host])
-    try {
-      const context = await owned.browser.newContext()
-      if (this.cookie !== undefined) {
-        await context.addCookies([{ name: "pathable-session", url: `http://${host}/`, value: this.cookie }])
-      }
+    await withSessionContext(this.port, host, this.cookie, async (context) => {
       const entry = `http://${host}${entryPath}`
       this.protectedDocuments = []
       const observe = (page: Page) =>
@@ -215,9 +210,7 @@ When(
       const another = observe(await context.newPage())
       await another.goto(entry)
       this.browserEntries = [opened, refreshed.url(), another.url()]
-    } finally {
-      await owned.close()
-    }
+    })
   }
 )
 

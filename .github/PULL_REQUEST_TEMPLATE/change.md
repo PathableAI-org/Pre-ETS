@@ -24,9 +24,10 @@ New behavior or a contract change belongs in a specification pull request instea
 
 ## Evidence
 
-<!-- High tier: list the claims the fix establishes, each with its observation and channel, then summarize the
-verification report for them. Name the verified SHA, and give results, run conditions, limits, and forbidden data
-observed. Standard and Light: name the tests that cover the change. -->
+<!-- High tier: list the claims the fix establishes, numbered V-001, V-002, and so on as
+docs/engineering/verification-harness.md "Verification by risk tier" says, each with its observation and channel,
+then summarize the verification report for them. Name the verified SHA, and give results, run conditions, limits,
+and forbidden data observed. Standard and Light: name the tests that cover the change. -->
 
 | Claim | Result | Evidence | Limits |
 | ----- | ------ | -------- | ------ |

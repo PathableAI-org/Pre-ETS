@@ -53,6 +53,6 @@ Review the implementation against the approved specification and engineering pla
   plan's text, substituted observation, and manual check still waiting for a person recorded further down the body
   appears there. Flag `None` when the body records any of them.
 - Check the pull request states a [risk tier](../../docs/engineering/git-workflow.md#risk-tiers) and that the evidence
-  matches it. Flag a High fix without a verification report for the claims it lists, a High or Standard slice without
-  one, and a change that matches a trigger in the Git workflow while claiming a lower tier without the maintainer's
-  recorded reason.
+  matches it. Flag a High fix without a verification report for the claims it lists, or whose report's claim IDs
+  are not the body's numbered claims, a High or Standard slice without one, and a change that matches a trigger in
+  the Git workflow while claiming a lower tier without the maintainer's recorded reason.

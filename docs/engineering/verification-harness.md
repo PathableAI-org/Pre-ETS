@@ -57,12 +57,12 @@ the behavior. Durable tests still do not assert spans, logs, or attributes. The 
 The [risk tier](git-workflow.md#risk-tiers) scales what verification needs. The tier sets the minimum. A
 `verification.md` may plan more.
 
-| Tier               | `verification.md`                                                                                                                                                                                                                                                          | Verifier                                                                                                                                                                                                 |
-| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| High, new behavior | Everything above, with every channel available. Each security, tenant, or PHI claim also names its rejection path.                                                                                                                                                         | One report per slice through [the verification loop](#the-verification-loop), including telemetry queries and the forbidden-data check                                                                   |
-| High, fix          | None. The pull request body lists the claims the fix establishes, each with its observation and channel.                                                                                                                                                                   | One report on the pull request for those claims, at the verified SHA, with the forbidden-data check. Slice ID `fix`; the feature directory may be omitted. Every claim must be `established`.            |
-| Standard           | Claims, meaningful violations, observations, and channels limited to browser interaction, assistive technology, module tests, and requirements BDD, plus the planned manual procedure. No server or browser telemetry channel: a claim that needs one makes the work High. | One report per slice through the verification loop, using the browser, BDD, and module evidence. No telemetry queries or forbidden-data check, because Standard work does not change exported telemetry. |
-| Light              | None                                                                                                                                                                                                                                                                       | None. Normal CI and the checks the pull request names.                                                                                                                                                   |
+| Tier               | `verification.md`                                                                                                                                                                                                                                                          | Verifier                                                                                                                                                                                                            |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| High, new behavior | Everything above, with every channel available. Each security, tenant, or PHI claim also names its rejection path.                                                                                                                                                         | One report per slice through [the verification loop](#the-verification-loop), including telemetry queries and the forbidden-data check                                                                              |
+| High, fix          | None. The pull request body's Evidence section numbers the claims the fix establishes `V-001`, `V-002`, and so on, each with its observation and channel. An ID keeps its claim once a report uses it; a new claim takes the next number.                                  | One report on the pull request for those claims, under the body's IDs, at the verified SHA, with the forbidden-data check. Slice ID `fix`; the feature directory may be omitted. Every claim must be `established`. |
+| Standard           | Claims, meaningful violations, observations, and channels limited to browser interaction, assistive technology, module tests, and requirements BDD, plus the planned manual procedure. No server or browser telemetry channel: a claim that needs one makes the work High. | One report per slice through the verification loop, using the browser, BDD, and module evidence. No telemetry queries or forbidden-data check, because Standard work does not change exported telemetry.            |
+| Light              | None                                                                                                                                                                                                                                                                       | None. Normal CI and the checks the pull request names.                                                                                                                                                              |
 
 The [gate](#gate-and-escalation) applies to every verified tier. A slice with no assigned telemetry rows meets the
 first condition trivially.
@@ -176,7 +176,9 @@ the ID of the approved limitation it falls under. It also gives a status for eac
 (`present`, `missing`, or `unusable`), forbidden-data findings by signal and field name only, escalations, cleanup,
 and any unrequested claim the run showed violated. The schema rejects text that looks like a credential.
 
-A High fix's report uses slice ID `fix` and may omit the feature directory. Every other report names one.
+A High fix's report uses slice ID `fix`, takes its claim IDs from the pull request body as
+[Verification by risk tier](#verification-by-risk-tier) says, and may omit the feature directory. Every other report
+names one.
 
 The verifier records the report with `pnpm verify:record <report.json>`. The command validates it and adds it to the
 Git note on the verified SHA under `refs/notes/verification`. A retry on the same SHA is appended and supersedes the
@@ -228,9 +230,11 @@ the latest report on HEAD or an evidence-only ancestor:
 - Every telemetry row it lists present.
 - No unrequested violation, no forbidden data, and no open escalation.
 
-It also requires a fix review that passes the code review gate. A fix has no quickstart results, so for a fix an
-evidence-only commit changes no path at all. Any change after the verified SHA needs a new request. The gate reads
-the label from the pull request, so it cannot judge a fix branch offline.
+The gate does not read the pull request body, so the person reviewing the pull request checks that the report's
+claims are the body's numbered claims, none missing. It also requires a fix review that passes the code review gate.
+A fix has no quickstart results, so for a fix an evidence-only commit changes no path at all. Any change after the
+verified SHA needs a new request. The gate reads the label from the pull request, so it cannot judge a fix branch
+offline.
 
 A Claude Code `PreToolUse` hook in `.claude/settings.json` runs the gate whenever a session tries to mark a pull
 request ready, and blocks the attempt when the gate fails. It covers `gh pr ready` (with no argument, a number, a
