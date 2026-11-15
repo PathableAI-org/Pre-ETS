@@ -87,8 +87,8 @@ A stack runs as separate agent sessions with distinct responsibilities:
 | Review         | Reviewing pushed revisions for correctness reasoning and maintainability, review notes                    | Edit any branch or fix the implementation                                                 |
 
 The orchestrator starts one verification session and, for High and Standard work, one review session per stack,
-alongside the implementation session. It gives the implementation session the other two session identifiers, and
-gives each of the other two the implementation session's identifier. [Code review session](code-review.md) owns the
+when the implementation session first pushes. It gives each of them the implementation session's identifier and the
+first request, and then gives the implementation session their identifiers. [Code review session](code-review.md) owns the
 reviewer's scope, findings, and loop. Only a person approves and merges a phase, as the Git workflow requires. [Orchestration](orchestration.md) owns
 the orchestrator's lifecycle by tier, stop points, concurrency, and each role's model and effort.
 
@@ -240,6 +240,25 @@ run. The pull request body names the verified SHA and run UUID and links that se
 Committing that summary creates an evidence-only commit after the verified SHA, which needs no new verification
 request under [Gate and escalation](#gate-and-escalation). Commit any other change, including a change to the run
 instructions, separately and request verification of the new SHA.
+
+## Requirements BDD runs
+
+The full requirements suite spends over half an hour waiting in real time for session deadlines, and every session
+runs in its own environment. Sessions therefore run only the scenarios that bear on their work, and the full suite
+runs nightly on `main`:
+
+| Run                | Owner          | When                                                       | How                                                                                                                     |
+| ------------------ | -------------- | ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Affected scenarios | Implementation | While changing code, and before each push                  | `pnpm test:bdd:tags`, selected as [BDD commands](../../features/README.md#run-the-scenarios-a-change-touches) describes |
+| Claim scenarios    | Verification   | Each request, for claims whose channel is requirements BDD | The claims' tags, at the requested SHA                                                                                  |
+| Full suite         | CI             | Nightly on `main`                                          | The `Nightly BDD` workflow (`ci-bdd.yml`) on its schedule                                                               |
+
+- No session runs the full suite, locally or by dispatching the workflow. A person may dispatch it on a branch, for
+  example to show a harness fix before it merges.
+- The nightly run catches regressions after merge. A nightly failure is a person's to triage, not a running
+  session's.
+- A scenario outside the change's scope that fails in a session's own run goes in the pull request body and to the
+  orchestrator. Do not patch unrelated scenarios in the pull request.
 
 ## Known limits
 

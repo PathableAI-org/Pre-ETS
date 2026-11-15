@@ -18,23 +18,33 @@ attribution rule in every brief and message.
 
 - Never edit, commit, push, rebase, merge, approve, or run `gh pr ready`. The owning session does Git work through
   `speckit-stack`.
-- Read state only: `gh pr view|list|checks`, `gh issue view`, `gh stack view --json`, `pnpm verify:show`,
+- Read state only: REST reads through `gh api` (issues, pulls, check runs, reviews, changed files) or the GitHub
+  tools, `gh stack view --json`, `pnpm verify:show`,
   `pnpm review:show`, `git notes --ref=<ref> list`, `git rev-list`, the slice table in `plan.md` through
   `git show <sha>:<path>`, and session status. Never read diffs, source files, or transcripts.
 - Never poll, schedule wake-ups, or loop on CI. Act on a session's report, a person's message, or a status request.
 - Respect the cap: at most three working sessions, one stack.
+- Use `gh api` with REST paths, never `gh pr` or `gh issue` subcommands: they use GraphQL, which cloud sessions block.
+  `gh api` fills `{owner}/{repo}` from the checkout.
 
 ## Start
 
 From the person: the delivery issue number. Then:
 
-1. `gh issue view <N>` and read its **Risk tier** section: the tier, its triggers, and whether the work is new
+1. `gh api repos/{owner}/{repo}/issues/<N> --jq .body` and read its **Risk tier** section: the tier, its triggers, and whether the work is new
    behavior or a fix inside an approved contract. If the tier is missing or a trigger obviously matches a higher tier,
    stop and ask. Never lower it.
-2. Look up the feature directory if one exists (`specs/{number}-{slug}/` naming the issue) and any open stack
-   (`gh pr list --state all --search "#<N>"`). Resume from the phase the state shows instead of restarting.
+2. Look up the feature directory if one exists (`specs/{number}-{slug}/` naming the issue) and any open stack:
+
+   ```sh
+   gh api "repos/{owner}/{repo}/pulls?state=all&per_page=100" \
+     | jq --arg n '#<N>' '[.[] | select((.body // "") | contains($n)) | {number, head: .head.ref, state, draft}]'
+   ```
+
+   Resume from the phase the state shows instead of restarting.
 3. Pick the row in the doc's lifecycle table. Tell the person, in a few lines, the sessions you will start, their
-   models and efforts, and the stop points. Then start the first phase.
+   models and efforts, when each starts (verification and review at the first push), and the stop points. Then start
+   the first phase.
 
 ## Starting a role session
 
@@ -45,22 +55,22 @@ For each session:
    means a missing identifier: get it from state or ask, never guess.
 2. Start it in its own worktree, cut from the branch the brief names. When the role's model or effort is above
    yours, start it with the holding prompt `Reply "ready" and wait for your brief.`, raise its model and effort with
-   the session tools, then send the brief with `SendMessage`. Otherwise pass `model` and `effort` at start with the
+   the session tools, then send the brief with the session messaging tool (`send_message` in cloud sessions). Otherwise pass `model` and `effort` at start with the
    brief as the prompt.
 3. Record its name and session ID. Peers get each other's IDs in their briefs.
 
 ## Phases
 
-| Phase                         | Session and template                                                     | Identifiers to pass                                                                                                                | Next trigger                                                             |
-| ----------------------------- | ------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| Specification (High)          | `spec`, `references/spec.md`                                             | Issue, tier and triggers, base `origin/main`                                                                                       | Its report names the draft pull request and the feature directory. Stop. |
-| Combined (Standard)           | `spec`, `references/spec.md` with `{{combined}}` = yes                   | Same                                                                                                                               | Same. Stop.                                                              |
-| Plan (High)                   | `plan`, `references/plan.md`                                             | Issue, tier, feature directory, `SPECIFY_FEATURE_DIRECTORY`, spec branch and whether it is merged                                  | Its report names the draft plan pull request. Stop.                      |
-| Implementation                | `impl`, `references/implementer.md`, with `verify` and `review` sessions | Issue, tier, feature directory, slice table IDs, first slice and its base branch, merged or not, verifier and reviewer session IDs | Each slice's push, results, and readiness, below                         |
-| Verification (High, Standard) | `verify`, `references/verifier.md`                                       | Feature directory, tier, implementation session ID, orchestrator ID                                                                | Waits for requests                                                       |
-| Review (High, Standard)       | `review`, `references/reviewer.md`                                       | Same                                                                                                                               | Waits for requests                                                       |
-| High fix                      | `impl` with `{{fix}}` = yes, plus `verify` and `review`                  | Issue, tier, triggers, base `origin/main`; no feature directory or slices                                                          | One pull request through the same loop                                   |
-| Standard fix, Light           | `impl` with `{{fix}}` = yes, no peers                                    | Issue, tier                                                                                                                        | Its pull request is ready. Stop.                                         |
+| Phase                         | Session and template                                        | Identifiers to pass                                                                                                        | Next trigger                                                             |
+| ----------------------------- | ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Specification (High)          | `spec`, `references/spec.md`                                | Issue, tier and triggers, base `origin/main`                                                                               | Its report names the draft pull request and the feature directory. Stop. |
+| Combined (Standard)           | `spec`, `references/spec.md` with `{{combined}}` = yes      | Same                                                                                                                       | Same. Stop.                                                              |
+| Plan (High)                   | `plan`, `references/plan.md`                                | Issue, tier, feature directory, `SPECIFY_FEATURE_DIRECTORY`, spec branch and whether it is merged                          | Its report names the draft plan pull request. Stop.                      |
+| Implementation                | `impl`, `references/implementer.md`                         | Issue, tier, feature directory, slice table IDs, first slice and its base branch, merged or not                            | Each slice's push, results, and readiness, below                         |
+| Verification (High, Standard) | `verify`, `references/verifier.md`, at the first `pushed`   | Feature directory, tier, implementation session ID, orchestrator ID, first request                                         | Its first report; later requests come from the implementation session    |
+| Review (High, Standard)       | `review`, `references/reviewer.md`, at the first `pushed`   | Same                                                                                                                       | Same                                                                     |
+| High fix                      | All three with `{{fix}}` = yes; peers at the first `pushed` | Issue, tier, triggers, base `origin/main`; no slices. `{{feature_dir}}` is the feature the fix records evidence in, if any | One pull request through the same loop                                   |
+| Standard fix, Light           | `impl` with `{{fix}}` = yes, no peers                       | Issue, tier                                                                                                                | Its pull request is ready. Stop.                                         |
 
 Approval of a stop is the trigger for the next phase: start it without asking again. When the approved predecessor
 has not merged, the brief says the new branch is stacked on it with `gh stack add`.
@@ -71,8 +81,13 @@ The implementation session sends the verification and review requests itself, on
 verification harness and code review guides require. Your part:
 
 1. **Pushed.** On the implementation session's report `pushed <slice> @ <sha>`, check that the draft pull request's
-   head is that SHA. If its report says it did not send both requests, send them yourself: branch, SHA, base SHA,
-   slice ID, feature directory, and round. Keep the verifier's and reviewer's SHAs the same.
+   head is that SHA.
+   - **First push** (High and Standard): start the verification and review sessions now, each brief ending with the
+     first request: branch, SHA, base SHA, slice ID (`fix` for a High fix), feature directory, and round 1, all from
+     the pull request's metadata. Then send the implementation session both session IDs; it sends later requests
+     itself.
+   - **Later pushes:** if the report says it did not send both requests, send them yourself. Keep the verifier's and
+     reviewer's SHAs the same.
 2. **Results.** The verifier and reviewer reply to the implementation session with pointers. Their reports reach you
    when they end their turns. Read the notes with the status step, not their messages.
 3. **Green.** When the verification gate result passes and the review shows no open blocking finding at the same SHA
@@ -101,9 +116,10 @@ On request, after any session report, and before each notification, print one ta
 (`git fetch origin --quiet`). For each pull request whose head branch starts with `{number}-{slug}`:
 
 ```sh
-gh pr list --state all --limit 50 \
-  --json number,headRefName,baseRefName,headRefOid,isDraft,state,reviewDecision,statusCheckRollup \
-  | jq --arg p '<number>-<slug>' '[.[] | select(.headRefName | startswith($p))]'
+gh api "repos/{owner}/{repo}/pulls?state=all&per_page=100" | jq --arg p '<number>-<slug>' \
+  '[.[] | select(.head.ref | startswith($p)) | {number, head: .head.ref, base: .base.ref, sha: .head.sha, draft, state, merged: (.merged_at != null)}]'
+checks() { gh api "repos/{owner}/{repo}/commits/$1/check-runs" --jq '[.check_runs[] | .conclusion // .status] | group_by(.) | map("\(length) \(.[0])") | join(", ")'; }
+decision() { gh api "repos/{owner}/{repo}/pulls/$1/reviews" --jq '[.[] | select(.state != "COMMENTED")] | last | .state // "none"'; }
 ```
 
 For each open slice, find the newest commit between its base and head that carries a note, then summarize it:
@@ -123,7 +139,7 @@ Stack <number>-<slug> (#<issue>, <tier>)
 | Slice | PR | Head SHA | Verify (SHA: result) | Review (SHA: result) | PR state | Blockers |
 ```
 
-PR state is draft, ready, or merged, plus the check rollup and review decision. Blockers name the stop point or
+PR state is draft, ready, or merged, plus `checks <head-sha>` and `decision <number>`. Blockers name the stop point or
 session the slice waits on. A verified or reviewed SHA that is not the head is fine only when the commits after it are
 evidence-only; the implementation session's gate run decides that, not you. A merged slice shows `merged` and needs
 no note lookup.
@@ -135,5 +151,6 @@ When the person has merged the last phase:
 1. Print the final status.
 2. Ask once whether to archive the stack's sessions. Archive only on yes; archiving removes their worktrees. List
    any worktree left over.
-3. Match the merged pull requests' changed paths (`gh pr view <n> --json files`) against the area pathspecs in
+3. Match the merged pull requests' changed paths
+   (`gh api --paginate repos/{owner}/{repo}/pulls/<n>/files --jq '.[].filename'`) against the area pathspecs in
    [Drift review](../../../docs/engineering/drift-review.md#areas) and report the touched area IDs. File nothing.
