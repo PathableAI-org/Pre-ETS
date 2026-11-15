@@ -5,7 +5,13 @@ import type { AppWorld } from "../support/world.ts"
 
 import { responseJson } from "../support/response.ts"
 import { multipartBody, serverActionId } from "../support/server-actions.ts"
-import { FETCH_METADATA, type FetchMetadataKind, requestSite, requestSiteWith } from "../support/server.ts"
+import {
+  FETCH_METADATA,
+  type FetchMetadataKind,
+  type RecordedResponse,
+  requestSite,
+  requestSiteWith
+} from "../support/server.ts"
 
 const isFetchMetadataKind = (kind: string): kind is FetchMetadataKind => Object.hasOwn(FETCH_METADATA, kind)
 
@@ -101,12 +107,23 @@ Then("the response issues one recoverable correlation cookie and no application 
   assertNoApplicationSession(cookie)
   assert.doesNotMatch(cookie, /(?:^|;\s*)Domain=/i)
 })
-Then("the response delegates to the same-origin login", function(this: AppWorld) {
-  assert.equal(this.response?.status, 307)
-  const destination = new URL(this.response.headers.location ?? "", "http://logical-application")
+/** A 307 to the request origin's own `/auth/login`, without a query. */
+export const assertSameOriginLogin = (response: RecordedResponse | undefined): void => {
+  assert.equal(response?.status, 307)
+  const destination = new URL(response.headers.location ?? "", "http://logical-application")
   assert.equal(destination.origin, "http://logical-application")
   assert.equal(destination.pathname, "/auth/login")
   assert.equal(destination.search, "")
+}
+
+/** The reference entry's heading marks protected application content. */
+export const assertNoProtectedContent = (response: RecordedResponse | undefined): void => {
+  assert.ok(response, "expected an HTTP response")
+  assert.doesNotMatch(response.body, /Reference session/)
+}
+
+Then("the response delegates to the same-origin login", function(this: AppWorld) {
+  assertSameOriginLogin(this.response)
 })
 Then("the response does not delegate to login", function(this: AppWorld) {
   const location = this.response?.headers.location
@@ -114,8 +131,7 @@ Then("the response does not delegate to login", function(this: AppWorld) {
   assert.notEqual(new URL(location, "http://logical-application").pathname, "/auth/login")
 })
 Then("the response contains no protected application content", function(this: AppWorld) {
-  assert.ok(this.response)
-  assert.doesNotMatch(this.response.body, /Reference session/)
+  assertNoProtectedContent(this.response)
 })
 Then("the response body is empty", function(this: AppWorld) {
   assert.equal(this.response?.body, "")

@@ -28,7 +28,7 @@ export const FETCH_METADATA = {
 
 export type FetchMetadataKind = keyof typeof FETCH_METADATA
 
-interface SiteRequest {
+export interface SiteRequest {
   readonly body?: Buffer | undefined
   readonly cookie?: string | undefined
   readonly headers: Readonly<Record<string, string>>
@@ -72,8 +72,11 @@ export async function requestSiteWith(
   world.response = await sendRequest(world, { ...request, port: world.port })
 }
 
-/** Sends one unfollowed request to an owned instance with the logical Host and the world's session cookie. */
-async function sendRequest(world: AppWorld, site: SiteRequest): Promise<RecordedResponse> {
+/**
+ * Sends one unfollowed request to an owned instance with the logical Host and the world's session cookie, or the
+ * request's own cookie when it names one.
+ */
+export async function sendRequest(world: AppWorld, site: SiteRequest): Promise<RecordedResponse> {
   return new Promise((resolve, reject) => {
     const headers: Record<string, string> = {
       Host: site.host,

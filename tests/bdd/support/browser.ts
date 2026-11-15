@@ -1,4 +1,6 @@
-import type { Page } from "playwright"
+import type { BrowserContext, Page } from "playwright"
+
+import assert from "node:assert/strict"
 
 export { applicationBrowser } from "./harness.ts"
 
@@ -7,6 +9,21 @@ export const signInAtProvider = async (page: Page): Promise<void> => {
   await page.getByRole("textbox", { name: /username|email/i }).fill("demo")
   await page.getByRole("textbox", { exact: true, name: "Password" }).fill("demo")
   await page.getByRole("button", { name: /sign in/i }).click({ noWaitAfter: true })
+}
+
+/**
+ * Signs in at `host` through the application and the tracked provider in a new page of `context`, waits until the
+ * signed-in entry shows, and answers the application session cookie's value.
+ */
+export const signInThroughApplication = async (context: BrowserContext, host: string): Promise<string> => {
+  const page = await context.newPage()
+  await page.goto(`http://${host}/`)
+  await signInAtProvider(page)
+  await page.waitForURL((url) => url.host === host)
+  await page.getByRole("button", { name: "Log out" }).waitFor({ state: "visible" })
+  const session = (await context.cookies(`http://${host}/`)).find((cookie) => cookie.name === "pathable-session")
+  assert.ok(session, "expected an application session after signing in")
+  return session.value
 }
 
 /**
