@@ -255,35 +255,43 @@ visible change, or behavior observable only over HTTP or in telemetry.
 
 - One GIF per changed user flow, from start to finish as a user does it. When the change affects focus or keyboard
   interaction, record a keyboard-only run.
-- One screenshot of each distinct state the change's requirement names, such as success, a validation error, the
-  recovery page, or an empty state. When the change alters existing UI, show it before and after.
-- A caption for each item: the requirement ID and criterion it illustrates, the revision it was captured at, the
-  synthetic tenant and fixture, and the viewport.
+- One screenshot of each distinct state the change produces or alters, such as success, a validation error, the
+  recovery page, or an empty state.
+- When the change alters existing UI, a "before" screenshot of each altered state, captured at the base revision,
+  beside its "after".
+- A caption for each item: the requirement ID and criterion it illustrates, or the documented contract the change
+  stays inside when no requirement applies; the revision it was captured at; the synthetic tenant and fixture; and the
+  viewport.
 - For a criterion with an observability obligation, a short excerpt of the telemetry fact it names, with the query
   that found it, only when it helps a reviewer judge the change.
 
 Keep the page small enough to take in within a couple of minutes.
 
 **Keep transient,** and never upload: captures made while debugging, failed or intermediate attempts, Playwright
-traces, raw logs, raw query output or telemetry dumps, captures of any revision other than the one under review,
-per-step captures beyond the states above, and transcripts.
+traces, raw logs, raw query output or telemetry dumps, captures of any revision other than the head and, for
+"before" screenshots, the base, per-step captures beyond the states above, and transcripts.
 
 **Capture** with Playwright against the application running locally at the pull request's head revision, using only
 synthetic tenants and fixtures. Follow the steps of the requirements BDD scenarios that cover the change, and locate
 controls by role and accessible name as those steps do. Reach every state through user interaction or the scenario's
 own setup; never edit the page or inject state to stage one. Record video with Playwright and convert it to GIF with
-`ffmpeg`, trimmed to the flow and kept under about 10 MB. Use a 1280×800 viewport, and add a narrow one only when the
+`ffmpeg`, trimmed to the flow and kept under about 10 MB. Cloud agent images include `ffmpeg`; elsewhere, install it
+with the system package manager. Use a 1280×800 viewport, and add a narrow one only when the
 change targets layout at that size. Capture after the last push you are asking a person to review, and capture again
 if a later commit changes what users see.
 
-**Check for forbidden data** before publishing. Look at every image, frame, and excerpt for the data classes that
-[Observability](../observability.md) and the constitution's telemetry rules forbid, including credentials, cookies,
-session references, tokens, OIDC codes, state or nonces, and any personal data in URLs, fields, or developer tools.
-Recapture rather than redact.
+**Check for forbidden data** before publishing. Synthetic fixture names, emails, and page text are expected and
+fine. Look at every image, frame, and excerpt for anything else: credentials, cookies, session references, tokens,
+OIDC codes, state or nonces in URLs, fields, or developer tools; telemetry attributes that
+[Observability's data classes](../observability.md#data-classes) forbid; and any real personal data or protected
+health information, which must never appear. Recapture rather than redact.
 
-**Publish** the page as a private Claude artifact, one per pull request, and republish it to the same link when you
-recapture. Link it in the pull request body. Whether to share it, and with whom, is the person's decision. Never
-commit captures to the repository; [the verification harness](verification-harness.md) keeps screenshots out of git.
+**Publish.** A Claude Code session publishes the page as a private Claude artifact, one per pull request,
+republishes it to the same link when it recaptures, and links it in the pull request body. The artifact belongs to the
+account that ran the session, so share it with any other reviewer before asking for their review; whether and with
+whom to share is that person's decision. A person, or an agent that cannot publish an artifact, attaches the same
+images in the pull request body through GitHub's web editor instead. Never commit captures to the repository;
+[the verification harness](verification-harness.md) keeps screenshots out of git.
 
 ## Review
 
