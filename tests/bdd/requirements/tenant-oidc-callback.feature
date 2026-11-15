@@ -20,6 +20,7 @@ Feature: Validate the selected tenant OIDC callback
     And the response is not cacheable
     And the response contains no protected application content
     And the established session admits the application entry at "springfield.localhost:3000"
+    And the established session is bound to the tracked provider user and the "springfield" tenant at "springfield.localhost:3000"
 
   @preets-session-013
   Scenario: A real provider return with a stale authentication time establishes no session

@@ -21,7 +21,7 @@ const portOf = (world: AppWorld, instance: string): number => {
 }
 
 /** The user and tenant an admitted entry shows. */
-interface EntryIdentity {
+export interface EntryIdentity {
   readonly issuer: string
   readonly subject: string
   readonly tenantAlias: string
@@ -80,7 +80,7 @@ const communicateActivity = (world: AppWorld, instance: string, session: SharedS
  * The reference entry displays the session's subject, issuer, and tenant alias as the first texts after its heading;
  * steps compare them between instances and promise no layout.
  */
-const entryIdentity = (response: RecordedResponse): EntryIdentity => {
+export const entryIdentity = (response: RecordedResponse): EntryIdentity => {
   assert.equal(response.status, 200, "expected the entry to admit the session")
   const heading = response.body.indexOf(">Reference session<")
   assert.ok(heading >= 0, "expected the protected reference entry")

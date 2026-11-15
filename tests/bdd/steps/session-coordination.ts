@@ -15,7 +15,7 @@ import {
   type SiteRequest
 } from "../support/server.ts"
 import { heldDeadline, namesOf, OFFSET_TOLERANCE_MILLISECONDS, tabOf } from "./expiration.ts"
-import { referenceActionRequest } from "./http.ts"
+import { actionRequest } from "./http.ts"
 import { configuredIdleTimeout } from "./tenant.ts"
 
 /** A same-origin in-page activity communication at `host` as a tab sends it: JSON naming the kind and a coordination tag. */
@@ -391,7 +391,7 @@ When("the session's browser reads its session status at {string}", async functio
 When(
   "the session's browser submits the protected reference form at {string}",
   async function(this: AppWorld, host: string) {
-    await sendWithSession(this, await referenceActionRequest(this, host))
+    await sendWithSession(this, await actionRequest(this, "runReferenceOperation", host, "/"))
   }
 )
 
