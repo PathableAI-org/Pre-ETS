@@ -17,17 +17,12 @@ import {
   openPullForBranch,
   postIssueComment,
   type PullRequest,
+  repositoryUrl,
   type RestAccess
 } from "./github-access.ts"
 import { type ChannelName, formatComment, parseComment } from "./note-sync/comment.ts"
-import {
-  blockingSummary,
-  defaultNotesRef,
-  importReview,
-  latestReview,
-  type Review,
-  validateReview
-} from "./review-findings.ts"
+import { renderReport, renderReview } from "./note-sync/render.ts"
+import { defaultNotesRef, importReview, latestReview, type Review, validateReview } from "./review-findings.ts"
 import { importReport, reportAt, validateReport, type VerificationReport } from "./verification.ts"
 
 export { type ChannelName, channelNames } from "./note-sync/comment.ts"
@@ -42,8 +37,9 @@ interface Channel<T> {
   readonly import: (cwd: string, refs: NoteRefs, json: string) => Validated<{ readonly written: boolean }>
   readonly latest: (cwd: string, refs: NoteRefs, revision: string) => Validated<T>
   readonly name: ChannelName
+  /** The entry as markdown for people; `repository` is the repository's web URL, for links into its files. */
+  readonly render: (entry: T, repository: string) => string
   readonly sha: (entry: T) => string
-  readonly summary: (entry: T) => string
   readonly validate: (value: unknown) => Validated<T>
 }
 
@@ -52,24 +48,10 @@ const fail = (...problems: readonly string[]): { readonly ok: false; readonly pr
   problems
 })
 
-const count = (entries: readonly unknown[], noun: string): string => `${String(entries.length)} ${noun}`
-
 /** A `--pr` option: absent, or a pull request number. */
 const pullRequestOption = (value: string | undefined): Validated<number | undefined> => {
   if (value === undefined) return { ok: true, value: undefined }
   return /^\d+$/.test(value) ? { ok: true, value: Number(value) } : fail(`${value} is not a pull request number`)
-}
-
-const reportSummary = (report: VerificationReport): string => {
-  const results = ["established", "violated", "not established", "blocked"].flatMap((result) => {
-    const matching = report.claims.filter((claim) => claim.result === result)
-    return matching.length > 0 ? [count(matching, result)] : []
-  })
-  return `**Verification report** run \`${report.runId}\` of slice ${report.sliceId} at \`${report.verifiedSha}\`: ${
-    results.length > 0 ? results.join(", ") : "no claims"
-  }; ${count(report.telemetryRows.filter((row) => row.status !== "present"), "telemetry rows not present")}; ${
-    count(report.forbiddenData, "forbidden-data findings")
-  }; ${count(report.escalations, "escalations")}.`
 }
 
 const verification: Channel<VerificationReport> = {
@@ -83,8 +65,8 @@ const verification: Channel<VerificationReport> = {
       : { ok: true, value: report.value }
   },
   name: "verification",
+  render: (report) => renderReport(report),
   sha: (report) => report.verifiedSha,
-  summary: reportSummary,
   validate: validateReport
 }
 
@@ -93,8 +75,8 @@ const review: Channel<Review> = {
   import: (cwd, refs, json) => importReview(cwd, refs.review, json),
   latest: (cwd, refs, revision) => latestReview(cwd, refs.review, revision),
   name: "review",
+  render: renderReview,
   sha: (entry) => entry.reviewedSha,
-  summary: (entry) => `**Code review** ${blockingSummary(entry).trimEnd().replaceAll("\n", "\n\n")}`,
   validate: validateReview
 }
 
@@ -149,8 +131,10 @@ const publish = <T>(
   const posted = postedIds(rest, pr.value, login.value, channel.name)
   if (!posted.ok) return posted
   if (posted.value.has(channel.id(entry))) return { ok: true, value: { posted: false, pr: pr.value, url: undefined } }
+  const repository = repositoryUrl(rest)
+  if (!repository.ok) return repository
   const marker = { id: channel.id(entry), kind: channel.name, sha: channel.sha(entry) }
-  const url = postIssueComment(rest, pr.value, formatComment(marker, channel.summary(entry), entry))
+  const url = postIssueComment(rest, pr.value, formatComment(marker, channel.render(entry, repository.value), entry))
   return url.ok ? { ok: true, value: { posted: true, pr: pr.value, url: url.value } } : url
 }
 

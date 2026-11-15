@@ -116,6 +116,7 @@ export const fakeGitHub = (
   const get = (path: string): unknown => {
     reach(path)
     if (path === "user") return { login }
+    if (path === "repos/{owner}/{repo}") return { html_url: "https://github.test/owner/repo" }
     const byHead = /^repos\/\{owner\}\/\{repo\}\/pulls\?state=open&head=\{owner\}:(.+)$/.exec(path)
     if (byHead !== null) return pulls.filter((pull) => headOf(pull).ref === decodeURIComponent(byHead[1] ?? ""))
     const one = /^repos\/[^/]+\/[^/]+\/pulls\/(\d+)$/.exec(path)

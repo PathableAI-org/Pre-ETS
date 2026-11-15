@@ -5,6 +5,7 @@ import type { VerificationRequest } from "./request.ts"
  * Renders a report as the slice's `quickstart.md` execution results, in the format earlier features used, so the
  * implementation session commits generated text instead of a hand summary.
  */
+import { cell, table } from "../markdown.ts"
 import { headings, sectionRange } from "./markdown.ts"
 
 const short = (sha: string): string => sha.slice(0, 7)
@@ -27,18 +28,8 @@ const evidenceText = (claim: ClaimReport): string => {
   return parts.join("; ")
 }
 
-const cell = (value: string): string => value.replace(/\|/g, "\\|").replace(/\s*\n\s*/g, " ")
-
 const observation = (claim: ClaimReport): string =>
   cell(`${claim.observed} Conditions: ${claim.conditions}. Evidence: ${evidenceText(claim)}.`)
-
-/** A pipe table padded the way dprint formats it. */
-const table = (header: readonly string[], rows: readonly (readonly string[])[]): string => {
-  const widths = header.map((title, index) => Math.max(title.length, ...rows.map((row) => (row[index] ?? "").length)))
-  const line = (cells: readonly string[]): string =>
-    `| ${cells.map((value, index) => value.padEnd(widths[index] ?? 0)).join(" | ")} |`
-  return [line(header), line(widths.map((width) => "-".repeat(width))), ...rows.map(line)].join("\n")
-}
 
 const listOrNone = (items: readonly string[]): string => items.length === 0 ? "none" : items.join("; ")
 

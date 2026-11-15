@@ -80,6 +80,16 @@ const readPull = (value: unknown): PullRequest | undefined => {
 /** This clone's repository in a gh path. An explicit `owner/name` may take its place. */
 const thisRepository = "{owner}/{repo}"
 
+/** This clone's repository's web URL, such as https://github.com/owner/name. */
+export const repositoryUrl = (rest: RestAccess): Validated<string> => {
+  const path = `repos/${thisRepository}`
+  return call(
+    path,
+    () => rest.get(path),
+    (value) => isRecord(value) && typeof value.html_url === "string" ? value.html_url : undefined
+  )
+}
+
 export const pullRequest = (rest: RestAccess, number: number, repository = thisRepository): Validated<PullRequest> => {
   const path = `repos/${repository}/pulls/${String(number)}`
   return call(path, () => rest.get(path), readPull)
