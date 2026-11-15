@@ -382,14 +382,6 @@ const issuedSessionCookie = (world: AppWorld): string => {
   return header.split(";", 1)[0] ?? ""
 }
 
-/**
- * Later requests in the scenario, raw or in a browser, carry the session the provider return established, whatever
- * Host they name, as the world's session reference.
- */
-Given("the visitor presents the established session in later requests", function(this: AppWorld) {
-  this.cookie = issuedSessionCookie(this).slice("pathable-session=".length)
-})
-
 const hostOnlySessionAttributes = [/^pathable-session=[^;]+;/, /HttpOnly/i, /SameSite=Lax/i, /Path=\//i]
 
 Then("the response establishes a session and navigates to the application entry", function(this: AppWorld) {

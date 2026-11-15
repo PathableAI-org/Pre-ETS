@@ -1,4 +1,4 @@
-import { Then, When } from "@cucumber/cucumber"
+import { Given, Then, When } from "@cucumber/cucumber"
 import assert from "node:assert/strict"
 
 import type { AppWorld } from "../support/world.ts"
@@ -36,14 +36,34 @@ When(
   }
 )
 /**
- * React's client encodes `runReferenceOperation(initialReferenceActionState, new FormData())` with
- * `encodeReply([{ _tag: "Ready" }, new FormData()])` as one multipart field `0`; `$K1` refers to the empty form.
+ * React's client encodes `runReferenceOperation(initialReferenceActionState, formData)` with
+ * `encodeReply([{ _tag: "Ready" }, formData])`: each form entry as a `_1_<name>` field, then field `0` with the
+ * arguments, where `$K1` refers to the form (as a page's own submission was observed to send them). A page submits the
+ * coordination tag it observed in the form's `coordinationTag` field; a visitor whose page observed none submits an
+ * empty form.
  */
-const referenceActionArguments = { "0": JSON.stringify([{ _tag: "Ready" }, "$K1"]) }
+const referenceActionArguments = (coordinationTag: string | undefined) => {
+  const fields: [name: string, value: string][] = []
+  if (coordinationTag !== undefined) fields.push(["_1_coordinationTag", coordinationTag])
+  fields.push(["0", JSON.stringify([{ _tag: "Ready" }, "$K1"])])
+  return fields
+}
+
+/** Read as the page's session coordinator reads it: the session's own snapshot from `GET /session/status`. */
+Given(
+  "the visitor's page at {string} has observed its session's coordination tag",
+  async function(this: AppWorld, host: string) {
+    await requestSiteWith(this, { headers: FETCH_METADATA.application, host, method: "GET", path: "/session/status" })
+    assert.equal(this.response?.status, 200)
+    const { coordinationTag } = responseJson(this)
+    assert.equal(typeof coordinationTag, "string")
+    this.coordinationTag = String(coordinationTag)
+  }
+)
 
 When("a visitor invokes the protected reference action at {string}", async function(this: AppWorld, host: string) {
   const action = await serverActionId("runReferenceOperation")
-  const { body, contentType } = await multipartBody(referenceActionArguments)
+  const { body, contentType } = await multipartBody(referenceActionArguments(this.coordinationTag))
   await requestSiteWith(this, {
     body,
     headers: {
@@ -92,6 +112,9 @@ Then("the response issues no application or correlation cookie", function(this: 
 })
 Then("the response issues no reference-operation receipt", function(this: AppWorld) {
   assert.ok(!issuedCookieNames(this).includes("preets-ref-effect"), "issued the reference-operation receipt")
+})
+Then("the response issues a reference-operation receipt", function(this: AppWorld) {
+  assert.ok(issuedCookieNames(this).includes("preets-ref-effect"), "issued no reference-operation receipt")
 })
 Then("the response issues one recoverable correlation cookie and no application session", function(this: AppWorld) {
   const cookie = this.response?.headers["set-cookie"] ?? ""
