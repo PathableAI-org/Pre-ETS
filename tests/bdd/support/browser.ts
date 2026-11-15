@@ -69,6 +69,11 @@ export const providerIdTokenClaims = async (request: {
   readonly issuer: string
   readonly redirectUri: string
 }): Promise<Record<string, unknown>> => {
+  // The sign-in answer is intercepted by `isAuthentication`, which matches only the tracked provider; any other issuer
+  // would let the browser follow the redirect instead.
+  if (new URL(request.issuer).origin !== PROVIDER_ORIGIN) {
+    assert.fail(`expected the tracked provider at ${PROVIDER_ORIGIN}, got issuer ${request.issuer}`)
+  }
   const verifier = randomBytes(32).toString("base64url")
   const authorization = new URL(`${request.issuer}/protocol/openid-connect/auth`)
   authorization.search = new URLSearchParams({

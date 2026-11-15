@@ -6,11 +6,9 @@ import { setTimeout as delay } from "node:timers/promises"
 
 import type { AppWorld } from "../support/world.ts"
 
-import { applicationBrowser, signInAtProvider } from "../support/browser.ts"
+import { applicationBrowser, isAuthorization, PROVIDER_ORIGIN, signInAtProvider } from "../support/browser.ts"
 import { requestInstance, startSite } from "../support/server.ts"
 
-/** The tracked realm's issuer, as the tenant fixtures configure it. */
-const PROVIDER_ORIGIN = "http://127.0.0.1:8080"
 const PROVIDER_ACCOUNT = `${PROVIDER_ORIGIN}/realms/pre-ets/account`
 
 declare global {
@@ -96,9 +94,7 @@ Given("the visitor holds a provider single sign-on session for {string}", async 
   })
   context.on("request", (request) => {
     const url = new URL(request.url())
-    if (url.origin === PROVIDER_ORIGIN && url.pathname.endsWith("/protocol/openid-connect/auth")) {
-      journey.authorizationRequests.push(url)
-    }
+    if (isAuthorization(url)) journey.authorizationRequests.push(url)
   })
   observeProtectedDocuments(journey, journey.page)
   // Signing in directly at the provider, not through the application, leaves only a provider session. The provider
