@@ -84,7 +84,10 @@ comment on the pull request. Never push or fetch `refs/notes/review` itself.
   with a hidden marker naming the note kind, SHA, and review ID. A markdown rendering generated from the entry
   follows, so a person reads it without the JSON: each open finding with its severity, a link to its line at the
   reviewed SHA, its summary, and its failure scenario, then the closures and escalations. A verification report
-  renders as a claims table, then its escalations, forbidden data, and telemetry rows not present. The JSON itself
+  renders as a claims table, then its escalations, forbidden data, and telemetry rows not present. A later entry also
+  links the comment of the entry it supersedes: a review the one it names, or else the same slice's review in the
+  round before; a report the run it names, or else the same slice's latest earlier report. That line is omitted when
+  no such comment by the same account is on the pull request. The JSON itself
   sits in a collapsed `<details>` block as the comment's last fenced `json` block, and only it is read back; the
   rendering is never written by hand. If no pull request is found or posting fails, the review stays recorded locally and the command
   exits 1 and says why. `pnpm notes:publish review <sha> [--pr <n>]` posts it once the cause is fixed. A pull request

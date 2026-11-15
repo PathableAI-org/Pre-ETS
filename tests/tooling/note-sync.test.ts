@@ -84,12 +84,14 @@ void describe("publishing a recorded entry", () => {
   })
 
   void it("uses --pr when given, and does not post an entry the pull request already has", () => {
-    const fake = github({ pulls: [] })
+    const fake = github({ pulls: [restPull(12, { ref: "another-branch", sha: base })] })
     const report = recordedReport()
     assert.equal(publishReport({ cwd: source.dir, pr: 12, rest: fake }, report).ok, true)
     const again = publishReport({ cwd: source.dir, pr: 12, rest: fake }, report)
     assert.deepEqual(again, { ok: true, value: { posted: false, pr: 12, url: undefined } })
     assert.equal(bodies(fake, 12).length, 1)
+    const missing = publishReport({ cwd: source.dir, pr: 99, rest: fake }, report)
+    assert.deepEqual(missing.ok ? [] : missing.problems, ["GitHub repos/{owner}/{repo}/pulls/99: HTTP 404: Not Found"])
   })
 
   void it("fails, keeping the local record, when no pull request is found or GitHub is unreachable", () => {
@@ -298,7 +300,7 @@ void describe("rendering a note comment for people", () => {
     )
   })
 
-  void it("says a review with nothing open has no findings, and leaves out empty closures and escalations", () => {
+  void it("says a first-round review with nothing open has no findings, and supersedes nothing", () => {
     const fake = github()
     const review = recordedReview()
     assert.ok(publishReview({ cwd: source.dir, rest: fake }, review).ok)
@@ -402,5 +404,54 @@ void describe("rendering a note comment for people", () => {
     assert.deepEqual(synced, { ok: true, value: { imported: 1, present: 0, rejected: [] } })
     const imported = latestReview(target.dir, defaultNotesRef, verified)
     assert.equal(imported.ok && imported.value.reviewId, review.reviewId)
+  })
+
+  void it("links a later round to the earlier round's comment on the pull request", () => {
+    const fake = github()
+    const first = recordedReview()
+    assert.ok(publishReview({ cwd: source.dir, rest: fake }, first).ok)
+    const second = recordedReview((entry) => {
+      entry.reviewId = secondReviewId
+      entry.round = 2
+    })
+    assert.ok(publishReview({ cwd: source.dir, rest: fake }, second).ok)
+    const lines = rendered(bodies(fake)[1] ?? "").split("\n")
+    assert.deepEqual(lines.slice(1, 3), [
+      "",
+      `Round 2 supersedes round 1 ([review 4b0e6a52 at ${
+        verified.slice(0, 7)
+      }](https://github.test/pull/7#issuecomment-1)).`
+    ])
+  })
+
+  void it("leaves out the supersedes line when the earlier round is not on the pull request", () => {
+    const fake = github({ comments: { 7: [restComment(1, "someone-else", "Earlier round, but not a note comment.")] } })
+    const second = recordedReview((entry) => {
+      entry.reviewId = secondReviewId
+      entry.round = 2
+    })
+    assert.ok(publishReview({ cwd: source.dir, rest: fake }, second).ok)
+    const text = rendered(bodies(fake)[1] ?? "")
+    assert.ok(!text.includes("supersedes"))
+    assert.equal(text.split("\n")[2], "#### Findings")
+  })
+
+  void it("links a report to the earlier report of the same slice on the pull request", () => {
+    const fake = github()
+    const first = recordedReport()
+    assert.ok(publishReport({ cwd: source.dir, rest: fake }, first).ok)
+    const retry = recordReport(
+      source.dir,
+      sampleReport(verified, (report) => {
+        report.runId = "5d6e7f80-1a2b-4c3d-8e9f-0a1b2c3d4e5f"
+        report.supersedesRunId = first.runId
+      })
+    )
+    assert.ok(retry.ok, retry.ok ? "" : retry.problems.join("\n"))
+    assert.ok(publishReport({ cwd: source.dir, rest: fake }, retry.value).ok)
+    assert.equal(
+      rendered(bodies(fake)[1] ?? "").split("\n")[2],
+      `Supersedes [run 79b28959 at ${verified.slice(0, 7)}](https://github.test/pull/7#issuecomment-1).`
+    )
   })
 })

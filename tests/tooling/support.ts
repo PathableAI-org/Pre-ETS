@@ -81,7 +81,13 @@ export const restPull = (
   number: number,
   head: { readonly ref: string; readonly sha: string },
   labels: readonly string[] = []
-): Record<string, unknown> => ({ draft: true, head, labels: labels.map((name) => ({ name })), number })
+): Record<string, unknown> => ({
+  draft: true,
+  head,
+  html_url: `https://github.test/owner/repo/pull/${String(number)}`,
+  labels: labels.map((name) => ({ name })),
+  number
+})
 
 export interface FakeGitHub extends RestAccess {
   /** Comments by pull request number, in the REST shape, oldest first. Posting appends here. */
@@ -116,7 +122,6 @@ export const fakeGitHub = (
   const get = (path: string): unknown => {
     reach(path)
     if (path === "user") return { login }
-    if (path === "repos/{owner}/{repo}") return { html_url: "https://github.test/owner/repo" }
     const byHead = /^repos\/\{owner\}\/\{repo\}\/pulls\?state=open&head=\{owner\}:(.+)$/.exec(path)
     if (byHead !== null) return pulls.filter((pull) => headOf(pull).ref === decodeURIComponent(byHead[1] ?? ""))
     const one = /^repos\/[^/]+\/[^/]+\/pulls\/(\d+)$/.exec(path)
@@ -139,9 +144,10 @@ export const fakeGitHub = (
     if (target === null) throw new Error(`unexpected POST ${path}`)
     const list = comments.get(Number(target[1])) ?? []
     const id = list.length + 1
-    list.push({ body: body.body, id, user: { login } })
+    const url = `https://github.test/pull/${target[1] ?? ""}#issuecomment-${String(id)}`
+    list.push({ body: body.body, html_url: url, id, user: { login } })
     comments.set(Number(target[1]), list)
-    return { html_url: `https://github.test/pull/${target[1] ?? ""}#issuecomment-${String(id)}` }
+    return { html_url: url }
   }
   return { comments, get, post, requests }
 }
@@ -149,6 +155,7 @@ export const fakeGitHub = (
 /** An issue comment in the REST shape. */
 export const restComment = (id: number, author: string, body: string): Record<string, unknown> => ({
   body,
+  html_url: `https://github.test/pull/comment-${String(id)}`,
   id,
   user: { login: author }
 })
