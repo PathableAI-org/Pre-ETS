@@ -249,6 +249,21 @@ const proxyRequest = (request: IncomingMessage, response: ServerResponse, option
   forwardRequest(request, response, url, owned, options)
 }
 
+/** Playwright's default browser: its headless shell, with the back-forward cache off. */
+const ORDINARY_LAUNCH = { channel: "chromium-headless-shell" }
+
+/**
+ * A history journey: Playwright turns off Chromium's back-forward cache by default, and its headless shell never uses
+ * it, so full Chromium runs with the cache on. Chromium drops a `no-store` page from the cache after a few minutes,
+ * before the shortest idle timeout (five minutes) can pass, so cached pages are kept for 15 minutes, as a browser with
+ * a longer-lived history cache would keep them, and a restore after expiry happens.
+ */
+const HISTORY_LAUNCH = {
+  args: ["--enable-features=BackForwardCacheTimeToLiveControl:time_to_live_seconds/900"],
+  channel: "chromium",
+  ignoreDefaultArgs: ["--disable-back-forward-cache"]
+}
+
 /**
  * Launches Chromium behind an owned local proxy so every application hop stays
  * on the loopback transport while external (Keycloak) HTTPS keeps its real
@@ -299,13 +314,7 @@ export async function applicationBrowser(
   }
   try {
     const browser = await chromium.launch({
-      // Playwright turns off Chromium's back-forward cache by default, and its headless shell (the default channel)
-      // never uses it; a history journey runs full Chromium with the cache on. Chromium drops a `no-store` page from the
-      // cache after a few minutes, before the shortest idle timeout (five minutes) can pass, so the journey keeps cached
-      // pages for 15 minutes, as a browser with a longer-lived history cache would, and a restore after expiry happens.
-      args: historyCache ? ["--enable-features=BackForwardCacheTimeToLiveControl:time_to_live_seconds/900"] : [],
-      channel: historyCache ? "chromium" : "chromium-headless-shell",
-      ignoreDefaultArgs: historyCache ? ["--disable-back-forward-cache"] : [],
+      ...(historyCache ? HISTORY_LAUNCH : ORDINARY_LAUNCH),
       proxy: { server: `http://127.0.0.1:${String(proxyPort)}` }
     })
     return {

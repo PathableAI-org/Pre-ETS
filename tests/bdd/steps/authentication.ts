@@ -12,6 +12,7 @@ import type { AppWorld } from "../support/world.ts"
 
 import { applicationBrowser, signInAtProvider as signIn, withSessionContext } from "../support/browser.ts"
 import { requestInstance, requestSite, startSecondSite, startSite } from "../support/server.ts"
+import { entryIdentity } from "./shared-session.ts"
 
 type RecordedResponse = NonNullable<AppWorld["response"]>
 
@@ -425,15 +426,15 @@ Then(
   "the established session is bound to the tracked provider user and the {string} tenant at {string}",
   async function(this: AppWorld, alias: string, host: string) {
     const admitted = await requestInstance(this, this.port, host, "/", true, issuedSessionCookie(this))
-    assert.equal(admitted.status, 200)
     const tenant = JSON.parse(await fs.readFile(path.join(this.directory, `${alias}.json`), "utf8")) as {
       oidc?: { issuer?: string }
     }
     assert.ok(tenant.oidc?.issuer, `expected the "${alias}" tenant file to name its issuer`)
-    const rendered = [...admitted.body.matchAll(/>([^<>]+)</g)].map((match) => match[1]?.trim())
-    for (const value of [(await trackedProviderUser()).id, tenant.oidc.issuer, alias]) {
-      assert.ok(rendered.includes(value), `expected the protected page to show the bound ${value}`)
-    }
+    assert.deepEqual(entryIdentity(admitted), {
+      issuer: tenant.oidc.issuer,
+      subject: (await trackedProviderUser()).id,
+      tenantAlias: alias
+    })
   }
 )
 
