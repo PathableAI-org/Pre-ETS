@@ -42,11 +42,11 @@ inside an approved contract. When it is unclear whether a trigger matches, use t
 
 ### Process by tier
 
-| Tier     | New behavior or contract                                                                                                                                              | Fix inside an approved contract                                                   |
-| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| High     | A specification pull request, an engineering-plan pull request with a telemetry contract, and verified implementation slices, as in [the full stack](#the-full-stack) | One pull request that names its triggers and carries a verification report        |
-| Standard | One combined specification-and-plan pull request without a telemetry contract, then verified implementation slices, as in [the combined stack](#the-combined-stack)   | One pull request with normal CI, naming the tests that cover the fix              |
-| Light    | Not applicable: new behavior is Standard or High                                                                                                                      | One pull request with normal CI. No `verification.md` and no verification report. |
+| Tier     | New behavior or contract                                                                                                                                              | Fix inside an approved contract                                                                                                                |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| High     | A specification pull request, an engineering-plan pull request with a telemetry contract, and verified implementation slices, as in [the full stack](#the-full-stack) | One pull request that names its triggers and [numbers its claims](verification-harness.md#verification-by-risk-tier) for a verification report |
+| Standard | One combined specification-and-plan pull request without a telemetry contract, then verified implementation slices, as in [the combined stack](#the-combined-stack)   | One pull request with normal CI, naming the tests that cover the fix                                                                           |
+| Light    | Not applicable: new behavior is Standard or High                                                                                                                      | One pull request with normal CI. No `verification.md` and no verification report.                                                              |
 
 [The verification harness](verification-harness.md#verification-by-risk-tier) owns what `verification.md` contains
 and what the verifier does at each tier. Requirements and delivery-plan changes are not tiered. They use their own
