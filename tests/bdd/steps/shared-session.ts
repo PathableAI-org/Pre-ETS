@@ -8,7 +8,7 @@ import { applicationBrowser, signInThroughApplication } from "../support/browser
 import { type RecordedResponse, requestInstance, sendRequest, startSecondSite } from "../support/server.ts"
 import { namesOf } from "./expiration.ts"
 import { assertNoProtectedContent, assertSameOriginLogin } from "./http.ts"
-import { activityCommunication, snapshotOf } from "./session-coordination.ts"
+import { activityCommunication, type Presentation, sessionStatus, snapshotOf } from "./session-coordination.ts"
 
 /**
  * The port of one of the two independently started application processes: A is the world's site, B its second site.
@@ -25,13 +25,6 @@ interface EntryIdentity {
   readonly issuer: string
   readonly subject: string
   readonly tenantAlias: string
-}
-
-/** What presents a session to an instance: its cookie, at the tenant authority it was established for. */
-interface Presentation {
-  /** The `Cookie` request header carrying the session reference. */
-  readonly cookie: string
-  readonly host: string
 }
 
 /**
@@ -68,9 +61,8 @@ const sessionOf = (world: AppWorld, name: string): SharedSession => {
   return session
 }
 
-/** `GET /session/status`, an application request: it reads the session and never renews it. */
 const readStatus = (world: AppWorld, instance: string, session: Presentation) =>
-  requestInstance(world, portOf(world, instance), session.host, "/session/status", false, session.cookie)
+  sessionStatus(world, portOf(world, instance), session)
 
 /** A document entry: the gate renews a usable session for it, and the page reads the session. */
 const requestEntry = (world: AppWorld, instance: string, session: Presentation) =>

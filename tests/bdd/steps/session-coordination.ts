@@ -64,6 +64,12 @@ const WINDOW_MILLISECONDS = 60_000
 const AT_ONCE_MILLISECONDS = 2_000
 const POLL_MILLISECONDS = 200
 
+/** What presents a session to an instance: its cookie header, at the tenant authority it was established for. */
+export interface Presentation {
+  readonly cookie: string
+  readonly host: string
+}
+
 /** The session's deadline as last read, and the visitor's interactions since its latest observed renewal. */
 interface Observed {
   deadline: number
@@ -76,11 +82,9 @@ interface Observed {
   windowFrom?: number | undefined
 }
 
-/** The session as its requests present it: its cookie header, at the tenant authority it was established for. */
-interface Presentation {
-  readonly cookie: string
-  readonly host: string
-}
+/** `GET /session/status` at the instance on `port`, an application request: it reads the session and never renews it. */
+export const sessionStatus = (world: AppWorld, port: number, presented: Presentation): Promise<RecordedResponse> =>
+  requestInstance(world, port, presented.host, "/session/status", false, presented.cookie)
 
 /** The scenario's entry in `states`, which an earlier step must have set. */
 const required = <A>(states: WeakMap<AppWorld, A>, world: AppWorld, expectation: string): A => {
@@ -95,8 +99,7 @@ const observedOf = (world: AppWorld): Observed => required(observations, world, 
 
 /** The session's authoritative deadline from its own status read. */
 const deadlineOf = async (world: AppWorld, presented: Presentation): Promise<number> =>
-  snapshotOf(await requestInstance(world, world.port, presented.host, "/session/status", false, presented.cookie))
-    .deadline
+  snapshotOf(await sessionStatus(world, world.port, presented)).deadline
 
 /** When the renewal that set `deadline` was written: the server sets a deadline its idle timeout after receipt. */
 const renewalTime = async (world: AppWorld, presented: Presentation, deadline: number): Promise<number> =>
@@ -163,9 +166,29 @@ When("the visitor clicks the acknowledgement checkbox in tab {string}", async fu
   await interact(this, name, (page) => acknowledgement(page).click())
 })
 
-When("the visitor taps the goal field in tab {string}", async function(this: AppWorld, name: string) {
-  await interact(this, name, (page) => goalField(page).tap())
-})
+/**
+ * A finger rests on the field for longer than the at-once bound before it lifts, so a renewal at once comes from the
+ * touch itself, not from the click that follows the lift. Playwright's touchscreen has no press without release, so the
+ * touch goes through the browser's own touch input, as its tap does.
+ */
+When(
+  "the visitor holds a finger on the goal field for {int} seconds in tab {string}",
+  async function(this: AppWorld, seconds: number, name: string) {
+    await interact(this, name, async (page) => {
+      const box = await goalField(page).boundingBox()
+      assert.ok(box, "expected the goal field on screen")
+      const touch = { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+      const cdp = await page.context().newCDPSession(page)
+      try {
+        await cdp.send("Input.dispatchTouchEvent", { touchPoints: [touch], type: "touchStart" })
+        await delay(seconds * 1_000)
+        await cdp.send("Input.dispatchTouchEvent", { touchPoints: [], type: "touchEnd" })
+      } finally {
+        await cdp.detach()
+      }
+    })
+  }
+)
 
 When("the visitor types in the goal field in tab {string}", async function(this: AppWorld, name: string) {
   await interact(this, name, (page) => goalField(page).press("a"))
