@@ -22,15 +22,19 @@ Rules for every role:
   Never merge, force-push, or hard-reset. Never add check suppressions.
 - One writing session owns a set of files. {{hot_spots}}
 - Do not poll or wait in a loop. Start a long command, such as a test run, in the background and end your turn; you
-  are woken when it finishes. End your turn when you are waiting; the orchestrator is told when you do.
+  are woken when it finishes. End your turn when you are waiting.
 - Read GitHub with `gh api` REST paths or the GitHub tools. `gh pr` and `gh issue` subcommands use GraphQL, which
   cloud sessions block.
 - Peers: {{peers}}. Message a peer with the session messaging tool (`send_message` in cloud sessions) and its session
   ID. Copy the orchestrator on any escalation.
 - Begin your final message of every turn with one status line:
   `<role> <slice or phase> <state> @ <short SHA or -> next=<what you wait for>`, where state is one of `pushed`,
-  `verified`, `reviewed`, `pr-ready`, `waiting`, `waiting-on-person`, `escalated`, `blocked`, or `failed`. Only the
-  first 400 characters reach the orchestrator.
+  `verified`, `reviewed`, `pr-ready`, `waiting`, `waiting-on-person`, `escalated`, `blocked`, or `failed`.
+- The orchestrator does not see your turns end; ending a turn tells it nothing. Whenever the state is `pushed`,
+  `verified`, `pr-ready`, `waiting-on-person`, `escalated`, `blocked`, or `failed`, first send the same status line,
+  plus the pull request number and anything it must act on, to the orchestrator `{{orchestrator_id}}` with the
+  session messaging tool (`send_message` in cloud sessions), then end your turn. "Report" in this brief means that
+  message. `waiting` and `reviewed` need no message.
 - `waiting` means you have nothing to do until the event in `next=`; it is not a problem. `blocked` means a
   prerequisite stops work you were asked to do. A setup or environment problem before any request needs it is not
   `blocked`: retry when the request arrives, and report `blocked` then if it still fails.

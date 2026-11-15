@@ -1,4 +1,4 @@
-import type { Browser, Page, Response as PlaywrightResponse } from "playwright"
+import type { Browser, Frame, Page, Response as PlaywrightResponse } from "playwright"
 
 import { After, Given, Then, When } from "@cucumber/cucumber"
 import assert from "node:assert/strict"
@@ -262,9 +262,22 @@ When("the visitor logs out in the second tab", async function(this: AppWorld) {
   await second.getByRole("heading", { name: "You are signed out" }).waitFor({ state: "visible" })
 })
 
+/** Resolves when the page's main frame next commits a navigation, which replaces its document. */
+const nextMainFrameCommit = (page: Page) =>
+  new Promise<void>((resolve) => {
+    const committed = (frame: Frame) => {
+      if (frame !== page.mainFrame()) return
+      page.off("framenavigated", committed)
+      resolve()
+    }
+    page.on("framenavigated", committed)
+  })
+
 /**
  * Focuses the reference form's submit button and presses Enter, keeping the response to the form's `POST`: the
- * document navigation without scripts, or the Server Action fetch with scripts.
+ * document navigation without scripts, or the Server Action fetch with scripts. A document submission's response
+ * arrives before the tab commits the document it carries, and until then the submitting page is still loaded, so the
+ * step waits for that commit and then for the new document to load; later steps read only the new document.
  */
 When("the visitor submits the reference form by keyboard", async function(this: AppWorld) {
   const entry = entryOf(this)
@@ -273,10 +286,12 @@ When("the visitor submits the reference form by keyboard", async function(this: 
   const submitted = entry.page.waitForResponse((response) =>
     response.request().method() === "POST" && new URL(response.url()).pathname === page
   )
+  const committed = nextMainFrameCommit(entry.page)
   await entry.page.getByRole("button", { name: "Record reference operation" }).focus()
   await entry.page.keyboard.press("Enter")
   entry.submission = await submitted
-  await entry.page.waitForLoadState()
+  if (entry.submission.request().isNavigationRequest()) await committed
+  await entry.page.waitForLoadState("load")
 })
 
 Then(
@@ -309,14 +324,10 @@ Then("the page shows the status {string}", async function(this: AppWorld, messag
   await entryOf(this).page.getByRole("status").filter({ hasText: message }).waitFor({ state: "visible" })
 })
 
-/**
- * The submission without scripts navigates the tab, so the step first waits for the recovery document it loads; reading
- * the page while the navigation commits would lose the old document's execution context.
- */
+/** The document the submission without scripts loaded is the recovery document, and nothing protected remains. */
 Then("the page displays the recovery document explaining {string}", async function(this: AppWorld, heading: string) {
   const { page } = entryOf(this)
   await page.getByRole("heading", { level: 1, name: heading }).waitFor({ state: "visible" })
-  await page.waitForLoadState("load")
   const headings = await page.getByRole("heading", { level: 1 }).allTextContents()
   assert.deepEqual(headings, [heading])
   await assertRecoveryCopy(page, heading)

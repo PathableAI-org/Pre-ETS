@@ -17,17 +17,12 @@ import {
   openPullForBranch,
   postIssueComment,
   type PullRequest,
+  pullRequest,
   type RestAccess
 } from "./github-access.ts"
 import { type ChannelName, formatComment, parseComment } from "./note-sync/comment.ts"
-import {
-  blockingSummary,
-  defaultNotesRef,
-  importReview,
-  latestReview,
-  type Review,
-  validateReview
-} from "./review-findings.ts"
+import { type Earlier, type RenderContext, renderReport, renderReview } from "./note-sync/render.ts"
+import { defaultNotesRef, importReview, latestReview, type Review, validateReview } from "./review-findings.ts"
 import { importReport, reportAt, validateReport, type VerificationReport } from "./verification.ts"
 
 export { type ChannelName, channelNames } from "./note-sync/comment.ts"
@@ -42,8 +37,9 @@ interface Channel<T> {
   readonly import: (cwd: string, refs: NoteRefs, json: string) => Validated<{ readonly written: boolean }>
   readonly latest: (cwd: string, refs: NoteRefs, revision: string) => Validated<T>
   readonly name: ChannelName
+  /** The entry as markdown for people, given the repository's web URL and the entries already on the pull request. */
+  readonly render: (entry: T, context: RenderContext<T>) => string
   readonly sha: (entry: T) => string
-  readonly summary: (entry: T) => string
   readonly validate: (value: unknown) => Validated<T>
 }
 
@@ -52,24 +48,10 @@ const fail = (...problems: readonly string[]): { readonly ok: false; readonly pr
   problems
 })
 
-const count = (entries: readonly unknown[], noun: string): string => `${String(entries.length)} ${noun}`
-
 /** A `--pr` option: absent, or a pull request number. */
 const pullRequestOption = (value: string | undefined): Validated<number | undefined> => {
   if (value === undefined) return { ok: true, value: undefined }
   return /^\d+$/.test(value) ? { ok: true, value: Number(value) } : fail(`${value} is not a pull request number`)
-}
-
-const reportSummary = (report: VerificationReport): string => {
-  const results = ["established", "violated", "not established", "blocked"].flatMap((result) => {
-    const matching = report.claims.filter((claim) => claim.result === result)
-    return matching.length > 0 ? [count(matching, result)] : []
-  })
-  return `**Verification report** run \`${report.runId}\` of slice ${report.sliceId} at \`${report.verifiedSha}\`: ${
-    results.length > 0 ? results.join(", ") : "no claims"
-  }; ${count(report.telemetryRows.filter((row) => row.status !== "present"), "telemetry rows not present")}; ${
-    count(report.forbiddenData, "forbidden-data findings")
-  }; ${count(report.escalations, "escalations")}.`
 }
 
 const verification: Channel<VerificationReport> = {
@@ -83,8 +65,8 @@ const verification: Channel<VerificationReport> = {
       : { ok: true, value: report.value }
   },
   name: "verification",
+  render: renderReport,
   sha: (report) => report.verifiedSha,
-  summary: reportSummary,
   validate: validateReport
 }
 
@@ -93,40 +75,54 @@ const review: Channel<Review> = {
   import: (cwd, refs, json) => importReview(cwd, refs.review, json),
   latest: (cwd, refs, revision) => latestReview(cwd, refs.review, revision),
   name: "review",
+  render: renderReview,
   sha: (entry) => entry.reviewedSha,
-  summary: (entry) => `**Code review** ${blockingSummary(entry).trimEnd().replaceAll("\n", "\n\n")}`,
   validate: validateReview
 }
 
-/** The open pull request whose head branch has `sha` at its tip, or `pr` when the caller names one. */
-const pullForSha = (cwd: string, rest: RestAccess, sha: string, pr: number | undefined): Validated<number> => {
-  if (pr !== undefined) return { ok: true, value: pr }
+/** The open pull request whose head branch has `sha` at its tip, or pull request `pr` when the caller names one. */
+const pullForSha = (cwd: string, rest: RestAccess, sha: string, pr: number | undefined): Validated<PullRequest> => {
+  if (pr !== undefined) return pullRequest(rest, pr)
   const branches = branchesAt(cwd, sha)
   if (branches.length === 0) return fail(`no local or fetched branch has ${sha} at its tip; pass --pr <number>`)
-  const numbers = new Set<number>()
+  const pulls = new Map<number, PullRequest>()
   for (const branch of branches) {
     const pull = openPullForBranch(rest, branch)
     if (!pull.ok) return pull
-    if (pull.value !== undefined) numbers.add(pull.value.number)
+    if (pull.value !== undefined) pulls.set(pull.value.number, pull.value)
   }
-  const found = [...numbers]
+  const found = [...pulls.values()]
   if (found.length === 1 && found[0] !== undefined) return { ok: true, value: found[0] }
   return found.length === 0
     ? fail(`no open pull request has ${branches.join(", ")} as its head; pass --pr <number>`)
-    : fail(`open pull requests ${found.map((number) => `#${String(number)}`).join(", ")} all have ${sha}; pass --pr`)
+    : fail(`open pull requests ${found.map((pull) => `#${String(pull.number)}`).join(", ")} all have ${sha}; pass --pr`)
 }
 
-/** The IDs of entries of `kind` already posted on the pull request by `login`. */
-const postedIds = (rest: RestAccess, pr: number, login: string, kind: ChannelName): Validated<ReadonlySet<string>> => {
+interface PostedEntries<T> {
+  /** Valid entries whose marker matches them, oldest first, with the comments that carry them. */
+  readonly entries: readonly Earlier<T>[]
+  /** The marker ID of every comment of this kind, valid or not. */
+  readonly ids: ReadonlySet<string>
+}
+
+/** The entries of `channel`'s kind already posted on the pull request by `login`. */
+const postedEntries = <T>(
+  channel: Channel<T>,
+  rest: RestAccess,
+  pr: number,
+  login: string
+): Validated<PostedEntries<T>> => {
   const comments = issueComments(rest, pr)
   if (!comments.ok) return comments
-  return {
-    ok: true,
-    value: new Set(comments.value.flatMap((comment) => {
-      const parsed = comment.author === login ? parseComment(comment.body) : undefined
-      return parsed?.ok === true && parsed.value.kind === kind ? [parsed.value.id] : []
-    }))
-  }
+  const marked = comments.value.flatMap((comment) => {
+    const parsed = comment.author === login ? parseComment(comment.body) : undefined
+    return parsed?.ok === true && parsed.value.kind === channel.name ? [{ ...parsed.value, url: comment.url }] : []
+  })
+  const entries = marked.flatMap((comment) => {
+    const entry = channel.validate(comment.entry)
+    return entry.ok && channel.id(entry.value) === comment.id ? [{ entry: entry.value, url: comment.url }] : []
+  })
+  return { ok: true, value: { entries, ids: new Set(marked.map((comment) => comment.id)) } }
 }
 
 export interface Published {
@@ -142,16 +138,18 @@ const publish = <T>(
   entry: T
 ): Validated<Published> => {
   const { cwd, rest } = target
-  const pr = pullForSha(cwd, rest, channel.sha(entry), target.pr)
-  if (!pr.ok) return pr
+  const pull = pullForSha(cwd, rest, channel.sha(entry), target.pr)
+  if (!pull.ok) return pull
+  const pr = pull.value.number
   const login = authenticatedLogin(rest)
   if (!login.ok) return login
-  const posted = postedIds(rest, pr.value, login.value, channel.name)
+  const posted = postedEntries(channel, rest, pr, login.value)
   if (!posted.ok) return posted
-  if (posted.value.has(channel.id(entry))) return { ok: true, value: { posted: false, pr: pr.value, url: undefined } }
+  if (posted.value.ids.has(channel.id(entry))) return { ok: true, value: { posted: false, pr, url: undefined } }
   const marker = { id: channel.id(entry), kind: channel.name, sha: channel.sha(entry) }
-  const url = postIssueComment(rest, pr.value, formatComment(marker, channel.summary(entry), entry))
-  return url.ok ? { ok: true, value: { posted: true, pr: pr.value, url: url.value } } : url
+  const rendered = channel.render(entry, { earlier: posted.value.entries, repository: pull.value.repositoryUrl })
+  const url = postIssueComment(rest, pr, formatComment(marker, rendered, entry))
+  return url.ok ? { ok: true, value: { posted: true, pr, url: url.value } } : url
 }
 
 /** Posts a recorded report on the pull request for its verified SHA, unless that pull request already has it. */
