@@ -4,6 +4,8 @@ import { Config, Option, Schema, SchemaIssue } from "effect"
 export interface BrowserTracingSettings {
   /** The OTLP base URL the server exports to; the browser appends `v1/traces` the same way. */
   readonly endpoint: URL
+  /** The server's effective export timing; the page has no other source for it. */
+  readonly exportTiming: ExportTiming
   /** `service.instance.id` from `OTEL_RESOURCE_ATTRIBUTES`, when present. */
   readonly serviceInstanceId?: string | undefined
   readonly serviceName: string
@@ -98,19 +100,17 @@ const renderable = (url: URL): boolean =>
 
 const parseBrowserTracing = (
   config: RawConfig,
-  endpoint: URL,
-  name: string
+  server: Pick<BrowserTracingSettings, "endpoint" | "exportTiming" | "serviceName">
 ): Config.Config<BrowserTracingSettings | undefined> => {
   if (!config.browserTracing) return Config.succeed(undefined)
-  if (!renderable(endpoint)) {
+  if (!renderable(server.endpoint)) {
     return invalid(
       "BROWSER_TRACING_ENABLED requires an OTEL_EXPORTER_OTLP_ENDPOINT without credentials, query, or fragment"
     )
   }
   return Config.succeed({
-    endpoint,
+    ...server,
     serviceInstanceId: serviceInstanceId(config.resourceAttributes),
-    serviceName: name,
     serviceVersion: config.serviceVersion
   })
 }
@@ -132,16 +132,17 @@ const parseRawConfig = (config: RawConfig): Config.Config<OtelSettings> => {
     return invalid("OTEL_SERVICE_NAME must be provided when otel is not disabled")
   }
 
-  const endpoint = config.endpoint.value
-  const name = config.serviceName.value
-  return parseBrowserTracing(config, endpoint, name).pipe(
+  const server = {
+    endpoint: config.endpoint.value,
+    exportTiming: effectiveExportTiming(config),
+    serviceName: config.serviceName.value
+  }
+  return parseBrowserTracing(config, server).pipe(
     Config.map((browserTracing) => ({
+      ...server,
       browserTracing,
       disabled: false as const,
-      endpoint,
-      exportTiming: effectiveExportTiming(config),
       headers: config.headers,
-      serviceName: name,
       serviceVersion: config.serviceVersion
     }))
   )

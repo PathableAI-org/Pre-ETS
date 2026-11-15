@@ -5,7 +5,7 @@ import { createElement, Fragment, type ReactNode } from "react"
 import type { Fact, FactScope } from "./browser-tracing/facts.ts"
 import type { CausedRequest, SdkStartup } from "./browser-tracing/sdk.ts"
 
-/** The one server-to-browser contract: the four configuration values, as JSON in this meta element's `content`. */
+/** The one server-to-browser contract: the five configuration values, as JSON in this meta element's `content`. */
 const CONFIG_META_NAME = "preets-browser-tracing"
 
 /**
@@ -15,7 +15,7 @@ const CONFIG_META_NAME = "preets-browser-tracing"
  */
 export function BrowserTracingMeta({ document }: { readonly document: BrowserTracingDocument | undefined }): ReactNode {
   if (document === undefined) return null
-  const { endpoint, serviceInstanceId, serviceName, serviceVersion } = document.config
+  const { endpoint, exportTiming, serviceInstanceId, serviceName, serviceVersion } = document.config
   return createElement(
     Fragment,
     null,
@@ -23,7 +23,7 @@ export function BrowserTracingMeta({ document }: { readonly document: BrowserTra
       ? null
       : createElement("meta", { content: document.traceparent, name: "traceparent" }),
     createElement("meta", {
-      content: JSON.stringify({ endpoint, serviceInstanceId, serviceName, serviceVersion }),
+      content: JSON.stringify({ endpoint, exportTiming, serviceInstanceId, serviceName, serviceVersion }),
       name: CONFIG_META_NAME
     })
   )
@@ -31,10 +31,14 @@ export function BrowserTracingMeta({ document }: { readonly document: BrowserTra
 
 const isText = (value: unknown) => typeof value === "string" && value.length > 0
 
-/** One check per configuration value; the collector endpoint must be an absolute `http:` or `https:` URL. */
+/**
+ * One check per configuration value; the collector endpoint must be an absolute `http:` or `https:` URL, and the
+ * export timing one of the server's two values.
+ */
 const CONFIG_CHECKS: Readonly<Record<keyof BrowserTracingConfig, (value: unknown) => boolean>> = {
   endpoint: (value) =>
     typeof value === "string" && URL.canParse(value) && ["http:", "https:"].includes(new URL(value).protocol),
+  exportTiming: (value) => value === "batch" || value === "immediate",
   serviceInstanceId: (value) => value === undefined || isText(value),
   serviceName: isText,
   serviceVersion: isText
@@ -395,12 +399,12 @@ export const focusTargetProps = (target: FocusTarget): { readonly "data-preets-f
   [FOCUS_ATTRIBUTE]: target
 })
 
-/** The rendered configuration, or `undefined` when it is absent or not the four expected values. */
+/** The rendered configuration, or `undefined` when it is absent or not the five expected values. */
 function readConfig(): BrowserTracingConfig | undefined {
   const content = document.querySelector(`meta[name="${CONFIG_META_NAME}"]`)?.getAttribute("content")
   if (content === null || content === undefined) return undefined
   const parsed: unknown = JSON.parse(content)
   if (typeof parsed !== "object" || parsed === null || !isConfig(parsed)) return undefined
-  const { endpoint, serviceInstanceId, serviceName, serviceVersion } = parsed
-  return { endpoint, serviceInstanceId, serviceName, serviceVersion }
+  const { endpoint, exportTiming, serviceInstanceId, serviceName, serviceVersion } = parsed
+  return { endpoint, exportTiming, serviceInstanceId, serviceName, serviceVersion }
 }
