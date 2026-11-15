@@ -21,9 +21,16 @@ Rules for every role:
 - Do Git and pull request work only through the `speckit-stack` skill, and only on branches this brief gives you.
   Never merge, force-push, or hard-reset. Never add check suppressions.
 - One writing session owns a set of files. {{hot_spots}}
-- Do not poll or wait in a loop. End your turn when you are waiting; the orchestrator is told when you do.
-- Peers: {{peers}}. Message a peer with `SendMessage` and its session ID. Copy the orchestrator on any escalation.
+- Do not poll or wait in a loop. Start a long command, such as a test run, in the background and end your turn; you
+  are woken when it finishes. End your turn when you are waiting; the orchestrator is told when you do.
+- Read GitHub with `gh api` REST paths or the GitHub tools. `gh pr` and `gh issue` subcommands use GraphQL, which
+  cloud sessions block.
+- Peers: {{peers}}. Message a peer with the session messaging tool (`send_message` in cloud sessions) and its session
+  ID. Copy the orchestrator on any escalation.
 - Begin your final message of every turn with one status line:
   `<role> <slice or phase> <state> @ <short SHA or -> next=<what you wait for>`, where state is one of `pushed`,
-  `verified`, `reviewed`, `pr-ready`, `waiting-on-person`, `escalated`, `blocked`, or `failed`. Only the first 400
-  characters reach the orchestrator.
+  `verified`, `reviewed`, `pr-ready`, `waiting`, `waiting-on-person`, `escalated`, `blocked`, or `failed`. Only the
+  first 400 characters reach the orchestrator.
+- `waiting` means you have nothing to do until the event in `next=`; it is not a problem. `blocked` means a
+  prerequisite stops work you were asked to do. A setup or environment problem before any request needs it is not
+  `blocked`: retry when the request arrives, and report `blocked` then if it still fails.

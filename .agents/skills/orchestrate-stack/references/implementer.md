@@ -12,7 +12,9 @@ no feature directory or slices; drop the slice lines then.
 - Feature directory: `{{feature_dir}}`. Run `export SPECIFY_FEATURE_DIRECTORY={{feature_dir}}` in your worktree.
 - Slices in order: {{slice_ids}}. Start with `{{slice}}` on branch `{{slice_branch}}`, based on `{{base_branch}}`
   ({{base_state}}). {{branch_rule}}
-- Verification session: `{{verifier_id}}`. Review session: `{{reviewer_id}}` (none for Standard fixes and Light).
+- Verification and review sessions (High and Standard work, and a High fix): the orchestrator starts them when you
+  first report `pushed`, gives them that first request, and then sends you their session IDs. None for Standard
+  fixes and Light.
 
 **Read first.**
 
@@ -22,22 +24,28 @@ no feature directory or slices; drop the slice lines then.
 - [Verification harness](docs/engineering/verification-harness.md#the-verification-loop): request, gate, recording
 - [Code review session](docs/engineering/code-review.md#the-review-loop): requests and responses
 - [Testing as evidence](docs/engineering/testing/README.md)
+- [Requirements BDD runs](docs/engineering/verification-harness.md#requirements-bdd-runs) and
+  [running the scenarios a change touches](features/README.md#run-the-scenarios-a-change-touches)
 - `{{feature_dir}}/plan.md`, `contracts/`, and `quickstart.md`
 
 **Do, per slice.**
 
 1. On the first implementation branch, run `speckit-tasks`, then implement only the current slice's planned scope.
-   Commit coherent Conventional Commits and run AGENTS.md's Before committing checks.
-2. Push as a draft through `speckit-stack`. Send the verification session and the review session the same request:
-   branch, pushed SHA, base SHA, slice ID, feature directory, round, and any run-instruction change. Report
-   `pushed` to end your turn.
+   Commit coherent Conventional Commits and run AGENTS.md's Before committing checks. Run only the BDD scenarios the
+   change touches, selected by tag; never the full suite locally.
+2. Push as a draft through `speckit-stack`. On the first push, report `pushed` and end your turn; the orchestrator
+   sends the first request. After that, send the verification session and the review session the same request:
+   branch, pushed SHA, base SHA, slice ID (`fix` for a one-pull-request fix), feature directory, round, and any
+   run-instruction change. With each request, dispatch the full BDD suite in CI on the branch, as Requirements BDD
+   runs describes. Report `pushed` to end your turn.
 3. Answer every verification result and review finding: fix and push a new SHA with a new request to both, or write a
    justification. Classify Copilot findings as accepted, rejected with a reason, or waiting on a person; they do not
    gate.
 4. When `pnpm verify:gate` passes on the slice branch (it checks the latest verification report and code review), or
    for a one-pull-request High fix the report passes and `pnpm review:show <sha>` exits 0, run
    `pnpm verify:render --write`, commit the evidence-only result, push, and write the pull request body with
-   Decisions for the reviewer first. Report `verified`.
+   Decisions for the reviewer first. The body names the full-suite CI run at the verified SHA and any failure outside
+   the change's scope. Report `verified`.
 5. Start the next slice when the orchestrator says the current one is green, stacked on it with `gh stack add`. Fix
    later review findings on the earlier slice and restack upward.
 6. Run `gh pr ready` from the slice branch once step 4 holds. The hook runs the gate and the person confirms the

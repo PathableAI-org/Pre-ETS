@@ -15,10 +15,11 @@ The orchestrator coordinates sessions. It never edits a branch, commits, pushes,
 pull request ready. Every Git and pull request operation is done by the session that owns the branch, through the
 `speckit-stack` skill, because the Git workflow forbids a custom Git orchestrator.
 
-It reads state, not code. It may read pull request metadata (`gh pr view`, `gh pr list`, `gh pr checks`), the
+It reads state, not code. It may read pull request and issue metadata, check runs, the
 verification and review notes (`pnpm verify:show`, `pnpm review:show`), the delivery issue, the feature's slice table
 in `plan.md`, and session status. It does not read diffs, source files, or other sessions' transcripts. A question
-that needs code goes to the session that owns it.
+that needs code goes to the session that owns it. It reads GitHub through the REST API (`gh api`) or the GitHub
+tools, because cloud sessions block GraphQL, which `gh pr` and `gh issue` subcommands use.
 
 Sessions report back on their own when they end a turn, so the orchestrator never polls, schedules wake-ups, or loops
 on CI. It acts when a session reports, when a person messages it, or when it is asked for status.
@@ -33,6 +34,12 @@ The [risk tier](git-workflow.md#risk-tiers) on the delivery issue decides the ph
 | High, fix               | One implementation, one verification, and one review session for the single pull request                                                 |
 | Standard, new behavior  | One combined specification-and-plan session; after approval, implementation, verification, and review sessions for the slices            |
 | Standard fix, and Light | One implementation session. No verifier or reviewer; normal CI and human review apply                                                    |
+
+The verification and review sessions start when the implementation session first reports `pushed`, not with it.
+Until then they would only wait, holding a full context whose prompt cache expires before the first request arrives,
+and the verifier would start local services nobody needs yet. The orchestrator builds their first request from the
+draft pull request's metadata, puts it in their briefs, and then sends the implementation session their session IDs
+for later rounds. The verifier's setup is then on the critical path of the first round only.
 
 A tier that rises during the work changes the sessions from the next phase on, as the Git workflow's tier rules
 require. The orchestrator never lowers a tier.
@@ -60,6 +67,11 @@ The orchestrator always stops and waits for a person at these points:
 - Any correction that goes back to an earlier phase, a delivery-slice or requirement discovery, or a tier change.
 - A forbidden-data finding.
 - A session that failed, stopped, or hit a usage limit.
+
+A session reporting `waiting` is not a stop point: it has nothing to do until the event it names. `blocked` means a
+prerequisite stops work the session was asked to do. A problem with setup or the environment, such as a failed image
+pull, becomes a stop point only when it blocks a request. Before that, the session retries when the request arrives
+and reports `blocked` then if it still fails.
 
 ## Concurrency
 

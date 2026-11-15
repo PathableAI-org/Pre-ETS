@@ -87,8 +87,8 @@ A stack runs as separate agent sessions with distinct responsibilities:
 | Review         | Reviewing pushed revisions for correctness reasoning and maintainability, review notes                    | Edit any branch or fix the implementation                                                 |
 
 The orchestrator starts one verification session and, for High and Standard work, one review session per stack,
-alongside the implementation session. It gives the implementation session the other two session identifiers, and
-gives each of the other two the implementation session's identifier. [Code review session](code-review.md) owns the
+when the implementation session first pushes. It gives each of them the implementation session's identifier and the
+first request, and then gives the implementation session their identifiers. [Code review session](code-review.md) owns the
 reviewer's scope, findings, and loop. Only a person approves and merges a phase, as the Git workflow requires. [Orchestration](orchestration.md) owns
 the orchestrator's lifecycle by tier, stop points, concurrency, and each role's model and effort.
 
@@ -240,6 +240,30 @@ run. The pull request body names the verified SHA and run UUID and links that se
 Committing that summary creates an evidence-only commit after the verified SHA, which needs no new verification
 request under [Gate and escalation](#gate-and-escalation). Commit any other change, including a change to the run
 instructions, separately and request verification of the new SHA.
+
+## Requirements BDD runs
+
+The full requirements suite spends over half an hour waiting in real time for session deadlines, and every session
+runs in its own environment. A full run in each session repeats that wait for no new evidence, so each kind of run
+has one owner:
+
+| Run                | Owner                            | When                                                       | How                                                                                                                     |
+| ------------------ | -------------------------------- | ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Affected scenarios | Implementation                   | While changing code, and before each push                  | `pnpm test:bdd:tags`, selected as [BDD commands](../../features/README.md#run-the-scenarios-a-change-touches) describes |
+| Claim scenarios    | Verification                     | Each request, for claims whose channel is requirements BDD | The claims' tags, at the requested SHA                                                                                  |
+| Full suite         | CI, dispatched by implementation | With each verification request, on the pushed branch       | Dispatch the `Nightly BDD` workflow (`ci-bdd.yml`) on the branch                                                        |
+
+- No session runs the full suite locally unless a person asks for it.
+- Dispatch with `gh api -X POST repos/{owner}/{repo}/actions/workflows/ci-bdd.yml/dispatches -f ref=<branch>` or the
+  GitHub tools. The workflow runs the branch head, so dispatch after pushing and check that the run's `head_sha` is
+  the requested SHA. Its concurrency group cancels an earlier run on the same branch, so a new request supersedes
+  the previous run without anyone cancelling it.
+- The full suite is regression evidence, not claim evidence. The pull request body names the run and the SHA it ran
+  at. A run at the verified SHA counts for evidence-only commits after it.
+- A failure outside the change's scope goes in the pull request body and to the orchestrator. Do not patch unrelated
+  scenarios in the pull request.
+- The verifier reads the run (`gh api repos/{owner}/{repo}/actions/runs/<id>`) when a claim depends on it, and does not
+  repeat it.
 
 ## Known limits
 
