@@ -244,26 +244,21 @@ instructions, separately and request verification of the new SHA.
 ## Requirements BDD runs
 
 The full requirements suite spends over half an hour waiting in real time for session deadlines, and every session
-runs in its own environment. A full run in each session repeats that wait for no new evidence, so each kind of run
-has one owner:
+runs in its own environment. Sessions therefore run only the scenarios that bear on their work, and the full suite
+runs nightly on `main`:
 
-| Run                | Owner                            | When                                                       | How                                                                                                                     |
-| ------------------ | -------------------------------- | ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| Affected scenarios | Implementation                   | While changing code, and before each push                  | `pnpm test:bdd:tags`, selected as [BDD commands](../../features/README.md#run-the-scenarios-a-change-touches) describes |
-| Claim scenarios    | Verification                     | Each request, for claims whose channel is requirements BDD | The claims' tags, at the requested SHA                                                                                  |
-| Full suite         | CI, dispatched by implementation | With each verification request, on the pushed branch       | Dispatch the `Nightly BDD` workflow (`ci-bdd.yml`) on the branch                                                        |
+| Run                | Owner          | When                                                       | How                                                                                                                     |
+| ------------------ | -------------- | ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Affected scenarios | Implementation | While changing code, and before each push                  | `pnpm test:bdd:tags`, selected as [BDD commands](../../features/README.md#run-the-scenarios-a-change-touches) describes |
+| Claim scenarios    | Verification   | Each request, for claims whose channel is requirements BDD | The claims' tags, at the requested SHA                                                                                  |
+| Full suite         | CI             | Nightly on `main`                                          | The `Nightly BDD` workflow (`ci-bdd.yml`) on its schedule                                                               |
 
-- No session runs the full suite locally unless a person asks for it.
-- Dispatch with `gh api -X POST repos/{owner}/{repo}/actions/workflows/ci-bdd.yml/dispatches -f ref=<branch>` or the
-  GitHub tools. The workflow runs the branch head, so dispatch after pushing and check that the run's `head_sha` is
-  the requested SHA. Its concurrency group cancels an earlier run on the same branch, so a new request supersedes
-  the previous run without anyone cancelling it.
-- The full suite is regression evidence, not claim evidence. The pull request body names the run and the SHA it ran
-  at. A run at the verified SHA counts for evidence-only commits after it.
-- A failure outside the change's scope goes in the pull request body and to the orchestrator. Do not patch unrelated
-  scenarios in the pull request.
-- The verifier reads the run (`gh api repos/{owner}/{repo}/actions/runs/<id>`) when a claim depends on it, and does not
-  repeat it.
+- No session runs the full suite, locally or by dispatching the workflow. A person may dispatch it on a branch, for
+  example to show a harness fix before it merges.
+- The nightly run catches regressions after merge. A nightly failure is a person's to triage, not a running
+  session's.
+- A scenario outside the change's scope that fails in a session's own run goes in the pull request body and to the
+  orchestrator. Do not patch unrelated scenarios in the pull request.
 
 ## Known limits
 

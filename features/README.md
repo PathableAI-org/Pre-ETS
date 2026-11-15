@@ -72,9 +72,9 @@ command-line paths are added to it, so passing a `.feature` file runs the whole 
 - those that use a step definition the change edits. `pnpm test:bdd:dry --format usage` lists each step definition
   with the scenario lines that use it.
 
-A change to `tests/bdd/support/`, `cucumber.mjs`, or the world and hooks affects every scenario. Show it with the full
-suite in CI, as [Requirements BDD runs](../docs/engineering/verification-harness.md#requirements-bdd-runs)
-describes, rather than locally.
+A change to `tests/bdd/support/`, `cucumber.mjs`, or the world and hooks affects every scenario. Run a representative
+tag for each feature it touches; the nightly run covers the rest, as
+[Requirements BDD runs](../docs/engineering/verification-harness.md#requirements-bdd-runs) describes.
 
 After a frontend build, `pnpm test:bdd:smoke` runs the separate application-level
 [on-site production safeguard](../tests/bdd/smoke/onsite-production.feature).
@@ -96,8 +96,8 @@ See [step guidance](../tests/bdd/steps/README.md).
 
 CI provisions the pinned real Keycloak realm with bounded readiness and cleanup. It runs requirements BDD
 and the production safeguard smoke nightly at 06:17 UTC on `main`.
-Manual dispatch may also run it on another branch, for example to show a harness fix before it merges, or to give a
-pull request its one full-suite run; there is no CI dry-run job.
+Manual dispatch may also run it on another branch, for example to show a harness fix before it merges;
+there is no CI dry-run job.
 
 ## Gherkin linting and formatting
 

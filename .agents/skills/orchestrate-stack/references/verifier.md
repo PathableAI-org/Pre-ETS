@@ -29,7 +29,7 @@ pointer and one line of non-established claims, missing rows, forbidden data, or
 that line, then `waiting next=request` until the next one.
 
 - **BDD:** run the scenarios tagged for the claims whose channel is requirements BDD, at the requested SHA. Do not
-  run the full suite; read the CI run the implementation session dispatched when a claim depends on it, as
+  run the full suite or dispatch the BDD workflow, as
   [Requirements BDD runs](docs/engineering/verification-harness.md#requirements-bdd-runs) describes.
 - **High fix:** there is no plan, so do not run `pnpm verify:request`. Take the claims, observations, and channels
   from the pull request body at the requested SHA, as Verification by risk tier says for a High fix. Record the report
