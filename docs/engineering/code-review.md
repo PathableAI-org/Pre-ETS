@@ -2,7 +2,7 @@
 
 This guide describes the reviewer session: an agent that reviews each pushed implementation slice for correctness
 reasoning, maintainability, and readability, with a clean context. It owns the reviewer's scope, its findings and
-where they are stored, and the review loop. [The verification harness](verification-harness.md) owns the other
+where they are stored, the review loop, and the advisory pre-push self-review. [The verification harness](verification-harness.md) owns the other
 sessions and the runtime verification loop. [Git and pull request workflow](git-workflow.md) owns the review gate
 that a person applies. The `code-reviewer` skill supplies the procedure.
 
@@ -13,7 +13,8 @@ enforces, and whether its tests would notice a regression. Its findings are inpu
 ## When a reviewer runs
 
 The reviewer runs on every implementation slice of High and Standard work, and on a High fix's single pull request,
-as [risk tiers](git-workflow.md#risk-tiers) define them. Light work gets normal CI and human review only.
+as [risk tiers](git-workflow.md#risk-tiers) define them. Light work gets normal CI and human review only. The
+advisory [pre-push self-review](#pre-push-self-review) runs at every tier and is not a review session.
 
 The reviewer works independently of Copilot's pull request review. It does not read the
 [Copilot lenses](../../.github/instructions/) as input or answer Copilot findings, and Copilot does not read its
@@ -168,6 +169,34 @@ Escalate to the orchestrator, and through it to a person, instead of continuing 
 The reviewer is read-only. It edits no branch, pull request, issue, requirement, delivery plan, or `specs/` file,
 and does not fix the code or write patches. It names the defect, where it is, and how it fails. It writes only its
 note, and the one GitHub write it makes is the note comment `pnpm review:record` posts on the pull request.
+
+## Pre-push self-review
+
+The pre-push self-review is an advisory check the implementation session runs on its own work before an
+independent round. It removes local findings first, such as a test title that names behavior the test does not
+check, a duplicated helper, a leftover probe, or unused code, so the gating rounds spend their effort on what only an
+independent session finds. It is a separate layer: it does not replace or weaken the review session or the
+[verification session](verification-harness.md), which stay the only gates.
+
+- **When.** Once the implementation session believes a slice or fix is complete, before each push that starts or
+  answers a round. It runs at that milestone only, never from a Git hook; hooks stay deterministic. It also runs on
+  Standard fixes and Light work, which get no review or verification session.
+- **Who.** A subagent from the [`pre-push-reviewer`](../../.claude/agents/pre-push-reviewer.md) definition, which
+  holds its fixed brief, its read-only tools, and its model. It starts with a fresh context, never as a fork of the
+  implementation session, on a different model, as [Models and effort](orchestration.md#models-and-effort) sets.
+- **Input.** Only the base branch. It reviews `origin/<base>...HEAD` plus uncommitted changes, so an untracked or
+  temporary file the push would leave behind or sweep in is a finding. The implementation session never describes
+  the change or what to check, because a reviewer handed the author's hypothesis tends to confirm it.
+- **Scope.** The [scope](#scope) and finding fields of the review session, plus a `leftover` category for files and
+  code that should not be pushed.
+- **Unrecorded.** It writes no note, comment, or message, and never counts toward `pnpm verify:gate`. The
+  implementation session fixes what it accepts and lists every finding, accepted or rejected, in its `pushed` report
+  to the orchestrator, for measurement.
+- **No leakage.** Its findings never go to the review or verification session and never appear in a pull request
+  body, so the independent review is not anchored on them.
+
+Unlike the review session, it reads uncommitted work, has no rounds or IDs that persist, escalates nothing, and
+gates nothing.
 
 ## Model choice
 
