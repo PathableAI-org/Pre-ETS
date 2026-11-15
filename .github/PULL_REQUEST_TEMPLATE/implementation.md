@@ -26,6 +26,7 @@ including its public contracts and evidence. Unapproved contract or acceptance c
 - Behavior implemented:
 - Contracts preserved or intentionally deferred:
 - Evidence produced, with conditions and limitations:
+- Visual review page, when the change alters what users see or how they interact (docs/engineering/git-workflow.md, "Visual review"):
 - Hand-written files changed, and the reason if well over 15:
 
 ## Verification report

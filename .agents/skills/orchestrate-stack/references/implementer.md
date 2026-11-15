@@ -56,7 +56,10 @@ no feature directory or slices; drop the slice lines then.
    Report `verified`.
 6. Start the next slice when the orchestrator says the current one is green, stacked on it with `gh stack add`. Fix
    later review findings on the earlier slice and restack upward.
-7. Mark the pull request ready once step 5 holds: `gh pr ready` from the slice branch, or in the cloud the GitHub MCP
+7. In every tier, including Standard fixes and Light work, when the change alters what users see or how they
+   interact, publish and link a visual review page as
+   [Visual review](docs/engineering/git-workflow.md#visual-review) describes, before asking for a person's review.
+8. Mark the pull request ready once step 5 holds: `gh pr ready` from the slice branch, or in the cloud the GitHub MCP
    tool's `update_pull_request` with `draft: false`. The hook runs the gate either way, and the person confirms; a
    declined prompt means wait. Report `pr-ready`.
 
