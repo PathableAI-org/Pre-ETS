@@ -153,7 +153,9 @@ const interact = async (
   await act(page)
 }
 
-const acknowledgement = (page: Page) => page.getByRole("checkbox", { name: "Synthetic acknowledgement" })
+/** The checkbox's visible label: the design system hides the native input, so a person clicks its label. */
+const acknowledgement = (page: Page) => page.getByText("Synthetic acknowledgement", { exact: true })
+const focusLater = (page: Page) => page.getByRole("button", { name: "Focus later" })
 const goalField = (page: Page) => page.getByRole("textbox", { name: "Goal" })
 const logOut = (page: Page) => page.getByRole("button", { name: "Log out" })
 
@@ -161,8 +163,8 @@ When("the visitor clicks the acknowledgement checkbox in tab {string}", async fu
   await interact(this, name, (page) => acknowledgement(page).click())
 })
 
-When("the visitor taps the acknowledgement checkbox in tab {string}", async function(this: AppWorld, name: string) {
-  await interact(this, name, (page) => acknowledgement(page).tap())
+When("the visitor taps the goal field in tab {string}", async function(this: AppWorld, name: string) {
+  await interact(this, name, (page) => goalField(page).tap())
 })
 
 When("the visitor types in the goal field in tab {string}", async function(this: AppWorld, name: string) {
@@ -198,9 +200,15 @@ When(
   }
 )
 
-/** The page moves focus to its goal field two seconds later, on its own. */
-When("the visitor clicks Focus later in tab {string}", async function(this: AppWorld, name: string) {
-  await interact(this, name, (page) => page.getByRole("button", { name: "Focus later" }).click())
+/**
+ * Focus is on the button first, so the click moves no focus and is the only interaction. The page moves focus to its
+ * goal field two seconds later, on its own.
+ */
+When("the visitor clicks Focus later, which already has focus, in tab {string}", async function(
+  this: AppWorld,
+  name: string
+) {
+  await interact(this, name, (page) => focusLater(page).click(), focusLater)
 })
 
 When("the page moves focus to the goal field on its own in tab {string}", async function(this: AppWorld, name: string) {

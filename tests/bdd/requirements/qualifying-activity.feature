@@ -38,21 +38,22 @@ Feature: Qualifying activity renews a session; pointer movement and background r
     Examples:
       | interaction                                          |
       | clicks the acknowledgement checkbox                  |
-      | taps the acknowledgement checkbox                    |
+      | taps the goal field                                  |
       | enters text in the goal field without pressing a key |
       | presses an arrow key in the goal field               |
       | moves focus from the header into the page with Tab   |
 
   Scenario: Pointer movement and a focus move the page makes on its own never renew the session
-    The click on Focus later renews the session at once and opens a window; two seconds later the
-    page moves focus to the goal field. The pointer then moves across the page's controls, pressing
+    Focus is already on Focus later, so the click moves no focus and is the only interaction: it
+    renews the session at once and opens a window. Two seconds later the page moves focus to the
+    goal field. The pointer then moves across the page's controls, pressing
     nothing, until five seconds after that window ends, so whatever was held in the window and
     whatever moved after it would have been communicated by then. A click afterwards renews at
     once, which it would not if anything had been communicated in the minute before it.
 
     Given the visitor has signed in at "springfield.localhost:3000" and opened tab "T1"
     And tab "T1" shows the participant page
-    When the visitor clicks Focus later in tab "T1"
+    When the visitor clicks Focus later, which already has focus, in tab "T1"
     Then the session is renewed at once
     When the page moves focus to the goal field on its own in tab "T1"
     And the visitor moves the pointer across the controls of tab "T1" until 5 seconds after that renewal's window ends
@@ -62,10 +63,13 @@ Feature: Qualifying activity renews a session; pointer movement and background r
 
   Scenario: Interaction renews at once after a minute of silence, and otherwise waits for the session's window to end
     Tabs "T1" and "T2" share one session. The window is the session's, whichever tab interacts.
+    An arrow key in a focused field opens the first window, because it is one interaction; a click
+    on a control without focus is two, the focus move and the click, and the click would keep a
+    window open past the minute of silence.
 
     Given the visitor has signed in at "springfield.localhost:3000" and opened tabs "T1" and "T2"
     And tabs "T1" and "T2" show the participant page
-    When the visitor types in the goal field in tab "T1"
+    When the visitor presses an arrow key in the goal field in tab "T1"
     Then the session is renewed at once
     When the visitor waits 61 seconds without acting
     And the visitor clicks the acknowledgement checkbox in tab "T2"
