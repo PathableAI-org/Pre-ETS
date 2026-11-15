@@ -9,6 +9,9 @@ import type { AppWorld } from "../support/world.ts"
 import {
   applicationBrowser,
   documentText,
+  isAuthentication,
+  isAuthorization,
+  PROVIDER_ORIGIN,
   resumeAt,
   showsFocusIndicator,
   signInAtProvider,
@@ -17,7 +20,6 @@ import {
 } from "../support/browser.ts"
 import { requestInstance, startSite } from "../support/server.ts"
 
-const PROVIDER_ORIGIN = "http://127.0.0.1:8080"
 export const SPRINGFIELD = "springfield.localhost:3000"
 const SHELBYVILLE = "shelbyville.localhost:3000"
 export const PROTECTED_CONTROL = "Record reference operation"
@@ -855,14 +857,6 @@ When(
     await tab.page.keyboard.press("Enter")
   }
 )
-
-/** Whether a URL is the provider's endpoint ending in `suffix`. */
-const providerEndpoint = (suffix: string) => (url: URL) =>
-  url.origin === PROVIDER_ORIGIN && url.pathname.endsWith(suffix)
-/** The application's authorization request at the provider. */
-const isAuthorization = providerEndpoint("/protocol/openid-connect/auth")
-/** The visitor's submission of the provider's authentication step. */
-const isAuthentication = providerEndpoint("/login-actions/authenticate")
 
 /** Answers the provider's password-only authentication step for the synthetic user. */
 const submitPassword = async (page: Page) => {

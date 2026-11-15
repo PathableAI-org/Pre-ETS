@@ -29,6 +29,16 @@ export const withSessionContext = async <A>(
   }
 }
 
+/** The tracked realm's provider, as every tenant fixture's issuer names it. */
+export const PROVIDER_ORIGIN = "http://127.0.0.1:8080"
+/** Whether a URL is the tracked provider's endpoint ending in `suffix`. */
+const providerEndpoint = (suffix: string) => (url: URL) =>
+  url.origin === PROVIDER_ORIGIN && url.pathname.endsWith(suffix)
+/** An authorization request at the tracked provider. */
+export const isAuthorization = providerEndpoint("/protocol/openid-connect/auth")
+/** A submission of the tracked provider's authentication step. */
+export const isAuthentication = providerEndpoint("/login-actions/authenticate")
+
 /** Submits the tracked realm's synthetic user on the provider's sign-in form. */
 export const signInAtProvider = async (page: Page): Promise<void> => {
   await page.getByRole("textbox", { name: /username|email/i }).fill("demo")
@@ -74,7 +84,6 @@ export const providerIdTokenClaims = async (request: {
   const browser = await providerBrowser()
   try {
     const page = await browser.newPage()
-    const isAuthentication = (url: URL) => url.href.startsWith(`${request.issuer}/login-actions/authenticate`)
     // Playwright cannot route a redirect, so the browser must not follow the provider's: it would deliver the code to
     // whatever listens at `redirectUri`.
     const answers: string[] = []
