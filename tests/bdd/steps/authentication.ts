@@ -6,6 +6,7 @@ import { randomBytes } from "node:crypto"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { setTimeout as delay } from "node:timers/promises"
+import { fileURLToPath } from "node:url"
 
 import type { AppWorld } from "../support/world.ts"
 
@@ -13,6 +14,8 @@ import { applicationBrowser, signInAtProvider as signIn } from "../support/brows
 import { requestInstance, requestSite, startSecondSite, startSite } from "../support/server.ts"
 
 type RecordedResponse = NonNullable<AppWorld["response"]>
+
+const REALM_FILE = fileURLToPath(new URL("../../../docker/keycloak/pre-ets-realm.json", import.meta.url))
 
 const clearsCorrelation = (response: { headers: Record<string, string> }): boolean =>
   /(?:^|\n)oidc-correlation=;(?:[\s;]|$)/.test(response.headers["set-cookie"] ?? "")
@@ -412,6 +415,34 @@ Then("the established session admits the application entry at {string}", async f
   assert.equal(admitted.status, 200)
   assert.match(admitted.body, /Reference session/)
 })
+
+/** The tracked realm's synthetic user, read from the realm file Keycloak imports: its ID is the subject it asserts. */
+const trackedProviderUser = async (): Promise<{ readonly id: string }> => {
+  const realm = JSON.parse(await fs.readFile(REALM_FILE, "utf8")) as { users?: { id?: string; username?: string }[] }
+  const user = realm.users?.find((candidate) => candidate.username === "demo")
+  assert.ok(user?.id, "expected the tracked realm to pin the synthetic user's ID")
+  return { id: user.id }
+}
+
+/**
+ * A later protected request presenting the established session renders the identity and tenant it is bound to: the
+ * subject of the tracked provider user, the issuer and alias of the independently read tenant file.
+ */
+Then(
+  "the established session is bound to the tracked provider user and the {string} tenant at {string}",
+  async function(this: AppWorld, alias: string, host: string) {
+    const admitted = await requestInstance(this, this.port, host, "/", true, issuedSessionCookie(this))
+    assert.equal(admitted.status, 200)
+    const tenant = JSON.parse(await fs.readFile(path.join(this.directory, `${alias}.json`), "utf8")) as {
+      oidc?: { issuer?: string }
+    }
+    assert.ok(tenant.oidc?.issuer, `expected the "${alias}" tenant file to name its issuer`)
+    const rendered = [...admitted.body.matchAll(/>([^<>]+)</g)].map((match) => match[1]?.trim())
+    for (const value of [(await trackedProviderUser()).id, tenant.oidc.issuer, alias]) {
+      assert.ok(rendered.includes(value), `expected the protected page to show the bound ${value}`)
+    }
+  }
+)
 
 Then("exactly one raced callback consumes the return and replay does not", function(this: AppWorld) {
   assert.deepEqual(this.callbackRaceResponses.map((response) => response.status).sort(), [200, 303])
