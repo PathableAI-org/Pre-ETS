@@ -16,6 +16,8 @@ export class AppWorld extends World {
   }
   callbackRaceResponses: { body: string; headers: Record<string, string>; status: number }[] = []
   cookie: string | undefined
+  /** The coordination tag a protected page observed for the world's session, submitted with its protected action. */
+  coordinationTag: string | undefined
   directory = tenantConfigDir
   earlierResponse: undefined | { body: string; headers: Record<string, string>; status: number }
   extraHeaders: Record<string, string> = {}

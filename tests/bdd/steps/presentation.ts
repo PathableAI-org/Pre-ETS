@@ -3,7 +3,8 @@ import assert from "node:assert/strict"
 
 import type { AppWorld } from "../support/world.ts"
 
-import { applicationBrowser } from "../support/browser.ts"
+import { applicationBrowser, documentText, withSessionContext } from "../support/browser.ts"
+import { startSite } from "../support/server.ts"
 
 Then("invalid tenant navigation presents the ordinary missing page", async function(this: AppWorld) {
   const owned = await applicationBrowser(this.port, [
@@ -28,3 +29,22 @@ Then("invalid tenant navigation presents the ordinary missing page", async funct
     await owned.close()
   }
 })
+
+/**
+ * The browser presents the world's session reference to the named Host. Whether the forbidden page is rendered in place
+ * or reached through navigation is open (PREETS-SESSION-005), so only the document the navigation ends on is observed:
+ * its HTTP 403, a top-level heading that says access is denied, and no protected content.
+ */
+Then(
+  "browser navigation to {string} at {string} presents the forbidden page",
+  async function(this: AppWorld, entryPath: string, host: string) {
+    await startSite(this)
+    await withSessionContext(this.port, host, this.cookie, async (context) => {
+      const page = await context.newPage()
+      const response = await page.goto(`http://${host}${entryPath}`)
+      assert.equal(response?.status(), 403)
+      await page.getByRole("heading", { level: 1, name: /access denied|forbidden/i }).waitFor({ state: "visible" })
+      assert.doesNotMatch(await documentText(page), /Reference session/)
+    })
+  }
+)
