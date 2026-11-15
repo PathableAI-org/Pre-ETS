@@ -121,6 +121,13 @@ Given("the tenant directory is {string}", async function(this: AppWorld, conditi
   await setup()
 })
 
+/** A scenario-owned tenant file and its fields as currently written. */
+const ownedTenantFile = async (world: AppWorld, alias: string) => {
+  assert.ok(world.ownedDirectory, "expected scenario-owned tenant sites")
+  const file = path.join(world.directory, `${alias}.json`)
+  return { file, tenant: JSON.parse(await fs.readFile(file, "utf8")) as Record<string, unknown> }
+}
+
 /**
  * Rewrites session policy in a scenario-owned tenant file, keeping its other fields. Values are written as given,
  * valid or not; a field given as `undefined` is removed, so the tenant's default applies. The site reads the file on
@@ -131,10 +138,18 @@ export const setTenantPolicy = async (
   alias: "shelbyville" | "springfield",
   policy: { readonly idleTimeoutMinutes?: unknown; readonly warningLeadMinutes?: unknown }
 ): Promise<void> => {
-  assert.ok(world.ownedDirectory, "expected scenario-owned tenant sites")
-  const file = path.join(world.directory, `${alias}.json`)
-  const tenant = JSON.parse(await fs.readFile(file, "utf8")) as Record<string, unknown>
+  const { file, tenant } = await ownedTenantFile(world, alias)
   await fs.writeFile(file, JSON.stringify({ ...tenant, ...policy }))
+}
+
+/**
+ * The idle timeout a scenario wrote to the tenant's file, in milliseconds: a renewal sets the deadline that long after
+ * the server received it. The tenant default is not assumed, so the scenario must set the timeout itself.
+ */
+export const configuredIdleTimeout = async (world: AppWorld, alias: string): Promise<number> => {
+  const { tenant } = await ownedTenantFile(world, alias)
+  assert.equal(typeof tenant.idleTimeoutMinutes, "number", `expected the scenario to set ${alias}'s idle timeout`)
+  return Number(tenant.idleTimeoutMinutes) * 60_000
 }
 
 Given("the selected Springfield tenant file is {string}", async function(this: AppWorld, condition: string) {

@@ -98,9 +98,12 @@ export const tabOf = (world: AppWorld, name: string): Tab => {
 export const namesOf = (list: string): readonly string[] =>
   [...list.matchAll(/"([^"]+)"/g)].map((match) => match[1] ?? "")
 
-/** A new browser context that watches for dialogs and reports back/forward-cache restores. */
-const newContext = async (scenario: Expiration): Promise<BrowserContext> => {
-  const context = await scenario.browser.newContext()
+/**
+ * A new browser context that watches for dialogs and reports back/forward-cache restores; with `hasTouch`, it has a
+ * touch screen as well as a mouse and keyboard.
+ */
+const newContext = async (scenario: Expiration, hasTouch = false): Promise<BrowserContext> => {
+  const context = await scenario.browser.newContext({ hasTouch })
   await context.addInitScript(watchForDialogs)
   await context.addInitScript(() => {
     globalThis.addEventListener("pageshow", (event) => {
@@ -211,10 +214,11 @@ const signInAndOpen = async (
   contextName: string,
   host: string,
   names: readonly string[],
-  options: TabClock = {}
+  options: TabClock = {},
+  hasTouch = false
 ) => {
   const scenario = await scenarioOf(world)
-  const context = scenario.contexts.get(contextName) ?? await newContext(scenario)
+  const context = scenario.contexts.get(contextName) ?? await newContext(scenario, hasTouch)
   scenario.contexts.set(contextName, context)
   const signing = await context.newPage()
   await signIn(signing, host)
@@ -262,6 +266,14 @@ Given(
   "the visitor has signed in at {string} and opened tab {string}",
   async function(this: AppWorld, host: string, name: string) {
     await signInAndOpen(this, "visitor", host, [name])
+  }
+)
+
+/** The visitor's browser has a touch screen, so the visitor can tap as well as click and type (#441). */
+Given(
+  "the visitor has signed in at {string} on a touch screen and opened tab {string}",
+  async function(this: AppWorld, host: string, name: string) {
+    await signInAndOpen(this, "visitor", host, [name], {}, true)
   }
 )
 

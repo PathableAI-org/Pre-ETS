@@ -67,10 +67,11 @@ Given(
   }
 )
 
-When("a visitor invokes the protected reference action at {string}", async function(this: AppWorld, host: string) {
+/** The protected reference action at `host` as the page submits it, with the coordination tag the page observed. */
+export const referenceActionRequest = async (world: AppWorld, host: string) => {
   const action = await serverActionId("runReferenceOperation")
-  const { body, contentType } = await multipartBody(referenceActionArguments(this.coordinationTag))
-  await requestSiteWith(this, {
+  const { body, contentType } = await multipartBody(referenceActionArguments(world.coordinationTag))
+  return {
     body,
     headers: {
       ...FETCH_METADATA.application,
@@ -83,7 +84,11 @@ When("a visitor invokes the protected reference action at {string}", async funct
     host,
     method: "POST",
     path: "/"
-  })
+  }
+}
+
+When("a visitor invokes the protected reference action at {string}", async function(this: AppWorld, host: string) {
+  await requestSiteWith(this, await referenceActionRequest(this, host))
 })
 Then("the response status is {int}", function(this: AppWorld, status: number) {
   assert.equal(this.response?.status, status)

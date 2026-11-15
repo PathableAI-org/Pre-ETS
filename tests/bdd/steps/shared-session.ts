@@ -8,7 +8,7 @@ import { applicationBrowser, signInThroughApplication } from "../support/browser
 import { type RecordedResponse, requestInstance, sendRequest, startSecondSite } from "../support/server.ts"
 import { namesOf } from "./expiration.ts"
 import { assertNoProtectedContent, assertSameOriginLogin } from "./http.ts"
-import { activityCommunication } from "./session-coordination.ts"
+import { activityCommunication, snapshotOf } from "./session-coordination.ts"
 
 /**
  * The port of one of the two independently started application processes: A is the world's site, B its second site.
@@ -83,15 +83,6 @@ const communicateActivity = (world: AppWorld, instance: string, session: SharedS
     cookie: session.cookie,
     port: portOf(world, instance)
   })
-
-/** The usable session's snapshot, from a status read or an activity answer. */
-const snapshotOf = (response: RecordedResponse) => {
-  assert.equal(response.status, 200, "expected a usable session")
-  const snapshot = JSON.parse(response.body) as { coordinationTag?: unknown; idleDeadlineEpochMilliseconds?: unknown }
-  assert.equal(typeof snapshot.coordinationTag, "string")
-  assert.equal(typeof snapshot.idleDeadlineEpochMilliseconds, "number")
-  return { coordinationTag: String(snapshot.coordinationTag), deadline: Number(snapshot.idleDeadlineEpochMilliseconds) }
-}
 
 /**
  * The reference entry displays the session's subject, issuer, and tenant alias as the first texts after its heading;
