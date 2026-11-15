@@ -33,10 +33,11 @@ no feature directory or slices; drop the slice lines then.
 1. On the first implementation branch, run `speckit-tasks`, then implement only the current slice's planned scope.
    Commit coherent Conventional Commits and run AGENTS.md's Before committing checks. Run only the BDD scenarios the
    change touches, selected by tag. Never run the full suite or dispatch the BDD workflow; it runs nightly on `main`.
-2. Push as a draft through `speckit-stack`. On the first push, report `pushed` and end your turn; the orchestrator
-   sends the first request. After that, send the verification session and the review session the same request:
+2. Push as a draft through `speckit-stack`. On the first push, report `pushed` to the orchestrator and end your
+   turn; the orchestrator sends the first request. After that, send the verification session and the review session the same request:
    branch, pushed SHA, base SHA, slice ID (`fix` for a one-pull-request fix), feature directory, round, and any
-   run-instruction change. Report `pushed` to end your turn.
+   run-instruction change. Report `pushed` to the orchestrator, saying whether you sent both requests, and end your
+   turn.
 3. Answer every verification result and review finding: fix and push a new SHA with a new request to both, or write a
    justification. Classify Copilot findings as accepted, rejected with a reason, or waiting on a person; they do not
    gate.

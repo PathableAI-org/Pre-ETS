@@ -21,8 +21,18 @@ in `plan.md`, and session status. It does not read diffs, source files, or other
 that needs code goes to the session that owns it. It reads GitHub through the REST API (`gh api`) or the GitHub
 tools, because cloud sessions block GraphQL, which `gh pr` and `gh issue` subcommands use.
 
-Sessions report back on their own when they end a turn, so the orchestrator never polls, schedules wake-ups, or loops
-on CI. It acts when a session reports, when a person messages it, or when it is asked for status.
+A session's turn ending does not notify the orchestrator: the platform tells a parent only when a child's turn fails
+or its worker restarts, and a session that finishes cleanly may not report back. So every brief carries the
+orchestrator's session ID, and each role sends its status line to the orchestrator with the session messaging tool
+whenever its state is `pushed`, `verified`, `pr-ready`, `waiting-on-person`, `escalated`, `blocked`, or `failed`,
+before ending its turn. The orchestrator acts when a session reports, when a person messages it, or when it is asked
+for status.
+
+The orchestrator never polls or loops on CI. Its one fallback is a single check-in: after starting or briefing a
+session that owes it a report, it schedules one message to itself about two hours out (`send_later` in cloud
+sessions). When it fires, the orchestrator reads pull request and session status once and acts on what they show. It
+does not reschedule the check-in as a loop; a new one follows only a new brief. This bounds a lost report to one
+check-in interval instead of until a person asks.
 
 ## Lifecycle by tier
 
@@ -84,7 +94,8 @@ and reports `blocked` then if it still fails.
   `origin/main` with `gh stack init`, as the Git workflow describes.
 - **Shared hot spots** such as the [AGENTS.md](../../AGENTS.md) routing table, root `package.json` scripts, and
   `.fallowrc.json` entries: one writing session at a time, or expect a merge conflict and say so in the brief.
-- **No polling.** See [What the orchestrator does](#what-the-orchestrator-does).
+- **No polling.** One fallback check-in per brief, as [What the orchestrator does](#what-the-orchestrator-does)
+  describes.
 
 ## Other agents and Copilot
 
