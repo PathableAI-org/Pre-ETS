@@ -14,6 +14,20 @@ delivery issue records the same tier and trigger. The issue also names a startup
 trigger 3's path list; the feature changes no authentication, session, authorization, or tenant-binding behavior, and
 the tier is High either way (Authority finding 2).
 
+## Clarifications
+
+### Session 2026-11-15
+
+- Q: Issue #475 says no durable requirement covers telemetry export timing. Does this work need a requirement entry
+  before the specification proceeds? → A: No entry is needed. Issue #475 and `docs/observability.md` are the
+  authority, as for browser tracing (Authority finding 1).
+- Q: When `TELEMETRY_EXPORT_TIMING` is not set, which export timing takes effect? → A: By mode. A production-mode
+  process batches, and development and test mode export immediately. The verification harness runs a production
+  build, so its documented environment sets `immediate` explicitly (FR-004, FR-016).
+- Q: Which test suites must the one test-telemetry switch cover? → A: All three kinds, as the issue says:
+  requirements BDD, and the unit and integration suites, which export the traces and logs of the code they exercise.
+  Test processes start telemetry only behind the switch (FR-019, FR-020).
+
 ## User Scenarios & Testing _(mandatory)_
 
 The consumers of this feature are the verification agent described in the
@@ -260,8 +274,8 @@ the application, and observe immediate export.
 - **FR-003**: Under `batch`, export timing MUST be what it is before this feature, including every batching setting
   the application honors today.
 - **FR-004**: When the setting is absent, the effective timing MUST be `batch` for a process running in production
-  mode and `immediate` for a process running in development or test mode. [NEEDS CLARIFICATION: confirm the default
-  rule when the setting is absent; clarification question 2]
+  mode and `immediate` for a process running in development or test mode. A production build that needs immediate
+  timing, such as the one the verification harness runs, sets it explicitly.
 - **FR-005**: A value other than `immediate` or `batch` MUST fail startup with an error that names the setting. The
   application MUST NOT fall back to either timing.
 - **FR-006**: With telemetry off, the setting MUST have no effect. A supplied value MUST still be a recognized one,
@@ -305,8 +319,8 @@ the application, and observe immediate export.
   other telemetry setting, makes a test run export traces and logs to the local stack with immediate timing.
 - **FR-019**: The switch MUST work for requirements BDD, including its smoke suite, and for the unit and integration
   suites of the workspaces that make up the instrumented application process. For the unit and integration suites,
-  the exported records are the traces and logs produced by the code those tests exercise. [NEEDS CLARIFICATION:
-  confirm that unit and integration suites are included; clarification question 3]
+  the exported records are the traces and logs produced by the code those tests exercise. Test processes start
+  telemetry only behind the switch.
 - **FR-020**: Without the switch, a test run's telemetry behavior MUST be what it is today: unit and integration test
   processes start no telemetry, and an application process a suite owns follows its environment.
 - **FR-021**: Telemetry settings supplied explicitly alongside the switch MUST take precedence over the switch's
@@ -428,9 +442,9 @@ of a reviewed delivery plan. It is engineering and tooling work behind the exist
 
 ### Accepted requirement coverage
 
-| Requirement | Acceptance criteria in this slice | Feature disposition                                                                                                                                                                                                                                                                                                                                                                                         |
-| ----------- | --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| None        | None                              | No durable requirement covers telemetry export timing. The feature adds no stakeholder-observable product behavior and changes no signal, attribute, or resource attribute. Its authority is the issue, constrained by [Observability](https://github.com/PathableAI-org/Pre-ETS/blob/6c326576bde033ee13cd85d283743c8367927405/docs/observability.md). The maintainer's decision is in Authority finding 1. |
+| Requirement | Acceptance criteria in this slice | Feature disposition                                                                                                                                                                                                                                                                                                                                                                                                                |
+| ----------- | --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| None        | None                              | No durable requirement covers telemetry export timing. The feature adds no stakeholder-observable product behavior and changes no signal, attribute, or resource attribute. Its authority is the issue, constrained by [Observability](https://github.com/PathableAI-org/Pre-ETS/blob/6c326576bde033ee13cd85d283743c8367927405/docs/observability.md). The decision that no requirement entry is needed is in Authority finding 1. |
 
 Related constraints, not coverage claims: the
 [data classes](https://github.com/PathableAI-org/Pre-ETS/blob/6c326576bde033ee13cd85d283743c8367927405/docs/observability.md#data-classes),
@@ -475,19 +489,20 @@ process exits in an orderly way.
 
 ### Authority findings
 
-1. **No durable requirement or delivery-plan slice (maintainer decision pending).**
+1. **No durable requirement or delivery-plan slice (resolved on 2026-11-15).**
    - _Source_: Issue #475, Requirements: "No durable requirement covers this ... The specification must say so
      explicitly and name the maintainer's decision on whether a requirement entry is needed." The `speckit-specify`
      intake gate, which expects a delivery-plan slice and accepted requirements.
    - _Ambiguity_: Whether engineering and tooling work with no requirement may proceed on the issue's authority alone,
-     or needs a requirement entry first.
+     or needs a requirement entry first. None remaining.
    - _Impact_: Claims trace to the issue's scope and to `docs/observability.md`, not to requirement IDs. No
      requirements BDD applies.
-   - _Decision required_: The maintainer decides whether a requirement entry is needed. [NEEDS CLARIFICATION:
-     clarification question 1]
+   - _Decision required_: None. **No requirement entry is needed.** This was decided in the specification session's
+     clarification on 2026-11-15 (Clarifications, first answer). Approving this specification confirms it as the
+     maintainer's decision.
    - _Proposals_: (A) No requirement entry; issue #475 and `docs/observability.md` are the authority, as for the
-     browser-tracing feature. (B) A requirement entry is authored through the requirements workflow first, and this
-     feature stops until it is accepted.
+     browser-tracing feature (**chosen**). (B) A requirement entry is authored through the requirements workflow
+     first, and this feature stops until it is accepted (not chosen).
 2. **Trigger 3's path list (informational, not blocking).**
    - _Source_: Issue #475, Risk tier, which names trigger 4 and lists a startup-configuration file among the changed
      paths. The [Git workflow's triggers](../../docs/engineering/git-workflow.md#triggers), whose trigger 3 counts

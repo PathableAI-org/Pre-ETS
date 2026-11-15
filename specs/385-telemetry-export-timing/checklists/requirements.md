@@ -13,7 +13,7 @@
 
 ## Requirement Completeness
 
-- [ ] No [NEEDS CLARIFICATION] markers remain
+- [x] No [NEEDS CLARIFICATION] markers remain
 - [x] Requirements are testable and unambiguous
 - [x] Success criteria are measurable
 - [x] Success criteria are technology-agnostic (no implementation details)
@@ -40,14 +40,18 @@
 - [x] Manual feature verification is non-empty, agent-executable, and distinct from automated evidence
 - [x] Planned and executed evidence are clearly distinguished
 - [x] Environment prerequisites, retained evidence, cleanup, limitations, and incomplete claims are explicit
-- [ ] No specification-blocking authority finding or architectural decision remains in the stakeholder contract
+- [x] No specification-blocking authority finding or architectural decision remains in the stakeholder contract
 
 ## Notes
 
-- Validation iteration 1: three `[NEEDS CLARIFICATION]` markers remain, one for each clarification question: whether
-  a requirement entry is needed (Authority finding 1), the default when the setting is absent (FR-004), and whether
-  unit and integration suites are included in test-run telemetry (FR-019). The two unchecked items wait on those
-  answers.
+- Validation iteration 1: three `[NEEDS CLARIFICATION]` markers remained, one for each clarification question.
+- Validation iteration 2, after the `speckit-clarify` session on 2026-11-15: all items pass. The three answers are
+  recorded in the specification's Clarifications section: no requirement entry is needed (Authority finding 1), the
+  default follows the process's mode (FR-004), and the test-telemetry switch covers unit, integration, and
+  requirements BDD suites (FR-019). Each answer matched the drafted text, so `verification.md` needed no change and
+  stays aligned with `spec.md`.
+- Authority finding 2 is informational: the issue lists a file on trigger 3's path list while naming only trigger 4.
+  The tier is High either way, and this session does not edit the issue.
 - The audience is the verification agent, the developer, the operator, and the reviewer, because this is engineering
   and tooling work with no end-user-visible behavior. The collector, the trace and log stores, CI, and the test
   suites are named because the issue names them; they are observable obligations, not design choices.
