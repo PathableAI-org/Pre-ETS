@@ -10,7 +10,8 @@ Feature: Default entry-point protection
   confirmation of a fresh event and admission of the resulting session are observed in the
   callback feature (#158). Cross-instance recognition, tenant mismatch with a real session,
   public static assets (finding F-1) and Server Action recovery content (#157) remain
-  incomplete here.
+  incomplete here. Pages and a Server Action added without a public designation are
+  protected; no route handler outside the gate's own endpoints exists to show the same.
 
   @preets-session-004
   Scenario Outline: A protected page navigation leads to the tenant provider
@@ -32,7 +33,9 @@ Feature: Default entry-point protection
     And host resolution uses base hostname "example.test"
     And the visitor's session reference is "well-formed unknown"
     When a visitor sends "<method>" to "<path>" at "springfield.example.test" as a "<kind>" request
-    Then the response contains no protected application content
+    Then the response status is 401
+    And the response does not delegate to login
+    And the response contains no protected application content
 
     Examples:
       | method | path                            | kind          |
@@ -42,6 +45,39 @@ Feature: Default entry-point protection
       | GET    | /_next/image?url=%2Fx&w=16&q=75 | image         |
       | POST   | /                               | application   |
       | POST   | /an-undesignated-path           | application   |
+      | POST   | /session/activity               | application   |
+      | GET    | /session/status                 | application   |
+      | POST   | /auth/logout                    | application   |
+      | GET    | /coordination/roster            | application   |
+      | GET    | /coordination/participant       | application   |
+
+  Scenario Outline: A page that no designation names leads to login without a session
+    The coordination pages were added after the protection gate, and neither the public designation
+    nor the gate names them, so they show that an added page is protected unless it is designated public.
+
+    Given production tenant sites for Springfield and Shelbyville
+    And host resolution uses base hostname "localhost"
+    And the visitor's session reference is "<reference>"
+    When a visitor sends "GET" to "<path>" at "springfield.localhost:3000" as a "document" request
+    Then the response delegates to the same-origin login
+    And following the response at "springfield.localhost:3000" reaches the "springfield" tenant provider
+
+    Examples:
+      | path                      | reference           |
+      | /coordination/roster      | absent              |
+      | /coordination/participant | well-formed unknown |
+
+  Scenario: A Server Action that no designation names performs no operation without a session
+    The coordination fixture action was added after the protection gate and is named nowhere in it.
+
+    Given production tenant sites for Springfield and Shelbyville
+    And host resolution uses base hostname "example.test"
+    And the visitor's session reference is "well-formed unknown"
+    When a visitor invokes the protected fixture action on "/coordination/roster" at "springfield.example.test"
+    Then the response status is 401
+    And the response reports no fixture operation
+    And the response does not delegate to login
+    And the response issues no application or correlation cookie
 
   @preets-session-007
   Scenario Outline: A direct protected action request without a usable session performs no operation
