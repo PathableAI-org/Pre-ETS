@@ -1,6 +1,6 @@
 /**
  * Git access for the agent workflow tooling. Every call runs in `cwd` and reads committed content or notes only.
- * Notes stay local: nothing here fetches or pushes a notes ref.
+ * Nothing here fetches or pushes a notes ref: notes travel between clones as pull request comments (note-sync.ts).
  */
 import { execFileSync } from "node:child_process"
 
@@ -30,6 +30,15 @@ export const repositoryRoot = (cwd: string): string => git(cwd, ["rev-parse", "-
 
 export const currentBranch = (cwd: string): string | undefined =>
   gitOrUndefined(cwd, ["symbolic-ref", "--quiet", "--short", "HEAD"])?.trim()
+
+/** Local and remote-tracking branch names whose tip is `sha`, without the remote prefix and without duplicates. */
+export const branchesAt = (cwd: string, sha: string): readonly string[] => [
+  ...new Set(
+    lines(git(cwd, ["for-each-ref", `--points-at=${sha}`, "--format=%(refname)", "refs/heads", "refs/remotes"]))
+      .map((ref) => ref.replace(/^refs\/heads\//, "").replace(/^refs\/remotes\/[^/]+\//, ""))
+      .filter((name) => name !== "HEAD")
+  )
+]
 
 /** A file's content at a revision, or undefined when it does not exist there. */
 export const readAtSha = (cwd: string, sha: string, path: string): string | undefined =>

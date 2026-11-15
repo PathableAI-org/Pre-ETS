@@ -64,15 +64,21 @@ const appendEntry = <T>(kind: NoteKind<T>, entries: readonly T[], entry: T): Val
   return { ok: true, value: [...entries, kind.withSupersedes(entry, supersedes)] }
 }
 
+export interface NoteTarget<T> {
+  readonly cwd: string
+  readonly kind: NoteKind<T>
+  readonly ref: string
+}
+
 /**
- * Validates `json` as one entry, runs `check` on it, and appends it to the note on its SHA in `ref`. Returns the
- * entry as recorded, with the entry it supersedes filled in.
+ * Validates `json` as one entry, runs `check` on it, and appends it to the note on its SHA in `ref`. With `skip`, an
+ * entry whose ID is already on that SHA is left as it is instead of refused.
  */
-export const recordEntry = <T>(
-  target: { readonly cwd: string; readonly kind: NoteKind<T>; readonly ref: string },
+const appendJson = <T>(
+  target: NoteTarget<T>,
   json: string,
-  check: (entry: T) => readonly string[] = () => []
-): Validated<T> => {
+  options: { readonly check: (entry: T) => readonly string[]; readonly duplicate: "refuse" | "skip" }
+): Validated<{ readonly entry: T; readonly written: boolean }> => {
   const { cwd, kind, ref } = target
   let parsed: unknown
   try {
@@ -82,20 +88,44 @@ export const recordEntry = <T>(
   }
   const entry = kind.validate(parsed)
   if (!entry.ok) return entry
-  const problems = check(entry.value)
+  const problems = options.check(entry.value)
   if (problems.length > 0) return fail(...problems)
   const sha = kind.sha(entry.value)
   const existing = parseEntries(kind, readNote(cwd, ref, sha))
   if (!existing.ok) return existing
+  const present = existing.value.find((recorded) => kind.id(recorded) === kind.id(entry.value))
+  if (present !== undefined && options.duplicate === "skip") {
+    return { ok: true, value: { entry: present, written: false } }
+  }
   const next = appendEntry(kind, existing.value, entry.value)
   if (!next.ok) return next
   writeNote(cwd, ref, sha, `${JSON.stringify({ [kind.listKey]: next.value, schemaVersion: 1 }, null, 2)}\n`)
-  return { ok: true, value: next.value.at(-1) ?? entry.value }
+  return { ok: true, value: { entry: next.value.at(-1) ?? entry.value, written: true } }
 }
+
+/** Appends an entry and returns it as recorded, with the entry it supersedes filled in. A repeated ID is refused. */
+export const recordEntry = <T>(
+  target: NoteTarget<T>,
+  json: string,
+  check: (entry: T) => readonly string[] = () => []
+): Validated<T> => {
+  const recorded = appendJson(target, json, { check, duplicate: "refuse" })
+  return recorded.ok ? { ok: true, value: recorded.value.entry } : recorded
+}
+
+/**
+ * Appends an entry recorded in another clone, unless its ID is already on that SHA. `written` says whether the note
+ * changed, so importing the same entries again changes nothing.
+ */
+export const importEntry = <T>(
+  target: NoteTarget<T>,
+  json: string,
+  check: (entry: T) => readonly string[] = () => []
+): Validated<{ readonly entry: T; readonly written: boolean }> => appendJson(target, json, { check, duplicate: "skip" })
 
 /** The latest entry on `revision` in `ref`, or undefined when the commit has no note. */
 export const latestEntry = <T>(
-  target: { readonly cwd: string; readonly kind: NoteKind<T>; readonly ref: string },
+  target: NoteTarget<T>,
   revision: string
 ): Validated<T | undefined> => {
   const entries = parseEntries(target.kind, readNote(target.cwd, target.ref, resolveSha(target.cwd, revision)))

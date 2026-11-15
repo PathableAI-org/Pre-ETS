@@ -107,7 +107,10 @@ every Claude Code session. It denies force pushes, `git reset --hard`,
 `gh stack modify`, interactive `gh stack submit`, environment dumps, and reads of
 `.env` files other than `.env.example`. It prompts before merges, `gh pr ready`,
 remote branch deletion, and edits to check configuration and to the settings file.
-Routine read-only and check commands run without a prompt. Rules match command text,
+Its `PreToolUse` hook blocks marking a pull request ready, through `gh pr ready` or the
+GitHub MCP tool, while the
+[verification and code review gate](docs/engineering/verification-harness.md#gate-and-escalation)
+fails. Routine read-only and check commands run without a prompt. Rules match command text,
 so they stop the usual form of a command and are not a security boundary; this
 file's prose still governs. Codex and Cursor do not read this file. Put personal
 overrides in the gitignored `.claude/settings.local.json`.

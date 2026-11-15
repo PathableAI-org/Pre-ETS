@@ -7,6 +7,7 @@ import type { ClaimScope } from "./request.ts"
 import {
   type Check,
   featureDir,
+  featureDirUnlessFix,
   isRecord,
   list,
   matching,
@@ -72,7 +73,8 @@ export interface VerificationReport {
   /** Instances, ports, services, and OTEL settings, without header values or credentials. */
   readonly environment: string
   readonly escalations: readonly Escalation[]
-  readonly featureDir: string
+  /** The feature's `specs/{number}-{slug}`. A High fix (slice ID `fix`) may omit it. */
+  readonly featureDir?: string | undefined
   readonly forbiddenData: readonly ForbiddenDataFinding[]
   readonly runId: string
   readonly schemaVersion: 1
@@ -130,7 +132,7 @@ const report = object({
   }),
   environment: text,
   escalations: list(object({ detail: text, kind: oneOf(escalationKinds) })),
-  featureDir,
+  featureDir: optional(featureDir),
   forbiddenData: list(object({ field: fieldName, signal: text })),
   runId: uuid,
   schemaVersion: schemaVersion1,
@@ -143,7 +145,8 @@ const report = object({
 })
 
 export const validateReport = (value: unknown): Validated<VerificationReport> => {
-  const problems = report(value, "$")
+  const shape = report(value, "$")
+  const problems = shape.length > 0 || !isRecord(value) ? shape : featureDirUnlessFix(value)
   // The checks above establish every field of VerificationReport.
   return problems.length === 0 ? { ok: true, value: value as VerificationReport } : { ok: false, problems }
 }

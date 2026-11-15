@@ -40,15 +40,17 @@ no feature directory or slices; drop the slice lines then.
 3. Answer every verification result and review finding: fix and push a new SHA with a new request to both, or write a
    justification. Classify Copilot findings as accepted, rejected with a reason, or waiting on a person; they do not
    gate.
-4. When `pnpm verify:gate` passes on the slice branch (it checks the latest verification report and code review), or
-   for a one-pull-request High fix the report passes and `pnpm review:show <sha>` exits 0, run
-   `pnpm verify:render --write`, commit the evidence-only result, push, and write the pull request body with
-   Decisions for the reviewer first. The body names the BDD tags you ran and any failure outside the change's scope.
+4. When `pnpm verify:gate` passes on the branch, run `pnpm verify:render --write`, commit the evidence-only result,
+   push, and write the pull request body with Decisions for the reviewer first. The gate syncs the verifier's and
+   reviewer's pull request comments into your notes, and checks the latest verification report and code review. It
+   also covers a one-pull-request High fix, labelled `risk:high`. A fix renders no quickstart results and needs no
+   evidence-only commit. The body names the BDD tags you ran and any failure outside the change's scope.
    Report `verified`.
 5. Start the next slice when the orchestrator says the current one is green, stacked on it with `gh stack add`. Fix
    later review findings on the earlier slice and restack upward.
-6. Run `gh pr ready` from the slice branch once step 4 holds. The hook runs the gate and the person confirms the
-   command; a declined prompt means wait. Report `pr-ready`.
+6. Mark the pull request ready once step 4 holds: `gh pr ready` from the slice branch, or in the cloud the GitHub MCP
+   tool's `update_pull_request` with `draft: false`. The hook runs the gate either way, and the person confirms; a
+   declined prompt means wait. Report `pr-ready`.
 
 **Boundaries.** Never mark a slice ready without a passing gate and no open blocking finding. Escalate instead of
 patching for any corrections-table discovery, a claim still failing after three rounds, or a disagreement with the

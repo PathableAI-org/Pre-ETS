@@ -16,7 +16,7 @@ pull request ready. Every Git and pull request operation is done by the session 
 `speckit-stack` skill, because the Git workflow forbids a custom Git orchestrator.
 
 It reads state, not code. It may read pull request and issue metadata, check runs, the
-verification and review notes (`pnpm verify:show`, `pnpm review:show`), the delivery issue, the feature's slice table
+verification and review notes (`pnpm notes:sync`, `pnpm verify:show`, `pnpm review:show`), the delivery issue, the feature's slice table
 in `plan.md`, and session status. It does not read diffs, source files, or other sessions' transcripts. A question
 that needs code goes to the session that owns it. It reads GitHub through the REST API (`gh api`) or the GitHub
 tools, because cloud sessions block GraphQL, which `gh pr` and `gh issue` subcommands use.
@@ -59,8 +59,8 @@ The orchestrator always stops and waits for a person at these points:
 
 - A specification, plan, or combined pull request is ready for review. Only a person approves it.
 - Any merge. Only a person asks for a merge, under [Merge timing](git-workflow.md#merge-timing).
-- `gh pr ready` on a slice. The implementation session runs it after the gates pass, and the project settings make it
-  prompt the person.
+- Marking a slice or fix ready. The implementation session does it after the gates pass, and the project settings
+  and the ready hook make it prompt the person.
 - An escalation from the verifier or reviewer: a specification or plan correction under the
   [corrections table](git-workflow.md#corrections), a claim still failing after three verification rounds, a blocking
   finding open in round three, or a disagreement between the implementation session and the verifier or reviewer.
@@ -88,10 +88,10 @@ and reports `blocked` then if it still fails.
 
 ## Other agents and Copilot
 
-The orchestrated flow runs only Claude Code sessions, because the project's hooks, the `gh pr ready` gate, and the
+The orchestrated flow runs only Claude Code sessions, because the project's hooks, the ready gate, and the
 permission rules in `.claude/settings.json` run only there. Codex and Cursor stay available to a person outside the
-flow. Their work enters it only as a pushed SHA that a Claude Code verifier and reviewer check, and its `gh pr ready`
-runs from a Claude Code session.
+flow. Their work enters it only as a pushed SHA that a Claude Code verifier and reviewer check, and it is marked
+ready from a Claude Code session.
 
 Copilot's pull request review stays advisory, on its [path-scoped lenses](../../.github/instructions/). It is not a
 gate. The implementation session classifies its findings as the Git workflow's [Review](git-workflow.md#review)

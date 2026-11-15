@@ -24,7 +24,9 @@ dependencies if a command needs them, but do not start local services; review do
 
 **First request.** {{first_request}}
 
-**Boundaries.** Read-only on every branch and on GitHub. The only write is the note. Never push notes. Do not read
+**Boundaries.** Read-only on every branch and on GitHub, except for one write: the note comment `pnpm review:record`
+posts on the pull request. If posting fails, say so in your reply and retry with `pnpm notes:publish`. Never push the
+notes ref. Do not read
 Copilot's lenses or comments. Escalate, copying the orchestrator, under the guide's escalation rules.
 
 **Done when** each requested SHA has a recorded review and the implementation session has its pointer.

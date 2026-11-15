@@ -6,6 +6,7 @@
 import {
   type Check,
   featureDir,
+  featureDirUnlessFix,
   list,
   matching,
   object,
@@ -76,7 +77,8 @@ export interface Review {
   /** Findings from earlier rounds that this review closes. */
   readonly closed: readonly ClosedFinding[]
   readonly escalations: readonly Escalation[]
-  readonly featureDir: string
+  /** The feature's `specs/{number}-{slug}`. A High fix (slice ID `fix`) may omit it. */
+  readonly featureDir?: string | undefined
   /** Every finding still open at the reviewed SHA, carried-forward findings included. */
   readonly findings: readonly Finding[]
   readonly reviewedSha: string
@@ -111,7 +113,7 @@ const shape = object({
   baseSha: sha,
   closed: list(object({ closure: oneOf(closures), id: findingId, note: text })),
   escalations: list(object({ detail: text, findingIds: list(findingId), kind: oneOf(escalationKinds) })),
-  featureDir,
+  featureDir: optional(featureDir),
   findings: list(finding),
   reviewedSha: sha,
   reviewId: uuid,
@@ -141,7 +143,8 @@ const consistency = (review: Review): readonly string[] => {
         && !review.escalations.some((entry) => entry.kind === "third round")
       ? [`$.escalations: round ${String(review.round)} with open blocking findings needs a third round escalation`]
       : []),
-    ...(review.baseSha === review.reviewedSha ? ["$.baseSha: must differ from reviewedSha"] : [])
+    ...(review.baseSha === review.reviewedSha ? ["$.baseSha: must differ from reviewedSha"] : []),
+    ...featureDirUnlessFix(review)
   ]
 }
 

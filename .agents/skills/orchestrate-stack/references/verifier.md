@@ -33,12 +33,14 @@ that line, then `waiting next=request` until the next one.
   [Requirements BDD runs](docs/engineering/verification-harness.md#requirements-bdd-runs) describes.
 - **High fix:** there is no plan, so do not run `pnpm verify:request`. Take the claims, observations, and channels
   from the pull request body at the requested SHA, as Verification by risk tier says for a High fix. Record the report
-  with slice ID `fix` and feature directory `{{feature_dir}}`. If the brief names no feature directory, escalate
-  before recording rather than inventing one.
+  with slice ID `fix`, and with feature directory `{{feature_dir}}` when the brief names one; otherwise omit
+  `featureDir`. Every claim must be `established` for the fix to pass.
 
 **First request.** {{first_request}}
 
-**Boundaries.** Read-only on every branch. The only write is the note. Never push notes. Escalate, copying the
-orchestrator, under the harness's escalation rules.
+**Boundaries.** Read-only on every branch. The only writes are the note and the one pull request comment
+`pnpm verify:record` posts with it. If posting fails, say so in your reply and retry with `pnpm notes:publish`. Never
+push the notes ref, and post nothing else to GitHub. Escalate, copying the orchestrator, under the harness's
+escalation rules.
 
 **Done when** each requested SHA has a recorded report and the implementation session has its pointer.

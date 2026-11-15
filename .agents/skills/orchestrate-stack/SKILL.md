@@ -16,10 +16,10 @@ attribution rule in every brief and message.
 
 ## Boundaries
 
-- Never edit, commit, push, rebase, merge, approve, or run `gh pr ready`. The owning session does Git work through
-  `speckit-stack`.
+- Never edit, commit, push, rebase, merge, approve, or mark a pull request ready. The owning session does Git work
+  through `speckit-stack`.
 - Read state only: REST reads through `gh api` (issues, pulls, check runs, reviews, changed files) or the GitHub
-  tools, `gh stack view --json`, `pnpm verify:show`,
+  tools, `gh stack view --json`, `pnpm notes:sync <pr>` (it writes only local notes), `pnpm verify:show`,
   `pnpm review:show`, `git notes --ref=<ref> list`, `git rev-list`, the slice table in `plan.md` through
   `git show <sha>:<path>`, and session status. Never read diffs, source files, or transcripts.
 - Never poll, schedule wake-ups, or loop on CI. Act on a session's report, a person's message, or a status request.
@@ -93,8 +93,8 @@ verification harness and code review guides require. Your part:
 3. **Green.** When the verification gate result passes and the review shows no open blocking finding at the same SHA
    (or only evidence-only commits after it), notify the person that the slice is green. Tell the implementation
    session it may start the next slice, stacked on this one.
-4. **Ready.** The implementation session runs `gh pr ready` from the slice branch; the hook runs the gate and the
-   settings ask the person. Notify that the slice waits on review.
+4. **Ready.** The implementation session marks the pull request ready with `gh pr ready` or, in the cloud, the GitHub
+   MCP tool's `update_pull_request` with `draft: false`. The hook runs the gate, and the person confirms. Notify that the slice waits on review.
 5. **Fix rounds.** A failing result goes back to the implementation session through its own loop. Count rounds from
    the notes. You step in only for an escalation.
 
@@ -122,7 +122,9 @@ checks() { gh api "repos/{owner}/{repo}/commits/$1/check-runs" --jq '[.check_run
 decision() { gh api "repos/{owner}/{repo}/pulls/$1/reviews" --jq '[.[] | select(.state != "COMMENTED")] | last | .state // "none"'; }
 ```
 
-For each open slice, find the newest commit between its base and head that carries a note, then summarize it:
+For each open slice, import its pull request's note comments with `pnpm notes:sync <pr>`, because the verifier and
+reviewer record in their own clones. Then find the newest commit between its base and head that carries a note, and
+summarize it:
 
 ```sh
 newest() { git rev-list "origin/$2..$3" | grep -m1 -F -f <(git notes --ref="$1" list | cut -d' ' -f2); }

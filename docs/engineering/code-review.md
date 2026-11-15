@@ -73,17 +73,41 @@ finding keeps its `R-nnn` ID across rounds until a review closes it as `fixed`, 
 
 ## Storage
 
-Reviews are git notes on the reviewed SHA in `refs/notes/review`. All worktrees of a clone share the ref, so the
-implementation session reads what the reviewer wrote without a copy. The note keeps every review recorded on that
-SHA in order, and the latest is the last one. Notes stay local: never push or fetch `refs/notes/review`.
+Reviews are git notes on the reviewed SHA in `refs/notes/review`. The note keeps every review recorded on that SHA
+in order, and the latest is the last one. The gate reads the local notes, so it works with no network.
+
+Sessions do not share a clone: each cloud session has its own container. A review reaches the other clones as a
+comment on the pull request. Never push or fetch `refs/notes/review` itself.
+
+- **Publish.** `pnpm review:record` validates the review, appends it to the local note, then posts it as a comment
+  on the open pull request whose head branch has the reviewed SHA at its tip, or on `--pr <n>`. The comment starts
+  with a hidden marker naming the note kind, SHA, and review ID, gives a one-line summary, and holds the review JSON in
+  a fenced block. If no pull request is found or posting fails, the review stays recorded locally and the command
+  exits 1 and says why. `pnpm notes:publish review <sha> [--pr <n>]` posts it once the cause is fixed. A pull request
+  never gets the same entry twice.
+- **Sync.** `pnpm notes:sync [<pr>]` reads the pull request's comments through the REST API, page by page. It
+  validates each marked comment with the same schema as `review:record`, and appends the entries missing from the
+  local notes, oldest first and once per entry ID. Running it again changes nothing. A marked comment that does not
+  parse or validate, whose marker disagrees with its entry, or whose commit this clone lacks is rejected with its
+  reason and never written, and the command exits 1.
+- **Read.** `pnpm review:show`, `pnpm verify:show`, and `pnpm verify:gate` sync the checked-out branch's pull request
+  first. Without a branch, an open pull request, or GitHub, they print one line saying so and read the local notes.
+  A desktop clone that every session shares therefore keeps working offline.
+
+Sync imports only comments written by the account `gh` is authenticated as (`gh api user`), because every session
+posts as the person who runs it, in the cloud too. Trust is the same as for locally writable notes, and no stronger.
+Any session or tool holding that login can post an entry, and a repository maintainer can edit a comment.
 
 ```bash
-pnpm review:record review.json   # validate and append to the reviewed SHA's note
-pnpm review:show <sha>           # print the latest review; exits 1 while a blocking finding or escalation is open
+pnpm review:record review.json   # validate, append to the reviewed SHA's note, and post it on the pull request
+pnpm review:show <sha>           # sync, then print the latest review; exits 1 while a blocking finding or escalation is open
+pnpm notes:sync [<pr>]           # import the pull request's report and review comments into the local notes
 ```
 
-Both take `--notes-ref <ref>` to use another ref under `refs/notes/`, for trials. The verification handoff stores its
-reports the same way in `refs/notes/verification`, through the same git and schema-check modules.
+`review:record` and `review:show` take `--notes-ref <ref>` to use another ref under `refs/notes/`, for trials. A
+review recorded in a trial ref is not posted. `notes:sync` takes `--review-ref <ref>` to import into one. The
+verification handoff stores its reports the same way in `refs/notes/verification`, through the same git,
+schema-check, and sync modules.
 
 ## The review loop
 
@@ -117,12 +141,13 @@ unresolved escalation. The review covers the reviewed SHA, which may be older th
 evidence-only commits as [the verification gate](verification-harness.md#gate-and-escalation) defines them. Any
 other change after the reviewed SHA needs a new review request.
 
-`pnpm verify:gate`, and the `gh pr ready` hook that runs it, enforce this on `{number}-{slug}-impl*` branches. They
-take the latest review on the nearest commit at or below HEAD in `refs/notes/review`, and fail with a `code review:`
-reason for an open blocking finding, an open escalation, a review for another feature or slice, or a change after
-the reviewed SHA that is not evidence-only. Only High and Standard work has implementation-slice branches, so the
-gate needs no tier. A High fix's single pull request is not an implementation-slice branch; check its review with
-`pnpm review:show` before marking it ready.
+`pnpm verify:gate` and the ready hook that runs it enforce this on `{number}-{slug}-impl*` branches and on a High
+fix's single pull request: a branch that is not an implementation slice, whose pull request is labelled `risk:high`.
+They take the latest review on the nearest commit at or below HEAD in `refs/notes/review`. They fail with a
+`code review:` reason for an open blocking finding, an open escalation, a review for another feature or slice (a fix
+review must have slice ID `fix`), or a change after the reviewed SHA that is not evidence-only. A fix has no
+quickstart results, so for a fix only a commit that changes no path is evidence-only. Only High and Standard work has
+implementation-slice branches, and only High fixes carry a review, so the gate needs no other tier.
 
 Escalate to the orchestrator, and through it to a person, instead of continuing the loop when:
 
@@ -134,8 +159,8 @@ Escalate to the orchestrator, and through it to a person, instead of continuing 
 ## Boundaries
 
 The reviewer is read-only. It edits no branch, pull request, issue, requirement, delivery plan, or `specs/` file,
-posts nothing to GitHub, and does not fix the code or write patches. It names the defect, where it is, and how it
-fails. The only thing it writes is its note.
+and does not fix the code or write patches. It names the defect, where it is, and how it fails. It writes only its
+note, and the one GitHub write it makes is the note comment `pnpm review:record` posts on the pull request.
 
 ## Model choice
 

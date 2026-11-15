@@ -5,7 +5,7 @@
 import type { Validated } from "./schema-checks.ts"
 
 import { ancestorLimit, checkNotesRef, isCommit, nearestAnnotated } from "./git-access.ts"
-import { latestEntry, recordEntry } from "./note-store.ts"
+import { importEntry, latestEntry, type NoteTarget, recordEntry } from "./note-store.ts"
 import { reviewNotes } from "./review-findings/notes.ts"
 import { openBlocking, type Review } from "./review-findings/schema.ts"
 
@@ -17,19 +17,32 @@ const fail = (...problems: readonly string[]): { readonly ok: false; readonly pr
   problems
 })
 
-/** Validates a review and appends it to the note on its reviewed SHA in `ref`. */
-export const recordReview = (cwd: string, ref: string, json: string): Validated<Review> => {
-  const notes = checkNotesRef(ref)
-  if (!notes.ok) return notes
-  return recordEntry(
-    { cwd, kind: reviewNotes, ref },
-    json,
-    (review) =>
-      [review.reviewedSha, review.baseSha].filter((sha) => !isCommit(cwd, sha)).map((sha) =>
-        `${sha} is not a commit in this repository`
-      )
+const commitsExist = (cwd: string) => (review: Review): readonly string[] =>
+  [review.reviewedSha, review.baseSha].filter((sha) => !isCommit(cwd, sha)).map((sha) =>
+    `${sha} is not a commit in this repository`
   )
+
+/** Appends a review to its reviewed SHA's note in `ref`, through `append`, once the ref is known to be a notes ref. */
+const appendReview = <R>(
+  cwd: string,
+  ref: string,
+  append: (target: NoteTarget<Review>, check: (review: Review) => readonly string[]) => Validated<R>
+): Validated<R> => {
+  const notes = checkNotesRef(ref)
+  return notes.ok ? append({ cwd, kind: reviewNotes, ref }, commitsExist(cwd)) : notes
 }
+
+/** Validates a review and appends it to the note on its reviewed SHA in `ref`. */
+export const recordReview = (cwd: string, ref: string, json: string): Validated<Review> =>
+  appendReview(cwd, ref, (target, check) => recordEntry(target, json, check))
+
+/** Validates a review recorded in another clone and appends it in `ref` unless its ID is already there. */
+export const importReview = (
+  cwd: string,
+  ref: string,
+  json: string
+): Validated<{ readonly entry: Review; readonly written: boolean }> =>
+  appendReview(cwd, ref, (target, check) => importEntry(target, json, check))
 
 /** The latest review on `revision` in `ref`. */
 export const latestReview = (cwd: string, ref: string, revision: string): Validated<Review> => {

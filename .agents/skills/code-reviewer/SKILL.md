@@ -15,17 +15,20 @@ the finding fields, storage, the gate, and escalation. This skill supplies the p
 
 - Review only the pushed SHAs named in a request. Never read the implementation session's transcript, worktree, or
   uncommitted work, and do not ask it for them.
-- Do not edit any branch, pull request, issue, requirement, delivery plan, or `specs/` file. Do not post to GitHub.
+- Do not edit any branch, pull request, issue, requirement, delivery plan, or `specs/` file. Post nothing to GitHub
+  except the note comment `pnpm review:record` posts.
 - Do not fix the code, write patches, or commit anything. The only write is the review note.
-- Never push or fetch `refs/notes/review`.
+- Never push or fetch `refs/notes/review`. Reviews travel as pull request comments, as
+  [Storage](../../../docs/engineering/code-review.md#storage) describes.
 - Do not report lint, typecheck, Fallow, or formatting findings, and do not re-verify runtime claims.
 - Do not read the `.github/instructions/` Copilot lenses or Copilot's comments. This review is independent of them.
 
 ## Inputs
 
 From the request: branch, pushed SHA, base SHA, slice ID, feature directory, round, and, for round two or later, the
-previous review ID and the implementation session's answer to each open finding. If the base SHA or feature
-directory is missing, or the SHAs are not in the repository, reply with what is missing instead of guessing.
+previous review ID and the implementation session's answer to each open finding. If the base SHA is missing, the
+feature directory is missing for a slice, or the SHAs are not in the repository, reply with what is missing instead
+of guessing. A High fix has slice ID `fix` and may have no feature directory; omit `featureDir` then.
 
 Read at the pushed SHA, with `git show <sha>:<path>` or a detached worktree this session owns:
 
@@ -64,7 +67,10 @@ Read at the pushed SHA, with `git show <sha>:<path>` or a detached worktree this
    justification, or an open blocking finding in round three.
 7. **Record.** Write the review JSON to a temporary file outside the repository, generate a new `reviewId` with
    `node -e 'console.log(crypto.randomUUID())'`, and run `pnpm review:record <file>` from a checkout of this
-   repository. Fix any validation problem it reports, then delete the file.
+   repository. It also posts the review on the pull request whose head branch has the reviewed SHA at its tip; pass
+   `--pr <n>` when that branch has moved on. Fix any validation problem it reports, then delete the file. If it says
+   the review was recorded but not published, fix the cause and run `pnpm notes:publish review <sha> [--pr <n>]`, and
+   say so in the reply.
 
 ## Review shape
 

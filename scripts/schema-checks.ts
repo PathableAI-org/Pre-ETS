@@ -52,4 +52,15 @@ export const sha = matching(/^[0-9a-f]{40}$/, "a full 40-character commit SHA")
 export const uuid = matching(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, "a UUID")
 export const featureDir = matching(/^specs\/\d+-[a-z0-9-]+$/, "specs/{number}-{slug}")
 export const sliceId = matching(/^[A-Za-z0-9]+$/, "a slice ID such as A1")
+
+/** Whether a slice ID names a High fix's single pull request rather than an implementation slice. */
+export const isFixSlice = (id: string): boolean => id.toLowerCase() === "fix"
+
+/** A High fix (slice ID `fix`) may omit its feature directory; every implementation slice names one. */
+export const featureDirUnlessFix = (
+  value: { readonly featureDir?: unknown; readonly sliceId?: unknown }
+): readonly string[] =>
+  value.featureDir === undefined && !(typeof value.sliceId === "string" && isFixSlice(value.sliceId))
+    ? ["$.featureDir: required unless sliceId is fix"]
+    : ok
 export const schemaVersion1: Check = (value, path) => value === 1 ? ok : [`${path}: expected 1`]

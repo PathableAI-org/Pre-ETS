@@ -45,6 +45,11 @@
       "rangeStrategy": "pin",
       "postUpdateOptions": ["pnpmDedupe"],
     },
+    {
+      "description": "Lock file maintenance has no release timestamp, so Renovate's minimum release age check stays pending and blocks automerge. pnpm's own minimumReleaseAge in pnpm-workspace.yaml already enforces the cooldown when the lockfile is regenerated.",
+      "matchUpdateTypes": ["lockFileMaintenance"],
+      "minimumReleaseAge": null,
+    },
     // Residual first; later groupName rules select the owning dependency set.
     {
       "description": "Group remaining non-major pnpm workspace dependency updates into a reviewable batch.",
@@ -80,7 +85,7 @@
       "addLabels": ["javascript", "pnpm", "framework"],
     },
     {
-      "description": "Coordinate OpenTelemetry API, SDK, experimental packages, instrumentation, and semantic conventions, including majors, so one release line lands together. The ceilings below stay inside the installed @effect/opentelemetry peer ranges. Remove them when that package accepts the next SDK and the frontend no longer depends on @opentelemetry/sdk-trace-base, sdk-trace-node, or sdk-trace-web.",
+      "description": "Coordinate OpenTelemetry API, SDK, experimental packages, instrumentation, and semantic conventions, including majors, so one release line lands together. The dashboard-approval rule below gates minor and major updates.",
       "matchManagers": ["npm"],
       "matchUpdateTypes": ["major", "minor", "patch", "digest", "pin", "pinDigest"],
       "matchPackageNames": ["/^@opentelemetry\\//", "@vercel/otel"],
@@ -95,47 +100,11 @@
       "separateMajorMinor": false,
     },
     {
-      "description": "SDK 2.12 rejects @opentelemetry/api 1.10.0, which ships with SDK 3.",
+      "description": "OpenTelemetry must stay inside @effect/opentelemetry's peer ranges, and packages outside those ranges (sdk-node, exporters, contrib instrumentations) reach the next SDK through their own dependencies, so per-package ceilings cannot keep up. Patch updates open PRs; minor and major updates wait for approval on the Dependency Dashboard and land by hand with the Effect upgrade that accepts them.",
       "matchManagers": ["npm"],
-      "matchPackageNames": ["@opentelemetry/api"],
-      "allowedVersions": "<1.10.0",
-    },
-    {
-      "description": "Keep experimental OpenTelemetry packages on the 0.2xx line. 0.300.0 aligns with SDK 3, and a jump such as sdk-logs 0.223.0 to 3.0.0 falls outside this range.",
-      "matchManagers": ["npm"],
-      "matchPackageNames": [
-        "@opentelemetry/api-logs",
-        "@opentelemetry/exporter-trace-otlp-http",
-        "@opentelemetry/exporter-trace-otlp-proto",
-        "@opentelemetry/instrumentation",
-        "@opentelemetry/instrumentation-fetch",
-        "@opentelemetry/sdk-logs",
-      ],
-      "allowedVersions": "<0.300.0",
-    },
-    {
-      "description": "instrumentation-document-load 0.68.x is the last release on instrumentation 0.2xx and SDK 2.x; 0.69.0 moves to SDK 3.",
-      "matchManagers": ["npm"],
-      "matchPackageNames": ["@opentelemetry/instrumentation-document-load"],
-      "allowedVersions": "<0.69.0",
-    },
-    {
-      "description": "Keep the stable OpenTelemetry SDK on 2.x until the Effect wrapper accepts SDK 3.",
-      "matchManagers": ["npm"],
-      "matchPackageNames": [
-        "@opentelemetry/resources",
-        "@opentelemetry/sdk-metrics",
-        "@opentelemetry/sdk-trace-base",
-        "@opentelemetry/sdk-trace-node",
-        "@opentelemetry/sdk-trace-web",
-      ],
-      "allowedVersions": "<3.0.0",
-    },
-    {
-      "description": "Match @effect/opentelemetry's peer cap on semantic conventions.",
-      "matchManagers": ["npm"],
-      "matchPackageNames": ["@opentelemetry/semantic-conventions"],
-      "allowedVersions": "<2.0.0",
+      "matchPackageNames": ["/^@opentelemetry\\//", "@vercel/otel"],
+      "matchUpdateTypes": ["major", "minor"],
+      "dependencyDashboardApproval": true,
     },
     {
       "description": "Coordinate non-major ESLint, TypeScript, typescript-eslint, plugins, and globals updates.",

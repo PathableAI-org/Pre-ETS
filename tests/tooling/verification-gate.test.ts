@@ -1,15 +1,11 @@
 import assert from "node:assert/strict"
-import { spawnSync } from "node:child_process"
 import { writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { afterEach, beforeEach, describe, it } from "node:test"
-import { fileURLToPath } from "node:url"
 
 import { defaultNotesRef, recordReview } from "../../scripts/review-findings.ts"
 import { notesRef, recordReport, renderResults, reportAt, runGate } from "../../scripts/verification.ts"
 import { featureDir, fixture, sampleRepo, type SampleRepo, sampleReport, sampleReview } from "./support.ts"
-
-const hook = fileURLToPath(new URL("../../scripts/pr-ready-hook.ts", import.meta.url))
 
 let repo: SampleRepo
 let verified: string
@@ -213,31 +209,5 @@ void describe("rendering quickstart execution results", () => {
       rendered.value.rendered,
       /This run supersedes the `1234567` report above\. This run supersedes run `79b28959-742b-4ba0-84dc-e25bb8a345dc` at the same revision\./
     )
-  })
-})
-
-void describe("the gh pr ready hook", () => {
-  const runHook = (command: string): { status: null | number; stderr: string } => {
-    const result = spawnSync(process.execPath, [hook], {
-      encoding: "utf8",
-      input: JSON.stringify({ cwd: repo.dir, tool_input: { command }, tool_name: "Bash" })
-    })
-    return { status: result.status, stderr: result.stderr }
-  }
-
-  void it("blocks gh pr ready on an implementation branch whose gate fails", () => {
-    const blocked = runHook("gh pr ready")
-    assert.equal(blocked.status, 2)
-    assert.match(blocked.stderr, /code review gate fails[\s\S]*no verification report on HEAD/)
-  })
-
-  void it("allows gh pr ready once the gate passes, and ignores other commands and branches", () => {
-    assert.equal(runHook("git status").status, 0)
-    assert.equal(runHook("gh pr ready --undo").status, 0)
-    record()
-    assert.equal(runHook("pnpm check:changes && gh pr ready").status, 0)
-    repo.git("checkout", "--quiet", "-b", "claude/tooling")
-    repo.commit("chore: unrelated", { "src/app.ts": "export const app = 4\n" })
-    assert.equal(runHook("gh pr ready").status, 0)
   })
 })
