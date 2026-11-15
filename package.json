@@ -49,7 +49,7 @@
     "@types/node": "26.6.6",
     "dprint": "0.64.3",
     "dprint-plugin-yaml": "0.6.0",
-    "eslint": "10.14.0",
+    "eslint": "10.15.0",
     "eslint-plugin-perfectionist": "5.13.0",
     "fallow": "3.43.0",
     "fallow-type-aware": "3.43.0",
