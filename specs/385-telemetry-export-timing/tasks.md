@@ -120,6 +120,8 @@ a filtered-out span sends nothing. Reads T-003. Asserts V-004, V-006, V-017, V-0
 - [x] T016 [P] [US3] In `docs/observability.md`, update "Browser tracing switch" to five values and "Browser export"
       to say the page follows the server's timing, that a filtered-out span sends nothing, and that the 30-second
       wait applies only under `batch`; record plan limitation L-2.
+      Corrected while writing it: the installed web SDK batches for about 5 seconds (30 seconds is its export
+      timeout), and the transport stops using `keepalive` at 60 KiB of pending bodies.
 
 ### Slice completion
 

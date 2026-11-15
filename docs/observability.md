@@ -223,16 +223,16 @@ collector that requires headers is not supported for browser export.
 
 The page exports with the server's [export timing](#export-timing). Under
 `immediate`, each span the export filter keeps is sent in its own request when
-it ends, with no in-flight limit. Under `batch`, spans are batched and exported
-about 30 seconds after they end, so keep the page open that long before
-querying. Under either timing, the page flushes on `pagehide`, and the OTLP
+it ends, with no in-flight limit. Under `batch`, the web SDK's batch processor
+exports spans about 5 seconds after the first of them ends, or sooner when 512
+are waiting. Under either timing, the page flushes on `pagehide`, and the OTLP
 transport sends with `keepalive`, so records made just before a navigation,
 such as a Log in activation, are sent. The transport uses `keepalive` only while
-fewer than nine such requests and under 64 KiB in total are pending, the
-browser's limits, so under `immediate` a burst of records made just before the
-page unloads may be sent without `keepalive` and lost.
-Records from a page that closes abruptly may also be lost. A collector that is
-down or rejects export never changes the page.
+fewer than nine such requests and at most 60 KiB of request bodies are pending,
+inside the browser's own limits, so under `immediate` a burst of records made
+just before the page unloads may be sent without `keepalive` and lost. Records
+from a page that closes abruptly may also be lost. A collector that is down or
+rejects export never changes the page.
 
 Every span passes an export filter before it leaves the page. Only the record
 names below and the harness records in [Browser harness facts](#browser-harness-facts)

@@ -689,7 +689,7 @@ describe("StartupConfig export timing (#475 V-007, V-008)", () => {
     }))
 
   it.effect.prop(
-    "exports immediately exactly when the setting is immediate, or it is unset and the process is not production",
+    "exports immediately exactly when the setting is immediate, or it is unset and the process is not production, and the page follows",
     [Schema.Literals(modes), Schema.Literals(timingSettings), Schema.Boolean],
     ([mode, setting, browserTracing]) =>
       Effect.gen(function*() {
@@ -697,8 +697,9 @@ describe("StartupConfig export timing (#475 V-007, V-008)", () => {
         const exit = yield* startupWithTiming(mode, rawTiming(setting), overrides)
         assert.isTrue(Exit.isSuccess(exit))
         const unset = setting === "absent" || setting === "empty"
-        const immediate = setting === "immediate" || (unset && mode !== "production")
-        assert.strictEqual(exportTimingOf(exit), immediate ? "immediate" : "batch")
+        const expected = setting === "immediate" || (unset && mode !== "production") ? "immediate" : "batch"
+        assert.strictEqual(exportTimingOf(exit), expected)
+        assert.strictEqual(browserTracingOf(exit)?.exportTiming, browserTracing ? expected : undefined)
       })
   )
 
