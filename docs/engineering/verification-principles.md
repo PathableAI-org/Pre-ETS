@@ -2,7 +2,8 @@
 
 This guide records how Pre-ETS thinks about verification: what we are trying to know, and what makes evidence
 worth having. It describes the reasoning, not the current tooling or how far the repository has adopted it. Where
-the current setup differs, that is a gap to assess, not a reason to change this guide.
+the current setup or an owner document differs, that is a question for a person: a gap to close, or a deliberate
+decision to record. It is not a reason to change this guide silently, or to act against the owner.
 
 The [constitution](../../.specify/memory/constitution.md) governs, in particular
 [Principle V](../../.specify/memory/constitution.md#v-meaningful-behavioral-tests) and
@@ -10,7 +11,8 @@ The [constitution](../../.specify/memory/constitution.md) governs, in particular
 elsewhere and are not restated here. [Durable requirements](../requirements/README.md) owns the form of a
 requirement and its verification plan. [Testing as evidence](testing/README.md) owns how to choose a test.
 [The verification harness](verification-harness.md) owns the verification loop and its records. Read this guide to
-understand why those documents ask for what they do, and to judge a proposal they do not cover.
+understand why those documents ask for what they do, and to weigh a proposal to change them. Judging an individual
+test or piece of evidence stays with Testing as evidence.
 
 ## The goal
 
@@ -29,9 +31,11 @@ which revision, and with what result.
 
 The definition of the product is its accepted requirements. Each requirement is made of discrete parts: acceptance
 criteria and observability obligations. Each part must be something we can verify. A part that cannot be checked is a
-hole in the definition, even when the prose is clear, because nothing would tell us that a release violated it.
+hole in the definition, even when the prose is clear, because nothing would tell us that a release violated it. The
+requirement stays the unit of traceability, as Durable requirements says: evidence references the requirement, and its
+stated claims say which parts it supports.
 
-Each part names the boundary where it holds, and through that the interface used to observe it:
+Each part has a boundary where it holds, and through that an interface used to observe it:
 
 | Who depends on it | Interface that expresses their intent                                   |
 | ----------------- | ----------------------------------------------------------------------- |
@@ -45,28 +49,33 @@ meets the requirement.
 
 ## Two kinds of evidence
 
-Every check serves one of two purposes. Knowing which keeps checks meaningful and keeps their ownership clear.
+Every check answers one of two questions. This is the distinction
+[Principle V](../../.specify/memory/constitution.md#v-meaningful-behavioral-tests) draws between feature verification
+and module-contract evidence, seen from the product's side. Knowing which question a check answers keeps it
+meaningful and keeps its ownership clear.
 
-|                     | Conformance evidence                              | Diagnostic evidence                                          |
-| ------------------- | ------------------------------------------------- | ------------------------------------------------------------ |
-| Question            | Does this release match the product's definition? | Where exactly did it break? Is this change to the code safe? |
-| Owned by            | The part of the definition it checks              | The code it sits beside                                      |
-| Observes            | The product boundary, through the interface above | Anything useful, including internals                         |
-| Lives as long as    | The requirement                                   | The code. It is rewritten or deleted with it.                |
-| Counts as evidence? | Yes                                               | No, unless a person explicitly accepts it as a substitute    |
+|                          | Conformance evidence                              | Implementation evidence                                         |
+| ------------------------ | ------------------------------------------------- | --------------------------------------------------------------- |
+| Question                 | Does this release match the product's definition? | Does this module keep its contract? Where exactly did it break? |
+| Owned by                 | The requirement it checks                         | The module whose contract it protects                           |
+| Observes                 | The product boundary, through the interface above | A module's public interface, under the module-boundary rules    |
+| Lives as long as         | The requirement                                   | The module's contract. It changes or goes with the module.      |
+| Establishes the product? | Yes                                               | No, unless a person explicitly accepts it as a substitute       |
 
-Diagnostic evidence is valuable. Unit and integration tests around the implementation make a conformance failure
-quick to locate and make refactoring safe. Their value is in localizing and protecting the code, not in establishing
-the product.
+Implementation evidence is real evidence of its own claims. Module-contract tests and integration tests make a
+conformance failure quick to locate and make refactoring safe. What they establish is that a module keeps its
+contract, not that the release fits the product's definition. A module contract can be correct while the product
+built from it is wrong.
 
 To tell the two apart, ask: **if the implementation were rewritten from scratch to the same requirements, would this
-check still be valid without change?** If not, it is diagnostic, whatever its execution boundary. An end-to-end test
-that asserts the DOM structure its author just wrote is diagnostic evidence presented as conformance evidence. It
-gives no confidence about the product and breaks on every honest refactor.
+check still be valid without change?** If not, it is implementation evidence, whatever its execution boundary. An
+end-to-end test that asserts the DOM structure its author just wrote is implementation detail presented as
+conformance evidence. It gives no confidence about the product and breaks on every honest refactor.
 
-Some behavior cannot be reached at the product boundary at reasonable cost. A diagnostic check may then stand in
-for conformance evidence, but only by a person's explicit decision, recorded where the evidence is presented, so the
-record never overstates what was observed.
+Some behavior cannot be reached at the product boundary at reasonable cost. Implementation evidence may then stand in
+for conformance evidence, but only by a person's explicit decision, recorded where the evidence is presented (an
+"Evidence substitution" in a pull request's Decisions for the reviewer), so the record never overstates what was
+observed.
 
 ## What makes a check worth trusting
 
@@ -96,12 +105,14 @@ but they rarely state a requirement-level fact. Signals such as "a session was r
 cross-tenant request was denied" can. Where a part of the definition has a runtime signal, a monitor can watch it and
 name the part it guards when it fires.
 
-Every part of the definition should either state its runtime signal or state that it is not observable at runtime,
-and why. Many parts will not be observable. Deciding that deliberately is what matters.
+For every part of the definition, the requirement should make clear whether it has a runtime signal, or is not
+observable at runtime and why. A requirement's Observability section is the natural place. Many parts will not be
+observable. Deciding that deliberately is what matters.
 
-Runtime signals follow the same safety rules as all telemetry. They carry no PHI, personal data, credentials, or
-session references. A fact that cannot be emitted safely is verified another way. A monitor is runtime evidence, not
-a durable test of telemetry.
+Runtime signals follow the same safety rules as all telemetry, which
+[Principle V](../../.specify/memory/constitution.md#v-meaningful-behavioral-tests) and the data classes in
+[Observability](../observability.md) own. A fact that cannot be emitted safely is verified another way. A monitor is
+runtime evidence, not a durable test of telemetry.
 
 ## The release is the unit of conformance
 
@@ -109,27 +120,25 @@ Evidence gathered on each change shows that the change did what it set out to do
 a release need more: every part of the definition checked against one exact revision. A regression in one part,
 caused by a change aimed at another, is only caught by checking the whole definition.
 
-So conformance evidence accumulates on the parts of the definition, not on individual changes. The record for a
-release is generated from the evidence itself: each part, its checks, their results at the release revision, any
-accepted substitutes, and its runtime signal. Parts with no check, or only partial checks, appear as gaps. The record
-is never maintained by hand inside the requirements.
+So conformance evidence accumulates on the product's definition, not on individual changes. The record for a release
+is generated by a tool from the evidence itself: each requirement, its checks and the claims they support, their
+results at the release revision, any accepted substitutes, and runtime signals. Parts with no check, or only partial
+checks, appear as gaps. The record is never maintained by hand inside the requirements. Durable requirements decides
+when such a derived view is introduced. This guide states the direction, not the timing.
 
 ## Choose techniques for fit, not preference
 
 No technique is good everywhere. Choose by the claim and by what the evidence costs to build and keep.
+[Testing as evidence](testing/README.md) and [Property-based testing](testing/property-based-testing.md) own the
+rules for choosing between examples and properties. The reasoning behind them is this:
 
-- **Examples** communicate named decisions and edge rules. Most checks should be examples.
-- **Generated properties** suit pure logic with a broad input space and a rule that can be stated as a relation:
-  round-trips, invariants, monotonicity, or comparison with a much simpler model. They stop the author's assumptions
-  from choosing the cases. They are a poor fit when the generator has only a few values (an example table in
-  disguise), when the expected result is computed the same way as the code (the implementation restated), or when
-  building the generators costs more than the behavior they check.
-- **Generated sequences of actions** through a public interface suit stateful protocols where the order of events
-  matters, such as several tabs sharing a session. They are powerful and expensive, so reserve them for genuinely
-  concurrent behavior.
-- **Design-level models**, checked across every interleaving within bounds, suit designs whose risk is in
-  interleavings. They check a model, not the code, so they need conformance checks to tie the model to the
-  implementation. Reach for them when cheaper evidence has missed defects, not in advance.
+- Generated inputs keep the author's assumptions from choosing the cases. That is worth most where the input space is
+  broad and the rule can be stated without restating the implementation, which mostly means pure logic.
+- Generators are code to maintain. When they cost more than the behavior they check, or produce only a handful of
+  values, examples are the better evidence.
+- Heavier techniques, such as generated sequences of actions or design-level models checked across interleavings,
+  suit protocols whose risk is in the order of events. They are expensive and, for models, check a design rather than
+  code. Reach for them when cheaper evidence has missed defects, not in advance.
 
 A technique the team likes is not a reason to use it. Adding a tool or layer must answer a current need.
 
@@ -142,8 +151,8 @@ and to review agents.
 
 Judgment is worth most when it is independent of the author. A reviewer that starts from a fresh context, runs on a
 different model, and receives a brief the author did not write is more likely to notice a check that cannot fail.
-Independent judgment produces the conformance record. An author's own checks before sharing work speed it up but do
-not count as evidence.
+Tools run the checks and generate the record; independent judgment decides whether what the record contains means
+anything. An author's own review before sharing work speeds it up but does not count as evidence.
 
 ## Overhead is a cost
 
@@ -154,11 +163,14 @@ Be able to say which layer owns which kind of defect: a wrong rule, a rule broke
 not follow the design, an integration or wiring failure, a deviation in production. When a defect escapes, ask which
 layer owned it and fix that layer, rather than adding a new one.
 
-## Questions for any verification proposal
+## Questions for a change to how we verify
 
-- Which part of the product's definition does this check, and through which interface?
-- Is it conformance or diagnostic evidence? Would it survive a rewrite to the same requirements?
-- What realistic broken release would it catch? Has it been seen to fail?
-- Is there a runtime signal for the same part, or a stated reason there is none?
-- Will a deterministic tool run it, or does it depend on someone remembering?
-- What does it cost to keep, and which defect class does it own that nothing cheaper already catches?
+These are for proposals about the verification system: a new layer, tool, channel, or rule. For a single test, use
+[Review a proposed test](testing/README.md#review-a-proposed-test).
+
+- Which parts of the product's definition does it help verify, and through which interface?
+- Does it produce conformance evidence or implementation evidence, and is it presented as what it is?
+- Which kind of defect does it own that nothing cheaper already catches?
+- Does it run in a deterministic tool, or does it depend on someone remembering?
+- Does it work before release, at runtime, or both?
+- What does it cost to build, run, maintain, and read?
