@@ -22,7 +22,9 @@ attribution rule in every brief and message.
   tools, `gh stack view --json`, `pnpm notes:sync <pr>` (it writes only local notes), `pnpm verify:show`,
   `pnpm review:show`, `git notes --ref=<ref> list`, `git rev-list`, the slice table in `plan.md` through
   `git show <sha>:<path>`, and session status. Never read diffs, source files, or transcripts.
-- Never poll, schedule wake-ups, or loop on CI. Act on a session's report, a person's message, or a status request.
+- Never poll or loop on CI. Act on a session's report message, a person's message, a status request, or the one
+  fallback check-in under [Starting a role session](#starting-a-role-session). Sessions report by messaging you; you
+  are not told when a session ends a turn.
 - Respect the cap: at most three working sessions, one stack.
 - Use `gh api` with REST paths, never `gh pr` or `gh issue` subcommands: they use GraphQL, which cloud sessions block.
   `gh api` fills `{owner}/{repo}` from the checkout.
@@ -50,14 +52,20 @@ From the person: the delivery issue number. Then:
 
 For each session:
 
-1. Render its brief: `references/common.md` followed by the role's template, with every `{{slot}}` filled. Take
-   `{{model}}` and `{{effort}}` from the doc's models-and-effort table for the role and tier. A slot you cannot fill
-   means a missing identifier: get it from state or ask, never guess.
+1. Render its brief: `references/common.md` followed by the role's template, with every `{{slot}}` filled. Never
+   write a brief freehand or shorten the templates: a freehand brief drops the rules sessions depend on.
+   `{{orchestrator_id}}` is mandatory in every brief, because a session can report only by messaging that ID; take it
+   from your own session status. Take `{{model}}` and `{{effort}}` from the doc's models-and-effort table for the
+   role and tier. A slot you cannot fill means a missing identifier: get it from state or ask, never guess.
 2. Start it in its own worktree, cut from the branch the brief names. When the role's model or effort is above
    yours, start it with the holding prompt `Reply "ready" and wait for your brief.`, raise its model and effort with
    the session tools, then send the brief with the session messaging tool (`send_message` in cloud sessions). Otherwise pass `model` and `effort` at start with the
    brief as the prompt.
 3. Record its name and session ID. Peers get each other's IDs in their briefs.
+4. Schedule one fallback check-in, about two hours out (`send_later` in cloud sessions), whenever you start or brief
+   a session that owes you a report. When it fires, read the pull request and session status once and act on what
+   they show; if the session finished without reporting, treat its state as its report. Do not reschedule it as a
+   loop: schedule a new one only after briefing a session again. Cancel it when the report arrives first.
 
 ## Phases
 
@@ -67,7 +75,7 @@ For each session:
 | Combined (Standard)           | `spec`, `references/spec.md` with `{{combined}}` = yes      | Same                                                                                                                       | Same. Stop.                                                              |
 | Plan (High)                   | `plan`, `references/plan.md`                                | Issue, tier, feature directory, `SPECIFY_FEATURE_DIRECTORY`, spec branch and whether it is merged                          | Its report names the draft plan pull request. Stop.                      |
 | Implementation                | `impl`, `references/implementer.md`                         | Issue, tier, feature directory, slice table IDs, first slice and its base branch, merged or not                            | Each slice's push, results, and readiness, below                         |
-| Verification (High, Standard) | `verify`, `references/verifier.md`, at the first `pushed`   | Feature directory, tier, implementation session ID, orchestrator ID, first request                                         | Its first report; later requests come from the implementation session    |
+| Verification (High, Standard) | `verify`, `references/verifier.md`, at the first `pushed`   | Feature directory, tier, implementation session ID, orchestrator ID, first request                                         | Its pointer to the implementation session; later requests come from it   |
 | Review (High, Standard)       | `review`, `references/reviewer.md`, at the first `pushed`   | Same                                                                                                                       | Same                                                                     |
 | High fix                      | All three with `{{fix}}` = yes; peers at the first `pushed` | Issue, tier, triggers, base `origin/main`; no slices. `{{feature_dir}}` is the feature the fix records evidence in, if any | One pull request through the same loop                                   |
 | Standard fix, Light           | `impl` with `{{fix}}` = yes, no peers                       | Issue, tier                                                                                                                | Its pull request is ready. Stop.                                         |
@@ -80,7 +88,7 @@ has not merged, the brief says the new branch is stacked on it with `gh stack ad
 The implementation session sends the verification and review requests itself, on the same pushed SHA, as the
 verification harness and code review guides require. Your part:
 
-1. **Pushed.** On the implementation session's report `pushed <slice> @ <sha>`, check that the draft pull request's
+1. **Pushed.** On the implementation session's report message `pushed <slice> @ <sha>`, check that the draft pull request's
    head is that SHA.
    - **First push** (High and Standard): start the verification and review sessions now, each brief ending with the
      first request: branch, SHA, base SHA, slice ID (`fix` for a High fix), feature directory, and round 1, all from
@@ -88,8 +96,9 @@ verification harness and code review guides require. Your part:
      itself.
    - **Later pushes:** if the report says it did not send both requests, send them yourself. Keep the verifier's and
      reviewer's SHAs the same.
-2. **Results.** The verifier and reviewer reply to the implementation session with pointers. Their reports reach you
-   when they end their turns. Read the notes with the status step, not their messages.
+2. **Results.** The verifier and reviewer reply to the implementation session with pointers, and message you only to
+   escalate or report `blocked` or `failed`. The implementation session reports `verified` when the gate passes.
+   Read the notes with the status step, not their messages.
 3. **Green.** When the verification gate result passes and the review shows no open blocking finding at the same SHA
    (or only evidence-only commits after it), notify the person that the slice is green. Tell the implementation
    session it may start the next slice, stacked on this one.
