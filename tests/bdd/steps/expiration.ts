@@ -548,12 +548,17 @@ When("the visitor refreshes tab {string}", async function(this: AppWorld, name: 
   await tab.page.reload()
 })
 
-/** Back to the page before, which the tab left by a full navigation before expiry, or forward again. */
+/**
+ * Back to the page before, which the tab left by a full navigation before expiry, or forward again. It waits only for
+ * the traversal to commit: a page restored from the back/forward cache fires no `load`, and the outcome is for the
+ * following step to observe.
+ */
 When("the visitor navigates {word} in tab {string}", async function(this: AppWorld, direction: string, name: string) {
   assert.ok(direction === "back" || direction === "forward", "expected back or forward")
   const tab = tabOf(this, name)
   tab.protectedDocuments.length = 0
-  await (direction === "back" ? tab.page.goBack() : tab.page.goForward())
+  const options = { waitUntil: "commit" } as const
+  await (direction === "back" ? tab.page.goBack(options) : tab.page.goForward(options))
 })
 
 /** Two full navigations, so the tab has a forward entry; both renew the session for every tab sharing it. */
