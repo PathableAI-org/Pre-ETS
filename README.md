@@ -328,7 +328,10 @@ and lockfile maintenance, are eligible for squash automerge after checks pass.
 Renovate performs the merge on a subsequent run after the branch is up to date
 and all reported checks pass (`platformAutomerge: false`, `ignoreTests: false`),
 including checks that GitHub does not require. TypeScript major upgrades remain
-disabled pending lint compatibility.
+disabled pending lint compatibility. Lockfile maintenance skips Renovate's
+one-day minimum release age, whose `renovate/stability-days` status never passes
+without a release timestamp; pnpm's `minimumReleaseAge` enforces the same
+cooldown when it regenerates the lockfile.
 
 Non-major ESLint updates include TypeScript, `typescript-eslint`, ESLint plugins,
 and `globals` so the compiler and lint integrations can be reviewed together.

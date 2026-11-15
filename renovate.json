@@ -45,6 +45,11 @@
       "rangeStrategy": "pin",
       "postUpdateOptions": ["pnpmDedupe"],
     },
+    {
+      "description": "Lock file maintenance has no release timestamp, so Renovate's minimum release age check stays pending and blocks automerge. pnpm's own minimumReleaseAge in pnpm-workspace.yaml already enforces the cooldown when the lockfile is regenerated.",
+      "matchUpdateTypes": ["lockFileMaintenance"],
+      "minimumReleaseAge": null,
+    },
     // Residual first; later groupName rules select the owning dependency set.
     {
       "description": "Group remaining non-major pnpm workspace dependency updates into a reviewable batch.",
