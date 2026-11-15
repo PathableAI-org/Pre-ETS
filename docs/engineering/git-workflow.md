@@ -240,6 +240,51 @@ Approve together with: #403, #404, #405, #407 (the stack merges together).
   incomplete until slice C.
 ```
 
+### Visual review
+
+A pull request that changes what a user sees or how they interact links a **visual review page**: screenshots and GIFs
+of the changed flow. It lets a person judge whether the change is the product they meant without reading code. It is
+not evidence that the change is correct. It does not gate, and it does not replace the verification report or any
+claim.
+
+**When.** Publish one when the change adds or alters a page, flow, form, dialog, message, error or recovery page, or
+focus and keyboard behavior that a user meets. Do not publish one for tests, tooling, documentation, refactors with no
+visible change, or behavior observable only over HTTP or in telemetry.
+
+**Attach** these, and nothing else:
+
+- One GIF per changed user flow, from start to finish as a user does it. When the change affects focus or keyboard
+  interaction, record a keyboard-only run.
+- One screenshot of each distinct state the change's requirement names, such as success, a validation error, the
+  recovery page, or an empty state. When the change alters existing UI, show it before and after.
+- A caption for each item: the requirement ID and criterion it illustrates, the revision it was captured at, the
+  synthetic tenant and fixture, and the viewport.
+- For a criterion with an observability obligation, a short excerpt of the telemetry fact it names, with the query
+  that found it, only when it helps a reviewer judge the change.
+
+Keep the page small enough to take in within a couple of minutes.
+
+**Keep transient,** and never upload: captures made while debugging, failed or intermediate attempts, Playwright
+traces, raw logs, raw query output or telemetry dumps, captures of any revision other than the one under review,
+per-step captures beyond the states above, and transcripts.
+
+**Capture** with Playwright against the application running locally at the pull request's head revision, using only
+synthetic tenants and fixtures. Follow the steps of the requirements BDD scenarios that cover the change, and locate
+controls by role and accessible name as those steps do. Reach every state through user interaction or the scenario's
+own setup; never edit the page or inject state to stage one. Record video with Playwright and convert it to GIF with
+`ffmpeg`, trimmed to the flow and kept under about 10 MB. Use a 1280×800 viewport, and add a narrow one only when the
+change targets layout at that size. Capture after the last push you are asking a person to review, and capture again
+if a later commit changes what users see.
+
+**Check for forbidden data** before publishing. Look at every image, frame, and excerpt for the data classes that
+[Observability](../observability.md) and the constitution's telemetry rules forbid, including credentials, cookies,
+session references, tokens, OIDC codes, state or nonces, and any personal data in URLs, fields, or developer tools.
+Recapture rather than redact.
+
+**Publish** the page as a private Claude artifact, one per pull request, and republish it to the same link when you
+recapture. Link it in the pull request body. Whether to share it, and with whom, is the person's decision. Never
+commit captures to the repository; [the verification harness](verification-harness.md) keeps screenshots out of git.
+
 ## Review
 
 Human review is the approval. Copilot advice is input to that review.

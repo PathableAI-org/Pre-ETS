@@ -53,7 +53,8 @@ no feature directory or slices; drop the slice lines then.
    reviewer's pull request comments into your notes, and checks the latest verification report and code review. It
    also covers a one-pull-request High fix, labelled `risk:high`. A fix renders no quickstart results and needs no
    evidence-only commit. The body names the BDD tags you ran and any failure outside the change's scope.
-   Report `verified`.
+   When the change alters what users see or how they interact, publish and link a visual review page as
+   [Visual review](docs/engineering/git-workflow.md#visual-review) describes. Report `verified`.
 6. Start the next slice when the orchestrator says the current one is green, stacked on it with `gh stack add`. Fix
    later review findings on the earlier slice and restack upward.
 7. Mark the pull request ready once step 5 holds: `gh pr ready` from the slice branch, or in the cloud the GitHub MCP

@@ -22,6 +22,9 @@ New behavior or a contract change belongs in a specification pull request instea
 
 ## Change
 
+<!-- When the change alters what users see or how they interact, link a visual review page here. Policy:
+docs/engineering/git-workflow.md, "Visual review". -->
+
 ## Evidence
 
 <!-- High tier: list the claims the fix establishes, numbered V-001, V-002, and so on as
