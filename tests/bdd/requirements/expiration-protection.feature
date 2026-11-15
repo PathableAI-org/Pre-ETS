@@ -9,7 +9,8 @@ Feature: Expired content concealed behind a blocking expiration modal
   in-tab recovery after a denied action, takes focus on Log in again, keeps keyboard focus within
   itself, and cannot be dismissed by Escape, a click outside, or its close control; no protected
   text, header, or form remains in the document or its accessibility tree. Refresh, browser back
-  and forward, and Log in again follow fresh entry at the provider. A tab that showed the
+  and forward, and Log in again follow fresh entry at the provider, as does a page the browser
+  restores from its back/forward cache. A tab that showed the
   signed-out notice stays there across its former deadline. A tab is never expired while the
   session stays valid: crossing its local deadline after another browser renewed the session
   keeps its content. A suspended tab that returns past its deadline hides its content at once and
@@ -33,6 +34,7 @@ Feature: Expired content concealed behind a blocking expiration modal
     active, and a third browser logged out before the deadline.
 
     Given the visitor has signed in at "springfield.localhost:3000" and opened tabs "S1", "S2", and "S3"
+    And another browser sharing the visitor's session has opened tab "History" and then left it for a public page
     And the visitor has opened the roster in tab "S3" and returned to the entry
     And the visitor has signed in at "shelbyville.localhost:3000" and opened tab "Shelbyville"
     And another browser has signed in at "springfield.localhost:3000" and opened tab "Other"
@@ -56,6 +58,8 @@ Feature: Expired content concealed behind a blocking expiration modal
     Then tab "S3" follows fresh entry to the provider without the modal or protected content
     When the visitor navigates back in tab "S3"
     Then tab "S3" follows fresh entry to the provider without the modal or protected content
+    When the visitor navigates back in tab "History"
+    Then tab "History" is restored from the back-forward cache and follows fresh entry to the provider without the modal or protected content
     When the visitor activates "Log in again" by keyboard in tab "S1"
     Then tab "S1" follows fresh entry to the provider without the modal or protected content
     And tab "Signed out" still shows the signed-out notice and no expiration modal after its former deadline

@@ -67,10 +67,11 @@ Given(
   }
 )
 
-When("a visitor invokes the protected reference action at {string}", async function(this: AppWorld, host: string) {
-  const action = await serverActionId("runReferenceOperation")
-  const { body, contentType } = await multipartBody(referenceActionArguments(this.coordinationTag))
-  await requestSiteWith(this, {
+/** A script-driven invocation of the built Server Action `exportedName`, posted to the page at `path` as its form is. */
+const invokeAction = async (world: AppWorld, exportedName: string, host: string, path: string) => {
+  const action = await serverActionId(exportedName)
+  const { body, contentType } = await multipartBody(referenceActionArguments(world.coordinationTag))
+  await requestSiteWith(world, {
     body,
     headers: {
       ...FETCH_METADATA.application,
@@ -82,9 +83,20 @@ When("a visitor invokes the protected reference action at {string}", async funct
     },
     host,
     method: "POST",
-    path: "/"
+    path
   })
+}
+
+When("a visitor invokes the protected reference action at {string}", async function(this: AppWorld, host: string) {
+  await invokeAction(this, "runReferenceOperation", host, "/")
 })
+/** `recordFixtureOperation` takes the same `(state, formData)` arguments, from the same `Ready` state. */
+When(
+  "a visitor invokes the protected fixture action on {string} at {string}",
+  async function(this: AppWorld, path: string, host: string) {
+    await invokeAction(this, "recordFixtureOperation", host, path)
+  }
+)
 Then("the response status is {int}", function(this: AppWorld, status: number) {
   assert.equal(this.response?.status, status)
 })
@@ -106,6 +118,11 @@ Then("the response has no redirect", function(this: AppWorld) {
 })
 Then("the response JSON field {string} is {string}", function(this: AppWorld, field: string, expected: string) {
   assert.equal(responseJson(this)[field], expected)
+})
+/** The fixture action reports a performed operation only with this message; it records nothing else. */
+Then("the response reports no fixture operation", function(this: AppWorld) {
+  assert.ok(this.response, "expected an HTTP response")
+  assert.doesNotMatch(this.response.body, /The attendance note was accepted/)
 })
 
 Then("the response is not cacheable", function(this: AppWorld) {
