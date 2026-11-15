@@ -125,15 +125,16 @@ line that leads with what to act on.
 This table is the one place a role's model and effort are set. The briefs and the skill read it. Change a role by
 editing its row.
 
-| Role                         | Model                                                                      | Effort                        |
-| ---------------------------- | -------------------------------------------------------------------------- | ----------------------------- |
-| Specification, plan          | `claude-opus-5-5`; `claude-fable-5-2` for High work                        | `high`                        |
-| Implementation               | `claude-opus-5-5`                                                          | `high`; `xhigh` for High work |
-| Verification                 | `claude-opus-5-5`                                                          | `medium`                      |
-| Review                       | `claude-fable-5-2`, a different and stronger model than the implementation | `high`                        |
-| Orchestrator                 | `claude-sonnet-5-5`                                                        | `medium`                      |
-| Drift review                 | `claude-opus-5-5`                                                          | `high`                        |
-| Lookups, read-only subagents | `claude-haiku-5-5`, or `claude-sonnet-5-5` when the lookup needs judgment  | `low`                         |
+| Role                         | Model                                                                                 | Effort                        |
+| ---------------------------- | ------------------------------------------------------------------------------------- | ----------------------------- |
+| Specification, plan          | `claude-opus-5-5`; `claude-fable-5-2` for High work                                   | `high`                        |
+| Implementation               | `claude-opus-5-5`                                                                     | `high`; `xhigh` for High work |
+| Verification                 | `claude-opus-5-5`                                                                     | `medium`                      |
+| Review                       | `claude-fable-5-2`, a different and stronger model than the implementation            | `high`                        |
+| Pre-push self-review         | `fable` (`claude-fable-5-2`), a subagent on a different model from the implementation | `high`                        |
+| Orchestrator                 | `claude-sonnet-5-5`                                                                   | `medium`                      |
+| Drift review                 | `claude-opus-5-5`                                                                     | `high`                        |
+| Lookups, read-only subagents | `claude-haiku-5-5`, or `claude-sonnet-5-5` when the lookup needs judgment             | `low`                         |
 
 Set effort explicitly. `claude-opus-5-5` defaults to `medium`.
 
@@ -149,7 +150,9 @@ Set effort explicitly. `claude-opus-5-5` defaults to `medium`.
   a role session's model. Role skills do not carry it.
 - **Subagents.** A lookup subagent takes the Agent tool's per-call `model`, or the `model` and `effort` frontmatter
   of a `.claude/agents/` definition, for its whole run. Use the built-in Explore agent with a `haiku` model for
-  lookups; the repository has no project subagent definitions.
+  lookups. The one project definition is
+  [`pre-push-reviewer`](../../.claude/agents/pre-push-reviewer.md), which sets its row's model and effort; change both
+  there and here together.
 - **Overrides.** `CLAUDE_CODE_EFFORT_LEVEL` overrides session, skill, and subagent effort. Do not set it in a shell
   that starts role sessions.
 
@@ -161,6 +164,9 @@ Revisit a row when these measures move:
 - reviewer findings accepted versus dismissed (closures `fixed` against `justified` and `withdrawn` in review notes)
 - defects that escaped to `main` or were first found in human review
 - usage-limit pressure: sessions stopped by limits, and time spent waiting for them to reset
+- the independent reviewer's round-1 findings per slice, before and after the
+  [pre-push self-review](code-review.md#pre-push-self-review), against the self-review findings each `pushed` report
+  lists as accepted or rejected
 
 Tune it with a replay test: run candidate configurations against past slices with known defects, such as the early
 401 that #406 fixed and the failed T-005 run at `99b2261`, and compare what each configuration catches and what it
