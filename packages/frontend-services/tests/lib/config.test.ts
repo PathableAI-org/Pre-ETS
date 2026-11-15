@@ -644,7 +644,7 @@ const UnrecognizedTiming = Schema.Union([
   Schema.String.pipe(Schema.check(Schema.makeFilter((value) => !["", "batch", "immediate"].includes(value))))
 ])
 
-describe("StartupConfig export timing (V-007, V-008)", () => {
+describe("StartupConfig export timing (#475 V-007, V-008)", () => {
   it.effect.each(
     [
       ["production", "absent", "batch"],
@@ -678,11 +678,10 @@ describe("StartupConfig export timing (V-007, V-008)", () => {
       Effect.gen(function*() {
         const overrides = browserTracing ? { ...otelOn, BROWSER_TRACING_ENABLED: "true" } : otelOn
         const exit = yield* startupWithTiming(mode, rawTiming(setting), overrides)
+        assert.isTrue(Exit.isSuccess(exit))
         const unset = setting === "absent" || setting === "empty"
-        assert.strictEqual(
-          exportTimingOf(exit) === "immediate",
-          setting === "immediate" || (unset && mode !== "production")
-        )
+        const immediate = setting === "immediate" || (unset && mode !== "production")
+        assert.strictEqual(exportTimingOf(exit), immediate ? "immediate" : "batch")
       })
   )
 
