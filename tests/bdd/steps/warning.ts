@@ -6,8 +6,10 @@ import { setTimeout as delay } from "node:timers/promises"
 
 import type { AppWorld } from "../support/world.ts"
 
-import { exposedControls } from "../support/browser.ts"
+import { exposedControls, showsFocusIndicator } from "../support/browser.ts"
 import {
+  assertExpirationModal,
+  assertNoProtectedContent,
   BOUND_MILLISECONDS,
   EXPIRED_COPY,
   heldDeadline,
@@ -429,11 +431,7 @@ const assertFocusOnContinue = async (world: AppWorld, name: string, indicated: b
   const { page } = tabOf(world, name)
   assert.equal(await focusedOnContinue(page), true, `expected focus on Continue in tab "${name}"`)
   if (!indicated) return
-  const indicator = await page.evaluate(() => ({
-    focusVisible: document.activeElement?.matches(":focus-visible") === true,
-    outline: document.activeElement === null ? "none" : getComputedStyle(document.activeElement).outlineStyle
-  }))
-  assert.ok(indicator.focusVisible && indicator.outline !== "none", "expected a visible focus indicator")
+  assert.ok(await showsFocusIndicator(page), "expected a visible focus indicator")
 }
 
 Then("focus in tab {string} is on Continue", async function(this: AppWorld, name: string) {
@@ -740,6 +738,9 @@ Then(
       const first = await tab.page.evaluate(() => globalThis.window.preetsFirstDialog)
       assert.ok(first, `expected a dialog in tab "${name}"`)
       assert.equal(first.name, EXPIRED_COPY.heading, `the first dialog in tab "${name}"`)
+      // A disabled warning leaves expiration in force: the tab is concealed behind the modal and offers Log in again.
+      await assertExpirationModal(tab.page)
+      await assertNoProtectedContent(tab.page, name)
       const late = first.at - tab.deadline
       assert.ok(late >= -OFFSET_TOLERANCE_MILLISECONDS, `tab "${name}" showed a dialog ${String(-late)} ms early`)
       assert.ok(late <= BOUND_MILLISECONDS, `tab "${name}" showed the expiration modal ${String(late)} ms late`)

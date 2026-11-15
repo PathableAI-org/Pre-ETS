@@ -27,6 +27,18 @@ export const signInThroughApplication = async (context: BrowserContext, host: st
 }
 
 /**
+ * Whether the focused element draws a keyboard focus indicator: it matches `:focus-visible` and its computed outline
+ * is drawn, with a style other than `none` and a nonzero width.
+ */
+export const showsFocusIndicator = (page: Page): Promise<boolean> =>
+  page.evaluate(() => {
+    const focused = document.activeElement
+    if (focused?.matches(":focus-visible") !== true) return false
+    const { outlineStyle, outlineWidth } = getComputedStyle(focused)
+    return outlineStyle !== "none" && Number.parseFloat(outlineWidth) > 0
+  })
+
+/**
  * Every element's text, hidden or not. Inline scripts are excluded: they hold Next's serialized render data, which is
  * never displayed, focusable, or exposed to assistive technology.
  */

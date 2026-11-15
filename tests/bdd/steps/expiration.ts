@@ -10,6 +10,7 @@ import {
   applicationBrowser,
   documentText,
   resumeAt,
+  showsFocusIndicator,
   signInAtProvider,
   suspendTimers,
   watchForDialogs
@@ -28,6 +29,17 @@ export const EXPIRED_COPY = {
   heading: "Your session expired",
   logIn: "Log in again"
 }
+/** The recovery copy when the session ended for a reason the server cannot tell, which claims no cause. */
+const UNAVAILABLE_COPY = {
+  explanation: "To continue, log in again.",
+  heading: "Your session is no longer available",
+  logIn: "Log in again"
+}
+/**
+ * Every session-end copy: the modal and each recovery presentation assert one of these whole, so the modal's expired
+ * explanation and action stay equivalent to recovery's (PREETS-SESSION-012 AC4, PREETS-SESSION-007 AC2).
+ */
+export const SESSION_END_COPY: readonly (typeof EXPIRED_COPY)[] = [EXPIRED_COPY, UNAVAILABLE_COPY]
 /**
  * B5: concealment and the modal within 2 s of the deadline, or of the return for a resumed tab; the warning within 2 s
  * of its threshold, and its close within 2 s of a renewal response (#156).
@@ -303,6 +315,21 @@ const openSharingTab = async (world: AppWorld, name: string, options: TabClock) 
   await openTab(scenario, context, name, SPRINGFIELD, options)
 }
 
+/**
+ * The tab leaves the protected entry for a public page that runs no session coordination, so nothing on the session's
+ * cross-tab channel evicts the entry from the back/forward cache: a sharing tab's message would (Chromium reports
+ * `BroadcastChannelOnMessage`), which is why the tab is in a browser of its own.
+ */
+Given(
+  "another browser sharing the visitor's session has opened tab {string} and then left it for a public page",
+  async function(this: AppWorld, name: string) {
+    await openSharingTab(this, name, {})
+    const { page } = tabOf(this, name)
+    await page.goto(`http://${SPRINGFIELD}/login-unavailable`)
+    await page.getByRole("heading", { level: 1, name: "Login cannot start" }).waitFor({ state: "visible" })
+  }
+)
+
 Given(
   "another browser sharing the visitor's session has opened tab {string} with its timers suspended",
   async function(this: AppWorld, name: string) {
@@ -373,7 +400,7 @@ Then(
 )
 
 /** No protected text remains in the document or its accessibility tree, and no protected control remains. */
-const assertNoProtectedContent = async (page: Page, name: string) => {
+export const assertNoProtectedContent = async (page: Page, name: string): Promise<void> => {
   assert.doesNotMatch(await documentText(page), PROTECTED_TEXT, `tab "${name}" still holds protected text`)
   assert.doesNotMatch(await page.locator("body").ariaSnapshot(), PROTECTED_TEXT)
   assert.equal(await page.locator("form, header").count(), 0, `tab "${name}" still holds the header or a form`)
@@ -403,19 +430,25 @@ Then(
   }
 )
 
-/** The modal: a modal dialog named and described by the expired copy, whose only link is Log in again. */
+/**
+ * The modal: a modal dialog named and described by the expired copy that recovery also asserts, whose only link is
+ * Log in again to the application entry.
+ */
+export const assertExpirationModal = async (page: Page): Promise<void> => {
+  const dialog = page.getByRole("dialog", { name: EXPIRED_COPY.heading })
+  await dialog.waitFor({ state: "visible" })
+  assert.equal(await dialog.getAttribute("aria-modal"), "true")
+  const described = await dialog.getAttribute("aria-describedby")
+  assert.ok(described, "expected the modal to have a description")
+  assert.equal(await page.locator(`[id="${described}"]`).textContent(), EXPIRED_COPY.explanation)
+  assert.deepEqual(await dialog.getByRole("link").allTextContents(), [EXPIRED_COPY.logIn])
+  assert.equal(await dialog.getByRole("link").getAttribute("href"), "/")
+}
+
 Then(
   "the expiration modal in tab {string} explains expiration as in-tab recovery does, with the same Log in action",
   async function(this: AppWorld, name: string) {
-    const { page } = tabOf(this, name)
-    const dialog = page.getByRole("dialog", { name: EXPIRED_COPY.heading })
-    await dialog.waitFor({ state: "visible" })
-    assert.equal(await dialog.getAttribute("aria-modal"), "true")
-    const described = await dialog.getAttribute("aria-describedby")
-    assert.ok(described, "expected the modal to have a description")
-    assert.equal(await page.locator(`[id="${described}"]`).textContent(), EXPIRED_COPY.explanation)
-    assert.deepEqual(await dialog.getByRole("link").allTextContents(), [EXPIRED_COPY.logIn])
-    assert.equal(await dialog.getByRole("link").getAttribute("href"), "/")
+    await assertExpirationModal(tabOf(this, name).page)
   }
 )
 
@@ -484,11 +517,9 @@ When(
     ]
     for (const key of presses) {
       await page.keyboard.press(key)
-      const focused = await page.evaluate(() => ({
-        inDialog: document.activeElement?.closest("[role=dialog]") !== null,
-        visible: document.activeElement?.matches(":focus-visible") === true
-      }))
-      assert.deepEqual(focused, { inDialog: true, visible: true }, `focus left the modal after ${key}`)
+      const inDialog = await page.evaluate(() => document.activeElement?.closest("[role=dialog]") !== null)
+      assert.ok(inDialog, `focus left the modal after ${key}`)
+      assert.ok(await showsFocusIndicator(page), `no visible focus indicator after ${key}`)
     }
   }
 )
@@ -567,13 +598,26 @@ const awaitProviderForm = async (tab: Tab) => {
  * Fresh entry (PREETS-SESSION-004): the tab reaches the provider asking the visitor to authenticate, no protected
  * document was served on the way, and a page restored from the back/forward cache held no dialog.
  */
+const assertFreshEntry = async (tab: Tab) => {
+  await awaitProviderForm(tab)
+  assert.deepEqual(tab.protectedDocuments, [])
+  assert.ok(!tab.restored.includes(true), "a restored page showed the modal")
+}
+
 Then(
   "tab {string} follows fresh entry to the provider without the modal or protected content",
   async function(this: AppWorld, name: string) {
+    await assertFreshEntry(tabOf(this, name))
+  }
+)
+
+/** As fresh entry, after the browser restored the protected page from its back/forward cache rather than loading it. */
+Then(
+  "tab {string} is restored from the back/forward cache and follows fresh entry to the provider without the modal or protected content",
+  async function(this: AppWorld, name: string) {
     const tab = tabOf(this, name)
-    await awaitProviderForm(tab)
-    assert.deepEqual(tab.protectedDocuments, [])
-    assert.ok(!tab.restored.includes(true), "a restored page showed the modal")
+    await assertFreshEntry(tab)
+    assert.ok(tab.restored.length > 0, `tab "${name}" was not restored from the back/forward cache`)
   }
 )
 

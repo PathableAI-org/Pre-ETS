@@ -8,9 +8,16 @@ import { setTimeout as delay } from "node:timers/promises"
 
 import type { AppWorld } from "../support/world.ts"
 
-import { applicationBrowser, documentText, signInThroughApplication, suspendTimers } from "../support/browser.ts"
+import {
+  applicationBrowser,
+  documentText,
+  showsFocusIndicator,
+  signInThroughApplication,
+  suspendTimers
+} from "../support/browser.ts"
 import { multipartBody, serverActionId } from "../support/server-actions.ts"
 import { FETCH_METADATA, requestSiteWith, startSite } from "../support/server.ts"
+import { SESSION_END_COPY } from "./expiration.ts"
 import { setTenantPolicy } from "./tenant.ts"
 
 /**
@@ -131,7 +138,12 @@ When(
   }
 )
 
-const RECOVERY_HEADINGS = ["Your session expired", "Your session is no longer available"]
+/** The session-end copy whose heading is `heading`: its explanation and Log in action belong with that heading. */
+const copyHeaded = (heading: string) => {
+  const copy = SESSION_END_COPY.find((candidate) => candidate.heading === heading)
+  assert.ok(copy, `expected a session-end explanation, not "${heading}"`)
+  return copy
+}
 
 /** The single top-level heading of an HTML document, as text. */
 const onlyHeading = (body: string): string => {
@@ -140,11 +152,25 @@ const onlyHeading = (body: string): string => {
   return headings[0] ?? ""
 }
 
+/** The recovery document's heading, which it explains with the matching copy and the matching Log in link. */
 const assertRecoveryDocument = (world: AppWorld): string => {
   assert.ok(world.response, "expected an HTTP response")
-  assert.match(world.response.headers["content-type"] ?? "", /^text\/html/)
-  assert.match(world.response.body, /<a[^>]*href="\/"[^>]*>Log in again<\/a>/)
-  return onlyHeading(world.response.body)
+  const { body, headers } = world.response
+  assert.match(headers["content-type"] ?? "", /^text\/html/)
+  const heading = onlyHeading(body)
+  const copy = copyHeaded(heading)
+  const texts = [...body.matchAll(/>([^<>]+)</g)].map((match) => match[1]?.trim())
+  assert.ok(texts.includes(copy.explanation), `expected the recovery document to explain "${copy.explanation}"`)
+  const links = [...body.matchAll(/<a[^>]*href="\/"[^>]*>([^<]*)<\/a>/g)].map((match) => match[1])
+  assert.deepEqual(links, [copy.logIn])
+  return heading
+}
+
+/** The recovery copy is on the page: its explanation and its Log in link, under the heading already observed. */
+const assertRecoveryCopy = async (page: Page, heading: string) => {
+  const copy = copyHeaded(heading)
+  await page.getByText(copy.explanation, { exact: true }).waitFor({ state: "visible" })
+  await page.getByRole("link", { exact: true, name: copy.logIn }).waitFor({ state: "visible" })
 }
 
 Then("the response is the recovery document explaining {string}", function(this: AppWorld, heading: string) {
@@ -159,7 +185,7 @@ Then("the response is the action denial token {string}", function(this: AppWorld
 })
 
 Then("the response is a recovery document with a Log in again link", function(this: AppWorld) {
-  assert.ok(RECOVERY_HEADINGS.includes(assertRecoveryDocument(this)), "expected a session-end explanation")
+  assertRecoveryDocument(this)
 })
 
 Then("the response reveals no session reference, identity, or tenant", function(this: AppWorld) {
@@ -283,10 +309,17 @@ Then("the page shows the status {string}", async function(this: AppWorld, messag
   await entryOf(this).page.getByRole("status").filter({ hasText: message }).waitFor({ state: "visible" })
 })
 
+/**
+ * The submission without scripts navigates the tab, so the step first waits for the recovery document it loads; reading
+ * the page while the navigation commits would lose the old document's execution context.
+ */
 Then("the page displays the recovery document explaining {string}", async function(this: AppWorld, heading: string) {
   const { page } = entryOf(this)
+  await page.getByRole("heading", { level: 1, name: heading }).waitFor({ state: "visible" })
+  await page.waitForLoadState("load")
   const headings = await page.getByRole("heading", { level: 1 }).allTextContents()
   assert.deepEqual(headings, [heading])
+  await assertRecoveryCopy(page, heading)
   assert.equal(await page.getByRole("button", { name: "Record reference operation" }).count(), 0)
 })
 
@@ -305,11 +338,7 @@ Then(
       focused = await link.evaluate((element) => element === document.activeElement)
     }
     assert.ok(focused, `expected Tab to reach "${name}"`)
-    const indicator = await link.evaluate((element) => ({
-      focusVisible: element.matches(":focus-visible"),
-      outline: getComputedStyle(element).outlineStyle
-    }))
-    assert.ok(indicator.focusVisible && indicator.outline !== "none", "expected a visible focus indicator")
+    assert.ok(await showsFocusIndicator(page), "expected a visible focus indicator")
     const host = new URL(page.url()).host
     const entry = page.waitForRequest((request) =>
       request.isNavigationRequest() && request.method() === "GET" && request.url() === `http://${host}/`
@@ -342,7 +371,7 @@ Then(
     const { page } = entryOf(this)
     await page.getByRole("heading", { level: 1, name: heading }).waitFor({ state: "visible" })
     assert.deepEqual(await page.getByRole("heading", { level: 1 }).allTextContents(), [heading])
-    await page.getByRole("link", { name: "Log in again" }).waitFor({ state: "visible" })
+    await assertRecoveryCopy(page, heading)
     assert.doesNotMatch(await documentText(page), PROTECTED_TEXT)
     const tree = await page.locator("body").ariaSnapshot()
     assert.doesNotMatch(tree, PROTECTED_TEXT)

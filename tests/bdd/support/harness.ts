@@ -299,8 +299,10 @@ export async function applicationBrowser(
   }
   try {
     const browser = await chromium.launch({
-      // Playwright turns off Chromium's back-forward cache by default; a history journey restores the browser's own
-      // policy so a cached protected page could be shown.
+      // Playwright turns off Chromium's back-forward cache by default, and its headless shell (the default channel)
+      // never uses it; a history journey runs full Chromium with the browser's own policy so a cached protected page
+      // could be shown.
+      channel: historyCache ? "chromium" : "chromium-headless-shell",
       ignoreDefaultArgs: historyCache ? ["--disable-back-forward-cache"] : [],
       proxy: { server: `http://127.0.0.1:${String(proxyPort)}` }
     })
