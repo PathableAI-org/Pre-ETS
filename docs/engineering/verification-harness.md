@@ -60,7 +60,7 @@ The [risk tier](git-workflow.md#risk-tiers) scales what verification needs. The 
 | Tier               | `verification.md`                                                                                                                                                                                                                                                          | Verifier                                                                                                                                                                                                 |
 | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | High, new behavior | Everything above, with every channel available. Each security, tenant, or PHI claim also names its rejection path.                                                                                                                                                         | One report per slice through [the verification loop](#the-verification-loop), including telemetry queries and the forbidden-data check                                                                   |
-| High, fix          | None. The pull request body lists the claims the fix establishes, each with its observation and channel.                                                                                                                                                                   | One report on the pull request for those claims, at the verified SHA, with the forbidden-data check                                                                                                      |
+| High, fix          | None. The pull request body lists the claims the fix establishes, each with its observation and channel.                                                                                                                                                                   | One report on the pull request for those claims, at the verified SHA, with the forbidden-data check. Slice ID `fix`; the feature directory may be omitted. Every claim must be `established`.            |
 | Standard           | Claims, meaningful violations, observations, and channels limited to browser interaction, assistive technology, module tests, and requirements BDD, plus the planned manual procedure. No server or browser telemetry channel: a claim that needs one makes the work High. | One report per slice through the verification loop, using the browser, BDD, and module evidence. No telemetry queries or forbidden-data check, because Standard work does not change exported telemetry. |
 | Light              | None                                                                                                                                                                                                                                                                       | None. Normal CI and the checks the pull request names.                                                                                                                                                   |
 
@@ -176,19 +176,23 @@ the ID of the approved limitation it falls under. It also gives a status for eac
 (`present`, `missing`, or `unusable`), forbidden-data findings by signal and field name only, escalations, cleanup,
 and any unrequested claim the run showed violated. The schema rejects text that looks like a credential.
 
+A High fix's report uses slice ID `fix` and may omit the feature directory. Every other report names one.
+
 The verifier records the report with `pnpm verify:record <report.json>`. The command validates it and adds it to the
 Git note on the verified SHA under `refs/notes/verification`. A retry on the same SHA is appended and supersedes the
-earlier report, which stays in the note. Git also keeps each version of the note in the notes ref's history. Notes
-are shared by every worktree of a clone and are not pushed; do not push or configure pushing for them.
+earlier report, which stays in the note. Git also keeps each version of the note in the notes ref's history. The
+command then posts the report as a comment on the verified SHA's pull request, so the implementation session's clone
+can import it. [Code review storage](code-review.md#storage) owns how entries are published and synced, the author
+rule, and the trust model. Do not push or configure pushing for the notes ref itself.
 
 The note is the record. The verification session then sends the implementation session only a pointer, such as
-`refs/notes/verification @ <SHA> (run <uuid>)`, and `pnpm verify:show <SHA>` prints the report. The report is
-information for the implementation session and the reviewer. It is not proof by itself. Raw query output,
-screenshots, and transcripts are not committed.
+`refs/notes/verification @ <SHA> (run <uuid>)`. `pnpm verify:show <SHA>` syncs the branch's pull request and prints
+the report. The report is information for the implementation session and the reviewer. It is not proof by itself.
+Raw query output, screenshots, and transcripts are not committed.
 
 The report needs no schema change to be posted later as a GitHub check run: `verifiedSha` is the check's `head_sha`,
 the run UUID its `external_id`, the gate's outcome its `conclusion`, and the rendered results its output summary.
-Nothing posts to GitHub today.
+The note comment is the only thing posted to GitHub today.
 
 ### Gate and escalation
 
@@ -208,15 +212,43 @@ verified SHA, and the reviewer or verifier checks that the diff from the verifie
 those results. Any application, instrumentation, test, or run-instruction change after the verified SHA, including
 a change to `quickstart.md` steps, needs a new verification request.
 
-`pnpm verify:gate` applies these rules to the checked-out `{number}-{slug}-impl*` branch. It takes the latest
-report on HEAD, or on the nearest ancestor when the commits since change only the feature's `quickstart.md`
-execution-results section. It regenerates the request at the report's SHA, checks the report's slice against the
-branch, and exits non-zero with every failing reason. A limitation excuses only a claim the slice asserts in part. A
-report with an open escalation does not pass. The gate also applies the
-[code review gate](code-review.md#gate-and-escalation) to the nearest reviewed commit. A Claude Code `PreToolUse` hook in `.claude/settings.json` runs the
-gate before `gh pr ready` on those branches and blocks the command when the gate fails. It takes effect in sessions
-started after the hook is installed. The hook gates the checked-out branch, so run `gh pr ready` from the slice's
-own branch.
+`pnpm verify:gate` applies these rules to the checked-out `{number}-{slug}-impl*` branch. It first syncs the
+branch's pull request comments into the local notes, as [Code review storage](code-review.md#storage) describes. It
+takes the latest report on HEAD, or on the nearest ancestor when the commits since change only the feature's
+`quickstart.md` execution-results section. It regenerates the request at the report's SHA, checks the report's slice
+against the branch, and exits non-zero with every failing reason. A limitation excuses only a claim the slice
+asserts in part. A report with an open escalation does not pass. The gate also applies the
+[code review gate](code-review.md#gate-and-escalation) to the nearest reviewed commit.
+
+A High fix's single pull request has no plan, so the gate regenerates no request. On a branch that is not an
+implementation slice, whose open pull request is labelled `risk:high`, `pnpm verify:gate` requires the following of
+the latest report on HEAD or an evidence-only ancestor:
+
+- Slice ID `fix`, at least one claim, and every claim `established`. No limitation is approved for a fix.
+- Every telemetry row it lists present.
+- No unrequested violation, no forbidden data, and no open escalation.
+
+It also requires a fix review that passes the code review gate. A fix has no quickstart results, so for a fix an
+evidence-only commit changes no path at all. Any change after the verified SHA needs a new request. The gate reads
+the label from the pull request, so it cannot judge a fix branch offline.
+
+A Claude Code `PreToolUse` hook in `.claude/settings.json` runs the gate whenever a session tries to mark a pull
+request ready, and blocks the attempt when the gate fails. It covers `gh pr ready` (with no argument, a number, a
+URL, or a branch), a `gh api` call that sets `draft=false` on a pull request, and the GitHub MCP tool's
+`update_pull_request` with `draft: false`. The cloud reaches only REST, so `gh pr ready` fails there, and the MCP tool
+is how cloud sessions mark a pull request ready. The hook resolves the pull request over REST and syncs its comments.
+It then gates its head branch at the pull request's head SHA, which must be in the clone. When GitHub cannot be
+reached, it gates a checked-out slice branch on its local notes, and refuses any other branch it cannot classify.
+Project settings already ask a person before `gh pr ready`, and the hook asks before every other ready attempt it
+allows. It refuses the paths it cannot judge, and names the gated way:
+
+- `gh stack submit --open`, which marks every pull request in the stack ready.
+- A `gh api graphql` `markPullRequestReadyForReview` mutation, which names no branch.
+- The MCP tool's `create_pull_request` for an implementation-slice branch without `draft: true`.
+
+Known limits: the hook cannot see `gh pr create` without `--draft`, any other HTTP client, another GitHub MCP server
+name, or a person in the web interface. A fix pull request created ready is not gated, because its `risk:high`
+label is not yet set. The hook takes effect in sessions started after it is installed.
 
 A slice pull request cannot create its own exception. A new limitation goes back through the
 [corrections](git-workflow.md#corrections) path to the phase that owns it.

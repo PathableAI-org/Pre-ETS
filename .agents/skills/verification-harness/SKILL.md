@@ -17,8 +17,9 @@ the roles, the request and report shapes, the gate, and escalation. This skill s
 
 - Verify only pushed commits named in a request. Never read or change the implementation session's worktree.
 - Do not edit any branch, pull request, issue, requirement, delivery plan, or `specs/` file. Report instead. The
-  one write this session makes is the report note under `refs/notes/verification`, through `pnpm verify:record`.
-  Never push notes or configure pushing for them.
+  one write this session makes is the report note under `refs/notes/verification`, through `pnpm verify:record`,
+  which also posts the report as a comment on the pull request so other clones can import it. Post nothing else to
+  GitHub. Never push the notes ref or configure pushing for it.
 - Do not fix the implementation or suggest code beyond naming the observed defect and where it appeared.
 - Do not commit or retain probes, query output, screenshots, or transcripts in the repository.
 - Do not use real client records, real credentials, or production services. Never print credentials, cookies,
@@ -104,8 +105,14 @@ did not name but the run showed violated under `unrequestedViolations`. Then rec
 pnpm verify:record <report.json>
 ```
 
-The command validates the report and appends it to the note on the verified SHA. A retry on the same SHA is a new
-run UUID; it supersedes the earlier report, which stays in the note. Fix any validation problem and record again.
+The command validates the report and appends it to the note on the verified SHA, then posts it on the pull request
+whose head branch has that SHA at its tip. Pass `--pr <n>` when the branch has moved on or the SHA is not a branch
+tip in your clone. A retry on the same SHA is a new run UUID; it supersedes the earlier report, which stays in the
+note. Fix any validation problem and record again. If the command says the report was recorded but not published,
+fix the cause and run `pnpm notes:publish verification <SHA> [--pr <n>]`. Until then the implementation session
+cannot see the report.
+
+For a High fix, use slice ID `fix` and omit `featureDir` unless the request names one.
 
 Send the implementation session only the pointer the command prints, `refs/notes/verification @ <SHA> (run <uuid>)`,
 plus one line naming any claim that is not `established`, any telemetry row that is not present, and any
