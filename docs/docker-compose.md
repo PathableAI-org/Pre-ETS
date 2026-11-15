@@ -107,6 +107,15 @@ On first boot, Keycloak imports the tracked realm file
   host mode (`http://springfield.localhost:3000/auth/callback`,
   `http://shelbyville.localhost:3000/auth/callback`)
 - Test user `demo` / `demo` (local-only)
+- Test fixture clients `consent-web`, where the provider asks the visitor to grant
+  access, and `stale-auth-time-web`, whose ID tokens always report an
+  authentication time in 2001
+
+A fixture client that hardcodes a claim the realm's `basic` client scope also
+maps, such as `auth_time`, leaves `basic` out of its default client scopes. With
+both mappers, Keycloak's mapper order decides which value the token carries, and
+that order changes with each realm import. Without `basic`, ID tokens still
+carry `sub`; only access tokens, which the application does not read, lose it.
 
 Import runs only when the realm is absent. After editing the JSON, recreate the
 Keycloak container (`docker compose up -d --force-recreate keycloak`) or

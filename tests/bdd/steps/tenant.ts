@@ -6,6 +6,7 @@ import path from "node:path"
 
 import type { AppWorld } from "../support/world.ts"
 
+import { providerIdTokenClaims } from "../support/browser.ts"
 import { responseJson } from "../support/response.ts"
 import { startSite, stopSite } from "../support/server.ts"
 
@@ -27,7 +28,10 @@ Given("production tenant sites for Springfield and Shelbyville", async function(
   const files = (await fs.readdir(this.directory)).filter((file) => file.endsWith(".json"))
   this.tenantIdentities = await Promise.all(files.map((file) => readTenantIdentity(path.join(this.directory, file))))
 })
-/** Adds a scenario-owned tenant on one of the tracked provider's fixture clients, sharing Springfield's issuer. */
+/**
+ * Adds a scenario-owned tenant on one of the tracked provider's fixture clients, sharing Springfield's issuer, and
+ * answers that issuer and the tenant's callback origin.
+ */
 const addFixtureTenant = async (world: AppWorld, alias: string, displayName: string, clientId: string) => {
   assert.ok(world.ownedDirectory, "expected scenario-owned tenant sites")
   const springfield = JSON.parse(await fs.readFile(path.join(world.directory, "springfield.json"), "utf8")) as {
@@ -37,12 +41,35 @@ const addFixtureTenant = async (world: AppWorld, alias: string, displayName: str
     path.join(world.directory, `${alias}.json`),
     JSON.stringify({ displayName, oidc: { clientAuth: "public", clientId, issuer: springfield.oidc.issuer } })
   )
-  world.callbackOrigins = { ...world.callbackOrigins, [alias]: `http://${alias}.localhost:3000` }
+  const callbackOrigin = `http://${alias}.localhost:3000`
+  world.callbackOrigins = { ...world.callbackOrigins, [alias]: callbackOrigin }
   world.tenantIdentities = [...world.tenantIdentities, { clientId, displayName }]
+  return { callbackOrigin, issuer: springfield.oidc.issuer }
 }
-/** The `stale-auth-time-web` client's ID tokens always report an authentication time in 2001. */
+/** An authentication time at least this far before the check is old for any freshness window. */
+const OLD_AUTHENTICATION_MS = 86_400_000
+/** Whether an ID token's `sub` claim is a nonblank subject. */
+const isSubject = (sub: unknown): boolean => typeof sub === "string" && sub.trim() !== ""
+/** Whether an ID token's `auth_time` claim, in seconds, is old. */
+const isOldAuthenticationTime = (authTime: unknown): boolean =>
+  typeof authTime === "number" && authTime * 1_000 < Date.now() - OLD_AUTHENTICATION_MS
+/**
+ * The `stale-auth-time-web` client's ID tokens always report an authentication time in 2001. Setup checks that the
+ * provider still issues one with a subject and an old authentication time: a token with no authentication time, or one
+ * the application rejects for lack of a subject, would be denied too, and the scenario would pass without a stale
+ * authentication time ever reaching the freshness check.
+ */
 Given("a Stale tenant whose provider always reports an old authentication time", async function(this: AppWorld) {
-  await addFixtureTenant(this, "stale", "Stale", "stale-auth-time-web")
+  const clientId = "stale-auth-time-web"
+  const { callbackOrigin, issuer } = await addFixtureTenant(this, "stale", "Stale", clientId)
+  const claims = await providerIdTokenClaims({ clientId, issuer, redirectUri: `${callbackOrigin}/auth/callback` })
+  // `assert.fail` keeps the message in Cucumber's output, which shows only the diff for `assert.ok`.
+  if (!isSubject(claims.sub)) {
+    assert.fail(`expected the provider's ID token to carry a subject, got ${String(claims.sub)}`)
+  }
+  if (!isOldAuthenticationTime(claims.auth_time)) {
+    assert.fail(`expected the provider to report an old authentication time, got ${String(claims.auth_time)}`)
+  }
 })
 /** The `consent-web` client asks the visitor to grant access after signing in, so the visitor can cancel there. */
 Given("a Consent tenant whose provider asks the visitor to grant access", async function(this: AppWorld) {

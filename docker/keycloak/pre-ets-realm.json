@@ -103,7 +103,7 @@
     {
       "clientId": "stale-auth-time-web",
       "name": "Stale authentication time fixture",
-      "description": "Test fixture: every ID token reports an authentication time in 2001, so freshness is always stale.",
+      "description": "Test fixture: every ID token reports an authentication time in 2001, so freshness is always stale. It omits the basic scope, whose auth_time mapper would win on some realm imports.",
       "enabled": true,
       "protocol": "openid-connect",
       "publicClient": true,
@@ -122,6 +122,13 @@
       "attributes": {
         "pkce.code.challenge.method": "S256"
       },
+      "defaultClientScopes": [
+        "acr",
+        "email",
+        "profile",
+        "roles",
+        "web-origins"
+      ],
       "protocolMappers": [
         {
           "name": "stale auth_time",
