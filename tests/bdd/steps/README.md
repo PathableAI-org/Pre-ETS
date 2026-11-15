@@ -28,6 +28,7 @@ frontend, recording the last HTTP response, the scoped browser transport, and th
 | `expiration.ts`           | Idle expiration across named tabs: concealment, the expiration modal, resumed tabs, logout, and history |
 | `expired-recovery.ts`     | Recovery from an expired or removed session: recovery documents, form submissions, and second tabs      |
 | `fresh-recovery.ts`       | Fresh authentication with a provider single sign-on session: logout, history, and session replacement   |
+| `shared-session.ts`       | Named sessions presented to two instances: admission, renewal, and expiration through either            |
 
 Add a step to the file that owns its journey. A browser journey that keeps state across steps (its browser, named
 tabs or contexts, observed traffic) keeps it in a module-level `WeakMap` keyed by the world and closes its browser
@@ -64,6 +65,9 @@ for both before running them. Each world supplies its own `OIDC_CALLBACK_ORIGINS
 independent of random Next transport ports. Callback scenarios run two independently composed production Next
 processes behind the same logical authority: provider departure uses instance A and `/auth/callback` uses instance B.
 The host-only, callback-path cookie crosses those instances through the browser without being sent to another tenant.
+Shared-session scenarios run the same two instances: each session signs in through one named instance, with the
+provider return delivered there too, and is then presented over unfollowed HTTP to either. They read deadlines only
+through `GET /session/status`, which never renews, and wait in real time for the server's deadlines.
 
 `authentication.ts` owns provider destination/protocol and public sign-in observations. Raw HTTP stays unfollowed:
 assert root delegation first, then explicitly request `/auth/login` for tenant/provider status. Generic status

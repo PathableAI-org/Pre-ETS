@@ -8,7 +8,7 @@ import { setTimeout as delay } from "node:timers/promises"
 
 import type { AppWorld } from "../support/world.ts"
 
-import { applicationBrowser, documentText, signInAtProvider, suspendTimers } from "../support/browser.ts"
+import { applicationBrowser, documentText, signInThroughApplication, suspendTimers } from "../support/browser.ts"
 import { multipartBody, serverActionId } from "../support/server-actions.ts"
 import { FETCH_METADATA, requestSiteWith, startSite } from "../support/server.ts"
 import { setTenantPolicy } from "./tenant.ts"
@@ -74,16 +74,8 @@ Given("the visitor has signed in at {string} through the provider", async functi
   await startSite(this)
   const owned = await applicationBrowser(this.port, [host])
   const context = await owned.browser.newContext()
-  const page = await context.newPage()
-  await page.goto(`http://${host}/`)
-  await signInAtProvider(page)
-  await page.waitForURL((url) => url.host === host)
-  await page.getByRole("button", { name: "Log out" }).waitFor({ state: "visible" })
-  const signedInAt = Date.now()
-  const session = (await context.cookies(`http://${host}/`)).find((cookie) => cookie.name === "pathable-session")
-  assert.ok(session, "expected an application session after signing in")
-  this.cookie = session.value
-  visitors.set(this, { browser: owned.browser, close: owned.close, host, renewedAt: signedInAt })
+  this.cookie = await signInThroughApplication(context, host)
+  visitors.set(this, { browser: owned.browser, close: owned.close, host, renewedAt: Date.now() })
   await context.close()
 })
 

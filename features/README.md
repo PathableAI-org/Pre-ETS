@@ -49,10 +49,32 @@ tenant rejection need no reachable provider. The stale-freshness scenario uses t
 only on first boot, so recreate an older local
 container (`docker compose up -d --force-recreate keycloak`) after the realm file changes.
 
-| Command             | Evidence                                                                              |
-| ------------------- | ------------------------------------------------------------------------------------- |
-| `pnpm test:bdd:dry` | Parse features and discover step bindings; no runtime evidence                        |
-| `pnpm test:bdd`     | Build the frontend, then run HTTP and browser scenarios against an owned Next process |
+| Command                       | Evidence                                                                              |
+| ----------------------------- | ------------------------------------------------------------------------------------- |
+| `pnpm test:bdd:dry`           | Parse features and discover step bindings; no runtime evidence                        |
+| `pnpm test:bdd:tags "<expr>"` | Run only the scenarios matching a tag expression, against the last frontend build     |
+| `pnpm test:bdd`               | Build the frontend, then run HTTP and browser scenarios against an owned Next process |
+
+### Run the scenarios a change touches
+
+The full suite takes over half an hour, mostly real-time waits for session deadlines. While changing code, run only
+the scenarios the change affects, selected by tag:
+
+```sh
+pnpm --filter @pathableai/pre-ets-frontend build   # after any application change
+OTEL_SDK_DISABLED=true pnpm test:bdd:tags "@preets-session-005 or @preets-session-013"
+```
+
+Select scenarios by tag or by `--name`, never by feature path. `cucumber.mjs` already sets `paths`, and the
+command-line paths are added to it, so passing a `.feature` file runs the whole suite. The affected scenarios are:
+
+- those tagged with the requirement IDs the change adds or touches
+- those that use a step definition the change edits. `pnpm test:bdd:dry --format usage` lists each step definition
+  with the scenario lines that use it.
+
+A change to `tests/bdd/support/`, `cucumber.mjs`, or the world and hooks affects every scenario. Run a representative
+tag for each feature it touches; the nightly run covers the rest, as
+[Requirements BDD runs](../docs/engineering/verification-harness.md#requirements-bdd-runs) describes.
 
 After a frontend build, `pnpm test:bdd:smoke` runs the separate application-level
 [on-site production safeguard](../tests/bdd/smoke/onsite-production.feature).
