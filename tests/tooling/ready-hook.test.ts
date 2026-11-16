@@ -55,17 +55,39 @@ void describe("recognizing an attempt to mark a pull request ready", () => {
     assert.equal(target("gh pr view 7 && git status"), undefined)
   })
 
-  void it("reads gh api clearing draft, and the MCP update with draft false, but not other updates", () => {
-    assert.deepEqual(readyAttempt("Bash", { command: "gh api -X PATCH repos/acme/app/pulls/7 -F draft=false" }), {
-      kind: "gate",
-      settingsAsk: false,
-      target: { kind: "pull", number: 7 }
-    })
+  void it("reads gh api clearing draft or posting to the ready route, and the MCP update with draft false", () => {
+    const shellGate = { approveHere: false, kind: "gate", target: { kind: "pull", number: 7 } }
+    assert.deepEqual(
+      readyAttempt("Bash", { command: "gh api -X PATCH repos/acme/app/pulls/7 -F draft=false" }),
+      shellGate
+    )
+    assert.deepEqual(
+      readyAttempt("Bash", { command: `gh api -X PATCH repos/acme/app/pulls/7 --input - <<< '{"draft": false}'` }),
+      shellGate
+    )
+    assert.deepEqual(
+      readyAttempt("Bash", { command: "gh api -X POST repos/acme/app/pulls/7/ccr/ready_for_review" }),
+      shellGate
+    )
+    assert.deepEqual(
+      readyAttempt("Bash", {
+        command: "curl -X POST https://api.github.com/repos/acme/app/pulls/7/ccr/ready_for_review"
+      }),
+      shellGate
+    )
+    assert.equal(
+      readyAttempt("Bash", { command: "gh api -X POST repos/acme/app/pulls/7/ccr/convert_to_draft" }),
+      undefined
+    )
+    assert.equal(
+      readyAttempt("Bash", { command: "git commit -m 'docs: name pulls/7/ccr/ready_for_review'" }),
+      undefined
+    )
     assert.deepEqual(
       readyAttempt("mcp__github__update_pull_request", { draft: false, owner: "acme", pullNumber: 7, repo: "app" }),
       {
+        approveHere: true,
         kind: "gate",
-        settingsAsk: false,
         target: { kind: "pull", number: 7, repository: "acme/app" }
       }
     )
@@ -133,23 +155,31 @@ void describe("the ready hook's decision", () => {
     assert.match(JSON.stringify(unknown), /cannot tell whether claude\/tooling needs the gate/)
   })
 
-  void it("gates the MCP update with draft false at the pull request's head, and asks a person when it passes", () => {
+  void it("gates the REST ready route at the pull request's head, and leaves the prompt to the settings", () => {
+    const github = fakeGitHub({ pulls: [slicePull()] })
+    const route = bash("gh api -X POST repos/acme/app/pulls/7/ccr/ready_for_review")
+    assert.equal(kind(readyDecision(route, github)), "block")
+    recordPassing()
+    assert.deepEqual(readyDecision(route, github), { kind: "allow" })
+  })
+
+  void it("gates the MCP update with draft false at the pull request's head, and approves it when it passes", () => {
     const github = fakeGitHub({ pulls: [slicePull()] })
     repo.git("checkout", "--quiet", "main")
     assert.equal(kind(readyDecision(mcpUpdate({ draft: false }), github)), "block")
     recordPassing()
     assert.deepEqual(readyDecision(mcpUpdate({ draft: false }), github), {
-      kind: "ask",
-      reason: "Marking a pull request ready for review needs a person's confirmation."
+      kind: "approve",
+      reason: "The verification and code review gate passes or does not apply."
     })
     assert.deepEqual(readyDecision(mcpUpdate({ title: "A1" }), github), { kind: "allow" })
   })
 
-  void it("gates a High fix's pull request by its risk:high label, and asks for any other pull request", () => {
+  void it("gates a High fix's pull request by its risk:high label, and approves any other pull request", () => {
     const fix = fakeGitHub({ pulls: [restPull(7, { ref: "fix-session-expiry", sha: verified }, ["risk:high"])] })
     assert.match(JSON.stringify(readyDecision(mcpUpdate({ draft: false }), fix)), /no verification report/)
     const light = fakeGitHub({ pulls: [restPull(7, { ref: "claude/docs", sha: verified }, ["risk:light"])] })
-    assert.equal(kind(readyDecision(mcpUpdate({ draft: false }), light)), "ask")
+    assert.equal(kind(readyDecision(mcpUpdate({ draft: false }), light)), "approve")
   })
 
   void it("blocks when the pull request's head is not in this clone or the pull request cannot be read", () => {
@@ -168,12 +198,12 @@ void describe("the ready hook's decision", () => {
   void it("maps decisions to the exit code and output Claude Code reads", () => {
     assert.deepEqual(hookOutput({ kind: "allow" }), { exitCode: 0, stderr: "", stdout: "" })
     assert.deepEqual(hookOutput({ kind: "block", reason: "No.\n" }), { exitCode: 2, stderr: "No.\n", stdout: "" })
-    const asked = hookOutput({ kind: "ask", reason: "Confirm." })
-    assert.deepEqual(JSON.parse(asked.stdout), {
+    const approved = hookOutput({ kind: "approve", reason: "Gate passes." })
+    assert.deepEqual(JSON.parse(approved.stdout), {
       hookSpecificOutput: {
         hookEventName: "PreToolUse",
-        permissionDecision: "ask",
-        permissionDecisionReason: "Confirm."
+        permissionDecision: "allow",
+        permissionDecisionReason: "Gate passes."
       }
     })
   })
