@@ -13,6 +13,9 @@ permissions:
 env:
   CI: "true"
   HUSKY: "0"
+  # CI mode (docs/observability.md#operating-modes): telemetry off. No collector runs here and
+  # no job observes telemetry, so every application and test process starts with no OpenTelemetry SDK.
+  OTEL_SDK_DISABLED: "true"
 
 concurrency:
   group: ci-build-${{ github.event.pull_request.number || github.ref }}
