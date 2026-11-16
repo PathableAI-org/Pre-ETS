@@ -16,6 +16,7 @@ import { createCallbackHandler } from "../../src/next.ts"
 import { createLoginHandler } from "../../src/next.ts"
 import { SessionService, SessionServiceUnavailable } from "../../src/session.ts"
 import { TenantAlias, TenantConfigService, TenantNotFound, TenantReadError } from "../../src/tenant.ts"
+import { testTelemetry } from "../helpers/telemetry.ts"
 
 const runtime = vi.hoisted(() => ({ runPromise: vi.fn() }))
 vi.mock("../../src/runtime.ts", () => ({ Runtime: runtime }))
@@ -47,7 +48,9 @@ const callback = createCallbackHandler({ authenticationReturn, tenantFailure })
 
 const useService = (service: AuthenticationService["Service"]) => {
   runtime.runPromise.mockImplementation((program: Effect.Effect<unknown, never, AuthenticationService>) =>
-    Effect.runPromise(program.pipe(Effect.provideService(AuthenticationService, service)))
+    Effect.runPromise(
+      program.pipe(Effect.provideService(AuthenticationService, service), Effect.provide(testTelemetry))
+    )
   )
 }
 
@@ -164,7 +167,7 @@ describe("callback session-establishment failure mapping [PREETS-SESSION-003]", 
           complete: () => Effect.succeed(identity),
           prepare: () => Effect.die("prepare must remain unused")
         }),
-        Effect.provide(Layer.mergeAll(layers.session, layers.tenant))
+        Effect.provide(Layer.mergeAll(layers.session, layers.tenant, testTelemetry))
       ))
     )
   }

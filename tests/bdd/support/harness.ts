@@ -88,10 +88,19 @@ async function listenOnLoopback(server: Server): Promise<number> {
   return address.port
 }
 
+/**
+ * An owned `next start` leaves SIGTERM and SIGINT to the application, as the frontend `start` script does, so a stop
+ * flushes pending telemetry before the process exits. `next dev` keeps its own signal handling; `spawn` drops the
+ * undefined value, including one inherited from this process.
+ */
+const manualSignalHandling = (runtime: SiteOptions["runtime"]): string | undefined =>
+  runtime === "production" ? "true" : undefined
+
 /** Builds the frontend process environment without mutating process.env or the caller's world. */
 function siteEnv(options: SiteOptions): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {
     ...process.env,
+    NEXT_MANUAL_SIG_HANDLE: manualSignalHandling(options.runtime),
     NEXT_TELEMETRY_DISABLED: "1",
     NODE_ENV: options.runtime,
     OIDC_ALLOW_INSECURE_LOOPBACK: String(options.allowInsecureLoopback),

@@ -534,25 +534,42 @@ describe("StartupConfig browser tracing switch (V-007)", () => {
 describe("StartupConfig browser tracing settings (V-009)", () => {
   const on = { ...otelOn, BROWSER_TRACING_ENABLED: "true" }
 
-  it.effect("carries exactly the server's endpoint, name, version, and run identifier, and no headers", () =>
+  it.effect("carries exactly the server's endpoint, export timing, name, version, and run identifier, and no headers", () =>
     Effect.gen(function*() {
       const exit = yield* startupWith({
         ...on,
         OTEL_EXPORTER_OTLP_HEADERS: "Authorization=Bearer synthetic-collector-token",
         OTEL_RESOURCE_ATTRIBUTES: "service.version=abc123,service.instance.id=run%2D1",
-        OTEL_SERVICE_VERSION: "abc123"
+        OTEL_SERVICE_VERSION: "abc123",
+        TELEMETRY_EXPORT_TIMING: "batch"
       })
       const settings = browserTracingOf(exit)
       assert.deepStrictEqual(
         settings === undefined ? undefined : { ...settings, endpoint: settings.endpoint.href },
         {
           endpoint: "http://127.0.0.1:4318/",
+          exportTiming: "batch",
           serviceInstanceId: "run-1",
           serviceName: "pre-ets-frontend",
           serviceVersion: "abc123"
         }
       )
     }))
+
+  it.effect.each(
+    [
+      ["immediate", "production"],
+      ["batch", "development"]
+    ] as const
+  )(
+    "carries the server's %s export timing, set over the %s default (#475 V-022)",
+    ([timing, mode]) =>
+      Effect.gen(function*() {
+        const exit = yield* startupWith({ ...on, NODE_ENV: mode, TELEMETRY_EXPORT_TIMING: timing })
+        assert.strictEqual(exportTimingOf(exit), timing)
+        assert.strictEqual(browserTracingOf(exit)?.exportTiming, timing)
+      })
+  )
 
   it.effect.each(["service.instance.id=run-1,broken", "service.instance.id=run-1,a=b=c", "service.instance.id=%E0"])(
     "starts without a run identifier when the resource attribute list %s is malformed",
@@ -610,4 +627,90 @@ describe("StartupConfig browser tracing settings (V-009)", () => {
       assert.isTrue(Exit.isSuccess(exit))
       assert.isUndefined(browserTracingOf(exit))
     }))
+})
+
+const modes = ["production", "development", "test", "absent"] as const
+const timingSettings = ["absent", "empty", "immediate", "batch"] as const
+
+/** The raw `TELEMETRY_EXPORT_TIMING` for a label; `undefined` leaves the setting out. */
+const rawTiming = (setting: typeof timingSettings[number]) =>
+  setting === "absent" ? undefined : setting === "empty" ? "" : setting
+
+/** In `mode` (`absent` removes `NODE_ENV`); an undefined `timing` leaves `TELEMETRY_EXPORT_TIMING` absent. */
+const startupWithTiming = (
+  mode: typeof modes[number],
+  timing: string | undefined,
+  overrides: Record<string, unknown> = otelOn
+) =>
+  Effect.exit(StartupConfig).pipe(
+    Effect.provideService(
+      ConfigProvider.ConfigProvider,
+      withConfigOverrides(
+        { ...overrides, NODE_ENV: mode, TELEMETRY_EXPORT_TIMING: timing },
+        mode === "absent" ? ["NODE_ENV"] : []
+      )
+    )
+  )
+
+const exportTimingOf = (exit: Exit.Exit<{ readonly otel: OtelSettings }, unknown>) =>
+  Exit.isSuccess(exit) && !exit.value.otel.disabled ? exit.value.otel.exportTiming : undefined
+
+/** Values that are neither setting value nor empty, starting with near misses in case and spacing. */
+const UnrecognizedTiming = Schema.Union([
+  Schema.Literals(["Immediate", "IMMEDIATE", "Batch", "BATCH", " batch", "immediate ", "now"]),
+  Schema.String.pipe(Schema.check(Schema.makeFilter((value) => !["", "batch", "immediate"].includes(value))))
+])
+
+describe("StartupConfig export timing (#475 V-007, V-008)", () => {
+  it.effect.each(
+    [
+      ["production", "absent", "batch"],
+      ["production", "empty", "batch"],
+      ["production", "immediate", "immediate"],
+      ["production", "batch", "batch"],
+      ["development", "absent", "immediate"],
+      ["development", "empty", "immediate"],
+      ["development", "immediate", "immediate"],
+      ["development", "batch", "batch"],
+      ["test", "absent", "immediate"],
+      ["test", "empty", "immediate"],
+      ["test", "immediate", "immediate"],
+      ["test", "batch", "batch"],
+      ["absent", "absent", "immediate"],
+      ["absent", "empty", "immediate"],
+      ["absent", "immediate", "immediate"],
+      ["absent", "batch", "batch"]
+    ] as const
+  )("NODE_ENV %s with TELEMETRY_EXPORT_TIMING %s exports %s", ([mode, setting, expected]) =>
+    Effect.gen(function*() {
+      const exit = yield* startupWithTiming(mode, rawTiming(setting))
+      assert.isTrue(Exit.isSuccess(exit))
+      assert.strictEqual(exportTimingOf(exit), expected)
+    }))
+
+  it.effect.prop(
+    "exports immediately exactly when the setting is immediate, or it is unset and the process is not production, and the page follows",
+    [Schema.Literals(modes), Schema.Literals(timingSettings), Schema.Boolean],
+    ([mode, setting, browserTracing]) =>
+      Effect.gen(function*() {
+        const overrides = browserTracing ? { ...otelOn, BROWSER_TRACING_ENABLED: "true" } : otelOn
+        const exit = yield* startupWithTiming(mode, rawTiming(setting), overrides)
+        assert.isTrue(Exit.isSuccess(exit))
+        const unset = setting === "absent" || setting === "empty"
+        const expected = setting === "immediate" || (unset && mode !== "production") ? "immediate" : "batch"
+        assert.strictEqual(exportTimingOf(exit), expected)
+        assert.strictEqual(browserTracingOf(exit)?.exportTiming, browserTracing ? expected : undefined)
+      })
+  )
+
+  it.effect.prop(
+    "refuses startup on an unrecognized value and names the setting, with OTEL on and off",
+    [UnrecognizedTiming, Schema.Boolean, Schema.Literals(modes)],
+    ([value, otelEnabled, mode]) =>
+      Effect.gen(function*() {
+        const exit = yield* startupWithTiming(mode, value, otelEnabled ? otelOn : {})
+        assert.isTrue(configError(exit))
+        assert.include(failureText(exit), "TELEMETRY_EXPORT_TIMING")
+      })
+  )
 })

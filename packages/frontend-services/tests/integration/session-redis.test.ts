@@ -14,6 +14,7 @@ import {
 } from "../../src/session.ts"
 import { TenantAlias } from "../../src/tenant.ts"
 import { sessionState } from "../helpers/session.ts"
+import { testTelemetry } from "../helpers/telemetry.ts"
 
 const redisUrl = process.env.REDIS_URL ?? "redis://127.0.0.1:6379"
 const sessionPrefix = `test:session:${randomUUID()}:`
@@ -32,7 +33,8 @@ const redisLayer = () =>
 
 const sessionLayer = (prefix: string) =>
   SessionService.layer({ keyPrefix: prefix }).pipe(
-    Layer.provide(redisLayer())
+    Layer.provide(redisLayer()),
+    Layer.merge(testTelemetry)
   )
 
 const disconnectedLayer = (prefix: string) => {
@@ -46,7 +48,8 @@ const disconnectedLayer = (prefix: string) => {
     url: redisUrl
   })
   return SessionService.layer({ keyPrefix: prefix }).pipe(
-    Layer.provideMerge(redis)
+    Layer.provideMerge(redis),
+    Layer.merge(testTelemetry)
   )
 }
 
