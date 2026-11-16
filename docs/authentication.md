@@ -146,8 +146,12 @@ See the [verification guide](../specs/007-initiate-tenant-oidc/quickstart.md).
 
 Only the tracked Keycloak provider is executed by repository BDD. Microsoft, broker
 chains, and a real confidential-provider round trip are not established here. The freshness
-window is evidenced at the service boundary with controlled ID tokens; the real-provider
-journeys belong to #158.
+window's missing and stale denials are evidenced at the service boundary with controlled ID
+tokens. With the tracked provider,
+[`fresh-oidc-recovery.feature`](../tests/bdd/requirements/fresh-oidc-recovery.feature) shows
+that a remaining provider single sign-on session never yields an application session
+silently: first visits, re-entry after logout, and Log in from the signed-out notice each
+make the provider authenticate again and yield a new session.
 
 ## Configuration for OIDC consumers
 
@@ -184,8 +188,8 @@ protected access and must not be treated as authenticated state by a prior revis
 `POST /auth/logout` ([#155](https://github.com/PathableAI-org/Pre-ETS/issues/155)) invalidates the
 application session and expires `pathable-session`. It sends no end-session request to the
 identity provider, so a provider session may remain. The B6 decision requires fresh
-authentication for every login without a valid application session (enforced once
-[#158](https://github.com/PathableAI-org/Pre-ETS/issues/158) lands), so that provider session cannot
+authentication for every login without a valid application session, and the callback's
+freshness check enforces it (see the freshness rule above), so that provider session cannot
 silently restore application access. Provider logout would need a requirements decision.
 
 ## Session policy handoff
@@ -199,10 +203,9 @@ without changing the diagnostic document. See the
 [policy contract](./multi-tenancy.md#idle-timeout-and-warning-policy) for the accepted
 values and examples.
 
-Session establishment ([#218](https://github.com/PathableAI-org/Pre-ETS/issues/218)) and
-policy refresh ([#220](https://github.com/PathableAI-org/Pre-ETS/issues/220)) use this
-derivation with the then-current validated tenant configuration. Credential
-resolution and callback exchange belong to
-[#217](https://github.com/PathableAI-org/Pre-ETS/issues/217). This configuration work
-does not implement expiration enforcement, warning UI, or session policy adoption.
-See [session-state.md](./session-state.md) for the current session boundary.
+Session establishment ([#218](https://github.com/PathableAI-org/Pre-ETS/issues/218)) at the
+callback and policy refresh ([#220](https://github.com/PathableAI-org/Pre-ETS/issues/220)) use
+this derivation with the then-current validated tenant configuration. Callback exchange and
+confidential credential resolution are described above. See
+[session-state.md](./session-state.md) for the session boundary, including expiration
+enforcement and the expiration warning.
