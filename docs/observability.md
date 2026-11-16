@@ -137,6 +137,50 @@ It is assumed never to be set in production: production configuration never
 sets it, and the application does not refuse it in a production build, because
 the verification harness runs one.
 
+### Telemetry for a test run
+
+`pnpm test:telemetry <command> [args…]` runs a test command with the local
+stack's telemetry settings. It fills in only the settings that are absent or
+empty: `OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318/` (the
+[local stack](#local-grafana--otlp)), `OTEL_SERVICE_NAME=pre-ets-frontend`,
+`TELEMETRY_EXPORT_TIMING=immediate`, and a generated `service.instance.id`
+entry appended to `OTEL_RESOURCE_ATTRIBUTES` when that list has none. It also
+sets `TEST_TELEMETRY=true`, the marker for a test process that starts
+telemetry of its own; no unit or integration test process does so today, so
+they export nothing. Settings supplied explicitly win, and a true literal in
+`OTEL_SDK_DISABLED` keeps telemetry off: the command then runs with the
+environment unchanged. It prints the run identifier on standard error and exits
+with the command's status.
+
+A requirements BDD run exports through it with no other setting, because the
+application process the suite owns inherits the environment:
+
+```sh
+pnpm test:telemetry pnpm test:bdd:tags "@preets-session-005"
+```
+
+Select a run's records by its identifier, for example
+`{ resource.service.instance.id = "<run>" }` in Tempo and
+`{service_name="pre-ets-frontend", service_instance_id="<run>"}` in Loki. To tag
+a run with a revision as well, supply `OTEL_SERVICE_VERSION` and
+`OTEL_RESOURCE_ATTRIBUTES="service.version=<sha>,service.instance.id=<run>"`, as
+the [verification harness](engineering/verification-harness.md#environment)
+does; without them `service.version` is `UNKNOWN`. With the local stack down,
+every test keeps its result and only the run's telemetry is lost.
+
+The command reads only its own environment. Settings in
+`packages/frontend/.env.local`, which the application a BDD run owns also loads,
+do not count as supplied: there the command's defaults win over the file, and an
+off switch set only in the file keeps the application from exporting although
+the command prints a run identifier. Give a test run its telemetry settings in
+the shell. A supplied run identifier is kept, the last `service.instance.id`
+entry winning as it does in the SDK; one is appended only when the list has no
+usable one. A supplied list must be one the Node SDK accepts: `key=value` entries
+with any `,` or `=` in a key or value percent-encoded. With any malformed entry
+the Node SDK ignores the whole list, so its HTTP and Redis spans carry no run
+identifier, and the Effect bridge, which reads the list differently, may keep or
+drop it. The command does not check the list.
+
 ### Browser tracing switch
 
 Browser tracing is a local-verification facility. It is assumed never to be

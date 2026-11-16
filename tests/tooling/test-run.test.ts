@@ -1,0 +1,131 @@
+import assert from "node:assert/strict"
+import { describe, it } from "node:test"
+
+import { type TestRun, testRunEnvironment } from "../../scripts/test-run.ts"
+
+const generated = "00000000-0000-4000-8000-000000000000"
+const run = (env: NodeJS.ProcessEnv): TestRun => testRunEnvironment(env, () => generated)
+
+const on = (env: NodeJS.ProcessEnv) => {
+  const result = run(env)
+  assert.equal(result.telemetry, "on")
+  return result
+}
+
+void describe("test run environment (#475 V-014)", () => {
+  void it("fills the local defaults, a generated run identifier, and the marker when nothing is set", () => {
+    const result = on({ PATH: "/usr/bin" })
+    assert.equal(result.runId, generated)
+    assert.deepEqual(result.env, {
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://127.0.0.1:4318/",
+      OTEL_RESOURCE_ATTRIBUTES: `service.instance.id=${generated}`,
+      OTEL_SERVICE_NAME: "pre-ets-frontend",
+      PATH: "/usr/bin",
+      TELEMETRY_EXPORT_TIMING: "immediate",
+      TEST_TELEMETRY: "true"
+    })
+  })
+
+  void it("treats empty settings as absent", () => {
+    const result = on({
+      OTEL_EXPORTER_OTLP_ENDPOINT: "",
+      OTEL_RESOURCE_ATTRIBUTES: "",
+      OTEL_SERVICE_NAME: "",
+      TELEMETRY_EXPORT_TIMING: ""
+    })
+    assert.equal(result.env.OTEL_EXPORTER_OTLP_ENDPOINT, "http://127.0.0.1:4318/")
+    assert.equal(result.env.OTEL_SERVICE_NAME, "pre-ets-frontend")
+    assert.equal(result.env.TELEMETRY_EXPORT_TIMING, "immediate")
+    assert.equal(result.env.OTEL_RESOURCE_ATTRIBUTES, `service.instance.id=${generated}`)
+  })
+
+  for (
+    const [name, value] of [
+      ["OTEL_EXPORTER_OTLP_ENDPOINT", "http://collector.example.test:4318/"],
+      ["OTEL_SERVICE_NAME", "another-service"],
+      ["OTEL_SERVICE_VERSION", "abc123"],
+      ["TELEMETRY_EXPORT_TIMING", "batch"]
+    ] as const
+  ) {
+    void it(`keeps a supplied ${name}`, () => {
+      assert.equal(on({ [name]: value }).env[name], value)
+    })
+  }
+
+  void it("appends a generated identifier and keeps every existing resource attribute", () => {
+    const result = on({ OTEL_RESOURCE_ATTRIBUTES: "service.version=abc123,deployment.environment=local" })
+    assert.equal(
+      result.env.OTEL_RESOURCE_ATTRIBUTES,
+      `service.version=abc123,deployment.environment=local,service.instance.id=${generated}`
+    )
+    assert.equal(result.runId, generated)
+  })
+
+  void it("keeps a supplied run identifier and reports it decoded, as the SDK reads it", () => {
+    const attributes = "service.version=abc123, service.instance.id = run%2D1"
+    const result = on({ OTEL_RESOURCE_ATTRIBUTES: attributes })
+    assert.equal(result.env.OTEL_RESOURCE_ATTRIBUTES, attributes)
+    assert.equal(result.runId, "run-1")
+  })
+
+  void it("takes the last run identifier, as the Node SDK does", () => {
+    const attributes = "service.instance.id=first,service.instance.id=last"
+    const result = on({ OTEL_RESOURCE_ATTRIBUTES: attributes })
+    assert.equal(result.runId, "last")
+    assert.equal(result.env.OTEL_RESOURCE_ATTRIBUTES, attributes)
+  })
+
+  for (const attributes of ["service.instance.id=", "service.instance.id=run-1,service.instance.id="]) {
+    void it(`appends a generated identifier when the effective one in ${attributes} is empty`, () => {
+      const result = on({ OTEL_RESOURCE_ATTRIBUTES: attributes })
+      assert.equal(result.runId, generated)
+      assert.equal(result.env.OTEL_RESOURCE_ATTRIBUTES, `${attributes},service.instance.id=${generated}`)
+    })
+  }
+
+  void it("keeps a supplied run identifier beside an entry the Node SDK rejects", () => {
+    const attributes = "service.instance.id=run-1,broken"
+    const result = on({ OTEL_RESOURCE_ATTRIBUTES: attributes })
+    assert.equal(result.runId, "run-1")
+    assert.equal(result.env.OTEL_RESOURCE_ATTRIBUTES, attributes)
+  })
+
+  for (
+    const attributes of [
+      "service.version=abc123,broken",
+      "service.instance.id=a=b",
+      "service.instance.id=%E0",
+      `service.instance.id=${"x".repeat(256)}`
+    ]
+  ) {
+    void it(`appends a generated identifier to ${attributes.slice(0, 40)}, which has no usable one`, () => {
+      const result = on({ OTEL_RESOURCE_ATTRIBUTES: attributes })
+      assert.equal(result.runId, generated)
+      assert.equal(result.env.OTEL_RESOURCE_ATTRIBUTES, `${attributes},service.instance.id=${generated}`)
+    })
+  }
+
+  for (const value of ["true", "yes", "on", "1", "y"]) {
+    void it(`leaves the environment unchanged when OTEL_SDK_DISABLED is ${value}`, () => {
+      const env = Object.freeze({ OTEL_EXPORTER_OTLP_ENDPOINT: "http://127.0.0.1:14318/", OTEL_SDK_DISABLED: value })
+      assert.deepEqual(run(env), {
+        env: { OTEL_EXPORTER_OTLP_ENDPOINT: "http://127.0.0.1:14318/", OTEL_SDK_DISABLED: value },
+        telemetry: "off"
+      })
+    })
+  }
+
+  for (const value of ["false", "0", "", "TRUE"]) {
+    void it(`turns telemetry on when OTEL_SDK_DISABLED is ${JSON.stringify(value)}`, () => {
+      assert.equal(run({ OTEL_SDK_DISABLED: value }).telemetry, "on")
+    })
+  }
+
+  for (const disabled of ["false", "true"]) {
+    void it(`does not mutate its input when OTEL_SDK_DISABLED is ${disabled}`, () => {
+      const env = Object.freeze({ OTEL_RESOURCE_ATTRIBUTES: "service.version=abc123", OTEL_SDK_DISABLED: disabled })
+      run(env)
+      assert.deepEqual(env, { OTEL_RESOURCE_ATTRIBUTES: "service.version=abc123", OTEL_SDK_DISABLED: disabled })
+    })
+  }
+})

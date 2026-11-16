@@ -156,6 +156,11 @@ durable tests of log messages, spans, attributes, telemetry payload secrecy, or
 exporter wiring, including tests using in-memory loggers/tracers. The probes,
 verification reports, and their transcripts do not become a permanent test suite.
 
+To see what the application did during a requirements BDD run, run it through
+`pnpm test:telemetry` and query that run's records in the local stack, as
+[Telemetry for a test run](../../observability.md#telemetry-for-a-test-run)
+describes. That is observation; it adds no assertion.
+
 Keep durable tests for application outcomes such as configuration rejection,
 returned values, HTTP failure mapping, and tenant isolation. Supplying a logger to
 silence a scenario's output is fine; assertions about its output belong to manual
