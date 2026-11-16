@@ -53,16 +53,16 @@ Automatic instrumentation covers:
 Telemetry runs in one of three modes. This section is their one statement;
 other documents link here rather than restate it.
 
-| Mode                               | Telemetry | Traces and logs leave          | Selected by                                                                                                                                                                                    |
-| ---------------------------------- | --------- | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Production                         | On        | In batches (`batch`)           | `NODE_ENV=production` with `TELEMETRY_EXPORT_TIMING` unset, and the required endpoint and service name                                                                                         |
-| Local development and verification | On        | As each finishes (`immediate`) | A development or test process with the setting unset; a production build that sets `TELEMETRY_EXPORT_TIMING=immediate`, as the verification harness does; `pnpm test:telemetry` for a test run |
-| CI                                 | Off       | Nothing is exported            | `OTEL_SDK_DISABLED=true` in each workflow's `env` block                                                                                                                                        |
+| Mode                               | Telemetry | Traces and logs leave          | Selected by                                                                                                                                                                                                                                |
+| ---------------------------------- | --------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Production                         | On        | In batches (`batch`)           | `NODE_ENV=production` with `TELEMETRY_EXPORT_TIMING` unset, and the required endpoint and service name                                                                                                                                     |
+| Local development and verification | On        | As each finishes (`immediate`) | A development server, with the required endpoint and service name and the setting unset; a production build that also sets `TELEMETRY_EXPORT_TIMING=immediate`, as the verification harness does; a test run through `pnpm test:telemetry` |
+| CI                                 | Off       | Nothing is exported            | `OTEL_SDK_DISABLED=true` in the `env` block of each workflow that starts the application or runs a test suite: `ci-quality.yml`, `ci-build.yml`, and `ci-bdd.yml`                                                                          |
 
 `TELEMETRY_EXPORT_TIMING` is the one setting, with the values `immediate` and
-`batch`. When it is absent or empty, a process with `NODE_ENV=production`
-batches and any other process, including one with no `NODE_ENV`, exports
-immediately. Any other value fails startup. [Export timing](#export-timing)
+`batch`. When it is absent or empty, an application process with
+`NODE_ENV=production` batches and any other, including one with no `NODE_ENV`,
+exports immediately. Any other value fails startup. [Export timing](#export-timing)
 describes what each value does. The page follows the server's timing. Metrics
 keep their 60-second periodic interval in every mode that exports.
 
@@ -657,8 +657,9 @@ deferred. Alerting and SLOs are out of scope.
 Requires the optional observability profile and `uvx`. The server does nothing
 useful until `otel-lgtm` is up and the frontend process was started with OTEL
 enabled, a valid `OTEL_EXPORTER_OTLP_ENDPOINT`, and `OTEL_SERVICE_NAME`.
-`OTEL_SDK_DISABLED=true` starts no exporters. Allow for the export delays in
-[Local Grafana / OTLP](#local-grafana--otlp).
+`OTEL_SDK_DISABLED=true` starts no exporters. Read records as
+[Verification](#verification) describes: by trace ID at once, or by search after
+the trace store's search delay.
 
 The image and digest are the `otel-lgtm` service in `compose.yaml`
 (`grafana/otel-lgtm`). That image includes Tempo, Loki, and Prometheus.
