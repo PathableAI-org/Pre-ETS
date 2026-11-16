@@ -18,8 +18,10 @@ Feature: One session shared by a browser's tabs, renewed and logged out together
   protected content left, within two seconds of returning before its deadline.
   Not established here: warning and expiration across tabs (AC4) and the isolation of warnings,
   continuation, and expiration (AC6), which the expiration warning and expiration protection
-  features establish; where a refused page request leads instead, which is fresh entry
-  (PREETS-SESSION-004); and the notice's content beyond its heading. A renewal by a page load
+  features establish; that an inactive tab past its former deadline stays usable after a renewal
+  elsewhere (AC3) and that a tab suspended across a renewal restores its content on resuming, which
+  the expiration protection feature establishes; where a refused page request leads instead, which
+  is fresh entry (PREETS-SESSION-004); and the notice's content beyond its heading. A renewal by a page load
   reaches other tabs only once that page is interactive (gap G2), so a joining tab's deadline is
   compared with the server's, not timed; a tab still loading when the logout happens (gap G1) is
   not exercised. Suspension is emulated, as in the expiration protection feature, by a tab of
