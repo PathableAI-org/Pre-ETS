@@ -4,8 +4,10 @@ Feature: Fresh Log in from expired-session recovery and the expiration modal
   This feature establishes, in real browsers that hold a provider single sign-on session for the
   tracked local provider and a tenant whose idle timeout is five minutes, that Log in from
   in-tab recovery content and from the blocking expiration modal starts nothing until the
-  visitor activates it, then asks the provider to authenticate again and yields a new session,
-  while the earlier session is never admitted again. A second tab still behind the expiration
+  visitor activates it, then asks the provider to authenticate again although the browser still
+  holds a provider single sign-on session that would answer the same authorization without the
+  freshness request at once, and yields a new session, while the earlier session is never
+  admitted again. A second tab still behind the expiration
   modal keeps showing it, with no protected content, after another tab's login, and its own Log
   in then shows the application from a new document under the valid session without another
   provider login. A login cancelled at the provider and a provider that becomes unreachable,
@@ -46,6 +48,7 @@ Feature: Fresh Log in from expired-session recovery and the expiration modal
     Then no login has started in tabs "M1", "M2", and "R"
     When the visitor activates "Log in again" by keyboard in tab "M1"
     Then the provider asks the visitor to authenticate in tab "M1"
+    And the provider still holds the single sign-on session of tab "M1"
     When the visitor authenticates at the provider in tab "M1"
     Then tab "M1" shows the protected application under a new session
     And a request presenting the earlier session of tab "M1" is not admitted
@@ -54,6 +57,7 @@ Feature: Fresh Log in from expired-session recovery and the expiration modal
     Then tab "M2" shows the protected application from a new document without another provider login
     When the visitor activates "Log in again" in the recovery content by keyboard in tab "R"
     Then the provider asks the visitor to authenticate in tab "R"
+    And the provider still holds the single sign-on session of tab "R"
     When the visitor authenticates at the provider in tab "R"
     Then tab "R" shows the protected application under a new session
     And a request presenting the earlier session of tab "R" is not admitted
@@ -73,10 +77,12 @@ Feature: Fresh Log in from expired-session recovery and the expiration modal
     When <failure> at the next authentication step in tab "R"
     And the visitor activates "Log in again" in the recovery content by keyboard in tab "R"
     Then the provider asks the visitor to authenticate in tab "R"
+    And the provider still holds the single sign-on session of tab "R"
     When the visitor submits the authentication step at the provider in tab "R"
     Then tab "R" shows no protected content and holds no usable application session
     When the visitor tries Log in again from tab "R"
     Then the provider asks the visitor to authenticate in tab "R"
+    And the provider still holds the single sign-on session of tab "R"
     When the visitor authenticates at the provider in tab "R"
     Then tab "R" shows the protected application under a new session
     And a request presenting the earlier session of tab "R" is not admitted
@@ -102,16 +108,20 @@ Feature: Fresh Log in from expired-session recovery and the expiration modal
     And the visitor activates "Log in again" by keyboard in tab "Cancelled"
     And the visitor activates "Log in again" by keyboard in tab "Unreachable"
     Then the provider asks the visitor to authenticate in tab "Cancelled"
+    And the provider still holds the single sign-on session of tab "Cancelled"
     And the provider asks the visitor to authenticate in tab "Unreachable"
+    And the provider still holds the single sign-on session of tab "Unreachable"
     When the visitor submits the authentication step at the provider in tab "Cancelled"
     And the visitor submits the authentication step at the provider in tab "Unreachable"
     Then tab "Cancelled" shows no protected content and holds no usable application session
     And tab "Unreachable" shows no protected content and holds no usable application session
     When the visitor tries Log in again from tab "Cancelled"
     Then the provider asks the visitor to authenticate in tab "Cancelled"
+    And the provider still holds the single sign-on session of tab "Cancelled"
     When the visitor authenticates at the provider in tab "Cancelled"
     Then tab "Cancelled" shows the protected application under a new session
     When the visitor tries Log in again from tab "Unreachable"
     Then the provider asks the visitor to authenticate in tab "Unreachable"
+    And the provider still holds the single sign-on session of tab "Unreachable"
     When the visitor authenticates at the provider in tab "Unreachable"
     Then tab "Unreachable" shows the protected application under a new session

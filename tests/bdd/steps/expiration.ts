@@ -12,6 +12,7 @@ import {
   isAuthentication,
   isAuthorization,
   PROVIDER_ORIGIN,
+  providerSignsInSilently,
   resumeAt,
   showsFocusIndicator,
   signInAtProvider,
@@ -184,14 +185,8 @@ interface TabClock {
   readonly clock?: "installed" | "suspended" | undefined
 }
 
-/** Opens a named tab at `host` in `context`, optionally under Playwright's clock. */
-const openTab = async (
-  scenario: Expiration,
-  context: BrowserContext,
-  name: string,
-  host: string,
-  options: TabClock = {}
-): Promise<Tab> => {
+/** A new named page at `host` in `context`, recording what a tab records, before it has opened anything. */
+const newTab = async (scenario: Expiration, context: BrowserContext, name: string, host: string): Promise<Tab> => {
   const page = await context.newPage()
   const tab: Tab = {
     deadline: Number.NaN,
@@ -220,6 +215,19 @@ const openTab = async (
     if (new URL(response.url()).pathname !== "/session/status") return
     tab.statusAnswers.push({ at: Date.now(), status: response.status() })
   })
+  return tab
+}
+
+/** Opens a named tab at `host` in `context`, optionally under Playwright's clock. */
+const openTab = async (
+  scenario: Expiration,
+  context: BrowserContext,
+  name: string,
+  host: string,
+  options: TabClock = {}
+): Promise<Tab> => {
+  const tab = await newTab(scenario, context, name, host)
+  const { page } = tab
   if (options.clock !== undefined) await suspendTimers.beforeLoad(page)
   await page.goto(`http://${host}/`)
   tab.deadline = await readDeadline(page)
@@ -617,6 +625,97 @@ Given("the visitor has opened the roster in tab {string} and returned to the ent
     other.host === tab.host && other.page.context() === context
   )
   await settleDeadlines(sharing)
+})
+
+/** The deadline the protected page now in the tab holds, after the page load that renewed the session. */
+const deadlineAfterLoad = async (tab: Tab) => {
+  await tab.page.getByRole("button", { name: "Log out" }).waitFor({ state: "visible" })
+  tab.deadline = await heldDeadline(tab.page)
+}
+
+/** A full navigation from the entry, so the entry is the page before; the page load renews the session. */
+Given("the visitor has opened the roster in tab {string}", async function(this: AppWorld, name: string) {
+  const tab = tabOf(this, name)
+  await tab.page.goto(`http://${tab.host}/coordination/roster`)
+  await deadlineAfterLoad(tab)
+})
+
+/**
+ * The tab leaves the protected entry for a public page that runs no session coordination. Its browser has no other
+ * tab, so nothing on the session's cross-tab channel evicts the entry from the back/forward cache.
+ */
+Given("the visitor has left tab {string} for a public page", async function(this: AppWorld, name: string) {
+  const { host, page } = tabOf(this, name)
+  await page.goto(`http://${host}/login-unavailable`)
+  await page.getByRole("heading", { level: 1, name: "Login cannot start" }).waitFor({ state: "visible" })
+})
+
+/**
+ * Opens the roster by a full navigation, then the participant page in place: the App Router's own navigation, which
+ * adds a history entry without loading a document. The click is activity, so the step waits for the renewal it
+ * communicates (within a minute, B5) and takes that deadline.
+ */
+const openParticipantInPlace = async (tab: Tab) => {
+  await tab.page.goto(`http://${tab.host}/coordination/roster`)
+  await deadlineAfterLoad(tab)
+  const reported = tab.page.waitForResponse((response) => new URL(response.url()).pathname === "/session/activity", {
+    timeout: 75_000
+  })
+  await tab.page.getByRole("button", { name: "Open participant page in place" }).click()
+  await tab.page.getByRole("heading", { level: 1, name: "Coordination participant" }).waitFor({ state: "visible" })
+  const answer = await reported
+  assert.equal(answer.status(), 200)
+  const { idleDeadlineEpochMilliseconds } = (await answer.json()) as { idleDeadlineEpochMilliseconds: number }
+  tab.deadline = Math.max(tab.deadline, idleDeadlineEpochMilliseconds)
+}
+
+Given(
+  "the visitor has opened the participant page in place from the roster in tab {string}",
+  { timeout: 120_000 },
+  async function(this: AppWorld, name: string) {
+    await openParticipantInPlace(tabOf(this, name))
+  }
+)
+
+/** As above, then back to the roster in place, so the participant page is a forward entry of the same document. */
+Given(
+  "the visitor has opened the participant page in place from the roster in tab {string} and gone back to the roster",
+  { timeout: 120_000 },
+  async function(this: AppWorld, name: string) {
+    const tab = tabOf(this, name)
+    await openParticipantInPlace(tab)
+    await tab.page.goBack({ waitUntil: "commit" })
+    await tab.page.getByRole("heading", { level: 1, name: "Coordination roster" }).waitFor({ state: "visible" })
+    assert.equal(new URL(tab.page.url()).pathname, "/coordination/roster")
+  }
+)
+
+/** A new tab in the same browser opens the application entry; its earlier session is the one that browser held. */
+When(
+  "the visitor opens a new tab {string} in the browser of tab {string}",
+  async function(this: AppWorld, name: string, source: string) {
+    const from = tabOf(this, source)
+    const tab = await newTab(await scenarioOf(this), from.page.context(), name, from.host)
+    tab.session = openedSession(from, source)
+    await tab.page.goto(`http://${tab.host}/`)
+  }
+)
+
+/**
+ * PREETS-SESSION-013 AC3, observed directly: while the provider asks, the tab's browser still holds a provider single
+ * sign-on session that would answer the same authorization without `max_age` at once.
+ */
+Then("the provider still holds the single sign-on session of tab {string}", async function(
+  this: AppWorld,
+  name: string
+) {
+  const tab = tabOf(this, name)
+  const authorization = tab.loginTraffic.filter(isAuthorization).at(-1)
+  assert.ok(authorization, "expected the application to start a provider login")
+  assert.ok(
+    await providerSignsInSilently(tab.page.context(), authorization),
+    `expected the provider to sign tab "${name}" in without asking`
+  )
 })
 
 /** Tabs to the link within the modal, then presses Enter. */

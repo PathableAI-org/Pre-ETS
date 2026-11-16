@@ -4,7 +4,8 @@ Feature: Validate the selected tenant OIDC callback
   This slice recovers one tenant-bound provider attempt across frontend instances.
   A real provider return whose authentication event is confirmed fresh establishes a
   tenant-bound session that admits the application entry; a return whose provider reports
-  a stale authentication time, a return after the visitor cancels at the provider, and
+  a stale authentication time, also after the provider asked a visitor whose single sign-on
+  session it still held to authenticate again, a return after the visitor cancels at the provider, and
   untrusted, mismatched, replayed, expired, and denied returns, establish none, and after a
   stale, cancelled, or denied return a new login can begin. Tenant-mismatch denial with a
   real bound session and expired-session action denial are not established here;
@@ -38,6 +39,22 @@ Feature: Validate the selected tenant OIDC callback
     When a visitor requests "/auth/login" at "stale.localhost:3000"
     Then initiation uses the independently configured "stale" tenant
     And the authorization request asks for fresh authentication
+
+  @preets-session-013
+  Scenario: A stale authentication time after the provider asked again despite single sign-on establishes no session
+    Given production tenant sites for Springfield and Shelbyville
+    And a Stale tenant whose provider always reports an old authentication time
+    And host resolution uses base hostname "localhost"
+    And the visitor holds a provider single sign-on session for "stale.localhost:3000"
+    And a few seconds pass since the visitor last authenticated
+    When the visitor opens "/" in the browser
+    Then the provider asks the visitor to authenticate
+    And the provider still holds the visitor's single sign-on session
+    When the visitor authenticates at the provider
+    Then the provider's return establishes no application session and shows no protected content
+    When a few seconds pass since the visitor last authenticated
+    And the visitor opens "/" in a new page
+    Then the provider asks the visitor to authenticate
 
   @preets-session-013
   Scenario: Cancelling at the real provider establishes no session and a new login can begin
