@@ -175,7 +175,7 @@ See the evidence tables in [contracts/modules.md](contracts/modules.md#public-co
 - **Feature, at the receiver or in the browser**: every timing, count, absence, and exit observation.
 - **Not durable**: spans, logs, export requests, and processor wiring, which the verification agent observes (spec
   L1).
-- **Transient, already done**: the six feasibility probes in [research.md](research.md#probes). They are not
+- **Transient, already done**: the seven feasibility probes in [research.md](research.md#probes). They are not
   verification of any claim.
 
 ### Phase 4 — Implementation architecture
@@ -300,6 +300,12 @@ Plan limitations, approved with this plan for the verification gate:
 - **L-4:** With the collector unreachable, releasing the telemetry layers waits for their 3-second shutdown
   timeout. A stopping server, and each test file run with the command, ends about 3 seconds later, and the BDD
   harness may escalate to `SIGKILL` after its own 3-second wait. No result changes and nothing deliverable is lost.
+- **L-5:** A span or log record carries the time of the clock its program runs under. A test written with
+  `it.effect` runs under Effect's `TestClock`, and a program a test gives its own `Clock` runs under that one, so
+  those records carry the test's time (1970 unless the test sets it) and not the wall clock's. They leave the
+  process and reach the collector, but the local stack does not show them in the run's time range. Every
+  `tests/lib` suite is written with `it.effect`. V-012 samples a unit and an integration selection whose sampled
+  programs run under the wall clock ([research P7](research.md#probes)).
 
 ## Review notes
 
@@ -325,3 +331,11 @@ Findings and open points for the reviewer. None changes an acceptance criterion,
 6. **Open Renovate branch.** `renovate/opentelemetry-stack` may move the OpenTelemetry versions this plan was
    checked against. The implementation session re-checks the simple processors' flush and shutdown behavior and
    the exporter option if it merges first.
+7. **The trace store lists a short test run late (research P7).** In the local stack a trace search lists a span
+   about 30 seconds after the span is received, while a lookup by trace ID answers at once. The server and browser
+   claims start from a trace ID the verifier holds. A test run has none unless one of its log records carries it. The
+   unit selection emits such a record, so its half of V-012 is observable within 10 seconds. No integration suite
+   emits a log record, so the integration half is found only by the search, later than V-012's 10-second bound,
+   and comes out `not established` under VL-1. V-012 is a full claim of slice E, which a limitation cannot excuse.
+   Resolving it is not this plan's decision: it needs a specification correction to how V-012's integration half is
+   observed or bounded, or a change to the local stack's trace settings, which this plan preserves.

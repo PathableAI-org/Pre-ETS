@@ -353,6 +353,8 @@ plain `OtelEnabled` value from them; it does not parse `StartupConfig`.
 - Without the marker the layer is empty and no OpenTelemetry code runs (FR-020).
 - With it, programs provided the layer export their spans and logs through the application's `observabilityLayer`,
   with the timing the environment names.
+- A record carries the time of the clock its program runs under. The helper does not replace a test's clock, so a
+  program under `TestClock` or a fixed `Clock` exports records stamped with that clock's time (plan L-5).
 - The pipeline is built once per test file and disposed in a file-level `afterAll`, so its records have left when
   the file finishes (FR-025).
 - A build failure or an unreachable collector changes no test result (FR-022).
@@ -368,11 +370,11 @@ plain `OtelEnabled` value from them; it does not parse `StartupConfig`.
 
 ### Contract evidence
 
-| Claim                                               | Meaningful violation                             | Durable evidence                                          | Manual/transient evidence                                             | Limitations and non-duplication                          |
-| --------------------------------------------------- | ------------------------------------------------ | --------------------------------------------------------- | --------------------------------------------------------------------- | -------------------------------------------------------- |
-| A unit or integration run exports what it exercises | Nothing reaches the local stack with the command | None: test telemetry is observed, not tested              | One unit and one integration selection, quickstart §E (V-012)         | Only programs run through a provision point export (L-3) |
-| Turning telemetry on changes no result              | A test fails or hangs with the command           | The suites themselves, compared across three runs (V-013) | The three-way comparison, quickstart §D and §E                        | A selection (verification L-sample)                      |
-| Records have left when the command returns          | The last test's records are missing              | None                                                      | Receiver contents at return, under each timing, quickstart §E (V-016) | —                                                        |
+| Claim                                               | Meaningful violation                             | Durable evidence                                          | Manual/transient evidence                                             | Limitations and non-duplication                                                                               |
+| --------------------------------------------------- | ------------------------------------------------ | --------------------------------------------------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| A unit or integration run exports what it exercises | Nothing reaches the local stack with the command | None: test telemetry is observed, not tested              | One unit and one integration selection, quickstart §E (V-012)         | Only programs run through a provision point export (L-3); the sampled programs run under the wall clock (L-5) |
+| Turning telemetry on changes no result              | A test fails or hangs with the command           | The suites themselves, compared across three runs (V-013) | The three-way comparison, quickstart §D and §E                        | A selection (verification L-sample)                                                                           |
+| Records have left when the command returns          | The last test's records are missing              | None                                                      | Receiver contents at return, under each timing, quickstart §E (V-016) | —                                                                                                             |
 
 ## Cross-module dependency direction
 

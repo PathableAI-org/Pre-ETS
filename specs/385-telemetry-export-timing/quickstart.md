@@ -24,7 +24,7 @@ described below. Limitation IDs are those of [plan.md](plan.md#phase-7--implemen
 | V-009  | §A: telemetry off with each value; zero receiver requests; the protected document has no tracing configuration   | —                                    | A           | VL-3 absence           |
 | V-010  | §F: each workflow states its mode; each suite's CI command sends zero requests to the stack's address            | —                                    | F           | VL-3 absence           |
 | V-011  | §D: a tagged BDD run through the command; T-001 and T-002 found by the run's identifiers within 10 s             | —                                    | D           | VL-1                   |
-| V-012  | §E: one unit and one integration selection; T-004 found within 10 s of the command returning                     | —                                    | E           | VL-1; L-3              |
+| V-012  | §E: one unit and one integration selection under the wall clock; T-004 found within 10 s of the return           | —                                    | E           | VL-1; L-3; L-5         |
 | V-013  | §D (BDD selection) and §E (unit and integration): identical per-test results across three runs; each run ends    | The suites themselves                | D (part), E | VL-2 selection; L-4    |
 | V-014  | §D: two concurrent runs selected apart by T-001; the off switch gives zero requests                              | `tests/tooling/test-run.test.ts` (D) | D           | —                      |
 | V-015  | §C: under each timing, a request less than 1 s before `SIGTERM`; its trace and log export are at the receiver    | —                                    | C           | L-1                    |
@@ -196,10 +196,22 @@ Start from a shell that holds no `OTEL_*`, `TELEMETRY_EXPORT_TIMING`, `TEST_TELE
 Same clean shell. Redis must be running.
 
 1. **Unit and integration export (V-012).** Run
-   `pnpm test:telemetry pnpm --filter @pathableai/pre-ets-frontend-services test tests/lib/session.test.ts` and
+   `pnpm test:telemetry pnpm --filter @pathableai/pre-ets-frontend-services test tests/unit/authentication-entry.test.ts`
+   and
    `pnpm test:telemetry pnpm --filter @pathableai/pre-ets-frontend-services test:integration tests/integration/session-redis.test.ts`.
-   After each returns, run the T-004 queries with the printed identifier. Expected: `SessionService.*` spans of the
-   run within 10 seconds.
+   Both selections run the sampled programs under the wall clock, so their records carry the time of the run
+   ([L-5](plan.md#phase-7--implementation-slices)). The first is the unit selection of the steps below. As soon as
+   each command returns, run the T-004 queries with the printed identifier and record the time until the records
+   are found.
+   - **Unit.** The log query returns the run's `Tenant configuration request failed` records. Fetch the trace of
+     one record by its trace ID. Expected: the log record and a trace that holds
+     `TenantConfigService.getConfigFromAlias` with the run's `service.instance.id`, within 10 seconds. The trace
+     search later lists `SessionService.establish` for the run as well; that search is not timed.
+   - **Integration.** The suite emits no log record, so its records are found by the trace search alone. Expected by
+     V-012: `SessionService.establish` spans of the run within 10 seconds. In
+     [probe P7](research.md#probes) the search listed them 28 to 31 seconds after the command returned, which is
+     the local stack's own delay (VL-1); see [review note 7](plan.md#review-notes). The suite's `readAt` and
+     `refreshAt` programs run under a fixed clock and are not sampled (L-5).
 2. **Results unchanged (V-013).** Run each selection three ways: the plain script, through the command, and through
    the command with the endpoint naming a refused address. Compare per-test results by test name. Also run
    `pnpm test:telemetry pnpm --filter @pathableai/pre-ets-frontend test:unit` and
@@ -244,12 +256,16 @@ T-001  { RUN && resource.telemetry.sdk.language = "nodejs" && kind = server && t
 T-002  {service_name="pre-ets-frontend", service_instance_id="<run-uuid>"} |= "Reading tenant configuration" | service_version="<sha>"
 T-003  { RUN && resource.telemetry.sdk.language = "webjs" && name = "Router.transition" }
 T-003  { RUN && resource.telemetry.sdk.language = "webjs" && name = "Interaction.login" }
-T-004  { resource.service.instance.id = "<run-uuid>" && name =~ "SessionService.*" }
+T-004  {service_name="pre-ets-frontend", service_instance_id="<run-uuid>"} |= "Tenant configuration request failed"      then get_tempo_trace with the record's trace ID
+T-004  { resource.service.instance.id = "<run-uuid>" && name = "SessionService.establish" }
 Sets   { RUN } | select(name, resource.service.name)      then get_tempo_trace for each trace to list attribute names
 ```
 
 An empty result is inconclusive until the receiver or Playwright shows that the export request left. A record that
-left within 1 second but is found later than 10 seconds makes the claim `not established` under VL-1.
+left within 1 second but is found later than 10 seconds makes the claim `not established` under VL-1. A trace
+search lists a span only after the trace store has indexed it, about 30 seconds after receipt in
+[probe P7](research.md#probes); a lookup by trace ID does not wait for that. A record made under a test clock or a
+fixed clock left its process but is not shown in the run's time range (L-5).
 
 ## Cleanup
 

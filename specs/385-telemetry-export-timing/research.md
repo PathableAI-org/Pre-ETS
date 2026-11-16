@@ -29,9 +29,32 @@ verification of any claim.
 | P4    | The same burst with the exporter's `concurrencyLimit` set to 2                                        | 31 of 140 trace export requests arrived. The exporter drops a record when its in-flight limit is reached.                                                                                                |
 | P5    | No listener on the collector address, then `SIGTERM` (manual signal handling), under each processor   | Every response was unchanged. The process exited with code 0 after 3.0 s, the Effect OpenTelemetry layer's shutdown timeout.                                                                             |
 | P6    | Two Vitest files providing a context built from `observabilityLayer`, disposed in `afterAll`          | A span and a log from an `it.effect` test and from a plain `Effect.runPromise` test of each file were at the receiver when the command returned. With no listener the tests passed, 3 s slower per file. |
+| P7    | `pnpm test:telemetry` over a live-clock unit suite, an `it.effect` suite, and the integration suites  | The live-clock suite's spans were listed by the trace search about 30 s after the return, and by trace ID from its log record at once. No span of the `it.effect` suite was listed. Details below.       |
 
 `next dev` was probed once under batch: `SIGTERM` ended it with code 0 after about 0.1 s and the pending trace, log,
 and metric exports arrived, without manual signal handling.
+
+A seventh probe, P7, ran on 2026-11-16 as a plan correction, after the implementation session found during slice
+E that the spans of `tests/lib/session.test.ts` could not be found in the local stack by time. P6 had observed the
+receiver only. P7 ran at the slice E head `1ae2b82` in a detached worktree, with local Redis, the local stack
+(`grafana/otel-lgtm` 0.41.0, Tempo 3.1.1), and a loopback receiver that recorded each request's arrival time, path,
+and size and forwarded it to the stack. The worktree and the receiver were removed afterwards and nothing from the
+probe is committed. Its details:
+
+- **Clock.** Effect stamps a span's start and end, and a log record, from the fiber's `Clock`, and `it.effect`
+  provides `TestClock`, which starts at 1970 and which `tests/lib/session.test.ts` sets to January 2027. No span of
+  that run was listed in the default search range, in the run's hour, or in the days those two times name. The
+  session integration suite runs its `readAt` and `refreshAt` programs under a fixed `Clock`. The probe did not
+  identify the 22 of its 114 spans that were not listed, which is what those programs would explain; its
+  `SessionService.establish` spans run under the wall clock and were listed.
+- **Search delay.** A trace search by the run identifier listed the live-clock spans 30.6 to 31.2 s after the unit
+  command returned (four runs) and 28.1 to 28.2 s after the integration command returned (two runs). The stack's
+  Tempo reports `max_trace_live: 30s` and `max_block_duration: 30s`, which matches; the probe did not change them.
+  A lookup by trace ID answered while a search naming the same trace ID was still empty.
+- **Log records.** The live-clock unit suite emits two `Tenant configuration request failed` warnings, each with the
+  trace ID of its `TenantConfigService.getConfigFromAlias` span and the run's `service.instance.id`. A test process
+  does not apply `LOG_LEVEL`, so the debug record of T-002 is not emitted there. `tests/lib/session.test.ts` and
+  the integration suites sent no log export.
 
 ## Decisions
 
@@ -162,7 +185,9 @@ and metric exports arrived, without manual signal handling.
   guidance that only the config tests decode the environment.
 - **Consequences**: A test that runs no program through one of those points exports nothing, which is the
   specification's edge case for code that produces no telemetry (plan limitation L-3). With the collector down each
-  test file ends about 3 seconds later.
+  test file ends about 3 seconds later. A record carries the time of the clock its program runs under, so a test
+  under `TestClock` or a fixed `Clock` exports records the local stack does not show in the run's time range (plan
+  limitation L-5, P7).
 - **Alternatives considered**: Aliasing `@effect/vitest` in the Vitest configuration (misses `Effect.runPromise` and
   `ManagedRuntime` tests). Patching the tracer reference's cached default (relies on Effect internals). Starting
   only the global Node SDK (exports no Effect span or log).
@@ -189,7 +214,9 @@ and metric exports arrived, without manual signal handling.
   sampled log record is the existing `Reading tenant configuration` record, which
   `TenantConfigService.getConfigFromAlias` emits at debug level on every tenant-resolving request. Verification
   starts the application with `LOG_LEVEL=Debug` so each sampled request emits one (P3). Test-run records are the
-  existing `Effect.fn` spans of the exercised services.
+  existing `Effect.fn` spans of the exercised services, sampled from programs that run under the wall clock, and
+  for the unit selection the existing `Tenant configuration request failed` warning, whose trace ID gives a lookup
+  that does not wait for the trace search (P7).
 - **Rationale**: The specification forbids new signals, and `verification.md` says a missing observation would be a
   specification finding. Every harness observation it lists is available from existing records.
 
