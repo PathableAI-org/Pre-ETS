@@ -28,6 +28,16 @@ the tier is High either way (Authority finding 2).
   requirements BDD, and the unit and integration suites, which export the traces and logs of the code they exercise.
   Test processes start telemetry only behind the switch (FR-019, FR-020).
 
+### Session 2026-11-16
+
+- Q: The local stack's trace store lists a newly received trace in a search about 30 seconds after it arrives, and
+  answers a read by trace identifier at once. A test run whose exercised code emits no log record gives a verifier
+  no trace identifier, so its records can be reached only by a trace search. How is "found within 10 seconds"
+  bounded for them? → A: The 10-second bound applies to records reached directly, by the run's identifiers in the
+  log store or by a trace identifier. A record that can be reached only through a trace search is bounded by the
+  trace store's own search delay, which the verifier reports and which does not count against the 10 seconds.
+  When records leave their process is unchanged (L4, SC-007).
+
 ## User Scenarios & Testing _(mandatory)_
 
 The consumers of this feature are the verification agent described in the
@@ -178,7 +188,8 @@ selection of each suite kind with the switch. Query the local stack for the run 
 2. **Given** the same conditions, **When** a developer runs a unit suite or an integration suite with the switch,
    **Then** the traces and logs produced by the code those tests exercise are exported to the local stack.
 3. **Given** a test run with the switch, **When** its command returns, **Then** every record the run produced has
-   already left the test processes, so a query made right after finds them.
+   already left the test processes, so a query made right after finds them as soon as the local stack makes them
+   queryable (L4).
 4. **Given** the switch and explicitly supplied telemetry settings, such as a revision and a run identifier, **When**
    the run starts, **Then** the supplied settings take precedence over the switch's local defaults.
 5. **Given** the switch and the telemetry off switch are both set, **When** the run starts, **Then** telemetry stays
@@ -363,8 +374,15 @@ the application, and observe immediate export.
   either timing.
 - **L3**: Immediate timing sends one export request per record. It is meant for local feedback loops. The
   application does not refuse it in a production build.
-- **L4**: How fast the local stack makes a delivered record queryable is outside this feature. The 10-second bound
-  in User Story 1 includes it.
+- **L4**: How fast the local stack makes a delivered record queryable is outside this feature. The 10-second bounds
+  in User Story 1, SC-002, and SC-007 include it. They apply to a record a verifier reaches directly: a log record
+  selected by its run, or a trace read by a trace identifier the verifier holds or takes from such a log record. The
+  local stack's trace store answers a read by trace identifier at once, and lists a newly received trace in a search
+  only after its own search delay, about 30 seconds when this was specified. A record that can be reached only
+  through a trace search, because its run emitted no log record and the verifier holds no trace identifier for it,
+  is found within 10 seconds after that delay has passed. The verifier reports the delay with the observation, and
+  it does not count against the 10 seconds. A trace search does not replace a direct read where one exists. This
+  bounds only how a verifier observes a record: the record still leaves its process as FR-002 and FR-025 require.
 - **L5**: No deployed environment is observed. Production behavior is established only for a production-mode build
   running locally.
 
@@ -396,7 +414,9 @@ the application, and observe immediate export.
   resource attributes, and inspection of every exported field of both runs finds zero forbidden values.
 - **SC-006**: Under the CI configuration, the application and every test suite make zero export requests.
 - **SC-007**: With the one test-telemetry switch and no other telemetry setting, a run of each suite kind (unit,
-  integration, requirements BDD) is queryable in the local stack within 10 seconds of its command returning.
+  integration, requirements BDD) is queryable in the local stack within 10 seconds of its command returning. Records
+  of a run that can be reached only through a trace search are queryable within 10 seconds after the trace store's
+  own search delay has passed (L4).
 - **SC-008**: A selection of tests has identical results with the switch off, with the switch on, and with the switch
   on while the local stack is unreachable.
 - **SC-009**: Under each timing, a server process stopped in an orderly way within 1 second of a request delivers
@@ -416,7 +436,8 @@ the application, and observe immediate export.
 - A process's mode is the one the application already derives at startup: production, development, or test. This
   feature adds no new notion of environment.
 - "Leaves the process within 1 second" and "found within 10 seconds" are the bounds that make "immediate" testable.
-  They are observation bounds for a local run, not performance promises for a deployed environment.
+  They are observation bounds for a local run, not performance promises for a deployed environment. L4 says which
+  records the 10-second bound applies to.
 - An orderly stop is one the process is told about and completes, such as a termination signal or a test run
   finishing. A kill, a crash, and an abruptly closed page are not orderly.
 - Metrics stay periodic because the issue scopes the setting to traces and logs for the server and to traces for the

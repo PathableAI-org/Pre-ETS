@@ -43,7 +43,7 @@ observed in the local stack.
 | V-009 | With telemetry off, the setting has no effect: nothing starts and nothing is exported.                                                         | Issue Completion evidence (CI configuration); spec FR-006           | A process with telemetry off and `immediate` set sends export requests.                                                               | With telemetry off, each timing value, and an endpoint that names the receiver, the receiver gets zero requests while the application serves traffic, and a protected document carries no telemetry configuration.                                                              | Server telemetry (temporary local receiver); browser interaction   |
 | V-010 | Under the CI configuration, the application and every test suite make no export request, and no telemetry starts.                              | Issue In scope (CI); Completion evidence; spec FR-017, FR-020       | A CI job starts telemetry, or a suite run without the switch exports.                                                                 | Each CI workflow that starts the application or runs a suite sets its telemetry mode explicitly. Each suite's CI command, run under that workflow's environment, starts successfully with no collector endpoint supplied and sends zero requests to the local stack's address.  | Server telemetry (temporary local receiver on the stack's address) |
 | V-011 | With the one test-telemetry switch, a requirements BDD run exports the owned application's traces and logs to the local stack.                 | Issue In scope (test suites); Completion evidence; spec FR-018      | The switch alone is not enough, or the run's records never reach the local stack.                                                     | In an environment with no other telemetry setting, a tagged selection run with the switch is found in the trace store and the log store, selected by the run's identifiers, within 10 seconds of the command returning.                                                         | Server telemetry                                                   |
-| V-012 | With the same switch, a unit suite run and an integration suite run export the traces and logs of the code they exercise.                      | Issue In scope ("unit, integration, BDD"); spec FR-019              | Unit or integration runs export nothing with the switch on.                                                                           | For one unit selection and one integration selection, records of the operations those tests exercise are found in the local stack, selected by the run's identifiers, within 10 seconds of the command returning.                                                               | Server telemetry                                                   |
+| V-012 | With the same switch, a unit suite run and an integration suite run export the traces and logs of the code they exercise.                      | Issue In scope ("unit, integration, BDD"); spec FR-019              | Unit or integration runs export nothing with the switch on.                                                                           | For one unit selection and one integration selection, records of the operations those tests exercise are found in the local stack, selected by the run's identifiers, within 10 seconds of the command returning. Records only a trace search can reach follow L-stack's bound. | Server telemetry                                                   |
 | V-013 | Turning telemetry on does not change any test's result, with the local stack reachable or not.                                                 | Spec FR-022                                                         | A test passes with telemetry off and fails with it on, or a run hangs when the local stack is down.                                   | The same selection of each suite kind has identical per-test results with the switch off, with it on, and with it on while the collector address refuses connections. Each run ends.                                                                                            | Module test (suite results compared across runs)                   |
 | V-014 | Explicit telemetry settings take precedence over the switch's defaults, and the off switch wins.                                               | Spec FR-021, FR-023                                                 | A supplied run identifier is ignored, or a run with both switches set exports.                                                        | A run with the switch and a supplied revision and run identifier is selected by exactly those values, and a concurrent run with other values is not. A run with the switch and the telemetry off switch sends zero export requests.                                             | Server telemetry; module test                                      |
 | V-015 | An orderly stop delivers the server's pending trace and log records under both timings.                                                        | Issue In scope (flush or shutdown); spec FR-024                     | Records of a request made just before the stop never arrive.                                                                          | Under each timing, for a request sent less than 1 second before an orderly stop, the receiver holds that request's trace and log export before the process ends.                                                                                                                | Server telemetry (temporary local receiver)                        |
@@ -138,6 +138,9 @@ nothing. The issue's completion evidence is these observations.
 8. **Test runs (V-011, V-012, V-013, V-014, V-016).** In an environment with no other telemetry setting, run with the
    switch: a tagged selection of requirements BDD, a unit selection, and an integration selection. As soon as each
    command returns, query the trace and log stores for the run and record the time until its records are found.
+   Reach each record directly where the run allows it: by the run's identifiers in the log store, and by a trace
+   identifier taken from one of the run's log records. Where a selection emitted no log record, so that only a trace
+   search can reach its records, also record the search delay the trace store reports (L-stack).
    Repeat one selection with a supplied revision and run identifier while a second run uses other values, and record
    that each query returns only its own run. Repeat with the telemetry off switch also set and record zero export
    requests. Run each selection three ways (switch off, switch on, switch on with the receiver refusing connections)
@@ -161,7 +164,8 @@ nothing. The issue's completion evidence is these observations.
 
 - V-001, V-002: every sampled trace export and log export reaches the receiver within 1 second.
 - V-003, V-004, V-011, V-012: the sampled records are found in the local stack within 10 seconds, with no
-  batch-interval wait.
+  batch-interval wait. For V-012, the records of a selection that only a trace search can reach are found within 10
+  seconds after the trace store's reported search delay has passed (L-stack).
 - V-005, V-006: fewer export requests than records under batch timing, matching the base revision for the server.
 - V-007, V-008: the default for each mode, and a refusal that names the setting.
 - V-009, V-010: zero export requests and no telemetry configuration in the document.
@@ -178,6 +182,8 @@ nothing. The issue's completion evidence is these observations.
 
 - Revision, base revision, run UUID, telemetry settings of each start, local stack image, and date and time.
 - For each timing claim, the sample count and the longest observed time, and the queries and time ranges used.
+- For records only a trace search could reach, the search delay the trace store reported, why no direct read was
+  possible, and the observed time from the command's return.
 - Export request counts for the batch, off, and CI steps.
 - The compared sets' sizes and any difference, and the forbidden-data search scope and result, without matched
   values.
@@ -214,6 +220,8 @@ Facts that are never emitted as telemetry, and how they are verified instead:
   observable in telemetry. Observed at the receiver and in the received document (V-009, V-010, V-014).
 - The effective export timing itself is a non-secret configuration value. It is established by module tests (V-007)
   and by its effect, not by a new telemetry attribute.
+- The trace store's search delay, which is how long it holds a newly received trace before a search lists it: not
+  telemetry, and not set by this feature. The verifier reads it from the local stack's trace store (V-012).
 - Collector header values, query strings, fragments, and every forbidden data class: never emitted under either
   timing (V-020). The receiver records only whether the synthetic header is present.
 
@@ -247,6 +255,20 @@ records, and transcripts are not committed. Planned procedures in this document 
 - **L-stack**: a 10-second query bound (V-003, V-004, V-011, V-012) includes the local stack's own delay, which this
   feature does not control. When a record left its process within 1 second but is found later than 10 seconds, the
   claim is `not established`, not `violated`, and the report says which delay was observed.
+  - The bound applies to a record the verifier reaches directly: a log record selected by the run's identifiers, or
+    a trace read by a trace identifier the verifier holds or takes from such a log record. V-003, V-004, V-011, and
+    a V-012 selection that emits a log record are reached this way, and a trace search does not replace a direct
+    read where one exists.
+  - The local stack's trace store answers a read by trace identifier at once, and lists a newly received trace in a
+    search only after its own search delay, about 30 seconds when this was specified. A V-012 selection whose
+    exercised code emits no log record gives the verifier no trace identifier, so only a trace search reaches its
+    records. Those records are found within 10 seconds after the delay the trace store reports has passed, counted
+    from the command's return. The verifier reports that delay and the observed time, and the delay does not count
+    against the 10 seconds. Found later than that, or with no delay the verifier can read from the trace store, the
+    claim is `not established`.
+  - This bounds only the verifier's observation. A test process has ended when its command returns, so a record
+    found later still left the process before the return. When a test run's records leave its processes is V-016's
+    claim, observed at the receiver, and is not relaxed.
 - **L-sample**: timing claims are established for the sampled requests, interactions, and test selections, not for
   every route or every test. V-013 compares a selection, not the full suites.
 - **L-absence**: V-009, V-010, and V-020 establish absence for the observed runs and the seeded probes. They cannot

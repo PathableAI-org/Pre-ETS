@@ -63,3 +63,12 @@
   existing records cannot support is a finding for the specification, not a reason to add one.
 - `verification.md` records planned evidence only. No application, receiver, browser, or local-stack procedure was
   executed during specification.
+- Correction on 2026-11-16, while this pull request was open: planning and the first test-suite slice found that
+  the local stack's trace store lists a newly received trace in a search about 30 seconds after it arrives and
+  answers a read by trace identifier at once, and that the integration suites emit no log record, so a verifier
+  holds no trace identifier for their run. V-012's 10-second bound could not be met for that selection. The
+  maintainer chose to bound such records by the trace store's own search delay, reported with the observation
+  (spec Clarifications, Session 2026-11-16; spec L4 and SC-007; `verification.md` V-012, procedure step 8, and
+  L-stack). No other claim, observation, or channel changed: V-003, V-004, and V-011 are reached directly and keep
+  the 10-second bound, V-016 still observes at the receiver that records have left when the command returns, and
+  FR-002, FR-019, and FR-025 are unchanged. All checklist items still pass.
