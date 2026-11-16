@@ -26,7 +26,11 @@ const supplied = (value: string | undefined): string | undefined => value === ""
 /** The Node SDK's limit on a resource attribute's key and value. */
 const maxLength = 255
 
-/** One entry as the Node SDK's environment detector reads it, or `undefined` for an entry it rejects. */
+/**
+ * One entry as the Node SDK's environment detector reads it, or `undefined` for an entry it rejects. The application
+ * reads the list the same way (`serviceInstanceId` in packages/frontend-services/src/config/otel.ts), which root
+ * tooling may not import; change both when the detector changes.
+ */
 const attribute = (entry: string): readonly [string, string] | undefined => {
   const pair = entry.split("=")
   const [rawKey = "", rawValue = ""] = pair

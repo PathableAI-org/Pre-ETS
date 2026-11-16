@@ -83,7 +83,14 @@ void describe("test run environment (#475 V-014)", () => {
     })
   }
 
-  for (const attributes of ["service.version=abc123,broken", "service.instance.id=a=b", "service.instance.id=%E0"]) {
+  for (
+    const attributes of [
+      "service.version=abc123,broken",
+      "service.instance.id=run-1,broken",
+      "service.instance.id=a=b",
+      "service.instance.id=%E0"
+    ]
+  ) {
     void it(`keeps a list the Node SDK rejects, ${attributes}, and appends a generated identifier`, () => {
       const result = on({ OTEL_RESOURCE_ATTRIBUTES: attributes })
       assert.equal(result.runId, generated)

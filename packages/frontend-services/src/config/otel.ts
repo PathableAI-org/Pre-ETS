@@ -85,7 +85,8 @@ const resourceAttribute = (entry: string): readonly [string, string] | undefined
 
 /**
  * `service.instance.id` from an `OTEL_RESOURCE_ATTRIBUTES` list. Like the Node SDK, a list with any malformed entry
- * contributes nothing, so the browser never carries a run identifier the server's own spans lack.
+ * contributes nothing, so the browser never carries a run identifier the server's own spans lack. `pnpm test:telemetry`
+ * reads the list the same way (scripts/test-run.ts); change both when the SDK's detector changes.
  */
 const serviceInstanceId = (list: string): string | undefined => {
   const entries = list.split(",").filter((entry) => entry.trim() !== "").map(resourceAttribute)

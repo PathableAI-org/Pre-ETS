@@ -165,12 +165,20 @@ Select a run's records by its identifier, for example
 a run with a revision as well, supply `OTEL_SERVICE_VERSION` and
 `OTEL_RESOURCE_ATTRIBUTES="service.version=<sha>,service.instance.id=<run>"`, as
 the [verification harness](engineering/verification-harness.md#environment)
-does; without them `service.version` is `UNKNOWN`. A supplied list must be one
-the Node SDK accepts: `key=value` entries with any `,` or `=` in a key or value
-percent-encoded. The SDK ignores a list with any malformed entry, appended
-identifier included, and then no record carries the run identifier. With the
-local stack down, every test keeps its result and only the run's telemetry is
-lost.
+does; without them `service.version` is `UNKNOWN`. With the local stack down,
+every test keeps its result and only the run's telemetry is lost.
+
+The command reads only its own environment. Settings in
+`packages/frontend/.env.local`, which the application a BDD run owns also loads,
+do not count as supplied: there the command's defaults win over the file, and an
+off switch set only in the file keeps the application from exporting although
+the command prints a run identifier. Give a test run its telemetry settings in
+the shell. A supplied resource attribute list must be one the Node SDK accepts:
+`key=value` entries with any `,` or `=` in a key or value percent-encoded. The
+Node SDK ignores a list with any malformed entry, appended identifier included,
+so its HTTP and Redis spans then carry no run identifier, while the Effect spans
+and logs, which read the list more leniently, still do. The command does not
+detect this.
 
 ### Browser tracing switch
 
