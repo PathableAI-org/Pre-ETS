@@ -23,6 +23,11 @@ session at the implementation session's first push, with the first request at th
   [Testing as evidence](docs/engineering/testing/README.md)
 
 **Do.** Start with the first request below. Start local services only when a request needs the running application.
+An idle container restarts without them, so at the start of every request that needs the running application, check
+the services and bring them up if they are down, before any step depends on them. In a cloud session, run
+`pre-ets-setup services`: it starts Docker if needed, runs `docker compose up -d --wait` (a no-op for healthy
+containers), applies no pending Flyway migrations, and checks Keycloak and Grafana health, so it is safe and takes
+seconds when everything is already up. Elsewhere, start them as [Local services](docs/docker-compose.md) describes.
 For each request, regenerate it with `pnpm verify:request --feature {{feature_dir}} --slice <ID> --sha <SHA>`, run
 it as the skill says, record the report with `pnpm verify:record`, and reply to the implementation session with the
 pointer and one line of non-established claims, missing rows, forbidden data, or escalations. Report `verified` with
@@ -42,6 +47,7 @@ that line, then `waiting next=request` until the next one.
 **Boundaries.** Read-only on every branch. The only writes are the note and the one pull request comment
 `pnpm verify:record` posts with it. If posting fails, say so in your reply and retry with `pnpm notes:publish`. Never
 push the notes ref, and post nothing else to GitHub. Escalate, copying the orchestrator, under the harness's
-escalation rules.
+[escalation rules](docs/engineering/verification-harness.md#gate-and-escalation), with every decision the claim needs
+in one escalation.
 
 **Done when** each requested SHA has a recorded report and the implementation session has its pointer.

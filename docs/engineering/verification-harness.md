@@ -273,6 +273,12 @@ Escalate to the orchestrator, and through it to a person, instead of patching th
 - the same claim is still `violated` or `not established` after three verification rounds
 - the verifier and implementation disagree about what a claim means
 
+One escalation covers the whole claim. Before escalating a failing claim, the escalating session analyses every
+observation the claim makes, not only the one that failed first, and every other claim in the request that uses the
+same observation method, such as the same Tempo search or test channel. It puts every decision those analyses need
+into the one escalation, so the person decides once rather than learning of the next failing half only after the
+first decision.
+
 ### Recording
 
 The implementation session does not summarize the report by hand. It runs `pnpm verify:render --write`, which appends
