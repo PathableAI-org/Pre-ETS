@@ -127,8 +127,10 @@ effect.
 The setting changes only when records leave the process. Query removal, the
 resource, the endpoint, and the collector headers are the same under both
 timings, and each record is exported once. Metrics ignore the setting: both
-periodic readers keep their 60-second interval. Browser export does not read
-the setting; the page batches as described in [Browser export](#browser-export).
+periodic readers keep their 60-second interval. When browser tracing is
+effective, the page follows the server's effective timing, which it receives
+in the rendered configuration ([Browser export](#browser-export)); it has no
+setting of its own.
 
 Immediate timing is a local feedback mode that sends one request per record.
 It is assumed never to be set in production: production configuration never
@@ -154,11 +156,14 @@ route group) renders two `<meta>` elements into `<head>`:
 - `name="traceparent"`: the W3C trace context of the server's handling of
   that document request, including a trace continued from an incoming
   `traceparent` header.
-- `name="preets-browser-tracing"`: JSON with exactly four values:
-  `endpoint` (the OTLP base URL the server exports to), `serviceName`,
-  `serviceVersion`, and `serviceInstanceId` (the run identifier, from
-  `service.instance.id` in `OTEL_RESOURCE_ATTRIBUTES`; absent when that key is
-  missing or the list does not parse).
+- `name="preets-browser-tracing"`: JSON with exactly five values:
+  `endpoint` (the OTLP base URL the server exports to), `exportTiming` (the
+  server's effective [export timing](#export-timing), `immediate` or `batch`),
+  `serviceName`, `serviceVersion`, and `serviceInstanceId` (the run identifier,
+  from `service.instance.id` in `OTEL_RESOURCE_ATTRIBUTES`; absent when that
+  key is missing or the list does not parse). A document whose configuration
+  is missing any required value, or holds another export timing, starts no
+  browser tracing.
 
 Public documents, such as `/login-unavailable`, `/forbidden`, and `/_test/*`,
 render neither element. When browser tracing is off, no protected document
@@ -216,11 +221,18 @@ application origin. The local `otel-lgtm` collector already allows `http://*`
 origins ([Docker Compose](docker-compose.md#browser-export-and-cors)). A
 collector that requires headers is not supported for browser export.
 
-Spans are batched and exported about 30 seconds after they end. Keep the page
-open that long before querying. On `pagehide` the page flushes its batch with
-`keepalive` requests, so records made just before a navigation, such as a Log in
-activation, are sent; records from a page that closes abruptly may still be
-lost. A collector that is down or rejects export never changes the page.
+The page exports with the server's [export timing](#export-timing). Under
+`immediate`, each span the export filter keeps is sent in its own request when
+it ends, with no in-flight limit. Under `batch`, the web SDK's batch processor
+exports spans about 5 seconds after the first of them ends, or sooner when 512
+are waiting. Under either timing, the page flushes on `pagehide`, and the OTLP
+transport sends with `keepalive`, so records made just before a navigation,
+such as a Log in activation, are sent. The transport uses `keepalive` only while
+fewer than nine such requests and at most 60 KiB of request bodies are pending,
+inside the browser's own limits, so under `immediate` a burst of records made
+just before the page unloads may be sent without `keepalive` and lost. Records
+from a page that closes abruptly may also be lost. A collector that is down or
+rejects export never changes the page.
 
 Every span passes an export filter before it leaves the page. Only the record
 names below and the harness records in [Browser harness facts](#browser-harness-facts)
@@ -228,7 +240,8 @@ are exported. Attributes are kept
 only from the contract's allow list; `url.full` becomes `url.path`, a pathname
 with no origin, query string, or fragment. Event attributes, `exception`
 events, links, and status descriptions are removed. `resourceFetch` and
-`CORS Preflight` spans are dropped. The resource carries only `service.name`,
+`CORS Preflight` spans are dropped. An export from which the filter drops every
+span sends no request. The resource carries only `service.name`,
 `service.version`, `service.instance.id` (when rendered), and the SDK's
 `telemetry.sdk.*` attributes; `telemetry.sdk.language` is `webjs` for browser
 records and `nodejs` for server records. Server records carry the attributes in

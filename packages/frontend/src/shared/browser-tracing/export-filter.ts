@@ -1,6 +1,8 @@
 import type { Attributes } from "@opentelemetry/api"
 import type { ReadableSpan, SpanExporter } from "@opentelemetry/sdk-trace-base"
 
+import { ExportResultCode } from "@opentelemetry/core"
+
 /**
  * Record names the telemetry contract defines (T-001–T-007, T-009–T-011; #157 T-005; #156 T-001, T-003). Every other
  * span is dropped.
@@ -102,11 +104,20 @@ const filterSpan = (span: ReadableSpan): ReadableSpan => {
   return span.parentSpanContext === undefined ? filtered : { ...filtered, parentSpanContext: span.parentSpanContext }
 }
 
-/** Wraps `exporter` so every exported span passes the contract's allow lists (research D9; FR-019–FR-021a). */
+/**
+ * Wraps `exporter` so every exported span passes the contract's allow lists (research D9; FR-019–FR-021a). When the
+ * filter keeps no span, the export succeeds without a request, so a dropped span costs nothing under either export
+ * timing (#475 research D6).
+ */
 export function filterExport(exporter: SpanExporter): SpanExporter {
   return {
     export: (spans, resultCallback) => {
-      exporter.export(spans.filter((span) => EXPORTED_SPAN_NAMES.has(span.name)).map(filterSpan), resultCallback)
+      const kept = spans.filter((span) => EXPORTED_SPAN_NAMES.has(span.name)).map(filterSpan)
+      if (kept.length === 0) {
+        resultCallback({ code: ExportResultCode.SUCCESS })
+        return
+      }
+      exporter.export(kept, resultCallback)
     },
     forceFlush: () => exporter.forceFlush?.() ?? Promise.resolve(),
     shutdown: () => exporter.shutdown()

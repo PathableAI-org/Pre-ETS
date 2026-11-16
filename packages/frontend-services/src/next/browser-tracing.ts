@@ -3,10 +3,12 @@ import { context, propagation } from "@opentelemetry/api"
 import { BrowserTracing } from "../observability.js"
 import { Runtime } from "../runtime.js"
 
-/** Exactly the four values a protected document gives the browser (FR-005). */
+/** Exactly the five values a protected document gives the browser (#370 FR-005, #475 FR-014). */
 export interface BrowserTracingConfig {
   /** Absolute OTLP base URL with trailing slash, e.g. `http://127.0.0.1:4318/`. */
   readonly endpoint: string
+  /** The server's effective export timing, which the page follows. */
+  readonly exportTiming: "batch" | "immediate"
   readonly serviceInstanceId?: string | undefined
   readonly serviceName: string
   readonly serviceVersion: string
@@ -33,6 +35,7 @@ export const readBrowserTracing = async (): Promise<BrowserTracingDocument | und
   return {
     config: {
       endpoint: settings.endpoint.href,
+      exportTiming: settings.exportTiming,
       serviceInstanceId: settings.serviceInstanceId,
       serviceName: settings.serviceName,
       serviceVersion: settings.serviceVersion

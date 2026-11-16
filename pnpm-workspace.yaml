@@ -14,6 +14,7 @@ catalogs:
   opentelemetry:
     "@opentelemetry/api": "1.9.1"
     "@opentelemetry/api-logs": "0.223.0"
+    "@opentelemetry/core": "2.12.0"
     "@opentelemetry/exporter-logs-otlp-proto": "0.223.0"
     "@opentelemetry/exporter-metrics-otlp-proto": "0.223.0"
     "@opentelemetry/exporter-trace-otlp-http": "0.223.0"

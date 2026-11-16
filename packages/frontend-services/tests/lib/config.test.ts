@@ -534,25 +534,42 @@ describe("StartupConfig browser tracing switch (V-007)", () => {
 describe("StartupConfig browser tracing settings (V-009)", () => {
   const on = { ...otelOn, BROWSER_TRACING_ENABLED: "true" }
 
-  it.effect("carries exactly the server's endpoint, name, version, and run identifier, and no headers", () =>
+  it.effect("carries exactly the server's endpoint, export timing, name, version, and run identifier, and no headers", () =>
     Effect.gen(function*() {
       const exit = yield* startupWith({
         ...on,
         OTEL_EXPORTER_OTLP_HEADERS: "Authorization=Bearer synthetic-collector-token",
         OTEL_RESOURCE_ATTRIBUTES: "service.version=abc123,service.instance.id=run%2D1",
-        OTEL_SERVICE_VERSION: "abc123"
+        OTEL_SERVICE_VERSION: "abc123",
+        TELEMETRY_EXPORT_TIMING: "batch"
       })
       const settings = browserTracingOf(exit)
       assert.deepStrictEqual(
         settings === undefined ? undefined : { ...settings, endpoint: settings.endpoint.href },
         {
           endpoint: "http://127.0.0.1:4318/",
+          exportTiming: "batch",
           serviceInstanceId: "run-1",
           serviceName: "pre-ets-frontend",
           serviceVersion: "abc123"
         }
       )
     }))
+
+  it.effect.each(
+    [
+      ["immediate", "production"],
+      ["batch", "development"]
+    ] as const
+  )(
+    "carries the server's %s export timing, set over the %s default (#475 V-022)",
+    ([timing, mode]) =>
+      Effect.gen(function*() {
+        const exit = yield* startupWith({ ...on, NODE_ENV: mode, TELEMETRY_EXPORT_TIMING: timing })
+        assert.strictEqual(exportTimingOf(exit), timing)
+        assert.strictEqual(browserTracingOf(exit)?.exportTiming, timing)
+      })
+  )
 
   it.effect.each(["service.instance.id=run-1,broken", "service.instance.id=run-1,a=b=c", "service.instance.id=%E0"])(
     "starts without a run identifier when the resource attribute list %s is malformed",
@@ -672,7 +689,7 @@ describe("StartupConfig export timing (#475 V-007, V-008)", () => {
     }))
 
   it.effect.prop(
-    "exports immediately exactly when the setting is immediate, or it is unset and the process is not production",
+    "exports immediately exactly when the setting is immediate, or it is unset and the process is not production, and the page follows",
     [Schema.Literals(modes), Schema.Literals(timingSettings), Schema.Boolean],
     ([mode, setting, browserTracing]) =>
       Effect.gen(function*() {
@@ -680,8 +697,9 @@ describe("StartupConfig export timing (#475 V-007, V-008)", () => {
         const exit = yield* startupWithTiming(mode, rawTiming(setting), overrides)
         assert.isTrue(Exit.isSuccess(exit))
         const unset = setting === "absent" || setting === "empty"
-        const immediate = setting === "immediate" || (unset && mode !== "production")
-        assert.strictEqual(exportTimingOf(exit), immediate ? "immediate" : "batch")
+        const expected = setting === "immediate" || (unset && mode !== "production") ? "immediate" : "batch"
+        assert.strictEqual(exportTimingOf(exit), expected)
+        assert.strictEqual(browserTracingOf(exit)?.exportTiming, browserTracing ? expected : undefined)
       })
   )
 

@@ -94,30 +94,34 @@ a filtered-out span sends nothing. Reads T-003. Asserts V-004, V-006, V-017, V-0
 
 ### The fifth value (US3, FR-013, FR-014, research D6)
 
-- [ ] T010 [US3] In `fs/src/config/otel.ts`, add `readonly exportTiming: ExportTiming` to `BrowserTracingSettings`
+- [x] T010 [US3] In `fs/src/config/otel.ts`, add `readonly exportTiming: ExportTiming` to `BrowserTracingSettings`
       ("the server's effective export timing; the page has no other source for it") and copy the effective timing into
       it in `parseBrowserTracing`, so `browserTracing.exportTiming` always equals `exportTiming`.
-- [ ] T011 [US3] In `fs/tests/lib/config.test.ts`, extend the browser-tracing settings group: one example per timing
+- [x] T011 [US3] In `fs/tests/lib/config.test.ts`, extend the browser-tracing settings group: one example per timing
       that `browserTracing.exportTiming` equals `otel.exportTiming`, and add `exportTiming` to the existing "carries
       exactly" example (modules.md contract evidence, row 3; V-022 supporting).
-- [ ] T012 [US3] In `fs/src/next/browser-tracing.ts` and the `BrowserTracingConfig` type it owns through `fs/src/next.ts`,
+- [x] T012 [US3] In `fs/src/next/browser-tracing.ts` and the `BrowserTracingConfig` type it owns through `fs/src/next.ts`,
       add `readonly exportTiming: "batch" | "immediate"` and copy it from the settings; the configuration holds
       exactly the five values and never collector headers.
 
 ### The page (US3, FR-010, FR-013, FR-026)
 
-- [ ] T013 [US3] In `fe/src/shared/browser-tracing.ts`, render `exportTiming` in `BrowserTracingMeta` and check it as
+- [x] T013 [US3] In `fe/src/shared/browser-tracing.ts`, render `exportTiming` in `BrowserTracingMeta` and check it as
       `immediate` or `batch` beside the four existing checks; a missing or invalid value starts no tracing.
-- [ ] T014 [US3] In `fe/src/shared/browser-tracing/sdk.ts`, construct `SimpleSpanProcessor` under `immediate` and
+- [x] T014 [US3] In `fe/src/shared/browser-tracing/sdk.ts`, construct `SimpleSpanProcessor` under `immediate` and
       `BatchSpanProcessor` under `batch` over the same `filterExport(new OTLPTraceExporter(…))`, with
       `concurrencyLimit: Number.POSITIVE_INFINITY` on the exporter under `immediate`; keep the `pagehide` flush.
-- [ ] T015 [US3] In `fe/src/shared/browser-tracing/export-filter.ts`, answer success without calling the exporter when
+- [x] T015 [US3] In `fe/src/shared/browser-tracing/export-filter.ts`, answer success without calling the exporter when
       no span remains after filtering, under both timings. Decide here whether `fe/package.json` takes
       `@opentelemetry/core` from the `opentelemetry` catalog for the result code or uses a locally typed result; list a
       lockfile change separately in the pull request.
-- [ ] T016 [P] [US3] In `docs/observability.md`, update "Browser tracing switch" to five values and "Browser export"
+      Decided: `@opentelemetry/core` from the `opentelemetry` catalog, which gains the entry at the installed
+      2.12.0; a locally typed result fails `@typescript-eslint/no-unsafe-enum-assignment`.
+- [x] T016 [P] [US3] In `docs/observability.md`, update "Browser tracing switch" to five values and "Browser export"
       to say the page follows the server's timing, that a filtered-out span sends nothing, and that the 30-second
       wait applies only under `batch`; record plan limitation L-2.
+      Corrected while writing it: the installed web SDK batches for about 5 seconds (30 seconds is its export
+      timeout), and the transport stops using `keepalive` at 60 KiB of pending bodies.
 
 ### Slice completion
 
