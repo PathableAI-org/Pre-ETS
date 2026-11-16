@@ -167,9 +167,12 @@ docker compose --profile observability up -d --wait
 
 - Grafana: `http://127.0.0.1:3300`
 - OTLP HTTP for Next: `http://127.0.0.1:4318`
-- With the required endpoint and service-name configuration, request spans and
-  Effect logs are typically visible within ~30 seconds of traffic. Allow ~60
-  seconds for Effect and Node runtime metrics in Prometheus.
+- With the required endpoint and service-name configuration, a development
+  server exports each span and log record as it finishes
+  ([Operating modes](./observability.md#operating-modes)): read a request's
+  trace by ID and query its logs at once. A trace search lists it after the
+  trace store's search delay ([Verification](./observability.md#verification)).
+  Effect and Node runtime metrics reach Prometheus at their 60-second interval.
 
 Port notes: Grafana is on **3300** so it does not collide with Next on **3000**.
 Keycloak remains on **8080** (unchanged).
@@ -293,6 +296,14 @@ Use volume deletion only to reset a local disposable environment. Flyway
    switch `TENANT_RESOLUTION=host` and use `*.localhost` hosts from
    [multi-tenancy.md](./multi-tenancy.md).
 4. Restart the frontend after tenant JSON, secrets, or Keycloak recreate.
+5. To run a production build instead, build it with
+   `pnpm --filter @pathableai/pre-ets-frontend build` and start it with
+   `pnpm --filter @pathableai/pre-ets-frontend start`. A production build
+   batches its telemetry unless it sets `TELEMETRY_EXPORT_TIMING=immediate`, as
+   the verification harness does
+   ([Operating modes](./observability.md#operating-modes)). That script leaves
+   stop signals to the application, so stopping it delivers pending telemetry
+   first ([Orderly stop](./observability.md#orderly-stop)).
 
 An unknown tenant host still fails closed in host mode. Compose does not create
 application tenants; it provides Redis and the imported local broker those

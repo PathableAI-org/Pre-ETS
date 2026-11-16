@@ -18,6 +18,7 @@ import { createLoginHandler } from "../../src/next.ts"
 import { SessionService } from "../../src/session.ts"
 import { TenantAlias, TenantConfigService } from "../../src/tenant.ts"
 import { sessionWorld } from "../helpers/session.ts"
+import { testTelemetry } from "../helpers/telemetry.ts"
 
 const runtime = vi.hoisted(() => ({ runPromise: vi.fn() }))
 vi.mock("../../src/runtime.ts", () => ({ Runtime: runtime }))
@@ -100,7 +101,7 @@ const routeRuntime = (
     Effect.runPromise(
       program.pipe(
         Effect.provideService(AuthenticationService, service),
-        Effect.provide(Layer.mergeAll(provided.session, provided.tenant))
+        Effect.provide(Layer.mergeAll(provided.session, provided.tenant, testTelemetry))
       )
     )
   )

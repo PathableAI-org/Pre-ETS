@@ -2,7 +2,14 @@ import assert from "node:assert/strict"
 import { afterEach, beforeEach, describe, it } from "node:test"
 
 import { defaultNotesRef, recordReview, validateReview } from "../../scripts/review-findings.ts"
-import { checkedOut, recordReport, renderResults, runGate, validateReport } from "../../scripts/verification.ts"
+import {
+  checkedOut,
+  gateApplies,
+  recordReport,
+  renderResults,
+  runGate,
+  validateReport
+} from "../../scripts/verification.ts"
 import { featureDir, sampleRepo, type SampleRepo, sampleReport, sampleReview } from "./support.ts"
 
 type Json = Record<string, unknown>
@@ -160,6 +167,33 @@ void describe("the High fix gate", () => {
     assert.deepEqual(fixGate(), [
       `commits after the verified SHA change ${featureDir}/quickstart.md`,
       `code review: commits after the reviewed SHA change ${featureDir}/quickstart.md`
+    ])
+  })
+
+  void it("applies to a High fix and a slice, but not to a High specification or plan branch", () => {
+    const applies = (branch: string, labels: readonly string[] = ["risk:high"]): boolean =>
+      gateApplies(repo.dir, { branch, head: verified, labels })
+    assert.equal(applies("900-sample"), false)
+    assert.equal(applies("900-sample-plan"), false)
+    assert.equal(applies("fix-session-expiry"), true)
+    assert.equal(applies("901-session-expiry"), true)
+    assert.equal(applies("900-sample-impl", []), true)
+    assert.equal(applies("900-sample-impl-b2", []), true)
+    assert.equal(applies("fix-session-expiry", ["risk:standard"]), false)
+  })
+
+  void it("reads the feature directory from the tree at the head, not the working tree", () => {
+    const head = repo.commit("spec: later feature", { "specs/902-later/spec.md": "# Later\n" })
+    assert.equal(gateApplies(repo.dir, { branch: "902-later", head, labels: ["risk:high"] }), false)
+    assert.equal(gateApplies(repo.dir, { branch: "902-later", head: verified, labels: ["risk:high"] }), true)
+  })
+
+  void it("does not judge a specification or plan branch as a High fix", () => {
+    repo.git("checkout", "--quiet", "-b", "900-sample-plan")
+    record()
+    const gate = runGate(repo.dir, checkedOut(repo.dir, ["risk:high"]))
+    assert.deepEqual(gate.ok ? [] : gate.problems, [
+      "900-sample-plan is a Spec Kit specification or plan branch, which the gate does not judge"
     ])
   })
 

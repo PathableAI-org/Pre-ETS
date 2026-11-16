@@ -13,6 +13,7 @@ import {
   changedPaths,
   currentBranch,
   isCommit,
+  isDirectoryAt,
   nearestAnnotated,
   readAtSha,
   repositoryRoot,
@@ -33,6 +34,7 @@ import {
   gateForBranch,
   type ImplementationBranch,
   implementationBranch,
+  phaseFeatureDirs,
   sliceMatchesBranch
 } from "./verification/gate.ts"
 import { featureArtifactsAt } from "./verification/git.ts"
@@ -211,9 +213,22 @@ export const checkedOut = (cwd: string, labels?: readonly string[]): GateTarget 
 
 const highFixLabel = "risk:high"
 
-/** Whether marking this branch's pull request ready needs the gate: an implementation slice or a High fix. */
-export const gateApplies = (branch: string, labels: readonly string[]): boolean =>
-  isImplementationBranch(branch) || labels.includes(highFixLabel)
+/**
+ * Whether `target` is a Spec Kit specification or plan branch: it names a feature directory, `{number}-{slug}` or
+ * `{number}-{slug}-plan`, that exists in the tree at its head. Such a pull request carries the feature's tier label,
+ * risk:high included, but has no slice to verify or review. A head missing from the clone shows no directory.
+ */
+const isPhaseBranch = (cwd: string, target: GateTarget): boolean =>
+  target.branch !== undefined
+  && phaseFeatureDirs(target.branch).some((featureDir) => isDirectoryAt(cwd, target.head, featureDir))
+
+/**
+ * Whether marking the target's pull request ready needs the gate: an implementation slice, or a High fix, which is a
+ * branch labelled risk:high that is not a Spec Kit specification or plan branch.
+ */
+export const gateApplies = (cwd: string, target: GateTarget): boolean =>
+  implementationBranch(target.branch) !== undefined
+  || (target.labels?.includes(highFixLabel) === true && !isPhaseBranch(cwd, target))
 
 const slicePass = (cwd: string, branch: ImplementationBranch, target: GateTarget): Outcome<VerificationReport> => {
   const sliceId = branchSlice(cwd, branch, target.head)
@@ -268,6 +283,9 @@ const passFor = (cwd: string, target: GateTarget): Outcome<VerificationReport> =
       `${nameOf(target)} is not an implementation-slice branch, and no pull request was found to show a High fix`
     )
   }
+  if (isPhaseBranch(cwd, target)) {
+    return fail(`${nameOf(target)} is a Spec Kit specification or plan branch, which the gate does not judge`)
+  }
   return target.labels.includes(highFixLabel)
     ? fixPass(cwd, target)
     : fail(`${nameOf(target)} is not an implementation-slice branch or a High fix labelled ${highFixLabel}`)
@@ -275,8 +293,8 @@ const passFor = (cwd: string, target: GateTarget): Outcome<VerificationReport> =
 
 /**
  * The gate for `target`, by default the checked-out branch: the slice gate on an implementation-slice branch, the
- * fix gate on a branch whose pull request is labelled risk:high. Labels come from the pull request; without them only
- * an implementation-slice branch can be judged.
+ * fix gate on a branch whose pull request is labelled risk:high and that is not a Spec Kit specification or plan
+ * branch. Labels come from the pull request; without them only an implementation-slice branch can be judged.
  */
 export const runGate = (cwd: string, target: GateTarget = checkedOut(cwd)): Outcome<GatePass> => {
   const pass = passFor(cwd, target)

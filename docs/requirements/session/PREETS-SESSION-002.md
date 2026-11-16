@@ -23,6 +23,11 @@ The tenant identity provider owns authentication mechanisms.
   vendor-specific application policy. Microsoft is a first-class compatibility test scenario. The repository
   Compose Keycloak service is the current testing environment; local results do not establish Microsoft
   compatibility. This refinement awaits Git/PR approval and does not claim executed provider evidence.
+- Decision: Maintainer direction on 2026-11-16 ([#444](https://github.com/PathableAI-org/Pre-ETS/issues/444))
+  accepts the outstanding Microsoft scenarios as a limitation. Evidence stays provider-neutral, against the local
+  Keycloak environment, until a real client is available for discovery of the Microsoft product, tenant, and any
+  broker topology. Microsoft compatibility remains unverified and unclaimed. See the
+  [shared session context](../context/session-management.md#provider-neutral-compatibility-evidence-2026-10-17).
 
 ## Acceptance criteria
 

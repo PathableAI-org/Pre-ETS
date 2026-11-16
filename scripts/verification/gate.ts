@@ -20,6 +20,15 @@ export const implementationBranch = (branch: string | undefined): Implementation
   return match?.[1] === undefined ? undefined : { featureDir: `specs/${match[1]}`, sliceSuffix: match[2] }
 }
 
+/**
+ * The feature directories a Spec Kit specification `{number}-{slug}` or plan `{number}-{slug}-plan` branch could name:
+ * the branch itself and, without a trailing `-plan`, its specification. A slug may itself end in `-plan`, so both count.
+ */
+export const phaseFeatureDirs = (branch: string): readonly string[] =>
+  /^\d+-[a-z0-9-]+$/i.test(branch)
+    ? [...new Set([branch, branch.replace(/-plan$/i, "")])].map((name) => `specs/${name}`)
+    : []
+
 /** Whether a report or review names this branch's feature and, for a suffixed branch, its slice. */
 export const sliceMatchesBranch = (
   evidence: { readonly featureDir?: string | undefined; readonly label: string; readonly sliceId: string },

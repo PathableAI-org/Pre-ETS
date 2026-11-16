@@ -65,6 +65,16 @@ const writeStderr = (sentence: string): void => {
   }
 }
 
+/** Exits with `code` once `work` settles, or after the fatal bound when it does not. */
+const exitAfter = async (work: Promise<void>, code: number): Promise<never> => {
+  const timer = setTimeout(() => {
+    process.exit(code)
+  }, fatalExitMilliseconds)
+  await work
+  clearTimeout(timer)
+  process.exit(code)
+}
+
 /** Builds the production runtime and publishes it for request handlers. */
 export const startProductionRuntime = (): Promise<void> => {
   let managed: ManagedRuntime.ManagedRuntime<ApplicationServices, unknown> | undefined
@@ -82,25 +92,23 @@ export const startProductionRuntime = (): Promise<void> => {
     return disposal
   }
 
+  /**
+   * The first SIGTERM or SIGINT disposes the runtime, which flushes pending telemetry, and then exits with code 0.
+   * This handler is the only one when the host leaves signals to the application (`NEXT_MANUAL_SIG_HANDLE=true`, set
+   * by the frontend `start` script); otherwise Next exits first (docs/observability.md).
+   */
   const onSignal = () => {
     if (fatal || shuttingDown) return
     shuttingDown = true
-    void disposeOnce().then(() => {
-      process.exit(0)
-    })
+    void exitAfter(disposeOnce(), 0)
   }
   process.on("SIGTERM", onSignal)
   process.on("SIGINT", onSignal)
 
-  const fail = async (): Promise<never> => {
+  const fail = (): Promise<never> => {
     fatal = true
-    const timer = setTimeout(() => {
-      process.exit(1)
-    }, fatalExitMilliseconds)
     writeStderr(startupFailed)
-    await disposeOnce()
-    clearTimeout(timer)
-    process.exit(1)
+    return exitAfter(disposeOnce(), 1)
   }
 
   return Effect.runPromise(makeRuntime((runtime) => {

@@ -8,10 +8,12 @@ Feature: Default entry-point protection
   login. Tenant failure keeps its 404 or 500 ahead of protection. Fresh browser entry is
   bounded request-level evidence that the authorization request carries max_age=0;
   confirmation of a fresh event and admission of the resulting session are observed in the
-  callback feature (#158). Cross-instance recognition, tenant mismatch with a real session,
-  public static assets (finding F-1) and Server Action recovery content (#157) remain
-  incomplete here. Pages and a Server Action added without a public designation are
-  protected; no route handler outside the gate's own endpoints exists to show the same.
+  callback feature. Cross-instance recognition, tenant mismatch with a real session, and
+  Server Action recovery content are not established here; shared-session-instances.feature,
+  tenant-session-binding.feature, and expired-content-recovery.feature hold that evidence. The
+  content assessment of the public build output remains incomplete. Pages and a Server
+  Action added without a public designation are protected; no route handler outside the
+  gate's own endpoints exists to show the same.
 
   @preets-session-004
   Scenario Outline: A protected page navigation leads to the tenant provider

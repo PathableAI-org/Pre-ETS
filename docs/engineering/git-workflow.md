@@ -355,7 +355,11 @@ Change the earliest phase that owns the decision.
 
 When the owning pull request is still open, edit that branch, restack the branches above it, inspect each resulting
 diff, rerun the affected checks, and ask for review where a decision changed. Resolve conflicts by keeping unrelated
-work. Stop when the correct resolution is ambiguous.
+work. Stop when the correct resolution is ambiguous. A correction moves upward only by rebasing: never merge the
+lower branch into a branch above it. A merge commit in an upper branch leaves the stack's history non-linear, and a
+later `gh stack rebase --upstack` then rewrites that branch unpredictably. The
+[`speckit-stack` skill](../../.agents/skills/speckit-stack/SKILL.md#restack) gives the rebase commands, including the
+fallback when `gh stack rebase --upstack` cannot be used.
 
 When the owning phase is already on `main`, open a new corrective pull request. Leave the original squash commit in
 history. If the correction is small, merge it first and then rebase the open stack onto `main`. If a review already
@@ -368,7 +372,7 @@ the verified or reviewed commit to the restacked head changes nothing but the fe
 results. That is the case when a lower slice only recorded its results, and never when a correction changed the
 feature's artifacts or any code. Report which decisions changed, which downstream assumptions and public contracts
 are affected, which automated or manual verification must be repeated, and which earlier evidence no longer
-applies. Rebase to restack; do not merge evidence commits upward to keep verified commits as ancestors.
+applies.
 
 ## Concurrent work and recovery
 

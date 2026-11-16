@@ -46,6 +46,13 @@
           "speckit.assess.define",
           "speckit.assess.shape",
           "speckit.assess.decide"
+        ],
+        "cursor-agent": [
+          "speckit.assess.intake",
+          "speckit.assess.research",
+          "speckit.assess.define",
+          "speckit.assess.shape",
+          "speckit.assess.decide"
         ]
       },
       "registered_skills": [
@@ -75,6 +82,13 @@
           "speckit.git.commit"
         ],
         "claude": [
+          "speckit.git.feature",
+          "speckit.git.validate",
+          "speckit.git.remote",
+          "speckit.git.initialize",
+          "speckit.git.commit"
+        ],
+        "cursor-agent": [
           "speckit.git.feature",
           "speckit.git.validate",
           "speckit.git.remote",

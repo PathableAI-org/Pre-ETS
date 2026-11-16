@@ -7,6 +7,7 @@ import { join } from "node:path"
 
 import { tenantFailureStatus } from "../../src/next.ts"
 import { TenantConfigService, type TenantFailure } from "../../src/tenant.ts"
+import { testTelemetry } from "../helpers/telemetry.ts"
 
 const alpha = {
   displayName: "Alpha Organization",
@@ -56,7 +57,8 @@ const withFiles = <A, E>(
             ...overrides
           }),
           Path.layer
-        ))
+        )),
+        Layer.merge(testTelemetry)
       )
     ),
     Effect.provideService(References.MinimumLogLevel, "Error")
@@ -265,7 +267,8 @@ describe("TenantConfigService file configuration [PREETS-TENANT-003, PREETS-TENA
       }).pipe(
         Effect.provide(
           TenantConfigService.layer(resolutionConfig("host", directory)).pipe(
-            Layer.provide(NodeServices.layer)
+            Layer.provide(NodeServices.layer),
+            Layer.merge(testTelemetry)
           )
         ),
         Effect.provideService(References.MinimumLogLevel, "Error")

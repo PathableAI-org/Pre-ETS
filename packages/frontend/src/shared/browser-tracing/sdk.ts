@@ -6,7 +6,7 @@ import { registerInstrumentations } from "@opentelemetry/instrumentation"
 import { DocumentLoadInstrumentation } from "@opentelemetry/instrumentation-document-load"
 import { type FetchCustomAttributeFunction, FetchInstrumentation } from "@opentelemetry/instrumentation-fetch"
 import { defaultResource, resourceFromAttributes } from "@opentelemetry/resources"
-import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-base"
+import { BatchSpanProcessor, SimpleSpanProcessor, type SpanProcessor } from "@opentelemetry/sdk-trace-base"
 import { WebTracerProvider } from "@opentelemetry/sdk-trace-web"
 
 import { filterExport } from "./export-filter.ts"
@@ -45,6 +45,20 @@ const causedRequest = (input: RequestInfo | URL, init: RequestInit | undefined):
 }
 
 /**
+ * The span processor for the server's export timing, over the filtered exporter either way. Under `immediate` each
+ * span the filter keeps is sent in its own request when it ends. The exporter refuses an export once 30 requests are in
+ * flight, which a replay of buffered facts can reach, so that limit is lifted under `immediate` (#475 research D3).
+ */
+const spanProcessor = (config: BrowserTracingConfig, traceUrl: string): SpanProcessor => {
+  if (config.exportTiming === "batch") {
+    return new BatchSpanProcessor(filterExport(new OTLPTraceExporter({ url: traceUrl })))
+  }
+  return new SimpleSpanProcessor(
+    filterExport(new OTLPTraceExporter({ concurrencyLimit: Number.POSITIVE_INFINITY, url: traceUrl }))
+  )
+}
+
+/**
  * Registers the web SDK: a provider exporting filtered spans over OTLP/HTTP straight to the collector with no
  * headers, `traceparent` on same-origin `fetch` only, and the document-load records continuing the rendered
  * `traceparent` (research D4–D7, D9, D10). Then it wraps `fetch` with the cause wrapper, flushes on `pagehide`, replays
@@ -59,7 +73,7 @@ export function startSdk(config: BrowserTracingConfig, startup: SdkStartup): (fa
       "service.name": config.serviceName,
       "service.version": config.serviceVersion
     })),
-    spanProcessors: [new BatchSpanProcessor(filterExport(new OTLPTraceExporter({ url: traceUrl })))]
+    spanProcessors: [spanProcessor(config, traceUrl)]
   })
   provider.register()
   registerInstrumentations({
@@ -74,8 +88,8 @@ export function startSdk(config: BrowserTracingConfig, startup: SdkStartup): (fa
     tracerProvider: provider
   })
   wrapFetch(startup.claimCause)
-  // Records made just before the page leaves, such as a Log in activation (#157 T-005), are still batched. Flushing
-  // on `pagehide` sends them before the document unloads; the OTLP transport uses `keepalive`.
+  // Records made just before the page leaves, such as a Log in activation (#157 T-005), may still be batched or in
+  // flight. Flushing on `pagehide` sends them before the document unloads; the OTLP transport uses `keepalive`.
   addEventListener("pagehide", () => {
     void provider.forceFlush()
   })

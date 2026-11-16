@@ -170,6 +170,14 @@ export const setTenantPolicy = async (
 }
 
 /**
+ * Rewrites only Springfield's idle timeout, valid or not; sessions renewed or established afterwards adopt it, and a
+ * value outside 5 to 30 makes the tenant an ordinary missing tenant.
+ */
+When("Springfield's tenant file changes to an idle timeout of {int}", async function(this: AppWorld, minutes: number) {
+  await setTenantPolicy(this, "springfield", { idleTimeoutMinutes: minutes })
+})
+
+/**
  * The idle timeout a scenario wrote to the tenant's file, in milliseconds: a renewal sets the deadline that long after
  * the server received it. The tenant default is not assumed, so the scenario must set the timeout itself.
  */
@@ -179,9 +187,22 @@ export const configuredIdleTimeout = async (world: AppWorld, alias: string): Pro
   return Number(tenant.idleTimeoutMinutes) * 60_000
 }
 
+/** Springfield's idle timeout as given, with a warning lead of 0, which no timeout from 1 up makes invalid. */
+const setInvalidTimeout = (world: AppWorld, idleTimeoutMinutes: unknown) =>
+  setTenantPolicy(world, "springfield", { idleTimeoutMinutes, warningLeadMinutes: 0 })
+
 Given("the selected Springfield tenant file is {string}", async function(this: AppWorld, condition: string) {
   const selectedFile = path.join(this.directory, "springfield.json")
   const arrange: Record<string, () => Promise<void>> = {
+    // Invalid idle timeouts (PREETS-SESSION-008 AC1), the five "an idle timeout of" entries: each explicit value fails
+    // the selected document rather than falling back to the 30-minute default. Each sets a warning lead of 0, which is
+    // below any timeout, so the file is invalid for its timeout alone: an omitted lead would default to 5 and make a
+    // timeout of 4 invalid by the lead rule even with the timeout's own bound loosened.
+    "an idle timeout of 4": () => setInvalidTimeout(this, 4),
+    "an idle timeout of 7.5": () => setInvalidTimeout(this, 7.5),
+    "an idle timeout of 10, as text": () => setInvalidTimeout(this, "10"),
+    "an idle timeout of 31": () => setInvalidTimeout(this, 31),
+    "an idle timeout of null": () => setInvalidTimeout(this, null),
     // Invalid warning leads (#156 FR-003, V-004): each fails the selected document as schema-invalid.
     "a warning lead above its idle timeout": () =>
       setTenantPolicy(this, "springfield", { idleTimeoutMinutes: 5, warningLeadMinutes: 6 }),

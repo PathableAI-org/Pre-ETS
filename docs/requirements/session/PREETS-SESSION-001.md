@@ -31,6 +31,12 @@ and sign-in failures must be explainable without authenticated access.
   handlers, and Server Actions, including `/`; static assets needed to display unauthenticated pages may be
   accessible without a session only when they contain no protected information. These refinements are subject
   to Git/PR approval.
+- Decision: Maintainer direction on 2026-11-16 ([#444](https://github.com/PathableAI-org/Pre-ETS/issues/444),
+  decision 5) designates the framework's content-hashed build output (`/_next/static/**`) as a public asset
+  class. Protected information is only ever server-rendered and never placed in client bundles. Browser and
+  metadata assets (`/favicon.ico`, icon, manifest, robots, and sitemap routes) and the image optimizer
+  (`/_next/image`) stay protected until a public page needs one. That asset is then designated individually,
+  with its own content assessment.
 
 ## Acceptance criteria
 
@@ -62,7 +68,7 @@ must demonstrate that `/_test` routes do not require authentication and that a d
 session does not create one. HTTP/application evidence must also establish unauthenticated callback reachability
 and sign-in error presentation, while failed or rejected callbacks do not establish authenticated access.
 Application/resource-content assessment must demonstrate that publicly accessible assets needed for these
-pages contain no protected information. No specific authentication-failure response for deferred backend
+pages contain no protected information, including the public build output designated on 2026-11-16. No specific authentication-failure response for deferred backend
 resources is established here.
 Diagnostic configuration safety and production ingress protection require their
 own evidence; unauthenticated application access does not establish either.

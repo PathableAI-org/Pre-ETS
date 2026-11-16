@@ -182,6 +182,19 @@ void describe("the ready hook's decision", () => {
     assert.equal(kind(readyDecision(mcpUpdate({ draft: false }), light)), "approve")
   })
 
+  void it("approves a High specification or plan pull request, and still gates a High fix and a slice", () => {
+    const later = repo.commit("spec: later feature", { "specs/902-later/spec.md": "# Later\n" })
+    const decide = (ref: string, sha = verified): Decision =>
+      readyDecision(mcpUpdate({ draft: false }), fakeGitHub({ pulls: [restPull(7, { ref, sha }, ["risk:high"])] }))
+    assert.equal(kind(decide("900-sample")), "approve")
+    assert.equal(kind(decide("900-sample-plan")), "approve")
+    assert.equal(kind(decide("902-later", later)), "approve")
+    for (const fix of ["fix-session-expiry", "901-session-expiry", "902-later"]) {
+      assert.match(JSON.stringify(decide(fix)), /no verification report/, fix)
+    }
+    assert.match(JSON.stringify(decide(slice)), /no verification report/)
+  })
+
   void it("blocks when the pull request's head is not in this clone or the pull request cannot be read", () => {
     const missing = "f".repeat(40)
     const ahead = fakeGitHub({ pulls: [restPull(7, { ref: slice, sha: missing })] })

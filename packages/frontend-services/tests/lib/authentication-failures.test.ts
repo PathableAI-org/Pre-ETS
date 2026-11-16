@@ -8,6 +8,7 @@ import type { TenantFailure } from "../../src/tenant.ts"
 import { AuthenticationService, AuthenticationUnavailable } from "../../src/authentication.ts"
 import { TenantConfigService } from "../../src/tenant.ts"
 import { authenticationSettings, makeMemoryRedis } from "../helpers/authentication.ts"
+import { testTelemetry } from "../helpers/telemetry.ts"
 
 const withScenario = <A, E, R>(program: Effect.Effect<A, E, AuthenticationService | R>, options: {
   readonly issuer?: string | undefined
@@ -32,7 +33,8 @@ const withScenario = <A, E, R>(program: Effect.Effect<A, E, AuthenticationServic
               }
             }))
         })),
-        Layer.provide(Path.layer)
+        Layer.provide(Path.layer),
+        Layer.merge(testTelemetry)
       )
     ),
     Effect.provideService(References.MinimumLogLevel, "Error")

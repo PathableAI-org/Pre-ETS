@@ -21,7 +21,9 @@ attribution rule in every brief and message.
 - Read state only: REST reads through `gh api` (issues, pulls, check runs, reviews, changed files) or the GitHub
   tools, `gh stack view --json`, `pnpm notes:sync <pr>` (it writes only local notes), `pnpm verify:show`,
   `pnpm review:show`, `git notes --ref=<ref> list`, `git rev-list`, the slice table in `plan.md` through
-  `git show <sha>:<path>`, and session status. Never read diffs, source files, or transcripts.
+  `git show <sha>:<path>`, and session status. Never read diffs, source files, or transcripts. That rules out
+  grepping or opening source files and running `git diff` or `git diff --stat` in any form; send a question about
+  code to the session that owns it.
 - Never poll or loop on CI. Act on a session's report message, a person's message, a status request, or the one
   fallback check-in under [Starting a role session](#starting-a-role-session). Sessions report by messaging you; you
   are not told when a session ends a turn.
@@ -63,9 +65,12 @@ For each session:
    brief as the prompt.
 3. Record its name and session ID. Peers get each other's IDs in their briefs.
 4. Schedule one fallback check-in, about two hours out (`send_later` in cloud sessions), whenever you start or brief
-   a session that owes you a report. When it fires, read the pull request and session status once and act on what
-   they show; if the session finished without reporting, treat its state as its report. Do not reschedule it as a
-   loop: schedule a new one only after briefing a session again. Cancel it when the report arrives first.
+   a session that owes you a report. Record the scheduled task's ID (`send_later` returns a `trigger_id`) next to
+   that session's name, ID, and the brief it follows. When that session's matching report arrives first, cancel that
+   ID (`delete_trigger` in cloud sessions) before acting on the report. When it fires, read the pull request and
+   session status once and act on what they show; if the session finished without reporting, treat its state as its
+   report. Do not reschedule it as a loop: schedule a new one only after briefing a session again, and record its ID
+   the same way.
 
 ## Phases
 
@@ -158,6 +163,15 @@ session the slice waits on. A verified or reviewed SHA that is not the head is f
 head is evidence-only, including a SHA a restack left off the branch; the implementation session's gate run decides
 that, not you. After a restack, report per slice whether that gate run kept its evidence or needs new rounds. A merged slice shows `merged` and needs
 no note lookup.
+
+End every status you print, and every notification that waits on the person, with an **Open decisions** list: each
+question you have put to the person, with the slice or phase and the note pointer or message it came from. Carry
+each one into every later status until the person answers it or you withdraw it, and say which when you drop it. An
+empty list prints as `Open decisions: none`.
+
+A bare approval such as "proceed" that arrives while a question is open approves only the phase or stop it plainly
+answers. It does not answer the open questions. Act on the approval, then ask each open question again, by name, in
+the same reply.
 
 ## Wrap-up
 

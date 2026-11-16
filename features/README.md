@@ -2,7 +2,8 @@
 
 Executable acceptance scenarios live under [`tests/bdd/requirements/`](../tests/bdd/requirements/).
 They observe a running Next.js application over HTTP and in Chromium for missing-page and forbidden-page presentation,
-real-provider delegation, renewal by qualifying activity, and session expiration and recovery journeys.
+real-provider delegation, renewal by qualifying activity, shared logout across tabs, and session expiration and
+recovery journeys.
 Tests never connect to Redis or other backing services directly; Compose (or CI services) may still run for the app process.
 
 Before authoring or reviewing scenarios and their steps, read
@@ -37,8 +38,11 @@ pnpm test:bdd
 
 `REDIS_URL` defaults to `redis://127.0.0.1:6379` for the owned Next process. That process otherwise takes its
 server configuration from the shell and `packages/frontend/.env.local`, so OTEL needs either `OTEL_SDK_DISABLED=true`,
-which CI sets, or both `OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_SERVICE_NAME`
-([Observability](../docs/observability.md#environment-variables)). Each scenario owns a
+which CI sets ([Operating modes](../docs/observability.md#operating-modes)), or both `OTEL_EXPORTER_OTLP_ENDPOINT` and
+`OTEL_SERVICE_NAME`
+([Observability](../docs/observability.md#environment-variables)). To export a run's traces and logs to the local
+stack, run the scenarios through `pnpm test:telemetry`, which supplies both
+([Telemetry for a test run](../docs/observability.md#telemetry-for-a-test-run)). Each scenario owns a
 temporary tenant directory and explicit callback origins/loopback permission. Cleanup removes only that
 scenario's resources. The registered `http://springfield.localhost:3000` and
 `http://shelbyville.localhost:3000` callback origins do not follow Next's random transport port or logical

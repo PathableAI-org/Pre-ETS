@@ -4,11 +4,16 @@ import { Config, Option, Schema, SchemaIssue } from "effect"
 export interface BrowserTracingSettings {
   /** The OTLP base URL the server exports to; the browser appends `v1/traces` the same way. */
   readonly endpoint: URL
+  /** The server's effective export timing; the page has no other source for it. */
+  readonly exportTiming: ExportTiming
   /** `service.instance.id` from `OTEL_RESOURCE_ATTRIBUTES`, when present. */
   readonly serviceInstanceId?: string | undefined
   readonly serviceName: string
   readonly serviceVersion: string
 }
+
+/** When finished trace records and emitted log records leave the process (docs/observability.md). */
+export type ExportTiming = "batch" | "immediate"
 
 export interface OtelDisabled {
   readonly disabled: true
@@ -19,6 +24,8 @@ export interface OtelEnabled {
   readonly browserTracing: BrowserTracingSettings | undefined
   readonly disabled: false
   readonly endpoint: URL
+  /** `TELEMETRY_EXPORT_TIMING`, or the default for the process's `NODE_ENV`. */
+  readonly exportTiming: ExportTiming
   readonly headers: Readonly<Record<string, string>>
   readonly serviceName: string
   readonly serviceVersion: string
@@ -34,13 +41,20 @@ const headers = Config.Record(
 )
 const serviceName = Config.NonEmptyString("OTEL_SERVICE_NAME")
 const serviceVersion = Config.NonEmptyString("OTEL_SERVICE_VERSION")
+/** Exactly `immediate` or `batch`; any other spelling fails startup. An empty value counts as absent. */
+const exportTiming = Config.option(Config.Literals(["immediate", "batch"], "TELEMETRY_EXPORT_TIMING"))
 
-const rawConfig = (withoutEcho: <A>(name: string, codec: Schema.Codec<A, string>) => Config.Config<A>) =>
+const rawConfig = (
+  withoutEcho: <A>(name: string, codec: Schema.Codec<A, string>) => Config.Config<A>,
+  env: Config.Config<"development" | "production" | "test">
+) =>
   Config.all({
     /** Local verification only; production configuration never sets it (docs/observability.md). */
     browserTracing: Config.withDefault(Config.Boolean("BROWSER_TRACING_ENABLED"), false),
     disabled: Config.withDefault(Config.Boolean("OTEL_SDK_DISABLED"), false),
     endpoint: Config.option(withoutEcho("OTEL_EXPORTER_OTLP_ENDPOINT", Schema.URLFromString)),
+    env,
+    exportTiming,
     headers: Config.withDefault(headers, {}),
     /** Owned by the Node SDK, which reads it again; only `service.instance.id` is taken here. */
     resourceAttributes: Config.withDefault(Config.String("OTEL_RESOURCE_ATTRIBUTES"), ""),
@@ -71,7 +85,8 @@ const resourceAttribute = (entry: string): readonly [string, string] | undefined
 
 /**
  * `service.instance.id` from an `OTEL_RESOURCE_ATTRIBUTES` list. Like the Node SDK, a list with any malformed entry
- * contributes nothing, so the browser never carries a run identifier the server's own spans lack.
+ * contributes nothing, so the browser never carries a run identifier the server's own spans lack. `pnpm test:telemetry`
+ * reads entries the same way (scripts/test-run.ts); change both when the SDK's detector changes.
  */
 const serviceInstanceId = (list: string): string | undefined => {
   const entries = list.split(",").filter((entry) => entry.trim() !== "").map(resourceAttribute)
@@ -86,22 +101,24 @@ const renderable = (url: URL): boolean =>
 
 const parseBrowserTracing = (
   config: RawConfig,
-  endpoint: URL,
-  name: string
+  server: Pick<BrowserTracingSettings, "endpoint" | "exportTiming" | "serviceName">
 ): Config.Config<BrowserTracingSettings | undefined> => {
   if (!config.browserTracing) return Config.succeed(undefined)
-  if (!renderable(endpoint)) {
+  if (!renderable(server.endpoint)) {
     return invalid(
       "BROWSER_TRACING_ENABLED requires an OTEL_EXPORTER_OTLP_ENDPOINT without credentials, query, or fragment"
     )
   }
   return Config.succeed({
-    endpoint,
+    ...server,
     serviceInstanceId: serviceInstanceId(config.resourceAttributes),
-    serviceName: name,
     serviceVersion: config.serviceVersion
   })
 }
+
+/** The supplied timing; otherwise a production process batches and development and test export immediately. */
+const effectiveExportTiming = (config: RawConfig): ExportTiming =>
+  Option.getOrElse(config.exportTiming, () => config.env === "production" ? "batch" : "immediate")
 
 const parseRawConfig = (config: RawConfig): Config.Config<OtelSettings> => {
   if (config.disabled) {
@@ -116,21 +133,27 @@ const parseRawConfig = (config: RawConfig): Config.Config<OtelSettings> => {
     return invalid("OTEL_SERVICE_NAME must be provided when otel is not disabled")
   }
 
-  const endpoint = config.endpoint.value
-  const name = config.serviceName.value
-  return parseBrowserTracing(config, endpoint, name).pipe(
+  const server = {
+    endpoint: config.endpoint.value,
+    exportTiming: effectiveExportTiming(config),
+    serviceName: config.serviceName.value
+  }
+  return parseBrowserTracing(config, server).pipe(
     Config.map((browserTracing) => ({
+      ...server,
       browserTracing,
       disabled: false as const,
-      endpoint,
       headers: config.headers,
-      serviceName: name,
       serviceVersion: config.serviceVersion
     }))
   )
 }
 
-/** Browser tracing is effective only when OTEL is enabled and the switch decodes to true (research D1). */
+/**
+ * Browser tracing is effective only when OTEL is enabled and the switch decodes to true. `env` is the process's
+ * decoded `NODE_ENV`, which sets the default export timing.
+ */
 export const otelConfig = (
-  withoutEcho: <A>(name: string, codec: Schema.Codec<A, string>) => Config.Config<A>
-): Config.Config<OtelSettings> => rawConfig(withoutEcho).pipe(Config.flatMap(parseRawConfig))
+  withoutEcho: <A>(name: string, codec: Schema.Codec<A, string>) => Config.Config<A>,
+  env: Config.Config<"development" | "production" | "test">
+): Config.Config<OtelSettings> => rawConfig(withoutEcho, env).pipe(Config.flatMap(parseRawConfig))

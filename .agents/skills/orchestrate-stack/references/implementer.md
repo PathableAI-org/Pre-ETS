@@ -66,7 +66,8 @@ no feature directory or slices; drop the slice lines then.
 
 **Boundaries.** Never mark a slice ready without a passing gate and no open blocking finding. Escalate instead of
 patching for any corrections-table discovery, a claim still failing after three rounds, or a disagreement with the
-verifier or reviewer. Never merge.
+verifier or reviewer. An escalation covers the whole claim, with every decision it needs, as the harness's
+[escalation rules](docs/engineering/verification-harness.md#gate-and-escalation) require. Never merge.
 
 **Done when** every slice is ready for review with its gates passing, or you are waiting on the person. Report each
 slice's pull request number and verified SHA.

@@ -132,11 +132,28 @@ bottom includes it. On a conflict, keep unrelated work. Continue only when the r
 stop and report the files. Use `gh stack rebase --abort` when abandoning the rebase; it restores the pre-rebase
 stack.
 
-After a clean rebase, `gh stack push`. Then validate. Restack by rebasing; do not merge lower commits upward to keep
-verified commits as ancestors. Run `pnpm verify:gate` on each restacked implementation slice: a slice whose verified
-and reviewed commits differ from its new head only in `quickstart.md` execution results keeps its evidence, even
-though those commits are now off the branch. Request verification and review again only for the slices the gate
-fails.
+Bring a lower branch's change into the branches above it only by rebasing, as the workflow guide's
+[Corrections](../../../docs/engineering/git-workflow.md#corrections) requires. Never merge a lower branch into an
+upper one, with `git merge` or a `git pull` without `--rebase`. If an upper branch already has such a merge
+commit, stop and report it rather than running `gh stack rebase --upstack` over it.
+
+When `gh stack rebase --upstack` cannot be used, for example because the stack catalog no longer matches the
+branches, rebase with Git from the top branch, after the [Safety](#safety) checks:
+
+```sh
+git checkout <top-branch>
+git rebase --update-refs --onto <new-base> <old-base>
+```
+
+`<new-base>` is the corrected lower branch. `<old-base>` is that branch's tip before the correction, the commit the
+branch above it was cut from. `--update-refs` moves every intermediate stacked branch with the rebase. Then confirm each
+branch's parent with `gh stack view --json`, or without GraphQL with
+`gh api "repos/{owner}/{repo}/stacks?pull_request=<N>"` and each pull request's base.
+
+After a clean rebase, `gh stack push`. Then validate. Run `pnpm verify:gate` on each restacked implementation slice:
+a slice whose verified and reviewed commits differ from its new head only in `quickstart.md` execution results keeps
+its evidence, even though those commits are now off the branch. Request verification and review again only for the
+slices the gate fails.
 
 ## Validate
 

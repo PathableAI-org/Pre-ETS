@@ -8,6 +8,7 @@ import { createProtectionProxy } from "../../src/next.ts"
 import { SessionService } from "../../src/session.ts"
 import { TenantAlias, type TenantConfig, TenantConfigService } from "../../src/tenant.ts"
 import { SessionRedis, sessionWorld } from "../helpers/session.ts"
+import { testTelemetry } from "../helpers/telemetry.ts"
 
 const runtime = vi.hoisted(() => ({ runPromise: vi.fn() }))
 vi.mock("../../src/runtime.ts", () => ({ Runtime: runtime }))
@@ -179,7 +180,8 @@ describe("createProtectionProxy over the real session store [PREETS-SESSION-001,
     const world = ManagedRuntime.make(
       SessionService.layer({ keyPrefix: `test:session:${randomUUID()}` }).pipe(
         Layer.provideMerge(redis),
-        Layer.merge(springfieldTenant)
+        Layer.merge(springfieldTenant),
+        Layer.merge(testTelemetry)
       )
     )
     runtime.runPromise.mockImplementation((program: Effect.Effect<unknown, unknown, SessionService>) =>

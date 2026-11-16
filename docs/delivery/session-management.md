@@ -191,7 +191,9 @@ The maintainer selected the B5 browser communication, synchronization, and resum
   and expiration conceal protected content within that bound.
 - **No early expiration:** a running tab must not present the expired state while the server session remains
   valid. A tab reaching a locally known deadline confirms with the server before expiring, so activity renewed in another
-  tab keeps it usable (SESSION-010 AC3).
+  tab keeps it usable (SESSION-010 AC3). It may temporarily conceal protected content while it confirms; that concealment
+  is not the expired state, and content is restored if the session is still valid (clarified by the maintainer on
+  2026-11-16, [#444](https://github.com/PathableAI-org/Pre-ETS/issues/444) decision 3).
 - **Suspended and resumed tabs:** resume means the tab becomes visible, is unfrozen, or is restored from the
   back/forward cache. On resume, a tab whose locally known deadline has passed temporarily conceals protected
   content immediately, before further interaction, and confirms the session with the server. Temporary resume

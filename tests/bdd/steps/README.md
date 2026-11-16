@@ -7,7 +7,7 @@ Feature-level `@partial` limits evidence scope; it does not permit pending or fa
 
 Steps interact with the owned Next.js process over HTTP and in a real Chromium browser. Browser steps establish
 missing-page and forbidden-page presentation, provider arrival and callback delivery, and the session journeys:
-renewal by qualifying activity, cross-tab expiration, history protection, and recovery after expiry. They must not open Redis clients, session
+renewal by qualifying activity, cross-tab expiration and logout, history protection, and recovery after expiry. They must not open Redis clients, session
 stores, or mock identity providers. Setup may sign in at the real provider without the application, to arrange a
 provider session or to check a fixture client's prerequisite, as the Stale tenant step does with
 `providerIdTokenClaims`; that is not evidence about the application. Redis is observed only through application
@@ -32,6 +32,8 @@ frontend, recording the last HTTP response, the scoped browser transport, and th
 | `expired-recovery.ts`     | Recovery from an expired or removed session: recovery documents, form submissions, and second tabs                           |
 | `fresh-recovery.ts`       | Fresh authentication with a provider single sign-on session: logout, history, and session replacement                        |
 | `shared-session.ts`       | Named sessions presented to two instances: admission, renewal, and expiration through either                                 |
+| `idle-timeout.ts`         | Named sessions under the tenant idle timeout: deadlines judged by the test's clock, renewal after a change, and enforcement  |
+| `tab-sharing.ts`          | One session shared by named tabs: joining, a renewal reaching every tab, shared logout, and isolation from other sessions    |
 
 Add a step to the file that owns its journey. A browser journey that keeps state across steps (its browser, named
 tabs or contexts, observed traffic) keeps it in a module-level `WeakMap` keyed by the world and closes its browser

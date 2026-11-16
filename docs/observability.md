@@ -12,9 +12,10 @@ requirement, and signals in [Browser export](#browser-export).
 all-or-nothing: `OTEL_SDK_DISABLED=true` installs no SDK, exporters, automatic
 instrumentation, or Effect OpenTelemetry bridges. Otherwise, the endpoint and
 service name are required and traces, metrics, and logs are enabled together.
-The application constructs OTLP/HTTP **protobuf** exporters, batch span and log
-processors, and two periodic metric readers. It does not select signals
-independently or construct JSON HTTP or gRPC exporters.
+The application constructs OTLP/HTTP **protobuf** exporters, batch or simple
+span and log processors chosen by [export timing](#export-timing), and two
+periodic metric readers. It does not select signals independently or construct
+JSON HTTP or gRPC exporters.
 
 **Node SDK + Effect bridge**: The enabled path starts
 `@opentelemetry/sdk-node` to register the global OpenTelemetry providers and
@@ -47,6 +48,29 @@ Automatic instrumentation covers:
 - Redis clients.
 - Node runtime metrics.
 
+## Operating modes
+
+Telemetry runs in one of three modes. This section is their one statement;
+other documents link here rather than restate it.
+
+| Mode                               | Telemetry | Traces and logs leave          | Selected by                                                                                                                                                                                                                                |
+| ---------------------------------- | --------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Production                         | On        | In batches (`batch`)           | `NODE_ENV=production` with `TELEMETRY_EXPORT_TIMING` unset, and the required endpoint and service name                                                                                                                                     |
+| Local development and verification | On        | As each finishes (`immediate`) | A development server, with the required endpoint and service name and the setting unset; a production build that also sets `TELEMETRY_EXPORT_TIMING=immediate`, as the verification harness does; a test run through `pnpm test:telemetry` |
+| CI                                 | Off       | Nothing is exported            | `OTEL_SDK_DISABLED=true` in the `env` block of each workflow that starts the application or runs a test suite: `ci-quality.yml`, `ci-build.yml`, and `ci-bdd.yml`                                                                          |
+
+`TELEMETRY_EXPORT_TIMING` is the one setting, with the values `immediate` and
+`batch`. When it is absent or empty, an application process with
+`NODE_ENV=production` batches and any other, including one with no `NODE_ENV`,
+exports immediately. Any other value fails startup. [Export timing](#export-timing)
+describes what each value does. The page follows the server's timing. Metrics
+keep their 60-second periodic interval in every mode that exports.
+
+Immediate timing is for local feedback: it sends one request per record. It is
+assumed never to be set in production. Production configuration never sets it,
+and the application does not refuse it in a production build, because the
+verification harness runs one.
+
 ## Verification
 
 Default local URL base: **`http://127.0.0.1:3000`**.
@@ -58,7 +82,22 @@ Outbound HTTP and Redis spans provide additional request evidence. Effect logs
 are exported to Loki, while Effect and Node runtime metrics are exported to
 Prometheus. An empty result is not conclusive application evidence: check that
 OTEL was enabled, the required configuration was accepted, traffic occurred,
-and batch/periodic export had time to complete and reach the collector.
+and the records had time to reach the collector. Under immediate timing each
+record leaves as it finishes; under batch timing it leaves with its batch, about
+5 seconds later for traces; metrics leave at the end of their 60-second interval.
+
+Under immediate timing, read a request's trace by its trace ID (from the
+`traceparent` you sent, or from one of its log records) and query its logs right
+away. A trace search lists a new trace only after the trace store's search
+delay, the larger of `live_store.max_trace_live` and
+`live_store.max_block_duration` in its configuration: 30 seconds each on the
+pinned image, as
+`GET http://127.0.0.1:3300/api/datasources/proxy/uid/tempo/status/config`
+reports. Search after that delay, or read by ID.
+
+The application logs at `Info` and above unless `LOG_LEVEL` names another
+Effect log level. Per-request records, such as a tenant configuration read, are
+at `Debug`, so set `LOG_LEVEL=Debug` to find a request's log records.
 
 ## Environment variables
 
@@ -78,6 +117,7 @@ the disabled setting is applied.
 | `OTEL_EXPORTER_OTLP_HEADERS`  | Optional collector headers. Do not print them. Headers do not replace either required setting             |
 | `OTEL_RESOURCE_ATTRIBUTES`    | Optional resource attributes, read by the Node SDK. Startup also reads `service.instance.id` from it      |
 | `BROWSER_TRACING_ENABLED`     | Optional browser tracing switch. Defaults to off. See [Browser tracing switch](#browser-tracing-switch)   |
+| `TELEMETRY_EXPORT_TIMING`     | Optional `immediate` or `batch`. Defaults by `NODE_ENV`. See [Export timing](#export-timing)              |
 
 For each signal, the application appends `v1/traces`, `v1/metrics`, or
 `v1/logs` directly to the parsed base URL's string form. Use a trailing slash,
@@ -96,6 +136,82 @@ The OTLP exporters read headers from the environment. Signal-specific
 `OTEL_EXPORTER_OTLP_TRACES_HEADERS`, `OTEL_EXPORTER_OTLP_METRICS_HEADERS`, and
 `OTEL_EXPORTER_OTLP_LOGS_HEADERS` values override matching base header keys.
 Never log or commit real header values.
+
+### Export timing
+
+`TELEMETRY_EXPORT_TIMING` selects when finished trace records and emitted log
+records leave the server process. It accepts exactly two values:
+
+- `batch` holds records and sends them in groups, through the SDK's batch span
+  and log processors with their defaults. The trace processor's `OTEL_BSP_*`
+  settings apply only under `batch`.
+- `immediate` sends each ended span and each emitted log record in its own
+  export request as soon as it finishes, through the SDK's simple span and log
+  processors over the same exporters. An OTLP exporter refuses an export once
+  30 requests are in flight, and the simple processors do not retry, so under
+  `immediate` the trace and log exporters have no in-flight limit. Each request
+  still ends at the exporter's own timeout.
+
+Its defaults, and the mode each value belongs to, are in
+[Operating modes](#operating-modes). Any other value, including either value in
+another letter case or with surrounding spaces, fails startup with an error that
+names the setting; the application never falls back to a timing. Like the other OTEL settings, a
+supplied value must decode even when `OTEL_SDK_DISABLED=true`, and then has no
+effect.
+
+The setting changes only when records leave the process. Query removal, the
+resource, the endpoint, and the collector headers are the same under both
+timings, and each record is exported once. Metrics ignore the setting: both
+periodic readers keep their 60-second interval. When browser tracing is
+effective, the page follows the server's effective timing, which it receives
+in the rendered configuration ([Browser export](#browser-export)); it has no
+setting of its own.
+
+### Telemetry for a test run
+
+`pnpm test:telemetry <command> [args…]` runs a test command with the local
+stack's telemetry settings. It fills in only the settings that are absent or
+empty: `OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318/` (the
+[local stack](#local-grafana--otlp)), `OTEL_SERVICE_NAME=pre-ets-frontend`,
+`TELEMETRY_EXPORT_TIMING=immediate`, and a generated `service.instance.id`
+entry appended to `OTEL_RESOURCE_ATTRIBUTES` when that list has none. It also
+sets `TEST_TELEMETRY=true`, the marker the frontend-services unit and
+integration suites read: with it, a test that runs a program through the shared
+session world, its file's layer factory, or its mocked runtime exports that
+program's spans and logs through the application's own pipeline, which is
+disposed when the file's tests end. Settings supplied explicitly win, and a true literal in
+`OTEL_SDK_DISABLED` keeps telemetry off: the command then runs with the
+environment unchanged. It prints the run identifier on standard error and exits
+with the command's status.
+
+A requirements BDD run exports through it with no other setting, because the
+application process the suite owns inherits the environment:
+
+```sh
+pnpm test:telemetry pnpm test:bdd:tags "@preets-session-005"
+```
+
+Select a run's records by its identifier, for example
+`{ resource.service.instance.id = "<run>" }` in Tempo and
+`{service_name="pre-ets-frontend", service_instance_id="<run>"}` in Loki. To tag
+a run with a revision as well, supply `OTEL_SERVICE_VERSION` and
+`OTEL_RESOURCE_ATTRIBUTES="service.version=<sha>,service.instance.id=<run>"`, as
+the [verification harness](engineering/verification-harness.md#environment)
+does; without them `service.version` is `UNKNOWN`. With the local stack down,
+every test keeps its result and only the run's telemetry is lost.
+
+The command reads only its own environment. Settings in
+`packages/frontend/.env.local`, which the application a BDD run owns also loads,
+do not count as supplied: there the command's defaults win over the file, and an
+off switch set only in the file keeps the application from exporting although
+the command prints a run identifier. Give a test run its telemetry settings in
+the shell. A supplied run identifier is kept, the last `service.instance.id`
+entry winning as it does in the SDK; one is appended only when the list has no
+usable one. A supplied list must be one the Node SDK accepts: `key=value` entries
+with any `,` or `=` in a key or value percent-encoded. With any malformed entry
+the Node SDK ignores the whole list, so its HTTP and Redis spans carry no run
+identifier, and the Effect bridge, which reads the list differently, may keep or
+drop it. The command does not check the list.
 
 ### Browser tracing switch
 
@@ -116,11 +232,14 @@ route group) renders two `<meta>` elements into `<head>`:
 - `name="traceparent"`: the W3C trace context of the server's handling of
   that document request, including a trace continued from an incoming
   `traceparent` header.
-- `name="preets-browser-tracing"`: JSON with exactly four values:
-  `endpoint` (the OTLP base URL the server exports to), `serviceName`,
-  `serviceVersion`, and `serviceInstanceId` (the run identifier, from
-  `service.instance.id` in `OTEL_RESOURCE_ATTRIBUTES`; absent when that key is
-  missing or the list does not parse).
+- `name="preets-browser-tracing"`: JSON with exactly five values:
+  `endpoint` (the OTLP base URL the server exports to), `exportTiming` (the
+  server's effective [export timing](#export-timing), `immediate` or `batch`),
+  `serviceName`, `serviceVersion`, and `serviceInstanceId` (the run identifier,
+  from `service.instance.id` in `OTEL_RESOURCE_ATTRIBUTES`; absent when that
+  key is missing or the list does not parse). A document whose configuration
+  is missing any required value, or holds another export timing, starts no
+  browser tracing.
 
 Public documents, such as `/login-unavailable`, `/forbidden`, and `/_test/*`,
 render neither element. When browser tracing is off, no protected document
@@ -178,11 +297,18 @@ application origin. The local `otel-lgtm` collector already allows `http://*`
 origins ([Docker Compose](docker-compose.md#browser-export-and-cors)). A
 collector that requires headers is not supported for browser export.
 
-Spans are batched and exported about 30 seconds after they end. Keep the page
-open that long before querying. On `pagehide` the page flushes its batch with
-`keepalive` requests, so records made just before a navigation, such as a Log in
-activation, are sent; records from a page that closes abruptly may still be
-lost. A collector that is down or rejects export never changes the page.
+The page exports with the server's [export timing](#export-timing). Under
+`immediate`, each span the export filter keeps is sent in its own request when
+it ends, with no in-flight limit. Under `batch`, the web SDK's batch processor
+exports spans about 5 seconds after the first of them ends, or sooner when 512
+are waiting. Under either timing, the page flushes on `pagehide`, and the OTLP
+transport sends with `keepalive`, so records made just before a navigation,
+such as a Log in activation, are sent. The transport uses `keepalive` only while
+fewer than nine such requests and at most 60 KiB of request bodies are pending,
+inside the browser's own limits, so under `immediate` a burst of records made
+just before the page unloads may be sent without `keepalive` and lost. Records
+from a page that closes abruptly may also be lost. A collector that is down or
+rejects export never changes the page.
 
 Every span passes an export filter before it leaves the page. Only the record
 names below and the harness records in [Browser harness facts](#browser-harness-facts)
@@ -190,7 +316,8 @@ are exported. Attributes are kept
 only from the contract's allow list; `url.full` becomes `url.path`, a pathname
 with no origin, query string, or fragment. Event attributes, `exception`
 events, links, and status descriptions are removed. `resourceFetch` and
-`CORS Preflight` spans are dropped. The resource carries only `service.name`,
+`CORS Preflight` spans are dropped. An export from which the filter drops every
+span sends no request. The resource carries only `service.name`,
 `service.version`, `service.instance.id` (when rendered), and the SDK's
 `telemetry.sdk.*` attributes; `telemetry.sdk.language` is `webjs` for browser
 records and `nodejs` for server records. Server records carry the attributes in
@@ -326,8 +453,34 @@ Delivery failures follow the OpenTelemetry exporters and SDK diagnostics.
 There is no application-defined fixed `telemetry delivery failed` stderr
 message, and the previous custom diagnostic suppression is not installed.
 The application does not set custom batch intervals or exporter timeouts;
-applicable SDK defaults and environment settings apply. The periodic metric
-readers use the SDK default 60-second export interval.
+applicable SDK defaults and environment settings apply. Under immediate
+[export timing](#export-timing) it lifts only the trace and log exporters'
+in-flight limit. The periodic metric readers use the SDK default 60-second
+export interval under both timings.
+
+### Orderly stop
+
+The first `SIGTERM` or `SIGINT` disposes the process runtime. Disposal flushes
+and shuts down the span and log processors under either
+[export timing](#export-timing), so records the server has not yet sent are
+delivered, and the process then exits with code 0. The telemetry layers bound
+their flush and shutdown with a 3-second timeout, so with an unreachable
+collector a stop takes about 3 seconds longer and only the undelivered records
+are lost. If disposal has not finished after 10 seconds, the process exits
+anyway. The HTTP listener stays open until the process exits, so a request
+that arrives during disposal fails with a server error instead of being
+refused; the window is tens of milliseconds with a reachable collector.
+
+This holds only when the host leaves signals to the application. Unless
+`NEXT_MANUAL_SIG_HANDLE=true`, `next start` registers its own handlers, which
+exit with code 143 or 130 before disposal finishes and lose pending records.
+The frontend workspace's `start` script sets the variable, and the requirements
+BDD harness sets it for each `next start` process it owns. Start a production
+server with `pnpm --filter @pathableai/pre-ets-frontend start`. A launcher that
+runs `next start` itself must set the variable in the process environment; Next
+reads it before it loads `.env` files. `next dev` keeps its own handling and
+already delivers pending records on `SIGTERM`. A process that is killed or
+crashes may lose records it has not sent.
 
 ## Required span attributes and redaction
 
@@ -462,7 +615,10 @@ curl -sS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3000/
 ```
 
 In Grafana → Explore → Tempo (as admin), search service `pre-ets-frontend`.
-Allow up to ~30s for batched trace/log export and ~60s for periodic metrics.
+`dev` exports immediately ([Operating modes](#operating-modes)), so a request's
+trace can be read by ID and its logs queried at once; a search lists it after
+the trace store's search delay ([Verification](#verification)). Metrics follow
+their 60-second interval.
 
 Stop only the observability service:
 
@@ -505,8 +661,9 @@ deferred. Alerting and SLOs are out of scope.
 Requires the optional observability profile and `uvx`. The server does nothing
 useful until `otel-lgtm` is up and the frontend process was started with OTEL
 enabled, a valid `OTEL_EXPORTER_OTLP_ENDPOINT`, and `OTEL_SERVICE_NAME`.
-`OTEL_SDK_DISABLED=true` starts no exporters. Allow for the export delays in
-[Local Grafana / OTLP](#local-grafana--otlp).
+`OTEL_SDK_DISABLED=true` starts no exporters. Read records as
+[Verification](#verification) describes: by trace ID at once, or by search after
+the trace store's search delay.
 
 The image and digest are the `otel-lgtm` service in `compose.yaml`
 (`grafana/otel-lgtm`). That image includes Tempo, Loki, and Prometheus.

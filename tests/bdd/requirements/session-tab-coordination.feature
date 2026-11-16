@@ -9,8 +9,9 @@ Feature: Cross-tab activity coordination
   revive a session through activity after logout"). Renewal of a real session by qualifying
   activity, the 60-second communication windows, and the exclusion of pointer movement,
   programmatic focus, and background requests are the qualifying activity feature's evidence.
-  Multi-tab synchronization, logout, and session isolation are not established here. Warning,
-  continuation, and expiration presentation belong to #156 and #157.
+  Multi-tab synchronization, logout, and session isolation are not established here;
+  tab-sharing.feature holds that evidence. Warning, continuation, and expiration presentation
+  are in expiration-warning.feature, warning-policy.feature, and expiration-protection.feature.
 
   Scenario Outline: Activity without a usable session does not revive access
     Given production tenant sites for Springfield and Shelbyville

@@ -11,6 +11,7 @@ import {
   type UsableSession
 } from "../../src/session.ts"
 import { TenantAlias, type TenantConfig, TenantConfigService, type TenantFailure } from "../../src/tenant.ts"
+import { testTelemetry } from "../helpers/telemetry.ts"
 import { ForbiddenError, NotFoundError, RedirectError } from "./next-navigation-stub.ts"
 
 const runtime = vi.hoisted(() => ({ runPromise: vi.fn() }))
@@ -79,7 +80,8 @@ const install = (
     Effect.runPromise(program.pipe(
       Effect.provide(Layer.mergeAll(
         Layer.succeed(SessionService, session),
-        Layer.succeed(TenantConfigService, tenant)
+        Layer.succeed(TenantConfigService, tenant),
+        testTelemetry
       ))
     ))
   )

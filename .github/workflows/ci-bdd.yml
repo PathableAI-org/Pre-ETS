@@ -14,6 +14,9 @@ permissions:
 env:
   CI: "true"
   HUSKY: "0"
+  # CI mode (docs/observability.md#operating-modes): telemetry off. No collector runs here and
+  # no scenario observes telemetry, so every application and test process starts with no OpenTelemetry SDK.
+  OTEL_SDK_DISABLED: "true"
 
 concurrency:
   group: ci-bdd-${{ github.ref }}
@@ -54,9 +57,6 @@ jobs:
             echo "SESSION_STORE_TIMEOUT_MS=2000"
             echo "SESSION_KEY_PREFIX=ci:bdd:${{ github.run_id }}:"
             echo "OIDC_TX_KEY_PREFIX=ci:bdd:oidc-tx:${{ github.run_id }}:"
-            # No collector runs here and no scenario observes telemetry. An unset endpoint is a startup error, so
-            # owned frontend processes use the documented off switch (docs/observability.md).
-            echo "OTEL_SDK_DISABLED=true"
           } >> "$GITHUB_ENV"
       - name: Install Chromium for browser scenarios
         run: pnpm exec playwright install --with-deps chromium
