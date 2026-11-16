@@ -53,6 +53,11 @@ Existing SSO alone provides weak evidence that the authorized user returned to a
   Keycloak environment, until a real client is available for discovery of the Microsoft product, tenant, and any
   broker topology. Microsoft compatibility remains unverified and unclaimed. See the
   [shared session context](../context/session-management.md#provider-neutral-compatibility-evidence-2026-10-17).
+- Decision: Maintainer direction on 2026-11-16 ([#453](https://github.com/PathableAI-org/Pre-ETS/issues/453))
+  accepts a limitation of AC5 evidence: the local Keycloak's re-authentication step offers no cancel control, so
+  it cannot report a cancellation from the credential step. Cancellation there is evidenced by leaving the step
+  unanswered while single sign-on is held, and a provider-reported cancellation from that step only by emulation.
+  No behavior changes.
 
 ## Acceptance criteria
 
@@ -90,6 +95,8 @@ Compose Keycloak environment supports current development/test evidence; Microso
 compatibility scenario with the same freshness and failure expectations. Keycloak results do not establish
 Microsoft compatibility. Exercise existing SSO and any relevant broker chain against the actual integration;
 record unexecuted provider scenarios as limitations rather than treating them as passing evidence.
+With the local Keycloak, cancellation at the credential step is exercised by leaving the step unanswered; a
+cancellation the provider reports from that step is emulated (accepted limitation, #453).
 
 Evidence assumptions follow the shared session context. The freshness diagnostic in Observability is verified
 manually or with temporary probes against real logs or exported telemetry for missing and stale `auth_time`

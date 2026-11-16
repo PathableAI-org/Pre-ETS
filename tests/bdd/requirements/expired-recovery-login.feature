@@ -15,7 +15,9 @@ Feature: Fresh Log in from expired-session recovery and the expiration modal
   in succeeds. Each failing login reaches the real provider, which asks the visitor to
   authenticate; the browser then replaces the provider's answer to the visitor's submission. A
   cancellation is the error return the provider sends when a visitor declines, because the
-  tracked realm's cancellation client would keep the synthetic user's grant. An unreachable
+  tracked realm's cancellation client would keep the synthetic user's grant, and the provider's
+  authentication step offers no cancel control; that emulation is a limitation the maintainer
+  accepted on 2026-11-16 (#453). An unreachable
   provider is a refused connection, because stopping the shared provider is outside the runner.
   The realm's stale authentication-time client cannot establish the session that expires, so
   stale and missing authentication time from these entry points are not established here; the

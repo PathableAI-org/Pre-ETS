@@ -12,7 +12,8 @@ Feature: Fresh tenant OIDC recovery with a new session
   without the freshness request would be answered at once. Leaving the provider's authentication
   step unanswered and opening the application again starts a new login, shows nothing protected,
   and holds no usable session, and a later login succeeds; the step offers no cancel control, so
-  a cancellation the provider reports from it is not established here. It does not establish
+  a cancellation the provider reports from it is not established here, a limitation the
+  maintainer accepted on 2026-11-16 (#453). It does not establish
   re-entry after natural idle expiry (fresh-entry-after-expiry.feature), missing or stale
   provider evidence at this boundary (module evidence; a stale return with a single sign-on
   session held is in tenant-oidc-callback.feature), Log in from expired-session recovery content
