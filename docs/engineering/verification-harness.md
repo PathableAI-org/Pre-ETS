@@ -132,8 +132,10 @@ The verification session owns its environment:
   `preets:verify:<run-uuid>:` prefix for Redis and delete the owned keys when finished.
 - The shared local observability stack from [Observability](../observability.md#local-grafana--otlp), with OTEL
   enabled and `TELEMETRY_EXPORT_TIMING=immediate`, the verification mode of
-  [Operating modes](../observability.md#operating-modes), which a production build must set. Generate a run UUID for
-  each verification run, including retries. Set `OTEL_SERVICE_VERSION` to the
+  [Operating modes](../observability.md#operating-modes), which a production build must set. Set `LOG_LEVEL=Debug` as
+  well, so each request emits the debug log records the telemetry contracts read
+  ([Verification](../observability.md#verification)). Generate a run UUID for each verification run, including
+  retries. Set `OTEL_SERVICE_VERSION` to the
   requested SHA, and add `service.version=<SHA>,service.instance.id=<run-uuid>` to `OTEL_RESOURCE_ATTRIBUTES`,
   keeping any existing entries. The global Node SDK that exports HTTP, Redis, and runtime signals reads only
   `OTEL_RESOURCE_ATTRIBUTES`, so both settings are needed for every signal to carry the revision and run. Every

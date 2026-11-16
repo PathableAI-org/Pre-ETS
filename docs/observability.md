@@ -95,6 +95,10 @@ pinned image, as
 `GET http://127.0.0.1:3300/api/datasources/proxy/uid/tempo/status/config`
 reports. Search after that delay, or read by ID.
 
+The application logs at `Info` and above unless `LOG_LEVEL` names another
+Effect log level. Per-request records, such as a tenant configuration read, are
+at `Debug`, so set `LOG_LEVEL=Debug` to find a request's log records.
+
 ## Environment variables
 
 OTEL settings are the `otel` part of the frontend `StartupConfig`, decoded once at startup.

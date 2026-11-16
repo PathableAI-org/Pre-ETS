@@ -47,9 +47,9 @@ escalate) rather than guessing.
    [Observability](../../../docs/observability.md#local-grafana--otlp). Generate a run UUID for each verification
    run, including retries. Start application instances on ports this session owns, with OTEL enabled,
    `TELEMETRY_EXPORT_TIMING=immediate` ([operating modes](../../../docs/observability.md#operating-modes)),
-   `OTEL_SERVICE_NAME` as documented, `OTEL_SERVICE_VERSION` set to the SHA, and
-   `service.version=<SHA>,service.instance.id=<run-uuid>` added to `OTEL_RESOURCE_ATTRIBUTES`, keeping any existing
-   entries. Use a `preets:verify:<run-uuid>:` prefix for any keys this session writes.
+   `LOG_LEVEL=Debug` for the per-request debug records, `OTEL_SERVICE_NAME` as documented, `OTEL_SERVICE_VERSION` set
+   to the SHA, and `service.version=<SHA>,service.instance.id=<run-uuid>` added to `OTEL_RESOURCE_ATTRIBUTES`, keeping
+   any existing entries. Use a `preets:verify:<run-uuid>:` prefix for any keys this session writes.
 3. Run the requested `quickstart.md` steps. For browser steps, set a W3C `traceparent` header you generate per step
    through Playwright and note the trace ID, so server spans can be found without browser tracing.
 4. Under immediate timing, traces and logs reach the collector as each record finishes, so query without a batch
