@@ -325,8 +325,9 @@ docker compose --profile observability up -d otel-lgtm --wait
 
 In Grafana at `http://127.0.0.1:3300`, use Tempo through an authorized existing UI/MCP connection. Search
 `pre-ets-frontend` in the recorded request window, then inspect the supplied trace ID where propagation retains it.
-Allow batching time and use the time/route/request outcome as a fallback correlation method; do not infer success
-from a healthy collector alone.
+With `TELEMETRY_EXPORT_TIMING=immediate` no exporter batch wait is needed, but a Tempo search can lag by Tempo's own
+indexing delay (about 30 s locally); a trace-ID lookup is immediate. Use the time/route/request outcome as a fallback
+correlation method; do not infer success from a healthy collector alone.
 
 - Inspect a valid read and representative schema, selected-file, and directory failures. The HTTP span must show
   the actual request outcome; tenant operation spans must belong to the same trace and preserve useful
