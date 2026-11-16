@@ -4,16 +4,17 @@ import { setTimeout as delay } from "node:timers/promises"
 
 import type { AppWorld } from "../support/world.ts"
 
-import { applicationBrowser, signInThroughApplication } from "../support/browser.ts"
+import { signInAndClose } from "../support/browser.ts"
 import { namedEntries } from "../support/named.ts"
-import { FETCH_METADATA, type RecordedResponse, requestInstance, sendRequest, startSite } from "../support/server.ts"
+import { FETCH_METADATA, type RecordedResponse, sendRequest, startSite } from "../support/server.ts"
 import { namesOf } from "./expiration.ts"
-import { actionRequest, assertNoProtectedContent, assertSameOriginLogin } from "./http.ts"
+import { actionRequest, assertNoProtectedContent, assertSameOriginLogin, isAdmitted } from "./http.ts"
 import {
-  activityCommunication,
   deadlineOf,
   PREFETCH_HEADERS,
   type Presentation,
+  sessionActivity,
+  sessionEntry,
   sessionStatus,
   snapshotOf
 } from "./session-coordination.ts"
@@ -64,17 +65,17 @@ const dueOf = (session: TimedSession, minutes: number) => ({
   latest: session.written.to + minutes * MINUTE_MILLISECONDS
 })
 
-/** A document entry: the gate renews a usable session for it, with the tenant's timeout at that moment. */
-const pageRequest = (world: AppWorld, session: TimedSession) =>
-  requestInstance(world, world.port, session.host, "/", true, session.cookie)
+/** The quoted session names in a list; a list without any would make a step check nothing. */
+const listed = (list: string): readonly string[] => {
+  const names = namesOf(list)
+  assert.ok(names.length > 0, `expected quoted session names in ${list}`)
+  return names
+}
 
-/** Qualifying in-page activity as the session's own tab communicates it, carrying the session's tag. */
-const inPageActivity = (world: AppWorld, session: TimedSession) =>
-  sendRequest(world, {
-    ...activityCommunication(session.host, "keyboard-interaction", session.coordinationTag),
-    cookie: session.cookie,
-    port: world.port
-  })
+/** A document entry, which renews a usable session under the tenant's timeout at that moment. */
+const pageRequest = (world: AppWorld, session: TimedSession) => sessionEntry(world, world.port, session)
+
+const inPageActivity = (world: AppWorld, session: TimedSession) => sessionActivity(world, world.port, session)
 
 /** The protected reference form as the session's own page submits it, with the session's tag. */
 const formSubmission = async (world: AppWorld, session: TimedSession) =>
@@ -97,24 +98,16 @@ When(
   { timeout: 4 * MINUTE_MILLISECONDS },
   async function(this: AppWorld, list: string, host: string) {
     await startSite(this)
-    const names = namesOf(list)
-    assert.ok(names.length > 0, `expected quoted session names in ${list}`)
-    for (const name of names) {
-      const owned = await applicationBrowser(this.port, [host])
-      let reference: string
-      let written: Written
-      try {
-        const context = await owned.browser.newContext()
-        const from = Date.now()
-        reference = await signInThroughApplication(context, host)
-        await context.close()
-        written = { from, to: Date.now() }
-      } finally {
-        await owned.close()
-      }
+    for (const name of listed(list)) {
+      const { closedAt, reference, startedAt } = await signInAndClose(this.port, host)
       const presented = { cookie: `pathable-session=${reference}`, host }
       const { coordinationTag } = snapshotOf(await statusRead(this, presented))
-      sessions.set(this, name, { ...presented, coordinationTag, unprompted: [], written })
+      sessions.set(this, name, {
+        ...presented,
+        coordinationTag,
+        unprompted: [],
+        written: { from: startedAt, to: closedAt }
+      })
     }
   }
 )
@@ -185,7 +178,7 @@ Then(
     const { unprompted } = sessionOf(this, name)
     assert.ok(unprompted.length > 0, `expected requests to have presented session ${name}`)
     for (const { after, before, kind, status } of unprompted) {
-      assert.ok(status < 500 && status !== 401 && status !== 403, `the ${kind} was answered ${String(status)}`)
+      assert.ok(isAdmitted(status), `the ${kind} was answered ${String(status)}`)
       assert.equal(after, before, `the ${kind} moved the deadline of session ${name}`)
     }
   }
@@ -213,7 +206,7 @@ Then(
 Then(
   "sessions {} each report a deadline {int} minutes after they were established or last renewed",
   async function(this: AppWorld, list: string, minutes: number) {
-    for (const name of namesOf(list)) await assertReportedDeadline(this, name, minutes)
+    for (const name of listed(list)) await assertReportedDeadline(this, name, minutes)
   }
 )
 
@@ -233,7 +226,6 @@ When(
  * run in time order, so sessions whose moments interleave are each read at theirs.
  */
 const assertEnded = async (world: AppWorld, names: readonly string[], minutes: number) => {
-  assert.ok(names.length > 0, "expected quoted session names")
   const reads = names.flatMap((name) => {
     const session = sessionOf(world, name)
     const { earliest, latest } = dueOf(session, minutes)
@@ -271,7 +263,7 @@ Then(
   "the server ends sessions {} {int} minutes after they were established or last renewed, and not before",
   { timeout: 8 * MINUTE_MILLISECONDS },
   async function(this: AppWorld, list: string, minutes: number) {
-    await assertEnded(this, namesOf(list), minutes)
+    await assertEnded(this, listed(list), minutes)
   }
 )
 

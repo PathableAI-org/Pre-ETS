@@ -4,12 +4,12 @@ import { setTimeout as delay } from "node:timers/promises"
 
 import type { AppWorld } from "../support/world.ts"
 
-import { applicationBrowser, signInThroughApplication } from "../support/browser.ts"
+import { signInAndClose } from "../support/browser.ts"
 import { namedEntries } from "../support/named.ts"
-import { type RecordedResponse, requestInstance, sendRequest, startSecondSite } from "../support/server.ts"
+import { type RecordedResponse, startSecondSite } from "../support/server.ts"
 import { namesOf } from "./expiration.ts"
 import { assertNoProtectedContent, assertSameOriginLogin } from "./http.ts"
-import { activityCommunication, type Presentation, sessionStatus, snapshotOf } from "./session-coordination.ts"
+import { type Presentation, sessionActivity, sessionEntry, sessionStatus, snapshotOf } from "./session-coordination.ts"
 
 /**
  * The port of one of the two independently started application processes: A is the world's site, B its second site.
@@ -55,17 +55,11 @@ const sessionOf = sessions.get
 const readStatus = (world: AppWorld, instance: string, session: Presentation) =>
   sessionStatus(world, portOf(world, instance), session)
 
-/** A document entry: the gate renews a usable session for it, and the page reads the session. */
 const requestEntry = (world: AppWorld, instance: string, session: Presentation) =>
-  requestInstance(world, portOf(world, instance), session.host, "/", true, session.cookie)
+  sessionEntry(world, portOf(world, instance), session)
 
-/** Qualifying in-page activity as the session's own tab sends it, carrying the session's tag. */
 const communicateActivity = (world: AppWorld, instance: string, session: SharedSession) =>
-  sendRequest(world, {
-    ...activityCommunication(session.host, "keyboard-interaction", session.coordinationTag),
-    cookie: session.cookie,
-    port: portOf(world, instance)
-  })
+  sessionActivity(world, portOf(world, instance), session)
 
 /**
  * The reference entry displays the session's subject, issuer, and tenant alias as the first texts after its heading;
@@ -108,13 +102,7 @@ When(
   "the visitor signs in to session {string} at {string} through instance {word}",
   async function(this: AppWorld, name: string, host: string, instance: string) {
     await startSecondSite(this)
-    const owned = await applicationBrowser(portOf(this, instance), [host])
-    let reference: string
-    try {
-      reference = await signInThroughApplication(await owned.browser.newContext(), host)
-    } finally {
-      await owned.close()
-    }
+    const { reference } = await signInAndClose(portOf(this, instance), host)
     const presented = { cookie: `pathable-session=${reference}`, host }
     const establishedIdentity = entryIdentity(await requestEntry(this, instance, presented))
     const { coordinationTag, deadline } = snapshotOf(await readStatus(this, instance, presented))

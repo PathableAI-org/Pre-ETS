@@ -135,6 +135,27 @@ export const signInThroughApplication = async (context: BrowserContext, host: st
 }
 
 /**
+ * Signs in at `host` through the application on `port` in a browser of its own, which it then closes, so no page
+ * renews or watches the session afterwards. Answers the session cookie's value, with when the browser began signing in
+ * and when it had closed its pages, on the test's clock: every request of the sign-in falls between the two.
+ */
+export const signInAndClose = async (
+  port: number,
+  host: string
+): Promise<{ readonly closedAt: number; readonly reference: string; readonly startedAt: number }> => {
+  const owned = await applicationBrowser(port, [host])
+  try {
+    const context = await owned.browser.newContext()
+    const startedAt = Date.now()
+    const reference = await signInThroughApplication(context, host)
+    await context.close()
+    return { closedAt: Date.now(), reference, startedAt }
+  } finally {
+    await owned.close()
+  }
+}
+
+/**
  * Whether the focused element draws a keyboard focus indicator: it matches `:focus-visible` and its computed outline
  * is drawn, with a style other than `none` and a nonzero width.
  */

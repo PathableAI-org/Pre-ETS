@@ -190,10 +190,11 @@ export const configuredIdleTimeout = async (world: AppWorld, alias: string): Pro
 Given("the selected Springfield tenant file is {string}", async function(this: AppWorld, condition: string) {
   const selectedFile = path.join(this.directory, "springfield.json")
   const arrange: Record<string, () => Promise<void>> = {
+    // Invalid idle timeouts (PREETS-SESSION-008 AC1), the five "an idle timeout of" entries: each explicit value fails
+    // the selected document rather than falling back to the 30-minute default. The fixture sets no warning lead, so the
+    // timeout alone is invalid.
     "an idle timeout of 4": () => setTenantPolicy(this, "springfield", { idleTimeoutMinutes: 4 }),
     "an idle timeout of 7.5": () => setTenantPolicy(this, "springfield", { idleTimeoutMinutes: 7.5 }),
-    // Invalid idle timeouts (PREETS-SESSION-008 AC1): each explicit value fails the selected document rather than
-    // falling back to the 30-minute default. The fixture sets no warning lead, so the timeout alone is invalid.
     "an idle timeout of 10, as text": () => setTenantPolicy(this, "springfield", { idleTimeoutMinutes: "10" }),
     "an idle timeout of 31": () => setTenantPolicy(this, "springfield", { idleTimeoutMinutes: 31 }),
     "an idle timeout of null": () => setTenantPolicy(this, "springfield", { idleTimeoutMinutes: null }),

@@ -15,7 +15,7 @@ import {
   type SiteRequest
 } from "../support/server.ts"
 import { namesOf, openedSession, type Tab, tabOf, untilHolding } from "./expiration.ts"
-import { actionRequest } from "./http.ts"
+import { actionRequest, isAdmitted } from "./http.ts"
 import { configuredIdleTimeout } from "./tenant.ts"
 
 /** A same-origin in-page activity communication at `host` as a tab sends it: JSON naming the kind and a coordination tag. */
@@ -103,6 +103,22 @@ export const presentationOf = (tab: Tab, name: string): Presentation => ({
 /** `GET /session/status` at the instance on `port`, an application request: it reads the session and never renews it. */
 export const sessionStatus = (world: AppWorld, port: number, presented: Presentation): Promise<RecordedResponse> =>
   requestInstance(world, port, presented.host, "/session/status", false, presented.cookie)
+
+/** A document entry at the instance on `port`: the gate renews a usable session for it, and the page reads it. */
+export const sessionEntry = (world: AppWorld, port: number, presented: Presentation): Promise<RecordedResponse> =>
+  requestInstance(world, port, presented.host, "/", true, presented.cookie)
+
+/** Qualifying in-page activity at the instance on `port`, as the session's own tab sends it, carrying its tag. */
+export const sessionActivity = (
+  world: AppWorld,
+  port: number,
+  session: Presentation & { readonly coordinationTag: string }
+): Promise<RecordedResponse> =>
+  sendRequest(world, {
+    ...activityCommunication(session.host, "keyboard-interaction", session.coordinationTag),
+    cookie: session.cookie,
+    port
+  })
 
 /** The scenario's entry in `states`, which an earlier step must have set. */
 const required = <A>(states: WeakMap<AppWorld, A>, world: AppWorld, expectation: string): A => {
@@ -410,10 +426,7 @@ When(
 /** Admitted: neither denied nor failed, so the session was read and the request let through. */
 Then("that request was admitted without renewing the session", async function(this: AppWorld) {
   const { before, presented, response } = sentOf(this)
-  assert.ok(
-    response.status < 500 && response.status !== 401 && response.status !== 403,
-    `answered ${String(response.status)}`
-  )
+  assert.ok(isAdmitted(response.status), `answered ${String(response.status)}`)
   assert.equal(await deadlineOf(this, presented), before, "expected the session's deadline unchanged")
 })
 
