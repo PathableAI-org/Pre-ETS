@@ -69,8 +69,8 @@ The orchestrator always stops and waits for a person at these points:
 
 - A specification, plan, or combined pull request is ready for review. Only a person approves it.
 - Any merge. Only a person asks for a merge, under [Merge timing](git-workflow.md#merge-timing).
-- Marking a slice or fix ready. The implementation session does it after the gates pass, and the project settings
-  and the ready hook make it prompt the person.
+- A slice or fix the implementation session marked ready. It does so once the gates pass; the ready hook runs the
+  gate and blocks a failing attempt, and no person confirms the ready step itself. The person then reviews it.
 - An escalation from the verifier or reviewer: a specification or plan correction under the
   [corrections table](git-workflow.md#corrections), a claim still failing after three verification rounds, a blocking
   finding open in round three, or a disagreement between the implementation session and the verifier or reviewer.
