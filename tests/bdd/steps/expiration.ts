@@ -448,6 +448,53 @@ Then(
   }
 )
 
+/**
+ * Waits until the protected content is no longer readable in each named tab, and answers when each first was, on the
+ * test's clock: the protected control is gone from the document or not rendered, as when the content is hidden or
+ * unmounted. Polling only sees concealment at or after the moment it happened, so a measured delay is never shorter
+ * than the real one.
+ */
+const concealmentTimes = (world: AppWorld, names: readonly string[], timeout: number) =>
+  Promise.all(names.map(async (name) => {
+    await tabOf(world, name).page.waitForFunction(
+      (control) => {
+        const button = [...document.querySelectorAll("button")].find((candidate) => candidate.textContent === control)
+        return button?.checkVisibility() !== true
+      },
+      PROTECTED_CONTROL,
+      { polling: 50, timeout }
+    )
+    return Date.now()
+  }))
+
+/** PREETS-SESSION-012 AC1 and B5: the bound is measured on concealment itself, whatever presentation follows it. */
+Then(
+  "tabs {} each hid their protected content within 2 seconds of their deadline",
+  { timeout: 60_000 },
+  async function(this: AppWorld, list: string) {
+    const names = listedNames(list)
+    const hidden = await concealmentTimes(this, names, OBSERVATION_MILLISECONDS)
+    names.forEach((name, index) => {
+      const late = (hidden[index] ?? Number.POSITIVE_INFINITY) - tabOf(this, name).deadline
+      assert.ok(late <= BOUND_MILLISECONDS, `tab "${name}" hid its content ${String(late)} ms after its deadline`)
+    })
+  }
+)
+
+/**
+ * PREETS-SESSION-012 AC3: a tab whose own deadline check is due late hid its content with no session check of its own
+ * from 30 seconds before its deadline until now, so the expiry another tab confirmed reached it. Its own check would
+ * have concealed and then asked the server.
+ */
+Then("tab {string} hid its protected content without a session check of its own", function(
+  this: AppWorld,
+  name: string
+) {
+  const tab = tabOf(this, name)
+  const own = tab.statusAnswers.filter((answer) => answer.at >= tab.deadline - 30_000)
+  assert.deepEqual(own, [], `tab "${name}" checked the session itself`)
+})
+
 /** No protected text remains in the document or its accessibility tree, and no protected control remains. */
 export const assertNoProtectedContent = async (page: Page, name: string): Promise<void> => {
   assert.doesNotMatch(await documentText(page), PROTECTED_TEXT, `tab "${name}" still holds protected text`)
@@ -761,18 +808,20 @@ When("the visitor types in tab {string}", async function(this: AppWorld, name: s
 })
 
 /**
- * The tab's clock runs `lead` seconds ahead while a second tab opens, renews the session, and broadcasts it. The tab
- * adopts the renewal and schedules its deadline check from its fast clock, so the check is due `lead` seconds early in
- * real time. The second tab closes and the clock returns to the current time; the check stays early, and when it fires
- * the tab's clock still reads before its local deadline, as when a timer outruns a loaded wall clock.
+ * The tab's clock runs `skew` seconds fast or slow while a second tab opens, renews the session, and broadcasts it. The
+ * tab adopts the renewal and schedules its deadline check from its skewed clock, so the check is due `skew` seconds
+ * early or late in real time. The second tab closes and the clock returns to the current time; the check stays early
+ * or late. A fast clock's check fires while the tab's clock still reads before its local deadline, as when a timer
+ * outruns a loaded wall clock. Other tabs of the browser adopt the same renewal on time.
  */
 When(
-  "tab {string} schedules its deadline check from a clock {int} seconds fast, then the clock is corrected",
-  async function(this: AppWorld, name: string, lead: number) {
+  "tab {string} schedules its deadline check from a clock {int} seconds {word}, then the clock is corrected",
+  async function(this: AppWorld, name: string, skew: number, direction: string) {
+    assert.ok(direction === "fast" || direction === "slow", "expected a fast or slow clock")
     const scenario = await scenarioOf(this)
     const tab = tabOf(this, name)
     const before = await readDeadline(tab.page)
-    await tab.page.clock.setSystemTime(Date.now() + lead * 1_000)
+    await tab.page.clock.setSystemTime(Date.now() + (direction === "fast" ? skew : -skew) * 1_000)
     const renewing = await openTab(scenario, tab.page.context(), `${name} renewal`, tab.host)
     await tab.page.waitForFunction(
       (held) => document.querySelector("header")?.getAttribute("data-session-deadline") !== String(held),
@@ -781,6 +830,13 @@ When(
     )
     // The renewing tab's clock is unskewed, so its deadline is the session's on the test's clock.
     tab.deadline = renewing.deadline
+    const others = [...scenario.tabs.entries()].filter(([other, candidate]) =>
+      other !== name && other !== `${name} renewal` && candidate.page.context() === tab.page.context()
+    )
+    for (const [, other] of others) {
+      await untilHolding(other.page, renewing.deadline, OBSERVATION_MILLISECONDS)
+      other.deadline = renewing.deadline
+    }
     await renewing.page.close()
     scenario.tabs.delete(`${name} renewal`)
     await tab.page.clock.setSystemTime(Date.now())
