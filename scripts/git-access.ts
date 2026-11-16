@@ -44,6 +44,10 @@ export const branchesAt = (cwd: string, sha: string): readonly string[] => [
 export const readAtSha = (cwd: string, sha: string, path: string): string | undefined =>
   gitOrUndefined(cwd, ["show", `${sha}:${path}`])
 
+/** Whether `path` is a directory at a revision. */
+export const isDirectoryAt = (cwd: string, sha: string, path: string): boolean =>
+  gitOrUndefined(cwd, ["cat-file", "-t", `${sha}:${path}`])?.trim() === "tree"
+
 /** Paths that differ between two revisions. */
 export const changedPaths = (cwd: string, from: string, to: string): readonly string[] =>
   lines(git(cwd, ["diff", "--name-only", from, to]))

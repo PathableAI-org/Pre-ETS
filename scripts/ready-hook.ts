@@ -2,9 +2,9 @@
  * Decisions for the Claude Code PreToolUse hook that gates marking a pull request ready for review, however a session
  * attempts it: `gh pr ready`, a `gh api` call that clears `draft` or posts to the `ccr/ready_for_review` route, or the
  * GitHub MCP tool's `update_pull_request` with `draft: false`. An implementation-slice branch or a High fix (labelled
- * risk:high) must pass the verification and code review gate, judged at the pull request's head after syncing its note
- * comments. Paths the gate cannot judge are refused with the gated way to do the same thing. Once the gate passes or
- * does not apply, marking ready needs no person's confirmation. See
+ * risk:high, and not a Spec Kit specification or plan branch) must pass the verification and code review gate, judged
+ * at the pull request's head after syncing its note comments. Paths the gate cannot judge are refused with the gated
+ * way to do the same thing. Once the gate passes or does not apply, marking ready needs no person's confirmation. See
  * docs/engineering/verification-harness.md#gate-and-escalation.
  */
 import type { Validated } from "./schema-checks.ts"
@@ -123,12 +123,13 @@ const blocked = (problems: readonly string[]): Decision => ({
 
 /** The gate at a pull request's head, after importing its note comments. */
 const gatePull = (cwd: string, rest: RestAccess, pull: PullRequest): readonly string[] | undefined => {
-  if (!gateApplies(pull.headRef, pull.labels)) return undefined
+  const target = { branch: pull.headRef, head: pull.headSha, labels: pull.labels }
+  if (!gateApplies(cwd, target)) return undefined
   if (!isCommit(cwd, pull.headSha)) {
     return [`the head ${pull.headSha} of ${pull.headRef} is not in this clone; fetch the branch first`]
   }
   const notice = syncNotice({ cwd, refs: { review: defaultNotesRef }, rest }, pull.number)
-  const gate = runGate(cwd, { branch: pull.headRef, head: pull.headSha, labels: pull.labels })
+  const gate = runGate(cwd, target)
   return gate.ok ? undefined : [...notice.trimEnd().split("\n"), ...gate.problems]
 }
 
