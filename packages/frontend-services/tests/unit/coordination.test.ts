@@ -29,6 +29,7 @@ import {
   TenantNotFound,
   TenantReadError
 } from "../../src/tenant.ts"
+import { testTelemetry } from "../helpers/telemetry.ts"
 
 const runtime = vi.hoisted(() => ({ runPromise: vi.fn() }))
 vi.mock("../../src/runtime.ts", () => ({ Runtime: runtime }))
@@ -97,7 +98,11 @@ const install = (doubles: Doubles = {}) => {
   ) =>
     Effect.runPromise(program.pipe(
       Effect.provide(
-        Layer.mergeAll(Layer.succeed(SessionService, sessions), Layer.succeed(TenantConfigService, tenant))
+        Layer.mergeAll(
+          Layer.succeed(SessionService, sessions),
+          Layer.succeed(TenantConfigService, tenant),
+          testTelemetry
+        )
       )
     ))
   )

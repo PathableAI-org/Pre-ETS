@@ -6,6 +6,7 @@ import { expect } from "vitest"
 
 import { type NoUsableSession, SessionService, type UsableSession } from "../../src/session.ts"
 import { makeRedis, poolClock } from "./redis.ts"
+import { testTelemetry } from "./telemetry.ts"
 
 export interface StoredSessionRecord {
   readonly payload: string
@@ -153,7 +154,7 @@ export const sessionWorld: Layer.Layer<SessionRedis | SessionService, Redis.Redi
   Effect.sync(() => {
     const prefix = `test:session:${randomUUID()}`
     const redis = Layer.effectContext(makeSessionRedis(prefix)).pipe(Layer.provide(nodeRedis))
-    return SessionService.layer({ keyPrefix: prefix }).pipe(Layer.provideMerge(redis))
+    return SessionService.layer({ keyPrefix: prefix }).pipe(Layer.provideMerge(redis), Layer.merge(testTelemetry))
   })
 )
 
