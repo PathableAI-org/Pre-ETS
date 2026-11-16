@@ -46,12 +46,16 @@ escalate) rather than guessing.
 2. Start the local services the quickstart needs, including the observability profile from
    [Observability](../../../docs/observability.md#local-grafana--otlp). Generate a run UUID for each verification
    run, including retries. Start application instances on ports this session owns, with OTEL enabled,
-   `OTEL_SERVICE_NAME` as documented, `OTEL_SERVICE_VERSION` set to the SHA, and
-   `service.version=<SHA>,service.instance.id=<run-uuid>` added to `OTEL_RESOURCE_ATTRIBUTES`, keeping any existing
-   entries. Use a `preets:verify:<run-uuid>:` prefix for any keys this session writes.
+   `TELEMETRY_EXPORT_TIMING=immediate` ([operating modes](../../../docs/observability.md#operating-modes)),
+   `LOG_LEVEL=Debug` for the per-request debug records, `OTEL_SERVICE_NAME` as documented, `OTEL_SERVICE_VERSION` set
+   to the SHA, and `service.version=<SHA>,service.instance.id=<run-uuid>` added to `OTEL_RESOURCE_ATTRIBUTES`, keeping
+   any existing entries. Use a `preets:verify:<run-uuid>:` prefix for any keys this session writes.
 3. Run the requested `quickstart.md` steps. For browser steps, set a W3C `traceparent` header you generate per step
    through Playwright and note the trace ID, so server spans can be found without browser tracing.
-4. Wait for export: about 30 seconds for traces and logs, about 60 seconds for metrics.
+4. Under immediate timing, traces and logs reach the collector as each record finishes, so query without a batch
+   wait. Read a trace by its trace ID when you have one; a trace search lists a new trace only after the trace store's
+   search delay ([Observability](../../../docs/observability.md#verification)). Metrics arrive at their 60-second
+   interval.
 5. Run each verifier query from `contracts/telemetry.md` through the Grafana MCP server, filtered by
    `service.version`, `service.instance.id`, and the run's time range. Compare the result with the expected observation and the expected
    negative observation for each claim.
