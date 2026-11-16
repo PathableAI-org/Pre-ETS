@@ -156,7 +156,7 @@ durable tests of log messages, spans, attributes, telemetry payload secrecy, or
 exporter wiring, including tests using in-memory loggers/tracers. The probes,
 verification reports, and their transcripts do not become a permanent test suite.
 
-To see what the code did during a test run, run the test command through
+To see what the application did during a requirements BDD run, run it through
 `pnpm test:telemetry` and query that run's records in the local stack, as
 [Telemetry for a test run](../../observability.md#telemetry-for-a-test-run)
 describes. That is observation; it adds no assertion.

@@ -139,14 +139,15 @@ the verification harness runs one.
 
 ### Telemetry for a test run
 
-`pnpm test:telemetry <command> [args…]` runs any test command with telemetry
-on. It fills in only the settings that are absent or empty:
-`OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318/` (the
+`pnpm test:telemetry <command> [args…]` runs a test command with the local
+stack's telemetry settings. It fills in only the settings that are absent or
+empty: `OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318/` (the
 [local stack](#local-grafana--otlp)), `OTEL_SERVICE_NAME=pre-ets-frontend`,
 `TELEMETRY_EXPORT_TIMING=immediate`, and a generated `service.instance.id`
 entry appended to `OTEL_RESOURCE_ATTRIBUTES` when that list has none. It also
-sets `TEST_TELEMETRY=true`, the marker a test process reads before it starts
-telemetry of its own. Settings supplied explicitly win, and a true literal in
+sets `TEST_TELEMETRY=true`, the marker for a test process that starts
+telemetry of its own; no unit or integration test process does so today, so
+they export nothing. Settings supplied explicitly win, and a true literal in
 `OTEL_SDK_DISABLED` keeps telemetry off: the command then runs with the
 environment unchanged. It prints the run identifier on standard error and exits
 with the command's status.
@@ -160,12 +161,16 @@ pnpm test:telemetry pnpm test:bdd:tags "@preets-session-005"
 
 Select a run's records by its identifier, for example
 `{ resource.service.instance.id = "<run>" }` in Tempo and
-`{service_name="pre-ets-frontend", service_instance_id="<run>"}` in Loki. To
-tag a run with a revision as well, supply `OTEL_SERVICE_VERSION` and
-`OTEL_RESOURCE_ATTRIBUTES="service.version=<sha>,service.instance.id=<run>"`,
-as the [verification harness](engineering/verification-harness.md#environment)
-does; without them `service.version` is `UNKNOWN`. With the local stack down,
-every test keeps its result and only the run's telemetry is lost.
+`{service_name="pre-ets-frontend", service_instance_id="<run>"}` in Loki. To tag
+a run with a revision as well, supply `OTEL_SERVICE_VERSION` and
+`OTEL_RESOURCE_ATTRIBUTES="service.version=<sha>,service.instance.id=<run>"`, as
+the [verification harness](engineering/verification-harness.md#environment)
+does; without them `service.version` is `UNKNOWN`. A supplied list must be one
+the Node SDK accepts: `key=value` entries with any `,` or `=` in a key or value
+percent-encoded. The SDK ignores a list with any malformed entry, appended
+identifier included, and then no record carries the run identifier. With the
+local stack down, every test keeps its result and only the run's telemetry is
+lost.
 
 ### Browser tracing switch
 

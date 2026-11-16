@@ -68,15 +68,36 @@ void describe("test run environment (#475 V-014)", () => {
     assert.equal(result.runId, "run-1")
   })
 
-  void it("generates an identifier when the supplied one is empty", () => {
-    const result = on({ OTEL_RESOURCE_ATTRIBUTES: "service.instance.id=" })
-    assert.equal(result.runId, generated)
+  void it("takes the last run identifier, as the Node SDK does", () => {
+    const attributes = "service.instance.id=first,service.instance.id=last"
+    const result = on({ OTEL_RESOURCE_ATTRIBUTES: attributes })
+    assert.equal(result.runId, "last")
+    assert.equal(result.env.OTEL_RESOURCE_ATTRIBUTES, attributes)
   })
+
+  for (const attributes of ["service.instance.id=", "service.instance.id=run-1,service.instance.id="]) {
+    void it(`appends a generated identifier when the effective one in ${attributes} is empty`, () => {
+      const result = on({ OTEL_RESOURCE_ATTRIBUTES: attributes })
+      assert.equal(result.runId, generated)
+      assert.equal(result.env.OTEL_RESOURCE_ATTRIBUTES, `${attributes},service.instance.id=${generated}`)
+    })
+  }
+
+  for (const attributes of ["service.version=abc123,broken", "service.instance.id=a=b", "service.instance.id=%E0"]) {
+    void it(`keeps a list the Node SDK rejects, ${attributes}, and appends a generated identifier`, () => {
+      const result = on({ OTEL_RESOURCE_ATTRIBUTES: attributes })
+      assert.equal(result.runId, generated)
+      assert.equal(result.env.OTEL_RESOURCE_ATTRIBUTES, `${attributes},service.instance.id=${generated}`)
+    })
+  }
 
   for (const value of ["true", "yes", "on", "1", "y"]) {
     void it(`leaves the environment unchanged when OTEL_SDK_DISABLED is ${value}`, () => {
-      const env = { OTEL_EXPORTER_OTLP_ENDPOINT: "http://127.0.0.1:14318/", OTEL_SDK_DISABLED: value }
-      assert.deepEqual(run(env), { env, telemetry: "off" })
+      const env = Object.freeze({ OTEL_EXPORTER_OTLP_ENDPOINT: "http://127.0.0.1:14318/", OTEL_SDK_DISABLED: value })
+      assert.deepEqual(run(env), {
+        env: { OTEL_EXPORTER_OTLP_ENDPOINT: "http://127.0.0.1:14318/", OTEL_SDK_DISABLED: value },
+        telemetry: "off"
+      })
     })
   }
 
@@ -86,9 +107,11 @@ void describe("test run environment (#475 V-014)", () => {
     })
   }
 
-  void it("does not mutate its input", () => {
-    const env = { OTEL_RESOURCE_ATTRIBUTES: "service.version=abc123" }
-    on(env)
-    assert.deepEqual(env, { OTEL_RESOURCE_ATTRIBUTES: "service.version=abc123" })
-  })
+  for (const disabled of ["false", "true"]) {
+    void it(`does not mutate its input when OTEL_SDK_DISABLED is ${disabled}`, () => {
+      const env = Object.freeze({ OTEL_RESOURCE_ATTRIBUTES: "service.version=abc123", OTEL_SDK_DISABLED: disabled })
+      run(env)
+      assert.deepEqual(env, { OTEL_RESOURCE_ATTRIBUTES: "service.version=abc123", OTEL_SDK_DISABLED: disabled })
+    })
+  }
 })
