@@ -2,7 +2,8 @@
 
 **Plan**: [plan.md](plan.md)
 
-**Inputs**: [spec.md](spec.md) and [verification.md](verification.md) at spec commit `371a385`; `origin/main` at
+**Inputs**: [spec.md](spec.md) and [verification.md](verification.md) at spec commit `371a385`, with the V-012
+correction of `136548c`; `origin/main` at
 `6c32657`; installed packages `effect` 4.1.4, `@effect/opentelemetry` 4.1.4, `@effect/vitest` (catalog),
 `@opentelemetry/sdk-trace-base` 2.12.0 (a shim over `@opentelemetry/sdk-trace` 2.12.0), `sdk-logs` 0.223.0,
 `otlp-exporter-base` 0.223.0, `sdk-trace-web` 2.12.0, `next` 16.4.6, and `vitest` 5.1.0.
@@ -55,6 +56,19 @@ probe is committed. Its details:
   trace ID of its `TenantConfigService.getConfigFromAlias` span and the run's `service.instance.id`. A test process
   does not apply `LOG_LEVEL`, so the debug record of T-002 is not emitted there. `tests/lib/session.test.ts` and
   the integration suites sent no log export.
+
+The search-delay finding is the basis of a specification rule. The specification's correction of 2026-11-16 (spec L4
+and SC-007; `verification.md` V-012 and L-stack) keeps the 10-second bound for a record the verifier reaches
+directly, and bounds a record only a trace search can reach by the search delay the trace store reports: found
+within 10 seconds after that delay has passed, counted from the command's return. In this plan only the integration
+selection of V-012 is reached by search alone, because the integration suites send no log export. The verifier reads
+the delay from Tempo's effective configuration, which reports the two values P7 recorded. On 2026-11-16 a read of
+`/status/config` through the Tempo datasource of the local stack's Grafana, as the anonymous viewer, returned
+`max_trace_live: 30s` and `max_block_duration: 30s` under `live_store` for the pinned image; only the `otel-lgtm`
+container ran, no application or test did, and nothing was changed. P7 did not separate the two values, so the
+[quickstart](quickstart.md#telemetry-queries) takes the larger as the reported delay. The verification reports of
+slices A and B show the direct reads the other 10-second claims use: the trace ID of the `traceparent` the verifier
+sent (V-003), and the trace ID of the `traceparent` on the RSC request a router navigation sends (V-004).
 
 ## Decisions
 
@@ -216,7 +230,8 @@ probe is committed. Its details:
   starts the application with `LOG_LEVEL=Debug` so each sampled request emits one (P3). Test-run records are the
   existing `Effect.fn` spans of the exercised services, sampled from programs that run under the wall clock, and
   for the unit selection the existing `Tenant configuration request failed` warning, whose trace ID gives a lookup
-  that does not wait for the trace search (P7).
+  that does not wait for the trace search (P7). The integration selection has no such record and is found by the
+  trace search, within the bound the corrected specification sets from the trace store's reported search delay.
 - **Rationale**: The specification forbids new signals, and `verification.md` says a missing observation would be a
   specification finding. Every harness observation it lists is available from existing records.
 

@@ -3,8 +3,8 @@
 **Branch**: `385-telemetry-export-timing-plan` | **Date**: 2026-11-15 | **Spec**: [spec.md](spec.md)
 
 **Input**: Feature contract in `specs/385-telemetry-export-timing/spec.md` and
-`specs/385-telemetry-export-timing/verification.md` at spec commit `371a385`; delivery issue
-[#475](https://github.com/PathableAI-org/Pre-ETS/issues/475)
+`specs/385-telemetry-export-timing/verification.md` at spec commit `371a385`, with the V-012 correction of
+`136548c`; delivery issue [#475](https://github.com/PathableAI-org/Pre-ETS/issues/475)
 
 **Risk tier**: High, new behavior, trigger 4, as the specification records. Every slice gets a verification report
 and a code review.
@@ -331,11 +331,16 @@ Findings and open points for the reviewer. None changes an acceptance criterion,
 6. **Open Renovate branch.** `renovate/opentelemetry-stack` may move the OpenTelemetry versions this plan was
    checked against. The implementation session re-checks the simple processors' flush and shutdown behavior and
    the exporter option if it merges first.
-7. **The trace store lists a short test run late (research P7).** In the local stack a trace search lists a span
-   about 30 seconds after the span is received, while a lookup by trace ID answers at once. The server and browser
-   claims start from a trace ID the verifier holds. A test run has none unless one of its log records carries it. The
-   unit selection emits such a record, so its half of V-012 is observable within 10 seconds. No integration suite
-   emits a log record, so the integration half is found only by the search, later than V-012's 10-second bound,
-   and comes out `not established` under VL-1. V-012 is a full claim of slice E, which a limitation cannot excuse.
-   Resolving it is not this plan's decision: it needs a specification correction to how V-012's integration half is
-   observed or bounded, or a change to the local stack's trace settings, which this plan preserves.
+7. **The trace store lists a short test run late (research P7). Resolved by the specification.** In the local
+   stack a trace search lists a span about 30 seconds after the span is received, while a read by trace ID
+   answers at once. The server and browser claims start from a trace ID the verifier holds: the `traceparent` it
+   sends for V-003, and the `traceparent` of the RSC request a navigation causes for V-004. A test run gives the
+   verifier a trace ID only through one of its log records. V-011's run, with `LOG_LEVEL=Debug` (note 5), and the
+   unit selection of V-012 emit such records, so they are read directly within 10 seconds. No integration suite
+   emits a log record, so only a trace search reaches the integration selection's records. The specification,
+   corrected on 2026-11-16 (spec L4 and SC-007; `verification.md` V-012, procedure step 8, and L-stack), bounds
+   those records by the trace store's own search delay: they are found within 10 seconds after the delay the
+   trace store reports has passed, counted from the command's return. The verifier reads that delay from the
+   trace store and reports it with the observed time. Found later, or with no delay the verifier can read, the
+   integration half is `not established` under VL-1. The plan changes no trace setting of the local stack, and
+   V-016 still observes at the receiver that the records left before the command returned.

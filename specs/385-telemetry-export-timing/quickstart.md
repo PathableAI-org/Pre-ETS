@@ -11,31 +11,31 @@ Each claim is observed once, at the boundary that can establish it. "Receiver" m
 described below. Limitation IDs are those of [plan.md](plan.md#phase-7--implementation-slices) (`L-n`) and of
 `verification.md`, whose bullets the request numbers `VL-1` (the local stack's own delay) to `VL-7`.
 
-| Claims | Feature evidence (this guide)                                                                                    | Supporting module evidence           | Slice(s)    | Limits                 |
-| ------ | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------ | ----------- | ---------------------- |
-| V-001  | §A: five requests three seconds apart; each trace export reaches the receiver within 1 s of its response         | —                                    | A           | VL-2 sample            |
-| V-002  | §A: the same five requests; each log export reaches the receiver within 1 s                                      | —                                    | A           | VL-2 sample            |
-| V-003  | §A: T-001 and T-002 found within 10 s through the forwarding receiver; §F: the same from the documentation       | —                                    | A (part), F | VL-1 stack delay       |
-| V-004  | §B: export request within 1 s of each interaction (Playwright); T-003 found within 10 s                          | —                                    | B           | VL-1                   |
-| V-005  | §A: 20-request burst gives fewer than 20 trace exports, as at the base revision, and in development with `batch` | —                                    | A           | Local production build |
-| V-006  | §B: at least five browser records within 1 s give fewer export requests than records                             | —                                    | B           | —                      |
-| V-007  | §A: one development-mode start with no setting shows the V-001 observation                                       | Config examples and property (A)     | A           | —                      |
-| V-008  | §A: one real start per case exits with an error naming the setting and serves no request                         | Config property, OTEL on and off (A) | A           | —                      |
-| V-009  | §A: telemetry off with each value; zero receiver requests; the protected document has no tracing configuration   | —                                    | A           | VL-3 absence           |
-| V-010  | §F: each workflow states its mode; each suite's CI command sends zero requests to the stack's address            | —                                    | F           | VL-3 absence           |
-| V-011  | §D: a tagged BDD run through the command; T-001 and T-002 found by the run's identifiers within 10 s             | —                                    | D           | VL-1                   |
-| V-012  | §E: one unit and one integration selection under the wall clock; T-004 found within 10 s of the return           | —                                    | E           | VL-1; L-3; L-5         |
-| V-013  | §D (BDD selection) and §E (unit and integration): identical per-test results across three runs; each run ends    | The suites themselves                | D (part), E | VL-2 selection; L-4    |
-| V-014  | §D: two concurrent runs selected apart by T-001; the off switch gives zero requests                              | `tests/tooling/test-run.test.ts` (D) | D           | —                      |
-| V-015  | §C: under each timing, a request less than 1 s before `SIGTERM`; its trace and log export are at the receiver    | —                                    | C           | L-1                    |
-| V-016  | §D (BDD) and §E (unit, integration): under each timing the last test's records are at the receiver at return     | —                                    | D (part), E | —                      |
-| V-017  | §B: the record of an interaction that navigates at once is found (T-003), under each timing                      | —                                    | B           | L-2                    |
-| V-018  | §C: fixed journey with the receiver refusing matches the journey with it reachable; `SIGTERM` ends the process   | —                                    | C           | L-4                    |
-| V-019  | §A (server) and §B (browser): equal name and attribute sets under both timings; header present; no duplicate     | —                                    | A (part), B | VL-2                   |
-| V-020  | §A (server) and §B (browser): no probe value or forbidden class in any exported field under immediate timing     | —                                    | A (part), B | VL-3                   |
-| V-021  | §A: two metric intervals under each timing; the same export times and counts                                     | —                                    | A           | —                      |
-| V-022  | §B: the received document holds the four values and the timing, with headers configured; none when off           | Browser-settings example (B)         | B           | —                      |
-| V-023  | §F: a fresh worktree and the documentation alone give V-001 and V-003; the modes are stated once                 | —                                    | F           | —                      |
+| Claims | Feature evidence (this guide)                                                                                                                                                                               | Supporting module evidence           | Slice(s)    | Limits                 |
+| ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ | ----------- | ---------------------- |
+| V-001  | §A: five requests three seconds apart; each trace export reaches the receiver within 1 s of its response                                                                                                    | —                                    | A           | VL-2 sample            |
+| V-002  | §A: the same five requests; each log export reaches the receiver within 1 s                                                                                                                                 | —                                    | A           | VL-2 sample            |
+| V-003  | §A: T-002 by the run and T-001 by the sent trace ID found within 10 s through the forwarding receiver; §F: the same from the documentation                                                                  | —                                    | A (part), F | VL-1 stack delay       |
+| V-004  | §B: export request within 1 s of each interaction (Playwright); T-003 read by the RSC request's trace ID within 10 s                                                                                        | —                                    | B           | VL-1                   |
+| V-005  | §A: 20-request burst gives fewer than 20 trace exports, as at the base revision, and in development with `batch`                                                                                            | —                                    | A           | Local production build |
+| V-006  | §B: at least five browser records within 1 s give fewer export requests than records                                                                                                                        | —                                    | B           | —                      |
+| V-007  | §A: one development-mode start with no setting shows the V-001 observation                                                                                                                                  | Config examples and property (A)     | A           | —                      |
+| V-008  | §A: one real start per case exits with an error naming the setting and serves no request                                                                                                                    | Config property, OTEL on and off (A) | A           | —                      |
+| V-009  | §A: telemetry off with each value; zero receiver requests; the protected document has no tracing configuration                                                                                              | —                                    | A           | VL-3 absence           |
+| V-010  | §F: each workflow states its mode; each suite's CI command sends zero requests to the stack's address                                                                                                       | —                                    | F           | VL-3 absence           |
+| V-011  | §D: a tagged BDD run through the command; T-002 by the run's identifier and T-001 by a returned record's trace ID found within 10 s                                                                         | —                                    | D           | VL-1                   |
+| V-012  | §E: one unit and one integration selection under the wall clock. Unit: T-004 by a log record's trace ID within 10 s of the return. Integration: T-004 by search within 10 s after the reported search delay | —                                    | E           | VL-1; L-3; L-5         |
+| V-013  | §D (BDD selection) and §E (unit and integration): identical per-test results across three runs; each run ends                                                                                               | The suites themselves                | D (part), E | VL-2 selection; L-4    |
+| V-014  | §D: two concurrent runs selected apart by T-001; the off switch gives zero requests                                                                                                                         | `tests/tooling/test-run.test.ts` (D) | D           | —                      |
+| V-015  | §C: under each timing, a request less than 1 s before `SIGTERM`; its trace and log export are at the receiver                                                                                               | —                                    | C           | L-1                    |
+| V-016  | §D (BDD) and §E (unit, integration): under each timing the last test's records are at the receiver at return                                                                                                | —                                    | D (part), E | —                      |
+| V-017  | §B: the record of an interaction that navigates at once is found (T-003), under each timing                                                                                                                 | —                                    | B           | L-2                    |
+| V-018  | §C: fixed journey with the receiver refusing matches the journey with it reachable; `SIGTERM` ends the process                                                                                              | —                                    | C           | L-4                    |
+| V-019  | §A (server) and §B (browser): equal name and attribute sets under both timings; header present; no duplicate                                                                                                | —                                    | A (part), B | VL-2                   |
+| V-020  | §A (server) and §B (browser): no probe value or forbidden class in any exported field under immediate timing                                                                                                | —                                    | A (part), B | VL-3                   |
+| V-021  | §A: two metric intervals under each timing; the same export times and counts                                                                                                                                | —                                    | A           | —                      |
+| V-022  | §B: the received document holds the four values and the timing, with headers configured; none when off                                                                                                      | Browser-settings example (B)         | B           | —                      |
+| V-023  | §F: a fresh worktree and the documentation alone give V-001 and V-003; the modes are stated once                                                                                                            | —                                    | F           | —                      |
 
 ## Prerequisites
 
@@ -101,8 +101,9 @@ Receiver in **forward** mode unless a step says otherwise. Endpoint: the receive
 1. **Immediate (V-001, V-002, V-003).** Start the production build with `TELEMETRY_EXPORT_TIMING=immediate`. Send
    five requests three seconds apart to `/login`, each with its own generated `traceparent` header. For each,
    record the time from the response to its last `/v1/traces` line and to its `/v1/logs` line. Expected: every one
-   within 1 second, and before the next request. Right after each response run the T-001 and T-002 queries and
-   record the time until the records are found. Expected: within 10 seconds.
+   within 1 second, and before the next request. Right after each response read the trace by the trace ID of the
+   `traceparent` sent (T-001) and run the T-002 query, and record the time until the records are found. Expected:
+   within 10 seconds.
 2. **Default by mode (V-007).** Start development mode with no `TELEMETRY_EXPORT_TIMING`. Send one request and
    record the step 1 timing. Expected: within 1 second.
 3. **Refusal (V-008).** Start the production build with `TELEMETRY_EXPORT_TIMING=Batch`, then again with
@@ -142,9 +143,10 @@ time, at least five seconds apart.
    `serviceInstanceId`, and `exportTiming` with the value `immediate`; no header name or value. Restart with
    `batch` and expect `batch`. Restart without `BROWSER_TRACING_ENABLED` and expect no such element.
 2. **Immediate (V-004).** Under `immediate`, perform five router navigations between the protected fixture pages.
-   For each, record the time from the click to the page's `POST …/v1/traces` request that follows it, then run the
-   T-003 query for `Router.transition`. Expected: the request within 1 second, the record within 10 seconds, and
-   no 30-second wait.
+   For each, record the time from the click to the page's `POST …/v1/traces` request that follows it, and take the
+   trace ID from the `traceparent` header of the RSC request the navigation sends, which Playwright records. Read
+   that trace (T-003) and record the time until it holds the `Router.transition` record. Expected: the request
+   within 1 second, the record within 10 seconds, and no 30-second wait.
 3. **Navigating interaction (V-017).** Let the session expire, activate Log in on the expiration modal, and query
    T-003 for `Interaction.login`. Expected: found. Repeat under `batch`.
 4. **Batch (V-006).** Under `batch`, make at least five browser records within 1 second (five quick focus moves
@@ -176,8 +178,10 @@ Start from a shell that holds no `OTEL_*`, `TELEMETRY_EXPORT_TIMING`, `TEST_TELE
 `BROWSER_TRACING_ENABLED` variable. Use one tagged selection throughout, for example `"@preets-session-005"`.
 
 1. **Command alone (V-011).** Run `pnpm test:telemetry pnpm test:bdd:tags "<tag>"` and note the run identifier it
-   prints. As soon as it returns, run the T-001 and T-002 queries with that identifier. Expected: the owned
-   application's records are found within 10 seconds.
+   prints. Keep `LOG_LEVEL=Debug` in the environment, which the owned application needs to emit T-002. As soon as
+   the command returns, run the T-002 query with that identifier and read the trace of one returned record by its
+   trace ID (T-001). Expected: the owned application's log records and that trace's server span are found within
+   10 seconds.
 2. **Explicit settings win (V-014).** Start two runs at the same time, each with its own `OTEL_SERVICE_VERSION`
    and `OTEL_RESOURCE_ATTRIBUTES="service.version=…,service.instance.id=…"`. Expected: each prints its supplied
    identifier, and a T-001 query for one run returns no record of the other.
@@ -200,18 +204,22 @@ Same clean shell. Redis must be running.
    and
    `pnpm test:telemetry pnpm --filter @pathableai/pre-ets-frontend-services test:integration tests/integration/session-redis.test.ts`.
    Both selections run the sampled programs under the wall clock, so their records carry the time of the run
-   ([L-5](plan.md#phase-7--implementation-slices)). The first is the unit selection of the steps below. As soon as
-   each command returns, run the T-004 queries with the printed identifier and record the time until the records
-   are found.
+   ([L-5](plan.md#phase-7--implementation-slices)). The first is the unit selection of the steps below. Before the
+   integration run, read the trace store's reported search delay as [Telemetry queries](#telemetry-queries)
+   describes and record it. As soon as each command returns, run the T-004 queries with the printed identifier and
+   record the time from the return until the records are found.
    - **Unit.** The log query returns the run's `Tenant configuration request failed` records. Fetch the trace of
      one record by its trace ID. Expected: the log record and a trace that holds
      `TenantConfigService.getConfigFromAlias` with the run's `service.instance.id`, within 10 seconds. The trace
      search later lists `SessionService.establish` for the run as well; that search is not timed.
-   - **Integration.** The suite emits no log record, so its records are found by the trace search alone. Expected by
-     V-012: `SessionService.establish` spans of the run within 10 seconds. In
-     [probe P7](research.md#probes) the search listed them 28 to 31 seconds after the command returned, which is
-     the local stack's own delay (VL-1); see [review note 7](plan.md#review-notes). The suite's `readAt` and
-     `refreshAt` programs run under a fixed clock and are not sampled (L-5).
+   - **Integration.** The suite emits no log record, so the verifier holds no trace ID and only the trace search
+     reaches its records. Repeat the T-004 search until it lists `SessionService.establish` spans of the run.
+     Expected: within 10 seconds after the reported search delay, counted from the command's return, which is
+     within 40 seconds for the 30-second delay of [probe P7](research.md#probes). The delay does not count against
+     the 10 seconds. Report the delay, that no log record gave a trace ID, and the observed time. Found later, or
+     with no delay the verifier can read from the trace store, the result is `not established` (VL-1); see
+     [review note 7](plan.md#review-notes). In P7 the search listed the spans 28 to 31 seconds after the command
+     returned. The suite's `readAt` and `refreshAt` programs run under a fixed clock and are not sampled (L-5).
 2. **Results unchanged (V-013).** Run each selection three ways: the plain script, through the command, and through
    the command with the endpoint naming a refused address. Compare per-test results by test name. Also run
    `pnpm test:telemetry pnpm --filter @pathableai/pre-ets-frontend test:unit` and
@@ -252,20 +260,33 @@ Run through the Grafana MCP server, with `RUN` as defined in
 [contracts/telemetry.md](contracts/telemetry.md#signals) and the run's time range.
 
 ```text
-T-001  { RUN && resource.telemetry.sdk.language = "nodejs" && kind = server && trace:id = "<trace-id>" }
+T-001  get_tempo_trace with the trace ID of the traceparent sent (§A, §F) or of a T-002 record of the run (§D); the trace holds a server span with RUN and telemetry.sdk.language = "nodejs"
+T-001  { RUN && resource.telemetry.sdk.language = "nodejs" && kind = server }      a search that selects a run (§D step 2); not timed
 T-002  {service_name="pre-ets-frontend", service_instance_id="<run-uuid>"} |= "Reading tenant configuration" | service_version="<sha>"
-T-003  { RUN && resource.telemetry.sdk.language = "webjs" && name = "Router.transition" }
-T-003  { RUN && resource.telemetry.sdk.language = "webjs" && name = "Interaction.login" }
+T-003  get_tempo_trace with the trace ID from the traceparent of the RSC request a navigation sends (§B step 2); the trace holds a Router.transition span with RUN and telemetry.sdk.language = "webjs"
+T-003  { RUN && resource.telemetry.sdk.language = "webjs" && name = "Interaction.login" }      a search (§B step 3); not timed
 T-004  {service_name="pre-ets-frontend", service_instance_id="<run-uuid>"} |= "Tenant configuration request failed"      then get_tempo_trace with the record's trace ID
-T-004  { resource.service.instance.id = "<run-uuid>" && name = "SessionService.establish" }
+T-004  { resource.service.instance.id = "<run-uuid>" && name = "SessionService.establish" }      a search; the only reach for the integration selection (§E step 1)
+Delay  GET http://127.0.0.1:3300/api/datasources/proxy/uid/tempo/status/config      read live_store.max_trace_live and live_store.max_block_duration
 Sets   { RUN } | select(name, resource.service.name)      then get_tempo_trace for each trace to list attribute names
 ```
 
-An empty result is inconclusive until the receiver or Playwright shows that the export request left. A record that
-left within 1 second but is found later than 10 seconds makes the claim `not established` under VL-1. A trace
-search lists a span only after the trace store has indexed it, about 30 seconds after receipt in
-[probe P7](research.md#probes); a lookup by trace ID does not wait for that. A record made under a test clock or a
-fixed clock left its process but is not shown in the run's time range (L-5).
+An empty result is inconclusive until the receiver or Playwright shows that the export request left. The 10-second
+bound applies to a record reached directly: a log record selected by the run, or a trace read by a trace ID the
+verifier holds or takes from such a log record. A record of that kind that left within 1 second but is found later
+than 10 seconds makes the claim `not established` under VL-1. A trace search lists a span only after the trace
+store's own search delay, about 30 seconds after receipt in [probe P7](research.md#probes); a read by trace ID does
+not wait for that, and a search does not replace a direct read where one exists.
+
+Only the integration selection of §E is reached by search alone. Its records are found within 10 seconds after the
+reported search delay, counted from the command's return, and the delay does not count against the 10 seconds. The
+reported delay comes from the trace store's effective configuration, which the `Delay` request reads through the
+Tempo datasource of the local stack's Grafana; the request is a read and changes nothing. Under `live_store` the
+configuration reports `max_trace_live` and `max_block_duration`. Both were `30s` in P7, where the observed search
+delay matched them, and the reported delay is the larger of the two. Record both values with the observation. If
+the request fails or the configuration holds neither value, there is no reported delay and the search-only
+observation is `not established` under VL-1. A record made under a test clock or a fixed clock left its process but
+is not shown in the run's time range (L-5).
 
 ## Cleanup
 
