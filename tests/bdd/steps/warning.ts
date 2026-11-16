@@ -14,6 +14,7 @@ import {
   EXPIRED_COPY,
   heldDeadline,
   namesOf,
+  OBSERVATION_MILLISECONDS,
   OFFSET_TOLERANCE_MILLISECONDS,
   openTabIn,
   openTabs,
@@ -26,7 +27,8 @@ import {
   type Tab,
   tabOf,
   typeIn,
-  untilBefore
+  untilBefore,
+  untilHolding
 } from "./expiration.ts"
 import { setTenantPolicy } from "./tenant.ts"
 
@@ -38,8 +40,6 @@ const WARNING = {
   heading: "Your session is about to expire"
 }
 const MINUTE_MILLISECONDS = 60_000
-/** How long after a threshold or renewal a step waits for the warning to open or close before failing. */
-const OBSERVATION_MILLISECONDS = 15_000
 
 /** One change of the warning in a tab: when it opened or closed, by the page's clock, which is the test's. */
 interface WarningChange {
@@ -381,15 +381,6 @@ Then(
 )
 
 /** Accessible blocking (#156 slice B, quickstart §B). */
-
-/** Waits until the tab's header holds `held` as its deadline, within the tab's clock-offset estimate. */
-const untilHolding = (page: Page, held: number, timeout: number) =>
-  page.waitForFunction(
-    ({ deadline, tolerance }) =>
-      Math.abs(Number(document.querySelector("header")?.getAttribute("data-session-deadline")) - deadline) <= tolerance,
-    { deadline: held, tolerance: OFFSET_TOLERANCE_MILLISECONDS },
-    { polling: 50, timeout }
-  )
 
 /** The roster's attendance-note field; programmatic focus there is not activity, so nothing renews. */
 const ATTENDANCE_NOTE = "Attendance note"
