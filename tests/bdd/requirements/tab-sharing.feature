@@ -67,7 +67,7 @@ Feature: One session shared by a browser's tabs, renewed and logged out together
     And requests sent outside the browser present the session tab "S1" opened with
     And the visitor's page at "springfield.localhost:3000" has observed its session's coordination tag
     When the visitor logs out in tab "S2"
-    Then tabs "S1", "S2", and "S3" show the signed-out notice within 2 seconds of the logout in tab "S2"
+    Then tabs "S1", "S2", and "S3" show the signed-out notice and conceal protected content within 2 seconds of the logout in tab "S2"
     And tabs "S1", "S2", and "S3" hold no protected content
     And tabs "Shelbyville" and "Other" keep their sessions unchanged 3 seconds after the logout in tab "S2"
     And tabs "Shelbyville" and "Other" still show their protected content

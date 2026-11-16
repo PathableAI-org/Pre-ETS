@@ -13,6 +13,7 @@ import {
   namesOf,
   OBSERVATION_MILLISECONDS,
   OFFSET_TOLERANCE_MILLISECONDS,
+  openedSession,
   PROTECTED_CONTROL,
   resumptionOf,
   sessionOf,
@@ -81,8 +82,7 @@ Then(
     const tab = tabOf(this, name)
     assert.deepEqual(tab.loginTraffic.map(String), [], `tab "${name}" started a login`)
     assert.deepEqual(tab.protectedDocuments, ["/"], `tab "${name}" was not served the protected document at once`)
-    const reference = tabOf(this, earlier).session
-    assert.ok(reference, `expected tab "${earlier}" to have opened with a session`)
+    const reference = openedSession(tabOf(this, earlier), earlier)
     assert.equal(await sessionOf(tab), reference, `tab "${name}" presents another session reference`)
   }
 )
@@ -157,17 +157,18 @@ Then(
 )
 
 /**
- * AC5 with the B5 bound: every named tab shows the signed-out notice within 2 s of the logout request, measured from
- * when it left the logging-out tab. Each tab is observed from the start of this step, so a notice already shown counts
- * as shown now.
+ * AC5 with the B5 bound: every named tab shows the signed-out notice and conceals its protected content within 2 s of
+ * the logout request, measured from when it left the logging-out tab. Each tab is observed from the start of this step,
+ * so an outcome already reached counts as reached now.
  */
 Then(
-  "tabs {} show the signed-out notice within 2 seconds of the logout in tab {string}",
+  "tabs {} show the signed-out notice and conceal protected content within 2 seconds of the logout in tab {string}",
   { timeout: 60_000 },
   async function(this: AppWorld, list: string, source: string) {
     const loggedOutAt = await eventTime(this, "logout", source)
     const logout = { at: loggedOutAt, name: `the logout request in tab "${source}"` }
-    await assertEachWithinBound(this, list, logout, "showed the signed-out notice", (tab) => signedOutAt(tab.page))
+    const outcome = "showed the signed-out notice with protected content concealed"
+    await assertEachWithinBound(this, list, logout, outcome, (tab) => signedOutAt(tab.page))
   }
 )
 
@@ -204,9 +205,7 @@ Then(
 Given(
   "requests sent outside the browser present the session tab {string} opened with",
   function(this: AppWorld, name: string) {
-    const { session } = tabOf(this, name)
-    assert.ok(session, `expected tab "${name}" to have opened with a session`)
-    this.cookie = session
+    this.cookie = openedSession(tabOf(this, name), name)
   }
 )
 
@@ -249,7 +248,11 @@ Then(
   async function(this: AppWorld, name: string) {
     const { page } = tabOf(this, name)
     const elapsed = await signedOutAt(page) - resumptionOf(this, name).startedAt
-    assertWithinBound(elapsed, `tab "${name}" showed the signed-out notice`, "resuming")
+    assertWithinBound(
+      elapsed,
+      `tab "${name}" showed the signed-out notice with protected content concealed`,
+      "resuming"
+    )
     await assertNoProtectedContent(page, name)
   }
 )

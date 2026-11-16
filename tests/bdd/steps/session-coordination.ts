@@ -14,7 +14,7 @@ import {
   sendRequest,
   type SiteRequest
 } from "../support/server.ts"
-import { namesOf, type Tab, tabOf, untilHolding } from "./expiration.ts"
+import { namesOf, openedSession, type Tab, tabOf, untilHolding } from "./expiration.ts"
 import { actionRequest } from "./http.ts"
 import { configuredIdleTimeout } from "./tenant.ts"
 
@@ -95,10 +95,10 @@ interface Observed {
 }
 
 /** The named tab's session as a raw request presents it: the reference its browser held when it opened, at its host. */
-export const presentationOf = (tab: Tab, name: string): Presentation => {
-  assert.ok(tab.session, `expected tab "${name}" to have opened with a session`)
-  return { cookie: `pathable-session=${tab.session}`, host: tab.host }
-}
+export const presentationOf = (tab: Tab, name: string): Presentation => ({
+  cookie: `pathable-session=${openedSession(tab, name)}`,
+  host: tab.host
+})
 
 /** `GET /session/status` at the instance on `port`, an application request: it reads the session and never renews it. */
 export const sessionStatus = (world: AppWorld, port: number, presented: Presentation): Promise<RecordedResponse> =>

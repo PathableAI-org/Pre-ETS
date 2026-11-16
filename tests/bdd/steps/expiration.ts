@@ -133,6 +133,12 @@ const newContext = async (scenario: Expiration, hasTouch = false): Promise<Brows
   return context
 }
 
+/** The application session reference the named tab's browser held when the tab opened. */
+export const openedSession = (tab: Tab, name: string): string => {
+  assert.ok(tab.session, `expected tab "${name}" to have opened with a session`)
+  return tab.session
+}
+
 /** The application session reference the tab's browser holds for its host, if any. */
 export const sessionOf = async (tab: Tab): Promise<string | undefined> =>
   (await tab.page.context().cookies(`http://${tab.host}/`)).find((cookie) => cookie.name === "pathable-session")?.value
