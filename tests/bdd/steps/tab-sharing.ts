@@ -131,6 +131,25 @@ Then(
 )
 
 /**
+ * Observes every named tab at once until `observe` answers when it showed the outcome, on the test's clock, and requires
+ * each within the B5 bound of `from`.
+ */
+const assertEachWithinBound = async (
+  world: AppWorld,
+  list: string,
+  from: number,
+  outcome: string,
+  observe: (tab: Tab, name: string) => Promise<number>
+) => {
+  const names = namesOf(list)
+  const times = await Promise.all(names.map((name) => observe(tabOf(world, name), name)))
+  names.forEach((name, index) => {
+    const late = (times[index] ?? Number.POSITIVE_INFINITY) - from
+    assert.ok(late <= BOUND_MILLISECONDS, `tab "${name}" ${outcome} ${String(late)} ms late`)
+  })
+}
+
+/**
  * AC3 with the B5 bound: the renewal moved the session's deadline, as its own status read reports it, and every named
  * tab holds the renewed deadline within 2 s of the renewal response in the typing tab.
  */
@@ -140,19 +159,15 @@ Then(
   async function(this: AppWorld, list: string, source: string) {
     const renewedAt = await eventTime(this, "typing", source)
     const { deadline } = snapshotOf(await sessionStatus(this, this.port, presentationOf(tabOf(this, source), source)))
-    const tabs = namesOf(list).map((name) => ({ name, tab: tabOf(this, name) }))
-    for (const { name, tab } of tabs) {
-      assert.ok(
-        deadline - tab.deadline > OFFSET_TOLERANCE_MILLISECONDS,
-        `the renewal did not move "${name}"'s deadline`
-      )
+    for (const name of namesOf(list)) {
+      const moved = deadline - tabOf(this, name).deadline
+      assert.ok(moved > OFFSET_TOLERANCE_MILLISECONDS, `the renewal did not move "${name}"'s deadline`)
     }
-    const held = await Promise.all(tabs.map(({ name, tab }) => heldAt(tab.page, deadline, name)))
-    for (const [index, { name, tab }] of tabs.entries()) {
-      const late = (held[index] ?? Number.POSITIVE_INFINITY) - renewedAt
-      assert.ok(late <= BOUND_MILLISECONDS, `tab "${name}" held the renewed deadline ${String(late)} ms late`)
+    await assertEachWithinBound(this, list, renewedAt, "held the renewed deadline", async (tab, name) => {
+      const at = await heldAt(tab.page, deadline, name)
       tab.deadline = await heldDeadline(tab.page)
-    }
+      return at
+    })
   }
 )
 
@@ -166,12 +181,7 @@ Then(
   { timeout: 60_000 },
   async function(this: AppWorld, list: string, source: string) {
     const loggedOutAt = await eventTime(this, "logout", source)
-    const names = namesOf(list)
-    const shown = await Promise.all(names.map((name) => signedOutAt(tabOf(this, name).page)))
-    names.forEach((name, index) => {
-      const late = (shown[index] ?? Number.POSITIVE_INFINITY) - loggedOutAt
-      assert.ok(late <= BOUND_MILLISECONDS, `tab "${name}" showed the signed-out notice ${String(late)} ms late`)
-    })
+    await assertEachWithinBound(this, list, loggedOutAt, "showed the signed-out notice", (tab) => signedOutAt(tab.page))
   }
 )
 
