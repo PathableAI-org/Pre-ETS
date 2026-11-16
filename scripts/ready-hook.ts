@@ -1,9 +1,11 @@
 /**
  * Decisions for the Claude Code PreToolUse hook that gates marking a pull request ready for review, however a session
- * attempts it: `gh pr ready`, a `gh api` call that clears `draft`, or the GitHub MCP tool's `update_pull_request` with
- * `draft: false`. An implementation-slice branch or a High fix (labelled risk:high) must pass the verification and
- * code review gate, judged at the pull request's head after syncing its note comments. Paths the gate cannot judge
- * are refused with the gated way to do the same thing. See docs/engineering/verification-harness.md#gate-and-escalation.
+ * attempts it: `gh pr ready`, a `gh api` call that clears `draft` or posts to the `ccr/ready_for_review` route, or the
+ * GitHub MCP tool's `update_pull_request` with `draft: false`. An implementation-slice branch or a High fix (labelled
+ * risk:high) must pass the verification and code review gate, judged at the pull request's head after syncing its note
+ * comments. Paths the gate cannot judge are refused with the gated way to do the same thing. Once the gate passes or
+ * does not apply, marking ready needs no person's confirmation. See
+ * docs/engineering/verification-harness.md#gate-and-escalation.
  */
 import type { Validated } from "./schema-checks.ts"
 
@@ -15,7 +17,7 @@ import { checkedOut, gateApplies, isImplementationBranch, runGate } from "./veri
 
 export type Decision =
   | { readonly kind: "allow" }
-  | { readonly kind: "ask"; readonly reason: string }
+  | { readonly kind: "approve"; readonly reason: string }
   | { readonly kind: "block"; readonly reason: string }
 
 export interface HookInput {
@@ -25,7 +27,7 @@ export interface HookInput {
 }
 
 export type ReadyAttempt =
-  | { readonly kind: "gate"; readonly settingsAsk: boolean; readonly target: ReadyTarget }
+  | { readonly approveHere: boolean; readonly kind: "gate"; readonly target: ReadyTarget }
   | { readonly kind: "refuse"; readonly reason: string }
 
 export type ReadyTarget =
@@ -50,11 +52,19 @@ const prReadyTarget = (args: readonly string[]): ReadyTarget => {
   return { kind: "branch", name: positional }
 }
 
+/** A REST call to the pull request's ready-for-review route, through `gh api` or another HTTP client. */
+const restReadyRoute = new RegExp(`${segmentStart}(?:gh\\s+api|curl)\\b.*\\bpulls/(\\d+)/ccr/ready_for_review\\b`)
+
+/** A `gh api` call that sets `draft` false on a pull request, as a field or in a JSON body. */
+const restClearDraft = new RegExp(
+  `${segmentStart}gh\\s+api\\b.*\\bpulls/(\\d+)\\b.*(?:\\bdraft=false\\b|"draft"\\s*:\\s*false\\b)`
+)
+
 const bashAttempt = (command: string): ReadyAttempt | undefined => {
   const ready = new RegExp(`${segmentStart}gh\\s+pr\\s+ready\\b([^;&|)]*)`).exec(command)
   if (ready !== null) {
     const args = (ready[1] ?? "").trim().split(/\s+/).filter((arg) => arg.length > 0)
-    return args.includes("--undo") ? undefined : { kind: "gate", settingsAsk: true, target: prReadyTarget(args) }
+    return args.includes("--undo") ? undefined : { approveHere: false, kind: "gate", target: prReadyTarget(args) }
   }
   if (new RegExp(`${segmentStart}gh\\s+stack\\s+submit\\b[^;&|]*\\s--open\\b`).test(command)) {
     return {
@@ -66,14 +76,14 @@ const bashAttempt = (command: string): ReadyAttempt | undefined => {
   if (new RegExp(`${segmentStart}gh\\s+api\\b`).test(command) && command.includes("markPullRequestReadyForReview")) {
     return {
       kind: "refuse",
-      reason: "A GraphQL ready-for-review mutation names no branch the gate can judge. Use `gh pr ready` or the "
-        + "GitHub MCP tool's update_pull_request with draft: false."
+      reason: "A GraphQL ready-for-review mutation names no branch the gate can judge. Use `gh pr ready`, the REST "
+        + "ccr/ready_for_review route, or the GitHub MCP tool's update_pull_request with draft: false."
     }
   }
-  const draft = new RegExp(`${segmentStart}gh\\s+api\\b.*\\bpulls/(\\d+)\\b.*\\bdraft=false\\b`).exec(command)
-  return draft === null
+  const rest = restReadyRoute.exec(command) ?? restClearDraft.exec(command)
+  return rest === null
     ? undefined
-    : { kind: "gate", settingsAsk: false, target: { kind: "pull", number: Number(draft[1]) } }
+    : { approveHere: false, kind: "gate", target: { kind: "pull", number: Number(rest[1]) } }
 }
 
 const mcpUpdateAttempt = (input: unknown): ReadyAttempt | undefined => {
@@ -82,7 +92,7 @@ const mcpUpdateAttempt = (input: unknown): ReadyAttempt | undefined => {
   const owner = field(input, "owner")
   const repo = field(input, "repo")
   const repository = typeof owner === "string" && typeof repo === "string" ? `${owner}/${repo}` : undefined
-  return { kind: "gate", settingsAsk: false, target: { kind: "pull", number, repository } }
+  return { approveHere: true, kind: "gate", target: { kind: "pull", number, repository } }
 }
 
 const mcpCreateAttempt = (input: unknown): ReadyAttempt | undefined => {
@@ -166,10 +176,12 @@ export const readyDecision = (input: HookInput, rest: RestAccess): Decision => {
   const cwd = typeof input.cwd === "string" ? input.cwd : process.cwd()
   const problems = targetProblems(cwd, rest, attempt.target)
   if (problems !== undefined) return blocked(problems)
-  // The project settings already ask before `gh pr ready`; every other way to mark ready asks here.
-  return attempt.settingsAsk
-    ? { kind: "allow" }
-    : { kind: "ask", reason: "Marking a pull request ready for review needs a person's confirmation." }
+  // Once the gate passes, marking ready needs no person's confirmation. Shell commands defer to the project settings,
+  // which allow the ready commands segment by segment; approving a whole command here would also approve whatever
+  // else it chains. An MCP call is one action, so the hook approves it.
+  return attempt.approveHere
+    ? { kind: "approve", reason: "The verification and code review gate passes or does not apply." }
+    : { kind: "allow" }
 }
 
 /** The hook's exit code, stdout, and stderr for a decision, as Claude Code reads them. */
@@ -181,7 +193,7 @@ export const hookOutput = (
   const output = {
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
-      permissionDecision: "ask",
+      permissionDecision: "allow",
       permissionDecisionReason: decision.reason
     }
   }

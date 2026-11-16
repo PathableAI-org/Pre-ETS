@@ -60,8 +60,9 @@ no feature directory or slices; drop the slice lines then.
    interact, publish and link a visual review page as
    [Visual review](docs/engineering/git-workflow.md#visual-review) describes, before asking for a person's review.
 8. Mark the pull request ready once step 5 holds: `gh pr ready` from the slice branch, or in the cloud the GitHub MCP
-   tool's `update_pull_request` with `draft: false`. The hook runs the gate either way, and the person confirms; a
-   declined prompt means wait. Report `pr-ready`.
+   tool's `update_pull_request` with `draft: false` (other replacements are in
+   [Working without GraphQL](docs/engineering/git-workflow.md#working-without-graphql-cloud-sessions)). The hook
+   runs the gate on every route and blocks a failing one; a passing one needs no confirmation. Report `pr-ready`.
 
 **Boundaries.** Never mark a slice ready without a passing gate and no open blocking finding. Escalate instead of
 patching for any corrections-table discovery, a claim still failing after three rounds, or a disagreement with the
