@@ -67,10 +67,19 @@ Given(
   }
 )
 
-/** A script-driven invocation of the built Server Action `exportedName` at `path`, as its form posts it. */
-export const actionRequest = async (world: AppWorld, exportedName: string, host: string, path: string) => {
+/**
+ * A script-driven invocation of the built Server Action `exportedName` at `path`, as its form posts it with the
+ * coordination tag its page observed: by default, the one the world's page observed.
+ */
+export const actionRequest = async (
+  world: AppWorld,
+  exportedName: string,
+  host: string,
+  path: string,
+  coordinationTag = world.coordinationTag
+) => {
   const action = await serverActionId(exportedName)
-  const { body, contentType } = await multipartBody(referenceActionArguments(world.coordinationTag))
+  const { body, contentType } = await multipartBody(referenceActionArguments(coordinationTag))
   return {
     body,
     headers: {

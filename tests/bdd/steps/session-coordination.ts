@@ -377,14 +377,13 @@ When(
   }
 )
 
-/** The App Router fetches a linked page's payload ahead of any navigation to it. */
+/** The headers of the App Router's fetch of a linked page's payload ahead of any navigation to it. */
+export const PREFETCH_HEADERS = { ...FETCH_METADATA.application, "next-router-prefetch": "1", rsc: "1" } as const
+
 When(
   "the session's browser prefetches {string} for in-place navigation at {string}",
   async function(this: AppWorld, path: string, host: string) {
-    await sendWithSession(
-      this,
-      get(path, host, { ...FETCH_METADATA.application, "next-router-prefetch": "1", rsc: "1" })
-    )
+    await sendWithSession(this, get(path, host, PREFETCH_HEADERS))
   }
 )
 

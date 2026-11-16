@@ -170,6 +170,14 @@ export const setTenantPolicy = async (
 }
 
 /**
+ * Rewrites only Springfield's idle timeout, valid or not; sessions renewed or established afterwards adopt it, and a
+ * value outside 5 to 30 makes the tenant an ordinary missing tenant.
+ */
+When("Springfield's tenant file changes to an idle timeout of {int}", async function(this: AppWorld, minutes: number) {
+  await setTenantPolicy(this, "springfield", { idleTimeoutMinutes: minutes })
+})
+
+/**
  * The idle timeout a scenario wrote to the tenant's file, in milliseconds: a renewal sets the deadline that long after
  * the server received it. The tenant default is not assumed, so the scenario must set the timeout itself.
  */
@@ -182,6 +190,13 @@ export const configuredIdleTimeout = async (world: AppWorld, alias: string): Pro
 Given("the selected Springfield tenant file is {string}", async function(this: AppWorld, condition: string) {
   const selectedFile = path.join(this.directory, "springfield.json")
   const arrange: Record<string, () => Promise<void>> = {
+    "an idle timeout of 4": () => setTenantPolicy(this, "springfield", { idleTimeoutMinutes: 4 }),
+    "an idle timeout of 7.5": () => setTenantPolicy(this, "springfield", { idleTimeoutMinutes: 7.5 }),
+    // Invalid idle timeouts (PREETS-SESSION-008 AC1): each explicit value fails the selected document rather than
+    // falling back to the 30-minute default. The fixture sets no warning lead, so the timeout alone is invalid.
+    "an idle timeout of 10, as text": () => setTenantPolicy(this, "springfield", { idleTimeoutMinutes: "10" }),
+    "an idle timeout of 31": () => setTenantPolicy(this, "springfield", { idleTimeoutMinutes: 31 }),
+    "an idle timeout of null": () => setTenantPolicy(this, "springfield", { idleTimeoutMinutes: null }),
     // Invalid warning leads (#156 FR-003, V-004): each fails the selected document as schema-invalid.
     "a warning lead above its idle timeout": () =>
       setTenantPolicy(this, "springfield", { idleTimeoutMinutes: 5, warningLeadMinutes: 6 }),
