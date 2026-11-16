@@ -55,12 +55,19 @@ const eventTime = async (world: AppWorld, event: string, name: string): Promise<
   return time
 }
 
-/** Waits until the tab shows the signed-out notice and answers when, on the test's clock. */
+/**
+ * Waits until the tab shows the signed-out notice and no longer holds the protected control, the session header, or a
+ * form, visible or not, and answers when, on the test's clock: the bound covers concealment, not only the notice.
+ */
 const signedOutAt = async (page: Page): Promise<number> => {
-  await page.getByRole("heading", { level: 1, name: SIGNED_OUT_HEADING }).waitFor({
-    state: "visible",
-    timeout: OBSERVATION_MILLISECONDS
-  })
+  await page.waitForFunction(
+    ({ control, heading }) =>
+      [...document.querySelectorAll("h1")].some((candidate) => candidate.textContent === heading) &&
+      ![...document.querySelectorAll("button")].some((candidate) => candidate.textContent === control) &&
+      document.querySelector("header, form") === null,
+    { control: PROTECTED_CONTROL, heading: SIGNED_OUT_HEADING },
+    { polling: 50, timeout: OBSERVATION_MILLISECONDS }
+  )
   return Date.now()
 }
 
@@ -202,6 +209,18 @@ Given(
     this.cookie = session
   }
 )
+
+/**
+ * AC5: the refreshed tab, whose browser presents the session that was logged out, received no protected document and
+ * shows no protected control. Where the refused request leads instead is the entry policy's (PREETS-SESSION-004) and is
+ * not asserted here.
+ */
+Then("tab {string} was served no protected document", async function(this: AppWorld, name: string) {
+  const tab = tabOf(this, name)
+  await tab.page.waitForLoadState("load")
+  assert.deepEqual(tab.protectedDocuments, [], `tab "${name}" was served a protected document`)
+  assert.equal(await tab.page.getByRole("button", { name: PROTECTED_CONTROL }).count(), 0, `"${name}" shows content`)
+})
 
 /**
  * The emulation's premise: the suspended tab of another browser received nothing of the logout, so a notice after it

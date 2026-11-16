@@ -9,20 +9,22 @@ Feature: One session shared by a browser's tabs, renewed and logged out together
   holds the renewed deadline within two seconds of the renewal response, while the visitor's tab
   of another tenant in the same browser and another browser's own session keep their content and
   deadlines. Logging out in one tab shows the signed-out notice in every running tab
-  sharing the session within two seconds of the logout request, with no protected content left,
+  sharing the session, with no protected content left, within two seconds of the logout request,
   while the other tenant's tab and the other browser keep their content and their sessions, neither
   ended nor renewed. The logged-out session is refused: presented as a tab still holding it would,
   a protected operation is answered 401 with no effect, activity sent with the session's own tag is
-  answered 401 and revives nothing, a status read is answered 401, and a page request delegates to
-  login, as a refreshed tab follows fresh entry. A tab suspended across the logout shows the
-  signed-out notice within two seconds of returning before its deadline.
+  answered 401 and revives nothing, a status read is answered 401, and a refreshed tab is served no
+  protected document. A tab suspended across the logout shows the signed-out notice, with no
+  protected content left, within two seconds of returning before its deadline.
   Not established here: warning and expiration across tabs (AC4) and the isolation of warnings,
   continuation, and expiration (AC6), which the expiration warning and expiration protection
-  features establish. A renewal by a page load reaches other tabs only once that page is
-  interactive (gap G2), so a joining tab's deadline is compared with the server's, not timed; a tab
-  still loading when the logout happens (gap G1) is not exercised. Suspension is emulated, as in the
-  expiration protection feature, by a tab of another browser that presents the visitor's session
-  with its timers suspended, so no message from the visitor's tabs reaches it.
+  features establish; where a refused page request leads instead, which is fresh entry
+  (PREETS-SESSION-004); and the notice's content beyond its heading. A renewal by a page load
+  reaches other tabs only once that page is interactive (gap G2), so a joining tab's deadline is
+  compared with the server's, not timed; a tab still loading when the logout happens (gap G1) is
+  not exercised. Suspension is emulated, as in the expiration protection feature, by a tab of
+  another browser that presents the visitor's session with its timers suspended, so no message
+  from the visitor's tabs reaches it.
 
   Background:
     Given production tenant sites for Springfield and Shelbyville
@@ -77,11 +79,8 @@ Feature: One session shared by a browser's tabs, renewed and logged out together
     Then the response status is 401
     When a visitor sends "GET" to "/session/status" at "springfield.localhost:3000" as an "application" request
     Then the response status is 401
-    When a visitor sends "GET" to "/" at "springfield.localhost:3000" as a "document" request
-    Then the response delegates to the same-origin login
-    And the response contains no protected application content
     When the visitor refreshes tab "S3"
-    Then tab "S3" follows fresh entry to the provider without the modal or protected content
+    Then tab "S3" was served no protected document
 
   Scenario: A tab suspended across the logout shows the signed-out notice within two seconds of resuming
     Tab "Suspended" is in another browser that presents the visitor's session with its timers
