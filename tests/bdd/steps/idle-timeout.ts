@@ -7,12 +7,13 @@ import type { AppWorld } from "../support/world.ts"
 import { signInAndClose } from "../support/browser.ts"
 import { namedEntries } from "../support/named.ts"
 import { FETCH_METADATA, type RecordedResponse, sendRequest, startSite } from "../support/server.ts"
-import { namesOf } from "./expiration.ts"
+import { listedNames } from "./expiration.ts"
 import { actionRequest, assertNoProtectedContent, assertSameOriginLogin, isAdmitted } from "./http.ts"
 import {
   deadlineOf,
   PREFETCH_HEADERS,
   type Presentation,
+  sendPresenting,
   sessionActivity,
   sessionEntry,
   sessionStatus,
@@ -65,13 +66,6 @@ const dueOf = (session: TimedSession, minutes: number) => ({
   latest: session.written.to + minutes * MINUTE_MILLISECONDS
 })
 
-/** The quoted session names in a list; a list without any would make a step check nothing. */
-const listed = (list: string): readonly string[] => {
-  const names = namesOf(list)
-  assert.ok(names.length > 0, `expected quoted session names in ${list}`)
-  return names
-}
-
 /** A document entry, which renews a usable session under the tenant's timeout at that moment. */
 const pageRequest = (world: AppWorld, session: TimedSession) => sessionEntry(world, world.port, session)
 
@@ -98,7 +92,7 @@ When(
   { timeout: 4 * MINUTE_MILLISECONDS },
   async function(this: AppWorld, list: string, host: string) {
     await startSite(this)
-    for (const name of listed(list)) {
+    for (const name of listedNames(list)) {
       const { closedAt, reference, startedAt } = await signInAndClose(this.port, host)
       const presented = { cookie: `pathable-session=${reference}`, host }
       const { coordinationTag } = snapshotOf(await statusRead(this, presented))
@@ -153,16 +147,8 @@ When(
     const session = sessionOf(this, name)
     const sent: Unprompted[] = []
     for (const { headers, kind, path } of UNPROMPTED_REQUESTS) {
-      const before = await deadlineOf(this, session)
-      const { status } = await sendRequest(this, {
-        cookie: session.cookie,
-        headers: { "sec-fetch-site": "same-origin", ...headers },
-        host: session.host,
-        method: "GET",
-        path,
-        port: this.port
-      })
-      sent.push({ after: await deadlineOf(this, session), before, kind, status })
+      const { before, response } = await sendPresenting(this, session, { headers, method: "GET", path })
+      sent.push({ after: await deadlineOf(this, session), before, kind, status: response.status })
     }
     session.unprompted = sent
   }
@@ -206,7 +192,7 @@ Then(
 Then(
   "sessions {} each report a deadline {int} minutes after they were established or last renewed",
   async function(this: AppWorld, list: string, minutes: number) {
-    for (const name of listed(list)) await assertReportedDeadline(this, name, minutes)
+    for (const name of listedNames(list)) await assertReportedDeadline(this, name, minutes)
   }
 )
 
@@ -263,7 +249,7 @@ Then(
   "the server ends sessions {} {int} minutes after they were established or last renewed, and not before",
   { timeout: 8 * MINUTE_MILLISECONDS },
   async function(this: AppWorld, list: string, minutes: number) {
-    await assertEnded(this, listed(list), minutes)
+    await assertEnded(this, listedNames(list), minutes)
   }
 )
 

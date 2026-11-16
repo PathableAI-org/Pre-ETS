@@ -364,19 +364,32 @@ const sentRequests = new WeakMap<AppWorld, Sent>()
 
 const sentOf = (world: AppWorld): Sent => required(sentRequests, world, "a request to have been sent")
 
-/** Reads the deadline, then sends one same-origin request presenting the visitor's session at `request.host`. */
-const sendWithSession = async (world: AppWorld, request: Omit<SiteRequest, "cookie" | "port">) => {
-  assert.ok(world.cookie, "expected the visitor to have signed in")
-  const presented = { cookie: `pathable-session=${world.cookie}`, host: request.host }
+/**
+ * Reads the session's deadline, then sends one same-origin request presenting it at the world's site, as its tab
+ * would; answers the deadline before, the answer, and when it was sent and answered on the test's clock.
+ */
+export const sendPresenting = async (
+  world: AppWorld,
+  presented: Presentation,
+  request: Omit<SiteRequest, "cookie" | "host" | "port">
+) => {
   const before = await deadlineOf(world, presented)
   const startedAt = Date.now()
   const response = await sendRequest(world, {
     ...request,
     cookie: presented.cookie,
     headers: { "sec-fetch-site": "same-origin", ...request.headers },
+    host: presented.host,
     port: world.port
   })
-  sentRequests.set(world, { before, endedAt: Date.now(), presented, response, startedAt })
+  return { before, endedAt: Date.now(), response, startedAt }
+}
+
+/** Sends one request presenting the visitor's session at `request.host`, and keeps it for the step that judges it. */
+const sendWithSession = async (world: AppWorld, request: Omit<SiteRequest, "cookie" | "port">) => {
+  assert.ok(world.cookie, "expected the visitor to have signed in")
+  const presented = { cookie: `pathable-session=${world.cookie}`, host: request.host }
+  sentRequests.set(world, { ...await sendPresenting(world, presented, request), presented })
 }
 
 const get = (path: string, host: string, headers: Readonly<Record<string, string>>) => ({

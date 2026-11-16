@@ -7,7 +7,7 @@ import type { AppWorld } from "../support/world.ts"
 import { signInAndClose } from "../support/browser.ts"
 import { namedEntries } from "../support/named.ts"
 import { type RecordedResponse, startSecondSite } from "../support/server.ts"
-import { namesOf } from "./expiration.ts"
+import { listedNames } from "./expiration.ts"
 import { assertNoProtectedContent, assertSameOriginLogin } from "./http.ts"
 import { type Presentation, sessionActivity, sessionEntry, sessionStatus, snapshotOf } from "./session-coordination.ts"
 
@@ -82,8 +82,7 @@ const renewedDeadlineOf = (session: SharedSession): number => {
 
 /** Waits until two seconds after the latest of the listed sessions' chosen deadlines. */
 const waitPast = async (world: AppWorld, list: string, deadlineOf: (session: SharedSession) => number) => {
-  const names = namesOf(list)
-  assert.ok(names.length > 0, `expected quoted session names in ${list}`)
+  const names = listedNames(list)
   const latest = Math.max(...names.map((name) => deadlineOf(sessionOf(world, name))))
   await delay(Math.max(0, latest + 2_000 - Date.now()))
 }
