@@ -29,7 +29,12 @@ Feature: One session shared by a browser's tabs, renewed and logged out together
     And host resolution uses base hostname "localhost"
 
   Scenario: Every tab holds one session's deadline, and a new tab joins it without a login
+    The visitor waits two seconds before opening the new tab, so its page load moves the session's
+    deadline by more than the tabs' clock-offset estimates differ, and the earlier tabs hold the
+    server's deadline only once they have adopted that renewal.
+
     Given the visitor has signed in at "springfield.localhost:3000" and opened tabs "S1" and "S2"
+    And the visitor waits 2 seconds without acting
     When the visitor opens a protected page in a new tab "S3"
     Then tab "S3" started no login and presents the session reference tab "S1" opened with
     And tabs "S1", "S2", and "S3" each hold the deadline the server reports for the session tab "S1" opened with

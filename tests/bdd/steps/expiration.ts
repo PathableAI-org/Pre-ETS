@@ -23,6 +23,8 @@ import { requestInstance, startSite } from "../support/server.ts"
 export const SPRINGFIELD = "springfield.localhost:3000"
 const SHELBYVILLE = "shelbyville.localhost:3000"
 export const PROTECTED_CONTROL = "Record reference operation"
+/** The heading of the notice every tab sharing a session shows once it was logged out. */
+export const SIGNED_OUT_HEADING = "You are signed out"
 /** Protected text the reference page renders, and the header's Log out; none may remain behind the modal. */
 const PROTECTED_TEXT = /Reference session|Record reference operation|springfield|shelbyville|Log out/i
 /** The expired recovery copy that the modal must share with in-tab recovery (#157 FR-020, research D12). */
@@ -384,7 +386,7 @@ When(
 When("the visitor logs out in tab {string}", async function(this: AppWorld, name: string) {
   const { page } = tabOf(this, name)
   await page.getByRole("button", { name: "Log out" }).click()
-  await page.getByRole("heading", { name: "You are signed out" }).waitFor({ state: "visible" })
+  await page.getByRole("heading", { name: SIGNED_OUT_HEADING }).waitFor({ state: "visible" })
 })
 
 /** A character key on a protected control counts as activity, and the tab communicates it at once after silence. */
@@ -459,7 +461,7 @@ Then(
   async function(this: AppWorld, name: string) {
     const { deadline, page } = tabOf(this, name)
     await untilBefore(deadline, -3_000)
-    assert.ok(await page.getByRole("heading", { name: "You are signed out" }).isVisible())
+    assert.ok(await page.getByRole("heading", { name: SIGNED_OUT_HEADING }).isVisible())
     assert.equal(await page.evaluate(() => globalThis.window.preetsDialogSeen === true), false)
   }
 )

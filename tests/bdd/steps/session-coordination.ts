@@ -14,7 +14,7 @@ import {
   sendRequest,
   type SiteRequest
 } from "../support/server.ts"
-import { namesOf, tabOf, untilHolding } from "./expiration.ts"
+import { namesOf, type Tab, tabOf, untilHolding } from "./expiration.ts"
 import { actionRequest } from "./http.ts"
 import { configuredIdleTimeout } from "./tenant.ts"
 
@@ -94,6 +94,12 @@ interface Observed {
   windowFrom?: number | undefined
 }
 
+/** The named tab's session as a raw request presents it: the reference its browser held when it opened, at its host. */
+export const presentationOf = (tab: Tab, name: string): Presentation => {
+  assert.ok(tab.session, `expected tab "${name}" to have opened with a session`)
+  return { cookie: `pathable-session=${tab.session}`, host: tab.host }
+}
+
 /** `GET /session/status` at the instance on `port`, an application request: it reads the session and never renews it. */
 export const sessionStatus = (world: AppWorld, port: number, presented: Presentation): Promise<RecordedResponse> =>
   requestInstance(world, port, presented.host, "/session/status", false, presented.cookie)
@@ -110,7 +116,7 @@ const observations = new WeakMap<AppWorld, Observed>()
 const observedOf = (world: AppWorld): Observed => required(observations, world, "the session's deadline to be read")
 
 /** The session's authoritative deadline from its own status read. */
-const deadlineOf = async (world: AppWorld, presented: Presentation): Promise<number> =>
+export const deadlineOf = async (world: AppWorld, presented: Presentation): Promise<number> =>
   snapshotOf(await sessionStatus(world, world.port, presented)).deadline
 
 /** When the renewal that set `deadline` was written: the server sets a deadline its idle timeout after receipt. */
@@ -141,14 +147,14 @@ const adoptRenewal = async (world: AppWorld, observed: Observed, deadline: numbe
  * session; the deadline is read once every tab shows the page.
  */
 Given("tab(s) {} show(s) the participant page", async function(this: AppWorld, list: string) {
-  const tabs = namesOf(list).map((name) => tabOf(this, name))
-  for (const { host, page } of tabs) {
+  const names = namesOf(list)
+  for (const { host, page } of names.map((name) => tabOf(this, name))) {
     await page.goto(`http://${host}/coordination/participant`)
     await page.getByRole("heading", { level: 1, name: "Coordination participant" }).waitFor({ state: "visible" })
   }
-  const [first] = tabs
-  assert.ok(first?.session, "expected the tabs to hold a session")
-  const presented = { cookie: `pathable-session=${first.session}`, host: first.host }
+  const [first] = names
+  assert.ok(first !== undefined, "expected a tab")
+  const presented = presentationOf(tabOf(this, first), first)
   observations.set(this, { deadline: await deadlineOf(this, presented), interactions: [], presented })
 })
 

@@ -16,25 +16,18 @@ import {
   PROTECTED_CONTROL,
   resumptionOf,
   sessionOf,
+  SIGNED_OUT_HEADING,
   type Tab,
   tabOf,
   untilHolding
 } from "./expiration.ts"
-import { type Presentation, sessionStatus, snapshotOf } from "./session-coordination.ts"
+import { deadlineOf, presentationOf } from "./session-coordination.ts"
 
 /*
  * One session shared by a browser's tabs (PREETS-SESSION-010): joining, a renewal reaching every sharing tab, shared
  * logout, and isolation from other sessions. The tabs are the named tabs `expiration.ts` opens; the session is read
  * through its own status reads, which never renew, and through what each tab shows.
  */
-
-const SIGNED_OUT = "You are signed out"
-
-/** The tab's session as a raw request presents it: the reference its browser held when it opened, at its host. */
-const presentationOf = (tab: Tab, name: string): Presentation => {
-  assert.ok(tab.session, `expected tab "${name}" to have opened with a session`)
-  return { cookie: `pathable-session=${tab.session}`, host: tab.host }
-}
 
 /**
  * The events a later step measures from, read from the tab's own Resource Timing on its clock, which is the test's: no
@@ -64,7 +57,7 @@ const eventTime = async (world: AppWorld, event: string, name: string): Promise<
 
 /** Waits until the tab shows the signed-out notice and answers when, on the test's clock. */
 const signedOutAt = async (page: Page): Promise<number> => {
-  await page.getByRole("heading", { level: 1, name: SIGNED_OUT }).waitFor({
+  await page.getByRole("heading", { level: 1, name: SIGNED_OUT_HEADING }).waitFor({
     state: "visible",
     timeout: OBSERVATION_MILLISECONDS
   })
@@ -97,7 +90,7 @@ Then(
   "tabs {} each hold the deadline the server reports for the session tab {string} opened with",
   { timeout: 60_000 },
   async function(this: AppWorld, list: string, source: string) {
-    const { deadline } = snapshotOf(await sessionStatus(this, this.port, presentationOf(tabOf(this, source), source)))
+    const deadline = await deadlineOf(this, presentationOf(tabOf(this, source), source))
     for (const name of namesOf(list)) {
       const tab = tabOf(this, name)
       await untilHolding(tab.page, deadline, OBSERVATION_MILLISECONDS)
@@ -124,10 +117,10 @@ const assertEachWithinBound = async (
   list: string,
   event: { readonly at: number; readonly name: string },
   outcome: string,
-  observe: (tab: Tab, name: string) => Promise<number>
+  observe: (tab: Tab) => Promise<number>
 ) => {
   const names = namesOf(list)
-  const times = await Promise.all(names.map((name) => observe(tabOf(world, name), name)))
+  const times = await Promise.all(names.map((name) => observe(tabOf(world, name))))
   names.forEach((name, index) => {
     assertWithinBound((times[index] ?? Number.POSITIVE_INFINITY) - event.at, `tab "${name}" ${outcome}`, event.name)
   })
@@ -142,7 +135,7 @@ Then(
   { timeout: 60_000 },
   async function(this: AppWorld, list: string, source: string) {
     const renewedAt = await eventTime(this, "typing", source)
-    const { deadline } = snapshotOf(await sessionStatus(this, this.port, presentationOf(tabOf(this, source), source)))
+    const deadline = await deadlineOf(this, presentationOf(tabOf(this, source), source))
     for (const name of namesOf(list)) {
       const moved = deadline - tabOf(this, name).deadline
       assert.ok(moved > OFFSET_TOLERANCE_MILLISECONDS, `the renewal did not move "${name}"'s deadline`)
@@ -184,10 +177,14 @@ Then(
     await delay(Math.max(0, at + BOUND_MILLISECONDS + 1_000 - Date.now()))
     for (const name of namesOf(list)) {
       const tab = tabOf(this, name)
-      assert.equal(await tab.page.getByRole("heading", { name: SIGNED_OUT }).count(), 0, `"${name}" was signed out`)
+      assert.equal(
+        await tab.page.getByRole("heading", { name: SIGNED_OUT_HEADING }).count(),
+        0,
+        `"${name}" was signed out`
+      )
       const held = await heldDeadline(tab.page)
       assert.ok(Math.abs(held - tab.deadline) <= OFFSET_TOLERANCE_MILLISECONDS, `tab "${name}" holds a new deadline`)
-      const { deadline } = snapshotOf(await sessionStatus(this, this.port, presentationOf(tab, name)))
+      const deadline = await deadlineOf(this, presentationOf(tab, name))
       assert.ok(Math.abs(deadline - tab.deadline) <= OFFSET_TOLERANCE_MILLISECONDS, `"${name}"'s session was renewed`)
     }
   }
@@ -215,7 +212,11 @@ Then(
   async function(this: AppWorld, name: string) {
     const { page } = tabOf(this, name)
     assert.ok(await page.getByRole("button", { name: PROTECTED_CONTROL }).isVisible(), `tab "${name}" lost content`)
-    assert.equal(await page.getByRole("heading", { name: SIGNED_OUT }).count(), 0, `tab "${name}" was signed out`)
+    assert.equal(
+      await page.getByRole("heading", { name: SIGNED_OUT_HEADING }).count(),
+      0,
+      `tab "${name}" was signed out`
+    )
   }
 )
 
