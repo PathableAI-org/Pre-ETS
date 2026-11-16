@@ -109,13 +109,13 @@ Feature: Expired content concealed behind a blocking expiration modal
     And tab "Early" had a session check answered as still valid before its deadline
 
   Scenario: Expiry another tab confirms conceals a tab whose own deadline check is late, within two seconds
-    Both tabs share one browser. "Late" schedules its deadline check from a clock running a minute
-    slow, so its own check is due a minute after the deadline; only the expiry that "S1" confirms
-    with the server can reach it in time.
+    Both tabs share one browser. "Late" loads while the browser's clock runs a minute fast, and the
+    clock is then corrected before "S1" opens. "Late" keeps the estimate of the server's clock it
+    made while its clock ran fast, so its own deadline check is due a minute after the deadline;
+    only the expiry that "S1" confirms with the server can reach it in time.
 
-    Given the visitor has signed in at "springfield.localhost:3000" and opened tab "Late" under a settable clock
-    And the visitor opens a protected page in a new tab "S1"
-    When tab "Late" schedules its deadline check from a clock 60 seconds slow, then the clock is corrected
+    Given the visitor has signed in at "springfield.localhost:3000" and opened tab "Late" under a clock 60 seconds fast
+    When the clock of tab "Late" is corrected, and the visitor then opens tab "S1"
     And tab "S1" reaches its deadline
     Then tabs "S1" and "Late" each hid their protected content within 2 seconds of their deadline
     And tab "Late" hid its protected content without a session check of its own

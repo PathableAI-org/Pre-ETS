@@ -189,6 +189,8 @@ export const untilHolding = async (page: Page, deadline: number, timeout: number
 /** Playwright's clock in a tab: `installed` keeps real time but can be set; `suspended` also stops timers after load. */
 interface TabClock {
   readonly clock?: "installed" | "suspended" | undefined
+  /** With an installed clock, how far ahead of the current time the clock runs while the tab loads. */
+  readonly fastBy?: number | undefined
 }
 
 /** Opens a named tab at `host` in `context`, optionally under Playwright's clock. */
@@ -228,6 +230,7 @@ const openTab = async (
     tab.statusAnswers.push({ at: Date.now(), status: response.status() })
   })
   if (options.clock !== undefined) await suspendTimers.beforeLoad(page)
+  if (options.fastBy !== undefined) await page.clock.setSystemTime(Date.now() + options.fastBy)
   await page.goto(`http://${host}/`)
   tab.deadline = await readDeadline(page)
   tab.session = await sessionOf(tab)
@@ -803,25 +806,56 @@ Given(
   }
 )
 
+/**
+ * The browser's clock runs `seconds` fast while the tab loads, so the tab estimates the server's clock to be that far
+ * behind its own. Playwright's clock belongs to the whole browser, so every tab of the browser shares it.
+ */
+Given(
+  "the visitor has signed in at {string} and opened tab {string} under a clock {int} seconds fast",
+  async function(this: AppWorld, host: string, name: string, seconds: number) {
+    await signInAndOpen(this, "visitor", host, [name], { clock: "installed", fastBy: seconds * 1_000 })
+  }
+)
+
+/**
+ * The browser's clock is corrected to the current time, as a clock synchronization would, and a new tab of the visitor
+ * opens: its page load renews the session, and it estimates the server's clock from the corrected clock. The first tab
+ * adopts that renewal through the browser, keeping the estimate it made while its clock ran fast, so its own deadline
+ * check is due late by as much as the clock ran fast. The session's deadline on the test's clock is the new tab's.
+ */
+When(
+  "the clock of tab {string} is corrected, and the visitor then opens tab {string}",
+  async function(this: AppWorld, name: string, opened: string) {
+    const tab = tabOf(this, name)
+    const before = await heldDeadline(tab.page)
+    await tab.page.clock.setSystemTime(Date.now())
+    const renewing = await openTabIn(this, "visitor", opened, tab.host)
+    await tab.page.waitForFunction(
+      (held) => document.querySelector("header")?.getAttribute("data-session-deadline") !== String(held),
+      before,
+      { polling: 50, timeout: 5_000 }
+    )
+    tab.deadline = renewing.deadline
+  }
+)
+
 When("the visitor types in tab {string}", async function(this: AppWorld, name: string) {
   await typeIn(tabOf(this, name))
 })
 
 /**
- * The tab's clock runs `skew` seconds fast or slow while a second tab opens, renews the session, and broadcasts it. The
- * tab adopts the renewal and schedules its deadline check from its skewed clock, so the check is due `skew` seconds
- * early or late in real time. The second tab closes and the clock returns to the current time; the check stays early
- * or late. A fast clock's check fires while the tab's clock still reads before its local deadline, as when a timer
- * outruns a loaded wall clock. Other tabs of the browser adopt the same renewal on time.
+ * The tab's clock runs `lead` seconds ahead while a second tab opens, renews the session, and broadcasts it. The tab
+ * adopts the renewal and schedules its deadline check from its fast clock, so the check is due `lead` seconds early in
+ * real time. The second tab closes and the clock returns to the current time; the check stays early, and when it fires
+ * the tab's clock still reads before its local deadline, as when a timer outruns a loaded wall clock.
  */
 When(
-  "tab {string} schedules its deadline check from a clock {int} seconds {word}, then the clock is corrected",
-  async function(this: AppWorld, name: string, skew: number, direction: string) {
-    assert.ok(direction === "fast" || direction === "slow", "expected a fast or slow clock")
+  "tab {string} schedules its deadline check from a clock {int} seconds fast, then the clock is corrected",
+  async function(this: AppWorld, name: string, lead: number) {
     const scenario = await scenarioOf(this)
     const tab = tabOf(this, name)
     const before = await readDeadline(tab.page)
-    await tab.page.clock.setSystemTime(Date.now() + (direction === "fast" ? skew : -skew) * 1_000)
+    await tab.page.clock.setSystemTime(Date.now() + lead * 1_000)
     const renewing = await openTab(scenario, tab.page.context(), `${name} renewal`, tab.host)
     await tab.page.waitForFunction(
       (held) => document.querySelector("header")?.getAttribute("data-session-deadline") !== String(held),
@@ -830,13 +864,6 @@ When(
     )
     // The renewing tab's clock is unskewed, so its deadline is the session's on the test's clock.
     tab.deadline = renewing.deadline
-    const others = [...scenario.tabs.entries()].filter(([other, candidate]) =>
-      other !== name && other !== `${name} renewal` && candidate.page.context() === tab.page.context()
-    )
-    for (const [, other] of others) {
-      await untilHolding(other.page, renewing.deadline, OBSERVATION_MILLISECONDS)
-      other.deadline = renewing.deadline
-    }
     await renewing.page.close()
     scenario.tabs.delete(`${name} renewal`)
     await tab.page.clock.setSystemTime(Date.now())
