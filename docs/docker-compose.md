@@ -293,6 +293,11 @@ Use volume deletion only to reset a local disposable environment. Flyway
    switch `TENANT_RESOLUTION=host` and use `*.localhost` hosts from
    [multi-tenancy.md](./multi-tenancy.md).
 4. Restart the frontend after tenant JSON, secrets, or Keycloak recreate.
+5. To run a production build instead, build it with
+   `pnpm --filter @pathableai/pre-ets-frontend build` and start it with
+   `pnpm --filter @pathableai/pre-ets-frontend start`. That script leaves stop
+   signals to the application, so stopping it delivers pending telemetry first
+   ([Orderly stop](./observability.md#orderly-stop)).
 
 An unknown tenant host still fails closed in host mode. Compose does not create
 application tenants; it provides Redis and the imported local broker those

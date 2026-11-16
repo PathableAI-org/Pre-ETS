@@ -382,6 +382,30 @@ applicable SDK defaults and environment settings apply. Under immediate
 in-flight limit. The periodic metric readers use the SDK default 60-second
 export interval under both timings.
 
+### Orderly stop
+
+The first `SIGTERM` or `SIGINT` disposes the process runtime. Disposal flushes
+and shuts down the span and log processors under either
+[export timing](#export-timing), so records the server has not yet sent are
+delivered, and the process then exits with code 0. The telemetry layers bound
+their flush and shutdown with a 3-second timeout, so with an unreachable
+collector a stop takes about 3 seconds longer and only the undelivered records
+are lost. If disposal has not finished after 10 seconds, the process exits
+anyway. The HTTP listener stays open until the process exits, so a request
+that arrives during disposal fails with a server error instead of being
+refused; the window is tens of milliseconds with a reachable collector.
+
+This holds only when the host leaves signals to the application. Unless
+`NEXT_MANUAL_SIG_HANDLE=true`, `next start` registers its own handlers, which
+exit with code 143 or 130 before disposal finishes and lose pending records.
+The frontend workspace's `start` script sets the variable, and the requirements
+BDD harness sets it for each `next start` process it owns. Start a production
+server with `pnpm --filter @pathableai/pre-ets-frontend start`. A launcher that
+runs `next start` itself must set the variable in the process environment; Next
+reads it before it loads `.env` files. `next dev` keeps its own handling and
+already delivers pending records on `SIGTERM`. A process that is killed or
+crashes may lose records it has not sent.
+
 ## Required span attributes and redaction
 
 Each **Next.js HTTP request span** should identify method, route template,

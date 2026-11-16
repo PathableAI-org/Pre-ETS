@@ -135,14 +135,16 @@ a filtered-out span sends nothing. Reads T-003. Asserts V-004, V-006, V-017, V-0
 The application owns `SIGTERM` and `SIGINT` in a production server, so an orderly stop delivers pending records under
 both timings and still ends when the collector is unreachable. Asserts V-015 and V-018 in full.
 
-- [ ] T019 [US6] In `fe/package.json`, change `start` to run `NEXT_MANUAL_SIG_HANDLE=true next start` after the
+- [x] T019 [US6] In `fe/package.json`, change `start` to run `NEXT_MANUAL_SIG_HANDLE=true next start` after the
       frontend-services build; leave `dev` unchanged (research D5).
-- [ ] T020 [US6] In `fs/src/production-runtime.ts`, keep dispose-then-exit-0 on the first `SIGTERM` or `SIGINT` and add
+- [x] T020 [US6] In `fs/src/production-runtime.ts`, keep dispose-then-exit-0 on the first `SIGTERM` or `SIGINT` and add
       the existing 10-second fatal bound as a deadline after which the process exits anyway; a failed disposal is still
       ignored. `startProductionRuntime`'s signature is unchanged (modules.md).
-- [ ] T021 [US6] In `tests/bdd/support/harness.ts`, add `NEXT_MANUAL_SIG_HANDLE: "true"` to `siteEnv` for the owned
+- [x] T021 [US6] In `tests/bdd/support/harness.ts`, add `NEXT_MANUAL_SIG_HANDLE: "true"` to `siteEnv` for the owned
       process. No telemetry logic.
-- [ ] T022 [P] [US6] In `docs/observability.md`, document the orderly stop: disposal flushes, exit code 0, the
+      Set only for the production runtime: `next dev` keeps its own handling (research D5), and the variable would
+      otherwise skip the dev server's own cleanup.
+- [x] T022 [P] [US6] In `docs/observability.md`, document the orderly stop: disposal flushes, exit code 0, the
       10-second deadline, about 3 seconds with an unreachable collector (L-4), and that only the `start` script and
       the BDD harness set manual signal handling (L-1). In `docs/docker-compose.md`, say to start the application with
       the `start` script.
