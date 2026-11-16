@@ -148,7 +148,8 @@ for each step. Server spans continue that trace, so each browser step maps to a 
 set `BROWSER_TRACING_ENABLED=true` and keep `service.instance.id=<run-uuid>` in `OTEL_RESOURCE_ATTRIBUTES`, so the page
 exports under the same run filter. Turn the harness's own `traceparent` injection off for the steps that sample browser
 context. Wait for `<html data-preets-browser-tracing="started">` before a sampled step. Under immediate timing the page
-exports each span as it ends, so no batch wait is needed before closing it.
+exports each span as it ends, so no batch wait is needed. A fetch span ends about 300 ms after its response, so keep
+the page open about a second after the last step before closing it.
 
 ### Observation
 
