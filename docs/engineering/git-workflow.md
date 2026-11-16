@@ -171,7 +171,8 @@ worktree clean. After GitHub rebases the remaining branches, fetch and match tho
 the pre-rebase commits on top.
 
 Merge a native stack with `gh stack merge --squash`. A specification that is still the only pull request, and a
-one-pull-request change, are not a native stack. Merge those with `gh pr merge --squash`.
+one-pull-request change, are not a native stack. Merge those with `gh pr merge --squash`. Where GraphQL is blocked,
+use the merge routes in [Working without GraphQL](#working-without-graphql-cloud-sessions).
 
 The repository squash-merges with the pull request title as the commit subject and a blank body. The title is the
 durable history. Put the rationale in the specification, plan, and evidence files. Two repository settings are
@@ -405,3 +406,60 @@ Install `gh stack` locally with `gh extension install github/gh-stack` when `gh 
 commit the extension. Use non-interactive commands: `init`, `add`, `view --json`, `rebase`, `push`, and
 `submit --auto`. `submit --auto` opens drafts. Apply the phase template and title with `gh pr edit`. Do not use
 `gh stack modify` or an interactive submit. The skill separates read-only inspection from rebase, push, and merge.
+Where GitHub GraphQL is blocked, as in Claude Code cloud sessions, use
+[Working without GraphQL](#working-without-graphql-cloud-sessions) for the steps that need it.
+
+## Working without GraphQL (cloud sessions)
+
+Claude Code cloud sessions reach GitHub's REST API but not GraphQL. The platform proxy answers every GraphQL request
+with HTTP 403, "GitHub GraphQL is not available from Claude Code sessions", and no environment setting allows it.
+`gh stack` uses GraphQL to find a branch's pull request, to create pull requests in `submit`, to mark them ready, to
+disable auto-merge, and to read titles, so those paths fail there. `gh pr` and `gh issue` subcommands fail the same
+way. `gh stack init`, `add`, `rebase`, and `push` are local Git, with `push` updating each branch with
+`--force-with-lease`, and work unchanged. Stacks themselves are a REST API, so the steps that fail have REST or GitHub
+MCP tool replacements. Every gate in this guide applies to them unchanged.
+
+**Detect it.** A command fails with that 403, or with another error that names GraphQL. Do not retry it or ask for a
+network change. Use the replacements below for the rest of the session. `gh stack` may also be missing from a new
+session; `pre-ets-setup deps` builds it.
+
+**Status.** _Verified_ means the call was made from a cloud session against this repository and returned what the
+table says. _Expected_ means the request shape comes from the `github/gh-stack` source or the proxy's error message
+and has not yet been run from a cloud session: confirm it on first use, then mark it verified here or correct it.
+`{owner}/{repo}` is `PathableAI-org/Pre-ETS`; `gh api` fills those placeholders itself.
+
+| Step with GraphQL                                       | Replacement                                                                                                                                                                                                                                                                                                                       | Status                                       |
+| ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
+| `gh stack view --json`                                  | `gh api repos/{owner}/{repo}/stacks` lists stacks, each with `number`, `base.ref`, `open`, and `pull_requests` from bottom to top (`number`, `state`, `draft`, `merged_at`, `head.ref`, `head.sha`). Filter with `gh api "repos/{owner}/{repo}/stacks?pull_request=N"`, or read one with `gh api repos/{owner}/{repo}/stacks/{n}` | Verified                                     |
+| `gh pr view` for draft, base, and review state          | `gh api repos/{owner}/{repo}/pulls/N` (`draft`, `base.ref`, `mergeable_state`, `node_id`) and `gh api repos/{owner}/{repo}/pulls/N/ccr/review_threads`; the MCP tool `pull_request_read` for reviews, comments, and check runs                                                                                                    | Verified for the `gh api` reads              |
+| `gh stack submit --auto`                                | Push the branches, create each pull request with the MCP tool `create_pull_request` as below, then `gh api -X POST repos/{owner}/{repo}/stacks --input -` with `{"pull_requests":[<bottom>, ..., <top>]}`                                                                                                                         | MCP creation in use; stack creation expected |
+| `gh stack submit` after `gh stack add` on an open stack | Create the new pull request as below, then `gh api -X POST repos/{owner}/{repo}/stacks/{n}/add --input -` with `{"pull_requests":[<new numbers only, upward from the current top>]}`                                                                                                                                              | Expected                                     |
+| `gh pr edit` for title, body, or base                   | The MCP tool `update_pull_request` (`title`, `body`, `base`), or `gh api -X PATCH repos/{owner}/{repo}/pulls/N -f base=<branch>`                                                                                                                                                                                                  | MCP in use; `PATCH` expected                 |
+| `gh pr ready`                                           | `gh api -X POST repos/{owner}/{repo}/pulls/N/ccr/ready_for_review`, or the MCP tool `update_pull_request` with `draft: false`                                                                                                                                                                                                     | MCP in use; route expected                   |
+| `gh pr ready --undo`                                    | `gh api -X POST repos/{owner}/{repo}/pulls/N/ccr/convert_to_draft`, or `update_pull_request` with `draft: true`                                                                                                                                                                                                                   | MCP in use; route expected                   |
+| Resolving a review thread                               | The MCP tools `resolve_review_thread` and `unresolve_review_thread`, or `gh api -X POST repos/{owner}/{repo}/pulls/N/ccr/comments/{comment_id}/resolve` (or `/unresolve`)                                                                                                                                                         | Expected                                     |
+| Auto-merge                                              | The MCP tools `enable_pr_auto_merge` and `disable_pr_auto_merge`, or `gh api -X PUT` (enable) or `-X DELETE` (disable) `repos/{owner}/{repo}/pulls/N/ccr/auto_merge`                                                                                                                                                              | Expected                                     |
+| `gh stack merge N --yes --squash`                       | `gh api -X PUT repos/{owner}/{repo}/pulls/N/merge-async --input -` with `{"merge_method":"squash","merge_action":"default"}`, then `gh api repos/{owner}/{repo}/pulls/N/merge-async/{uuid}` with the returned `details.uuid`                                                                                                      | Expected                                     |
+| `gh pr merge N --squash`                                | The MCP tool `merge_pull_request` with `merge_method: squash`                                                                                                                                                                                                                                                                     | Expected                                     |
+| `gh stack unstack`                                      | `gh api -X POST repos/{owner}/{repo}/stacks/{n}/unstack`                                                                                                                                                                                                                                                                          | Expected                                     |
+
+**Open pull requests in order.** Push every branch first: `gh stack push`, or `git push -u origin <branch>` for a new
+branch. Create the pull requests from the bottom up, each as a draft (`draft: true`) whose `base` is the branch
+immediately below it, and `main` for the bottom one. Give each the Conventional Commit title and the matching
+template body from [Commits and pull request text](#commits-and-pull-request-text) when you create it. Then link them:
+create the stack with `POST .../stacks` once two or more open pull requests form an unbroken base-to-head chain, listed
+bottom to top, or extend an open stack with `POST .../stacks/{n}/add`, listing only the new pull requests. A single
+pull request has no native stack. A completed stack cannot be extended; start a new one as [Branches](#branches)
+describes. The work is linked only when `gh api "repos/{owner}/{repo}/stacks?pull_request=N"` shows the expected
+order and every pull request's base is the branch below it.
+
+**Merge.** The merge routes need the same approval as [Merge timing](#merge-timing): a person has approved the phase
+and every open phase below it and has explicitly asked for the merge. Enabling auto-merge is a merge decision too.
+`merge-async` on a stacked pull request merges it and every open layer below it, like `gh stack merge`. `merge_action`
+`default` lets GitHub choose a direct merge or the merge queue; `direct_merge` and `merge_queue` force one. The
+response's `status` is `merged`, `enqueued`, `failed` (with `details.message`), or `pending`. Read the result route
+again later for a pending merge rather than polling in a loop. The repository allows squash merges only. Project
+settings prompt before each merge, auto-merge, and unstack route.
+
+**Ready for review.** The project's ready hook gates the REST route and the MCP update with `draft: false` exactly as it
+gates `gh pr ready`; see [the verification gate](verification-harness.md#gate-and-escalation).
