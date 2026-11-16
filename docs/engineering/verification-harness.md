@@ -222,8 +222,12 @@ against the branch, and exits non-zero with every failing reason. A limitation e
 asserts in part. A report with an open escalation does not pass. The gate also applies the
 [code review gate](code-review.md#gate-and-escalation) to the nearest reviewed commit.
 
-A High fix's single pull request has no plan, so the gate regenerates no request. On a branch that is not an
-implementation slice, whose open pull request is labelled `risk:high`, `pnpm verify:gate` requires the following of
+A High fix's single pull request has no plan, so the gate regenerates no request. A High fix is a branch whose open
+pull request is labelled `risk:high` and that is neither an implementation slice nor a Spec Kit specification or plan
+branch. A specification branch `{number}-{slug}` and a plan branch `{number}-{slug}-plan` carry the feature's tier
+label, `risk:high` included, but have no slice to verify or review, so the gate does not apply to them. A branch
+counts as one when it names a feature directory, `specs/{number}-{slug}/`, that exists in the tree at the pull
+request's head SHA; the working tree is not consulted. For a High fix, `pnpm verify:gate` requires the following of
 the latest report on HEAD or an evidence-only ancestor:
 
 - Slice ID `fix`, at least one claim, and every claim `established`. No limitation is approved for a fix.
@@ -244,7 +248,8 @@ URL, or a branch), a `gh api` call that sets `draft` false on a pull request (as
 or the REST route is how cloud sessions mark a pull request ready; see
 [Working without GraphQL](git-workflow.md#working-without-graphql-cloud-sessions). The hook resolves the pull request
 over REST and syncs its comments. It then gates its head branch at the pull request's head SHA, which must be in the
-clone. When GitHub cannot be reached, it gates a checked-out slice branch on its local notes, and refuses any other
+clone. It lets a specification or plan pull request through without the gate, even when it is labelled `risk:high`,
+and gates an implementation slice and a High fix. When GitHub cannot be reached, it gates a checked-out slice branch on its local notes, and refuses any other
 branch it cannot classify. Once the gate passes or does not apply, marking ready needs no person's confirmation:
 project settings allow `gh pr ready` and the REST ready route without a prompt, and the hook approves the MCP update.
 Removing that prompt does not relax the gate, which still decides every attempt. The hook refuses the paths it cannot

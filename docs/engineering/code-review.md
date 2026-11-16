@@ -150,7 +150,9 @@ evidence-only commits as [the verification gate](verification-harness.md#gate-an
 other change after the reviewed SHA needs a new review request.
 
 `pnpm verify:gate` and the ready hook that runs it enforce this on `{number}-{slug}-impl*` branches and on a High
-fix's single pull request: a branch that is not an implementation slice, whose pull request is labelled `risk:high`.
+fix's single pull request: a branch whose pull request is labelled `risk:high` and that is neither an implementation
+slice nor a specification or plan branch, as
+[the verification gate](verification-harness.md#gate-and-escalation) recognises it.
 They take the latest review on the nearest commit at or below HEAD in `refs/notes/review`. They fail with a
 `code review:` reason for an open blocking finding, an open escalation, a review for another feature or slice (a fix
 review must have slice ID `fix`), or a change after the reviewed SHA that is not evidence-only. A fix has no

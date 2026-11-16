@@ -23,6 +23,8 @@ import { requestInstance, startSite } from "../support/server.ts"
 export const SPRINGFIELD = "springfield.localhost:3000"
 const SHELBYVILLE = "shelbyville.localhost:3000"
 export const PROTECTED_CONTROL = "Record reference operation"
+/** The heading of the notice every tab sharing a session shows once it was logged out. */
+export const SIGNED_OUT_HEADING = "You are signed out"
 /** Protected text the reference page renders, and the header's Log out; none may remain behind the modal. */
 const PROTECTED_TEXT = /Reference session|Record reference operation|springfield|shelbyville|Log out/i
 /** The expired recovery copy that the modal must share with in-tab recovery (#157 FR-020, research D12). */
@@ -131,8 +133,14 @@ const newContext = async (scenario: Expiration, hasTouch = false): Promise<Brows
   return context
 }
 
+/** The application session reference the named tab's browser held when the tab opened. */
+export const openedSession = (tab: Tab, name: string): string => {
+  assert.ok(tab.session, `expected tab "${name}" to have opened with a session`)
+  return tab.session
+}
+
 /** The application session reference the tab's browser holds for its host, if any. */
-const sessionOf = async (tab: Tab): Promise<string | undefined> =>
+export const sessionOf = async (tab: Tab): Promise<string | undefined> =>
   (await tab.page.context().cookies(`http://${tab.host}/`)).find((cookie) => cookie.name === "pathable-session")?.value
 
 /** Waits for the protected page and reads the tab's held local deadline from its header. */
@@ -149,6 +157,26 @@ export const heldDeadline = async (page: Page): Promise<number> => {
   const deadline = Number(await sessionHeader(page).getAttribute("data-session-deadline"))
   assert.ok(Number.isFinite(deadline), "expected the tab to hold a deadline")
   return deadline
+}
+
+/** How long after an event a step waits for a tab to reflect it before failing; any bound is checked separately. */
+export const OBSERVATION_MILLISECONDS = 15_000
+
+/**
+ * Waits until the tab's header holds `deadline`, within the tab's clock-offset estimate, and answers when it first did,
+ * on the test's clock.
+ */
+export const untilHolding = async (page: Page, deadline: number, timeout: number): Promise<number> => {
+  await page.waitForFunction(
+    ({ held, tolerance }) =>
+      Math.abs(
+        Number(document.querySelector("header[data-session-deadline]")?.getAttribute("data-session-deadline")) -
+          held
+      ) <= tolerance,
+    { held: deadline, tolerance: OFFSET_TOLERANCE_MILLISECONDS },
+    { polling: 50, timeout }
+  )
+  return Date.now()
 }
 
 /** Playwright's clock in a tab: `installed` keeps real time but can be set; `suspended` also stops timers after load. */
@@ -364,7 +392,7 @@ When(
 When("the visitor logs out in tab {string}", async function(this: AppWorld, name: string) {
   const { page } = tabOf(this, name)
   await page.getByRole("button", { name: "Log out" }).click()
-  await page.getByRole("heading", { name: "You are signed out" }).waitFor({ state: "visible" })
+  await page.getByRole("heading", { name: SIGNED_OUT_HEADING }).waitFor({ state: "visible" })
 })
 
 /** A character key on a protected control counts as activity, and the tab communicates it at once after silence. */
@@ -439,7 +467,7 @@ Then(
   async function(this: AppWorld, name: string) {
     const { deadline, page } = tabOf(this, name)
     await untilBefore(deadline, -3_000)
-    assert.ok(await page.getByRole("heading", { name: "You are signed out" }).isVisible())
+    assert.ok(await page.getByRole("heading", { name: SIGNED_OUT_HEADING }).isVisible())
     assert.equal(await page.evaluate(() => globalThis.window.preetsDialogSeen === true), false)
   }
 )
