@@ -204,7 +204,7 @@ the command, with unchanged results. Reads T-004. Asserts V-012, V-013, and V-01
       `Effect.runSync` in `reference-session-enforcement.test.ts` stays unprovided, since an asynchronous layer
       cannot run there.
 - [x] T034 [P] [US5] In `docs/engineering/testing/README.md`, say which unit and integration tests export with the
-      command and record plan limitation L-3.
+      command and record plan limitations L-3 and L-5.
 - [ ] T035 Run the checks, the frontend-services unit and integration suites plain and through the command; self-review;
       push the draft stacked on D; send both requests (Prerequisites, Receiver, §E, Telemetry queries, Cleanup).
 - [ ] T036 Answer results and findings; on a passing gate, render and commit the evidence, write the body, mark ready.
@@ -247,5 +247,5 @@ V-023 in full. Only this pull request may say `Closes #475`, and only when its r
 | T-003 (existing)                                                 | B     | No instrumentation; verifier queries |
 | T-004 (existing)                                                 | E     | No instrumentation; verifier queries |
 
-Approved limitations: plan L-1 to L-4 and the `verification.md` limitations (VL-1 to VL-7). Reused existing evidence:
+Approved limitations: plan L-1 to L-5 and the `verification.md` limitations (VL-1 to VL-7). Reused existing evidence:
 the existing suites for V-013 and the existing BDD scenarios for slice C's process cleanup.

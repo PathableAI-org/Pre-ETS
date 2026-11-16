@@ -3,7 +3,8 @@
  * `TEST_TELEMETRY` marker the layer is empty and no OpenTelemetry code runs. With it, the application's own
  * `observabilityLayer` is built once per test file from the settings the command prepared, and disposed after the
  * file's tests, so the file's records have left when it finishes. A build failure or an unreachable collector changes
- * no test result.
+ * no test result. The layer does not replace a test's clock, so a program under `TestClock` or a fixed `Clock` exports
+ * records stamped with that clock's time.
  */
 import { Context, Effect, Layer, ManagedRuntime } from "effect"
 import { afterAll } from "vitest"

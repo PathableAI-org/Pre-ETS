@@ -164,9 +164,11 @@ exports its owned application's records. A frontend-services unit or
 integration test exports only the programs it runs through a point that provides
 the test layer (`testTelemetry` in `tests/helpers/telemetry.ts`): the shared
 session world, its file's layer factory, or its mocked runtime. Tests of pure
-functions and of configuration decoding export nothing. Records of a test that
-runs under Effect's test clock (`it.effect`) carry the test clock's time, not
-the wall clock's, so a time-based search of the local stack does not find them.
+functions and of configuration decoding export nothing. A record carries the
+time of the clock its program runs under: records of a test that runs under
+Effect's test clock (`it.effect`), or of a program a test gives its own `Clock`,
+carry that clock's time, not the wall clock's, so a time-based search of the
+local stack does not find them.
 
 Keep durable tests for application outcomes such as configuration rejection,
 returned values, HTTP failure mapping, and tenant isolation. Supplying a logger to
