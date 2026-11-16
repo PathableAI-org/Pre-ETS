@@ -83,15 +83,22 @@ void describe("test run environment (#475 V-014)", () => {
     })
   }
 
+  void it("keeps a supplied run identifier beside an entry the Node SDK rejects", () => {
+    const attributes = "service.instance.id=run-1,broken"
+    const result = on({ OTEL_RESOURCE_ATTRIBUTES: attributes })
+    assert.equal(result.runId, "run-1")
+    assert.equal(result.env.OTEL_RESOURCE_ATTRIBUTES, attributes)
+  })
+
   for (
     const attributes of [
       "service.version=abc123,broken",
-      "service.instance.id=run-1,broken",
       "service.instance.id=a=b",
-      "service.instance.id=%E0"
+      "service.instance.id=%E0",
+      `service.instance.id=${"x".repeat(256)}`
     ]
   ) {
-    void it(`keeps a list the Node SDK rejects, ${attributes}, and appends a generated identifier`, () => {
+    void it(`appends a generated identifier to ${attributes.slice(0, 40)}, which has no usable one`, () => {
       const result = on({ OTEL_RESOURCE_ATTRIBUTES: attributes })
       assert.equal(result.runId, generated)
       assert.equal(result.env.OTEL_RESOURCE_ATTRIBUTES, `${attributes},service.instance.id=${generated}`)

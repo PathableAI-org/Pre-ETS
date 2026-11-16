@@ -173,12 +173,13 @@ The command reads only its own environment. Settings in
 do not count as supplied: there the command's defaults win over the file, and an
 off switch set only in the file keeps the application from exporting although
 the command prints a run identifier. Give a test run its telemetry settings in
-the shell. A supplied resource attribute list must be one the Node SDK accepts:
-`key=value` entries with any `,` or `=` in a key or value percent-encoded. The
-Node SDK ignores a list with any malformed entry, appended identifier included,
-so its HTTP and Redis spans then carry no run identifier, while the Effect spans
-and logs, which read the list more leniently, still do. The command does not
-detect this.
+the shell. A supplied run identifier is kept, the last `service.instance.id`
+entry winning as it does in the SDK; one is appended only when the list has no
+usable one. A supplied list must be one the Node SDK accepts: `key=value` entries
+with any `,` or `=` in a key or value percent-encoded. With any malformed entry
+the Node SDK ignores the whole list, so its HTTP and Redis spans carry no run
+identifier, and the Effect bridge, which reads the list differently, may keep or
+drop it. The command does not check the list.
 
 ### Browser tracing switch
 

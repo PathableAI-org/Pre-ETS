@@ -23,43 +23,49 @@ const instanceKey = "service.instance.id"
 /** A setting's value, with an empty one read as absent, as the application reads it. */
 const supplied = (value: string | undefined): string | undefined => value === "" ? undefined : value
 
-/** The Node SDK's limit on a resource attribute's key and value. */
+/** The Node SDK's limit on a resource attribute's value. */
 const maxLength = 255
 
-/**
- * One entry as the Node SDK's environment detector reads it, or `undefined` for an entry it rejects. The application
- * reads the list the same way (`serviceInstanceId` in packages/frontend-services/src/config/otel.ts), which root
- * tooling may not import; change both when the detector changes.
- */
-const attribute = (entry: string): readonly [string, string] | undefined => {
-  const pair = entry.split("=")
-  const [rawKey = "", rawValue = ""] = pair
-  if (pair.length !== 2 || rawKey.trim() === "") return undefined
+const decoded = (text: string): string => {
   try {
-    const key = decodeURIComponent(rawKey.trim())
-    const value = decodeURIComponent(rawValue.trim())
-    return key.length > maxLength || value.length > maxLength ? undefined : [key, value]
+    return decodeURIComponent(text)
+  } catch {
+    return text
+  }
+}
+
+/** An entry's key, trimmed and percent-decoded where it decodes. */
+const keyOf = (entry: string): string => decoded(entry.split("=")[0]?.trim() ?? "")
+
+/**
+ * A run identifier entry's value as the Node SDK reads an entry (exactly one `=`, trimmed, percent-decoded, at most 255
+ * characters), or `undefined` when the SDK would reject it or it is empty. The application reads entries the same way
+ * (`serviceInstanceId` in packages/frontend-services/src/config/otel.ts), which root tooling may not import; change both
+ * when the detector changes.
+ */
+const valueOf = (entry: string): string | undefined => {
+  const pair = entry.split("=")
+  if (pair.length !== 2) return undefined
+  try {
+    const value = decodeURIComponent(pair[1]?.trim() ?? "")
+    return value === "" || value.length > maxLength ? undefined : value
   } catch {
     return undefined
   }
 }
 
-/**
- * The run identifier the Node SDK reads from the list: the last `service.instance.id` entry wins, and a list with any
- * entry it rejects contributes nothing. An empty value counts as none.
- */
+/** The supplied run identifier: the last `service.instance.id` entry's value, as the SDK lets the last entry win. */
 const suppliedRunId = (entries: readonly string[]): string | undefined => {
-  const pairs = entries.map(attribute)
-  if (pairs.includes(undefined)) return undefined
-  return supplied(pairs.filter((pair) => pair?.[0] === instanceKey).at(-1)?.[1])
+  const last = entries.filter((entry) => keyOf(entry) === instanceKey).at(-1)
+  return last === undefined ? undefined : valueOf(last)
 }
 
 /**
  * The environment a test command runs with. `telemetry` is `off`, with `env` unchanged, when `OTEL_SDK_DISABLED` holds
  * a true literal. Otherwise absent or empty settings get the local defaults and `TEST_TELEMETRY` is `true`. Existing
- * `OTEL_RESOURCE_ATTRIBUTES` entries are kept, and one `service.instance.id` entry is appended only when the list, as
- * the Node SDK reads it, has none; `runId` is that entry's value, supplied or generated. A list the SDK rejects is the
- * caller's error: the SDK then ignores it, appended entry included. The input is not mutated.
+ * `OTEL_RESOURCE_ATTRIBUTES` entries are kept, and one `service.instance.id` entry is appended only when the list has
+ * no usable one; `runId` is that entry's value, supplied or generated. A list with another malformed entry is kept as
+ * supplied; the SDK then ignores it (docs/observability.md). The input is not mutated.
  */
 export function testRunEnvironment(env: NodeJS.ProcessEnv, generateRunId: () => string): TestRun {
   if (trueLiterals.has(env.OTEL_SDK_DISABLED ?? "")) return { env, telemetry: "off" }
