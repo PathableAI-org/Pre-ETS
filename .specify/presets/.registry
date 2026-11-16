@@ -55,6 +55,15 @@
           "speckit.implement",
           "speckit.constitution",
           "speckit.checklist"
+        ],
+        "cursor-agent": [
+          "speckit.specify",
+          "speckit.clarify",
+          "speckit.plan",
+          "speckit.tasks",
+          "speckit.implement",
+          "speckit.constitution",
+          "speckit.checklist"
         ]
       },
       "registered_skills": {
@@ -68,6 +77,15 @@
           "speckit-checklist"
         ],
         "claude": [
+          "speckit-specify",
+          "speckit-clarify",
+          "speckit-plan",
+          "speckit-tasks",
+          "speckit-implement",
+          "speckit-constitution",
+          "speckit-checklist"
+        ],
+        "cursor-agent": [
           "speckit-specify",
           "speckit-clarify",
           "speckit-plan",
