@@ -158,21 +158,23 @@ One command, `pnpm test:telemetry`, turns telemetry on for a test run with local
 off switch win; a requirements BDD run exports through it. Reads T-001 and T-002. Asserts V-011 and V-014 in full, and
 V-013 (requirements BDD selection) and V-016 (requirements BDD run) in part.
 
-- [ ] T025 [US5] Create `scripts/test-run.ts` with the `TestRun` union and
+- [x] T025 [US5] Create `scripts/test-run.ts` with the `TestRun` union and
       `testRunEnvironment(env: NodeJS.ProcessEnv, generateRunId: () => string): TestRun` exactly as modules.md states:
       `off` with `env` unchanged when `OTEL_SDK_DISABLED` holds one of the application's true literals; otherwise fill
       absent or empty `OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318/`, `OTEL_SERVICE_NAME=pre-ets-frontend`, and
       `TELEMETRY_EXPORT_TIMING=immediate`, append `service.instance.id=<runId>` to `OTEL_RESOURCE_ATTRIBUTES` only when
       none is present, set `TEST_TELEMETRY=true`, and never mutate the input (research D7).
-- [ ] T026 [US5] Create `tests/tooling/test-run.test.ts` with `node:test` examples: no settings, each explicit setting,
+- [x] T026 [US5] Create `tests/tooling/test-run.test.ts` with `node:test` examples: no settings, each explicit setting,
       existing resource attributes with and without an identifier, each true literal of the off switch, and input
       immutability (V-014 module evidence).
-- [ ] T027 [US5] Create `scripts/test-telemetry.ts`: a usage message and exit code 2 when no command is given; print
+- [x] T027 [US5] Create `scripts/test-telemetry.ts`: a usage message and exit code 2 when no command is given; print
       the run identifier on standard error; spawn the command with inherited standard streams and the computed
       environment; forward `SIGINT` and `SIGTERM`; exit with the child's status. Add the `test:telemetry` script, `node scripts/test-telemetry.ts`, to the root `package.json`, and join the new files to Fallow's root zones if needed.
-- [ ] T028 [P] [US5] In `docs/observability.md`, document the command and how to select a run's records by
+- [x] T028 [P] [US5] In `docs/observability.md`, document the command and how to select a run's records by
       `service.instance.id` and `service.version`; link it from `docs/engineering/testing/README.md` and
       `features/README.md` (and `tests/bdd/steps/README.md` only if it names the environment).
+      `tests/bdd/steps/README.md` does not name the environment, so it is unchanged. Fallow found the new scripts
+      through the root `package.json` without a zone change.
 - [ ] T029 Run the checks and `pnpm test:tooling`; run one tagged BDD selection through the command; self-review; push
       the draft stacked on C; send both requests (Prerequisites, Receiver, Module evidence, §D, Telemetry queries,
       Cleanup).

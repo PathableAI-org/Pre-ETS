@@ -137,6 +137,36 @@ It is assumed never to be set in production: production configuration never
 sets it, and the application does not refuse it in a production build, because
 the verification harness runs one.
 
+### Telemetry for a test run
+
+`pnpm test:telemetry <command> [args…]` runs any test command with telemetry
+on. It fills in only the settings that are absent or empty:
+`OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318/` (the
+[local stack](#local-grafana--otlp)), `OTEL_SERVICE_NAME=pre-ets-frontend`,
+`TELEMETRY_EXPORT_TIMING=immediate`, and a generated `service.instance.id`
+entry appended to `OTEL_RESOURCE_ATTRIBUTES` when that list has none. It also
+sets `TEST_TELEMETRY=true`, the marker a test process reads before it starts
+telemetry of its own. Settings supplied explicitly win, and a true literal in
+`OTEL_SDK_DISABLED` keeps telemetry off: the command then runs with the
+environment unchanged. It prints the run identifier on standard error and exits
+with the command's status.
+
+A requirements BDD run exports through it with no other setting, because the
+application process the suite owns inherits the environment:
+
+```sh
+pnpm test:telemetry pnpm test:bdd:tags "@preets-session-005"
+```
+
+Select a run's records by its identifier, for example
+`{ resource.service.instance.id = "<run>" }` in Tempo and
+`{service_name="pre-ets-frontend", service_instance_id="<run>"}` in Loki. To
+tag a run with a revision as well, supply `OTEL_SERVICE_VERSION` and
+`OTEL_RESOURCE_ATTRIBUTES="service.version=<sha>,service.instance.id=<run>"`,
+as the [verification harness](engineering/verification-harness.md#environment)
+does; without them `service.version` is `UNKNOWN`. With the local stack down,
+every test keeps its result and only the run's telemetry is lost.
+
 ### Browser tracing switch
 
 Browser tracing is a local-verification facility. It is assumed never to be
