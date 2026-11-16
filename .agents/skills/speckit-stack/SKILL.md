@@ -15,11 +15,17 @@ boundaries, branch names, merge timing, commit titles, artifact retention, and c
 supplies the commands. It does not reimplement Git, edit requirements, edit delivery plans, or update delivery issues.
 
 Use `gh stack` when `gh stack --help` succeeds. If it is missing, install `github/gh-stack` locally and continue.
+Where GitHub GraphQL is blocked, as in Claude Code cloud sessions, `gh stack submit`, marking ready, merging, and
+every `gh pr` subcommand fail with a GraphQL error; use the REST and GitHub MCP replacements in
+[Working without GraphQL](../../../docs/engineering/git-workflow.md#working-without-graphql-cloud-sessions)
+for those steps, and keep `gh stack init`, `add`, `rebase`, and `push`, which are local Git.
 Report unavailable GitHub access instead of assuming reviews, checks, or issue state. Use non-interactive commands
 only. Do not run `gh stack modify`, interactive `gh stack submit`, `git push --force`, or `git reset --hard`.
 
 `gh stack submit --auto` creates draft pull requests. Copy the matching body from
-`.github/PULL_REQUEST_TEMPLATE/` with `gh pr edit --body-file`, and set a Conventional Commit title. Specification
+`.github/PULL_REQUEST_TEMPLATE/` with `gh pr edit --body-file`, and set a Conventional Commit title. Without GraphQL,
+create each draft bottom to top with that title and body, then link the stack, in the order the workflow guide's
+"Open pull requests in order" gives. Specification
 and plan bodies say `Contributes to #<issue>`. An implementation body says `Closes #<issue>` only when that issue's
 completion evidence is satisfied.
 
@@ -40,6 +46,7 @@ Stop when any check fails. A rejected `--force-with-lease` means the remote move
 unless the fetched state is understood and still owned here. Do not declare a restack or merge complete until
 `gh stack view --json` shows the expected parents and pull-request bases. If the JSON shape is unfamiliar, confirm
 the same facts with `gh pr view --json baseRefName,headRefName,state,isDraft,reviewDecision,statusCheckRollup`.
+Without GraphQL, read the same facts from the stacks and pulls REST routes the workflow guide lists.
 
 ## Inspect
 
@@ -50,7 +57,8 @@ and tasks read that variable or the checkout-local `.specify/feature.json`. They
 the branch name. A new worktree has no `feature.json`, and a stale file can select another feature. Do not commit
 `feature.json`.
 
-Report, from `gh stack view --json`, `gh pr view`, and `git worktree list`:
+Report, from `gh stack view --json`, `gh pr view`, and `git worktree list` (without GraphQL, the REST reads in the
+workflow guide replace the first two):
 
 - branch order and pull-request bases
 - draft, review, and check state
@@ -88,7 +96,10 @@ Commit implementation work as explicit Conventional Commits. The implementation 
 For a recorded one-pull-request exception, say which gates are combined in the body and target `main`. Do not
 invent an exception because a stack is inconvenient.
 
-Mark a draft ready with `gh pr ready` only after validate passes and the task is to request review. For an
+Mark a draft ready with `gh pr ready` only after validate passes and the task is to request review. Without
+GraphQL, use the REST ready route or the GitHub MCP tool's `update_pull_request` with `draft: false`. Marking ready
+needs no person's confirmation, but the project's ready hook still runs the gate below on every route and blocks the
+attempt when it fails. For an
 implementation slice, also require that the latest verification report passes
 [the verification gate](../../../docs/engineering/verification-harness.md#gate-and-escalation): every telemetry row
 assigned to the slice is usable, every full claim is `established`, every other result matches a limitation already
@@ -100,7 +111,7 @@ steps, needs a new verification request. For High and Standard work, also requir
 [code review](../../../docs/engineering/code-review.md#gate-and-escalation) has no open blocking finding or
 escalation and covers the pushed SHA under the same evidence-only rule; `pnpm verify:gate` checks both.
 Before more intermediate pushes, return it to draft with
-`gh pr ready --undo`. Classify Copilot findings as accepted, rejected with a reason, or waiting on a human. Do not
+`gh pr ready --undo`, or its replacement without GraphQL. Classify Copilot findings as accepted, rejected with a reason, or waiting on a human. Do not
 apply them automatically.
 
 ## Revise
@@ -148,7 +159,8 @@ When `gh stack view` shows the pull request in a native stack, merge through tha
 gh stack merge <pull-request-number> --yes --squash
 ```
 
-This merges the chosen pull request and every open layer below it, and leaves layers above it open. Afterward,
+This merges the chosen pull request and every open layer below it, and leaves layers above it open. Without
+GraphQL, use the `merge-async` route in the workflow guide, under the same approval. Afterward,
 fetch and match the rewritten upper branches. Do not replay the old local commits.
 
 A specification that is still the only pull request, and a recorded one-pull-request exception, have no native
@@ -157,3 +169,5 @@ stack. `gh stack merge` applies to stacked pull requests. Merge those with the s
 ```sh
 gh pr merge <pull-request-number> --squash
 ```
+
+Without GraphQL, use the GitHub MCP tool `merge_pull_request` with `merge_method: squash`, under the same approval.

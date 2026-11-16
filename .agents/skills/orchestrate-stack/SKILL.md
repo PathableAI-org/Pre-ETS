@@ -105,7 +105,8 @@ verification harness and code review guides require. Your part:
    (or only evidence-only commits after it), notify the person that the slice is green. Tell the implementation
    session it may start the next slice, stacked on this one.
 4. **Ready.** The implementation session marks the pull request ready with `gh pr ready` or, in the cloud, the GitHub
-   MCP tool's `update_pull_request` with `draft: false`. The hook runs the gate, and the person confirms. Notify that the slice waits on review.
+   MCP tool's `update_pull_request` with `draft: false`. The hook runs the gate and blocks the attempt when it fails;
+   no person confirms the ready step itself. Notify that the slice waits on review.
 5. **Fix rounds.** A failing result goes back to the implementation session through its own loop. Count rounds from
    the notes. You step in only for an escalation.
 
