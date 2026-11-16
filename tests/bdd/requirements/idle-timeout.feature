@@ -51,7 +51,7 @@ Feature: The server ends each session at the deadline its tenant's idle timeout 
     is valid again, the session still has the deadline its sign-in gave it.
 
     Given host resolution uses base hostname "localhost"
-    And Springfield sessions end after 5 minutes of inactivity
+    And Springfield's tenant file changes to an idle timeout of 5
     And the visitor signs in to session "Open" at "springfield.localhost:3000"
     When Springfield's tenant file changes to an idle timeout of 31
     Then a page request, in-page activity, a protected form submission, and a status read for session "Open" are each answered 404, as for a missing tenant
@@ -60,7 +60,7 @@ Feature: The server ends each session at the deadline its tenant's idle timeout 
 
   Scenario: The longest timeout and an omitted one each give a new session a deadline 30 minutes after its sign-in
     Given host resolution uses base hostname "localhost"
-    And Springfield sessions end after 30 minutes of inactivity
+    And Springfield's tenant file changes to an idle timeout of 30
     And the visitor signs in to session "Longest" at "springfield.localhost:3000"
     When Springfield's tenant file sets no idle timeout and no warning lead
     And the visitor signs in to session "Omitted" at "springfield.localhost:3000"
@@ -75,7 +75,7 @@ Feature: The server ends each session at the deadline its tenant's idle timeout 
     seconds before its deadline, and any of them that renewed it would have moved that deadline.
 
     Given host resolution uses base hostname "localhost"
-    And Springfield sessions end after 5 minutes of inactivity
+    And Springfield's tenant file changes to an idle timeout of 5
     And the visitor signs in to sessions "Background", "Paged", "Active", and "Submitted" at "springfield.localhost:3000"
     When Springfield's tenant file changes to an idle timeout of 6
     And the visitor signs in to session "Later" at "springfield.localhost:3000"
