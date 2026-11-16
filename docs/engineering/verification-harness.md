@@ -238,13 +238,17 @@ offline.
 
 A Claude Code `PreToolUse` hook in `.claude/settings.json` runs the gate whenever a session tries to mark a pull
 request ready, and blocks the attempt when the gate fails. It covers `gh pr ready` (with no argument, a number, a
-URL, or a branch), a `gh api` call that sets `draft=false` on a pull request, and the GitHub MCP tool's
+URL, or a branch), a `gh api` call that sets `draft` false on a pull request (as `draft=false` or in a JSON body), a
+`gh api` or `curl` call to a pull request's `ccr/ready_for_review` route, and the GitHub MCP tool's
 `update_pull_request` with `draft: false`. The cloud reaches only REST, so `gh pr ready` fails there, and the MCP tool
-is how cloud sessions mark a pull request ready. The hook resolves the pull request over REST and syncs its comments.
-It then gates its head branch at the pull request's head SHA, which must be in the clone. When GitHub cannot be
-reached, it gates a checked-out slice branch on its local notes, and refuses any other branch it cannot classify.
-Project settings already ask a person before `gh pr ready`, and the hook asks before every other ready attempt it
-allows. It refuses the paths it cannot judge, and names the gated way:
+or the REST route is how cloud sessions mark a pull request ready; see
+[Working without GraphQL](git-workflow.md#working-without-graphql-cloud-sessions). The hook resolves the pull request
+over REST and syncs its comments. It then gates its head branch at the pull request's head SHA, which must be in the
+clone. When GitHub cannot be reached, it gates a checked-out slice branch on its local notes, and refuses any other
+branch it cannot classify. Once the gate passes or does not apply, marking ready needs no person's confirmation:
+project settings allow `gh pr ready` and the REST ready route without a prompt, and the hook approves the MCP update.
+Removing that prompt does not relax the gate, which still decides every attempt. The hook refuses the paths it cannot
+judge, and names the gated way:
 
 - `gh stack submit --open`, which marks every pull request in the stack ready.
 - A `gh api graphql` `markPullRequestReadyForReview` mutation, which names no branch.
