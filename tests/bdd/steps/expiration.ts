@@ -703,10 +703,30 @@ Given("the visitor has left tab {string} for a public page", async function(this
  * its window's end, so the tab's deadline is not predicted here; the scenario waits for the tab to confirm expiry.
  */
 const openParticipantInPlace = async (tab: Tab) => {
+  tab.exposed.length = 0
   await tab.page.goto(`http://${tab.host}/coordination/roster`)
   await tab.page.getByRole("heading", { level: 1, name: "Coordination roster" }).waitFor({ state: "visible" })
-  await tab.page.getByRole("button", { name: "Open participant page in place" }).click()
-  await tab.page.getByRole("heading", { level: 1, name: "Coordination participant" }).waitFor({ state: "visible" })
+  // Fresh entry later relies on this document's exposure watcher staying silent, so it must be seen to report here.
+  await untilReported(tab, "Coordination roster")
+  await inPlace(tab, async () => {
+    await tab.page.getByRole("button", { name: "Open participant page in place" }).click()
+    await tab.page.getByRole("heading", { level: 1, name: "Coordination participant" }).waitFor({ state: "visible" })
+  })
+}
+
+/** Waits until the tab's page has reported exposing `text`, so its exposure watcher is known to run in that document. */
+const untilReported = async (tab: Tab, text: string) => {
+  for (let waited = 0; !tab.exposed.includes(text); waited += 100) {
+    if (waited >= OBSERVATION_MILLISECONDS) assert.fail(`expected the page to report exposing "${text}"`)
+    await delay(100)
+  }
+}
+
+/** Runs `navigate` and requires that it loaded no document in the tab: the App Router's own navigation. */
+const inPlace = async (tab: Tab, navigate: () => Promise<void>) => {
+  const before = tab.protectedDocuments.length
+  await navigate()
+  assert.deepEqual(tab.protectedDocuments.slice(before), [], "expected the navigation to load no document")
 }
 
 Given(
@@ -722,8 +742,10 @@ Given(
   async function(this: AppWorld, name: string) {
     const tab = tabOf(this, name)
     await openParticipantInPlace(tab)
-    await tab.page.goBack({ waitUntil: "commit" })
-    await tab.page.getByRole("heading", { level: 1, name: "Coordination roster" }).waitFor({ state: "visible" })
+    await inPlace(tab, async () => {
+      await tab.page.goBack({ waitUntil: "commit" })
+      await tab.page.getByRole("heading", { level: 1, name: "Coordination roster" }).waitFor({ state: "visible" })
+    })
     assert.equal(new URL(tab.page.url()).pathname, "/coordination/roster")
   }
 )
