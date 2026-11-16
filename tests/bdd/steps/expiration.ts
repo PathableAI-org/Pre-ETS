@@ -114,6 +114,13 @@ export const tabOf = (world: AppWorld, name: string): Tab => {
 export const namesOf = (list: string): readonly string[] =>
   [...list.matchAll(/"([^"]+)"/g)].map((match) => match[1] ?? "")
 
+/** The quoted names in a list, which must name at least one: a list without any would leave a step checking nothing. */
+export const listedNames = (list: string): readonly string[] => {
+  const names = namesOf(list)
+  assert.ok(names.length > 0, `expected quoted names in ${list}`)
+  return names
+}
+
 /**
  * A new browser context that watches for dialogs and reports back/forward-cache restores; with `hasTouch`, it has a
  * touch screen as well as a mouse and keyboard.

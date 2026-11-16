@@ -15,7 +15,7 @@ import {
   type SiteRequest
 } from "../support/server.ts"
 import { namesOf, openedSession, type Tab, tabOf, untilHolding } from "./expiration.ts"
-import { actionRequest } from "./http.ts"
+import { actionRequest, isAdmitted } from "./http.ts"
 import { configuredIdleTimeout } from "./tenant.ts"
 
 /** A same-origin in-page activity communication at `host` as a tab sends it: JSON naming the kind and a coordination tag. */
@@ -103,6 +103,22 @@ export const presentationOf = (tab: Tab, name: string): Presentation => ({
 /** `GET /session/status` at the instance on `port`, an application request: it reads the session and never renews it. */
 export const sessionStatus = (world: AppWorld, port: number, presented: Presentation): Promise<RecordedResponse> =>
   requestInstance(world, port, presented.host, "/session/status", false, presented.cookie)
+
+/** A document entry at the instance on `port`: the gate renews a usable session for it, and the page reads it. */
+export const sessionEntry = (world: AppWorld, port: number, presented: Presentation): Promise<RecordedResponse> =>
+  requestInstance(world, port, presented.host, "/", true, presented.cookie)
+
+/** Qualifying in-page activity at the instance on `port`, as the session's own tab sends it, carrying its tag. */
+export const sessionActivity = (
+  world: AppWorld,
+  port: number,
+  session: Presentation & { readonly coordinationTag: string }
+): Promise<RecordedResponse> =>
+  sendRequest(world, {
+    ...activityCommunication(session.host, "keyboard-interaction", session.coordinationTag),
+    cookie: session.cookie,
+    port
+  })
 
 /** The scenario's entry in `states`, which an earlier step must have set. */
 const required = <A>(states: WeakMap<AppWorld, A>, world: AppWorld, expectation: string): A => {
@@ -348,19 +364,32 @@ const sentRequests = new WeakMap<AppWorld, Sent>()
 
 const sentOf = (world: AppWorld): Sent => required(sentRequests, world, "a request to have been sent")
 
-/** Reads the deadline, then sends one same-origin request presenting the visitor's session at `request.host`. */
-const sendWithSession = async (world: AppWorld, request: Omit<SiteRequest, "cookie" | "port">) => {
-  assert.ok(world.cookie, "expected the visitor to have signed in")
-  const presented = { cookie: `pathable-session=${world.cookie}`, host: request.host }
+/**
+ * Reads the session's deadline, then sends one same-origin request presenting it at the world's site, as its tab
+ * would; answers the deadline before, the answer, and when it was sent and answered on the test's clock.
+ */
+export const sendPresenting = async (
+  world: AppWorld,
+  presented: Presentation,
+  request: Omit<SiteRequest, "cookie" | "host" | "port">
+) => {
   const before = await deadlineOf(world, presented)
   const startedAt = Date.now()
   const response = await sendRequest(world, {
     ...request,
     cookie: presented.cookie,
     headers: { "sec-fetch-site": "same-origin", ...request.headers },
+    host: presented.host,
     port: world.port
   })
-  sentRequests.set(world, { before, endedAt: Date.now(), presented, response, startedAt })
+  return { before, endedAt: Date.now(), response, startedAt }
+}
+
+/** Sends one request presenting the visitor's session at `request.host`, and keeps it for the step that judges it. */
+const sendWithSession = async (world: AppWorld, request: Omit<SiteRequest, "cookie" | "port">) => {
+  assert.ok(world.cookie, "expected the visitor to have signed in")
+  const presented = { cookie: `pathable-session=${world.cookie}`, host: request.host }
+  sentRequests.set(world, { ...await sendPresenting(world, presented, request), presented })
 }
 
 const get = (path: string, host: string, headers: Readonly<Record<string, string>>) => ({
@@ -377,14 +406,13 @@ When(
   }
 )
 
-/** The App Router fetches a linked page's payload ahead of any navigation to it. */
+/** The headers of the App Router's fetch of a linked page's payload ahead of any navigation to it. */
+export const PREFETCH_HEADERS = { ...FETCH_METADATA.application, "next-router-prefetch": "1", rsc: "1" } as const
+
 When(
   "the session's browser prefetches {string} for in-place navigation at {string}",
   async function(this: AppWorld, path: string, host: string) {
-    await sendWithSession(
-      this,
-      get(path, host, { ...FETCH_METADATA.application, "next-router-prefetch": "1", rsc: "1" })
-    )
+    await sendWithSession(this, get(path, host, PREFETCH_HEADERS))
   }
 )
 
@@ -411,10 +439,7 @@ When(
 /** Admitted: neither denied nor failed, so the session was read and the request let through. */
 Then("that request was admitted without renewing the session", async function(this: AppWorld) {
   const { before, presented, response } = sentOf(this)
-  assert.ok(
-    response.status < 500 && response.status !== 401 && response.status !== 403,
-    `answered ${String(response.status)}`
-  )
+  assert.ok(isAdmitted(response.status), `answered ${String(response.status)}`)
   assert.equal(await deadlineOf(this, presented), before, "expected the session's deadline unchanged")
 })
 
