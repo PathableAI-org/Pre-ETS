@@ -14,6 +14,7 @@ import {
 } from "../../src/authentication.ts"
 import { TenantConfigService } from "../../src/tenant.ts"
 import { authenticationSettings, makeMemoryRedis } from "../helpers/authentication.ts"
+import { testTelemetry } from "../helpers/telemetry.ts"
 
 /** Optional tenant fields beyond the OIDC client; JSON omits an undefined value, so absent settings stay absent. */
 interface TenantSettings {
@@ -76,7 +77,8 @@ const withWorld = <A, E, R>(program: Effect.Effect<A, E, AuthenticationService |
             return Effect.succeed(tenantFile(options, issuer))
           }
         })),
-        Layer.provide(Path.layer)
+        Layer.provide(Path.layer),
+        Layer.merge(testTelemetry)
       )
     ),
     Effect.provideService(References.MinimumLogLevel, "Error")

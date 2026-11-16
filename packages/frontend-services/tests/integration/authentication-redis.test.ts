@@ -7,6 +7,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest"
 import { AuthenticationDenied, AuthenticationService, CallbackExpectedFailure } from "../../src/authentication.ts"
 import { TenantConfigService } from "../../src/tenant.ts"
 import { authenticationSettings } from "../helpers/authentication.ts"
+import { testTelemetry } from "../helpers/telemetry.ts"
 
 const redisUrl = process.env.REDIS_URL ?? "redis://127.0.0.1:6379"
 const transactionPrefix = `test:authentication:${randomUUID()}:`
@@ -84,7 +85,8 @@ const authenticationLayer = (options: { readonly prefix?: string; readonly ttlSe
           oidc: { clientAuth: "public", clientId: "alpha-client", issuer: "https://provider.test" }
         }))
     })),
-    Layer.provide(Path.layer)
+    Layer.provide(Path.layer),
+    Layer.merge(testTelemetry)
   )
 
 const prepare = (runtime: ManagedRuntime.ManagedRuntime<AuthenticationService, unknown>) =>

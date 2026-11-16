@@ -185,22 +185,26 @@ V-013 (requirements BDD selection) and V-016 (requirements BDD run) in part.
 Unit and integration tests of the instrumented workspace export what they exercise through one test layer, only behind
 the command, with unchanged results. Reads T-004. Asserts V-012, V-013, and V-016 in full.
 
-- [ ] T031 [US5] Create `fs/tests/helpers/telemetry.ts` exporting `testTelemetry: Layer.Layer<never>`: `Layer.empty`
+- [x] T031 [US5] Create `fs/tests/helpers/telemetry.ts` exporting `testTelemetry: Layer.Layer<never>`: `Layer.empty`
       unless `TEST_TELEMETRY=true`; otherwise build `observabilityLayer` once per test file from a plain `OtelEnabled`
       value (endpoint, service name, version, and timing from the environment the command prepared; no browser
       tracing; no `StartupConfig` parse), expose its context as the layer, dispose it in a file-level `afterAll`, and
       fall back to the empty layer on a build failure (research D8). Move registration to a `setupFiles` entry only if
       registration from the helper proves unreliable.
-- [ ] T032 [US5] Provide `testTelemetry` in `fs/tests/helpers/session.ts` (`sessionWorld`).
-- [ ] T033 [US5] Provide `testTelemetry` where each suite file builds its own layers or mocks `Runtime.runPromise`:
+- [x] T032 [US5] Provide `testTelemetry` in `fs/tests/helpers/session.ts` (`sessionWorld`).
+- [x] T033 [US5] Provide `testTelemetry` where each suite file builds its own layers or mocks `Runtime.runPromise`:
       `fs/tests/lib/` `authentication.test.ts`, `authentication-failures.test.ts`, `tenant.test.ts`,
       `tenant-policy.test.ts`, `session-policy-refresh.test.ts`; `fs/tests/unit/` `authentication-entry.test.ts`,
       `authentication-entry-failures.test.ts`, `coordination.test.ts`, `protection.test.ts`,
       `reference-session-enforcement.test.ts`; `fs/tests/integration/` `authentication-redis.test.ts`,
       `session-redis.test.ts`, `session-redis-outage.test.ts`, and `coordination-redis.test.ts` or
       `protection-redis.test.ts` where a second runtime is built without `sessionWorld`.
-- [ ] T034 [P] [US5] In `docs/engineering/testing/README.md`, say which unit and integration tests export with the
-      command and record plan limitation L-3.
+      As built: `session-policy-refresh.test.ts` needs no change because its world is `sessionWorld`; both
+      `coordination-redis.test.ts` and `protection-redis.test.ts` build a second runtime without it; the module-level
+      `Effect.runSync` in `reference-session-enforcement.test.ts` stays unprovided, since an asynchronous layer
+      cannot run there.
+- [x] T034 [P] [US5] In `docs/engineering/testing/README.md`, say which unit and integration tests export with the
+      command and record plan limitations L-3 and L-5.
 - [ ] T035 Run the checks, the frontend-services unit and integration suites plain and through the command; self-review;
       push the draft stacked on D; send both requests (Prerequisites, Receiver, §E, Telemetry queries, Cleanup).
 - [ ] T036 Answer results and findings; on a passing gate, render and commit the evidence, write the body, mark ready.
@@ -243,5 +247,5 @@ V-023 in full. Only this pull request may say `Closes #475`, and only when its r
 | T-003 (existing)                                                 | B     | No instrumentation; verifier queries |
 | T-004 (existing)                                                 | E     | No instrumentation; verifier queries |
 
-Approved limitations: plan L-1 to L-4 and the `verification.md` limitations (VL-1 to VL-7). Reused existing evidence:
+Approved limitations: plan L-1 to L-5 and the `verification.md` limitations (VL-1 to VL-7). Reused existing evidence:
 the existing suites for V-013 and the existing BDD scenarios for slice C's process cleanup.

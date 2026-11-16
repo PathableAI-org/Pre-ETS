@@ -18,6 +18,7 @@ import {
   type UsableSession
 } from "../../src/session.ts"
 import { TenantAlias } from "../../src/tenant.ts"
+import { testTelemetry } from "../helpers/telemetry.ts"
 
 const execFileAsync = promisify(execFile)
 const alias = Schema.decodeSync(TenantAlias)("outage")
@@ -134,7 +135,8 @@ const redisLayer = (url: string) =>
 
 const sessionLayer = (url: string, prefix: string) =>
   SessionService.layer({ keyPrefix: prefix }).pipe(
-    Layer.provide(redisLayer(url))
+    Layer.provide(redisLayer(url)),
+    Layer.merge(testTelemetry)
   )
 
 const makeRuntime = (store: OutageStore, prefix: string): SessionRuntime =>

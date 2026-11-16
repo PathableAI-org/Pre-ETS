@@ -3,6 +3,7 @@ import { Effect, FileSystem, Layer, Logger, Path, Result } from "effect"
 
 import { tenantFailureStatus } from "../../src/next.ts"
 import { effectiveSessionPolicy, TenantConfigService } from "../../src/tenant.ts"
+import { testTelemetry } from "../helpers/telemetry.ts"
 
 const tenantFile = {
   displayName: "Policy example",
@@ -31,6 +32,8 @@ const readPolicy = Effect.fnUntraced(
             }),
             Path.layer
           ))),
+        testTelemetry,
+        // Last, so it silences the output; it also replaces the telemetry logger, so this file exports spans only.
         Logger.layer([])
       ))
     )

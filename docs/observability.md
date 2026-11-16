@@ -145,9 +145,11 @@ empty: `OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318/` (the
 [local stack](#local-grafana--otlp)), `OTEL_SERVICE_NAME=pre-ets-frontend`,
 `TELEMETRY_EXPORT_TIMING=immediate`, and a generated `service.instance.id`
 entry appended to `OTEL_RESOURCE_ATTRIBUTES` when that list has none. It also
-sets `TEST_TELEMETRY=true`, the marker for a test process that starts
-telemetry of its own; no unit or integration test process does so today, so
-they export nothing. Settings supplied explicitly win, and a true literal in
+sets `TEST_TELEMETRY=true`, the marker the frontend-services unit and
+integration suites read: with it, a test that runs a program through the shared
+session world, its file's layer factory, or its mocked runtime exports that
+program's spans and logs through the application's own pipeline, which is
+disposed when the file's tests end. Settings supplied explicitly win, and a true literal in
 `OTEL_SDK_DISABLED` keeps telemetry off: the command then runs with the
 environment unchanged. It prints the run identifier on standard error and exits
 with the command's status.
