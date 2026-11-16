@@ -11,7 +11,12 @@ Feature: Expired-content protection for denied Server Actions
   token in its 401. In a real browser with scripts disabled, the protected reference form submits
   as a form navigation: with a usable session it succeeds, and after the record was removed the
   browser displays the recovery document, whose Log in again link is reachable and operable by
-  keyboard. With scripts enabled, a denied submission replaces that tab's header and content with
+  keyboard. A form submitted before the idle deadline that reaches the server after it is answered
+  the same way, with no operation. The accepted limitation of 2026-11-16, a submission reaching the
+  action in the instant the session expires after the protection gate admitted it, which may be
+  answered with the fresh-entry login redirect instead, is not reproduced here: a held submission
+  reaches the gate after the deadline. With scripts enabled, a denied submission replaces that tab's header and content
+  with
   recovery content and moves focus to its heading. The content says the session expired when the
   tab's held deadline had passed on the server clock, even while the tab's timers were suspended,
   and that it is no longer available otherwise. Another tab sharing the session keeps its content.
@@ -71,6 +76,18 @@ Feature: Expired-content protection for denied Server Actions
     And the browser holds no reference-operation receipt
     And the page displays the recovery document explaining "Your session is no longer available"
     And "Log in again" is reachable by keyboard with visible focus and opens the application entry
+
+  Scenario: Without scripts, a form submitted before the idle deadline that reaches the server after it displays recovery
+    The tenant's shortest idle timeout is five minutes. The submission leaves the browser at once
+    and request routing holds it until five seconds after the deadline, as a slow network would.
+
+    Given Springfield sessions end after 5 minutes of inactivity
+    And the visitor has signed in at "springfield.localhost:3000" through the provider
+    And the visitor opens the application entry at "springfield.localhost:3000" with scripts disabled
+    When the visitor submits the reference form by keyboard before the session's idle deadline, and it reaches the server after it
+    Then the form submission is a document request answered with status 401
+    And the browser holds no reference-operation receipt
+    And the page displays a recovery document with a Log in again link
 
   Scenario: Without scripts, a protected form submission with a usable session performs the operation
     Given the visitor has signed in at "springfield.localhost:3000" through the provider

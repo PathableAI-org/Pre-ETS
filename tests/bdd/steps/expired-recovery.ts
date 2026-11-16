@@ -18,7 +18,7 @@ import {
 import { multipartBody, serverActionId } from "../support/server-actions.ts"
 import { FETCH_METADATA, requestSiteWith, startSite } from "../support/server.ts"
 import { SESSION_END_COPY } from "./expiration.ts"
-import { setTenantPolicy } from "./tenant.ts"
+import { configuredIdleTimeout, setTenantPolicy } from "./tenant.ts"
 
 /**
  * One visitor's real application session: the browser that signed in through the tracked provider, the host it
@@ -294,6 +294,48 @@ When("the visitor submits the reference form by keyboard", async function(this: 
   await entry.page.waitForLoadState("load")
 })
 
+/**
+ * PREETS-SESSION-007 AC1, expiry between browser interaction and server receipt: the keyboard submission leaves the
+ * browser well before the session's idle deadline, and request routing holds it there until 5 seconds after the
+ * deadline before sending it on, so the server receives it only once the session has expired. The deadline counts
+ * from the entry's own page load, which renewed the session; that renewal answered before `renewedAt`, so the server's
+ * deadline is no later than the one used here, and the submission must leave at least a minute before it.
+ */
+When(
+  "the visitor submits the reference form by keyboard before the session's idle deadline, and it reaches the server after it",
+  { timeout: 8 * 60_000 },
+  async function(this: AppWorld) {
+    const entry = entryOf(this)
+    const deadline = visitorOf(this).renewedAt + await configuredIdleTimeout(this, "springfield")
+    const page = new URL(entry.page.url()).pathname
+    const isSubmission = (url: URL) => url.pathname === page
+    const sent: number[] = []
+    await entry.page.route(isSubmission, async (route) => {
+      if (route.request().method() !== "POST") {
+        await route.fallback()
+        return
+      }
+      sent.push(Date.now())
+      await delay(Math.max(0, deadline + 5_000 - Date.now()))
+      await route.continue()
+    })
+    const submitted = entry.page.waitForResponse(
+      (response) => response.request().method() === "POST" && isSubmission(new URL(response.url())),
+      { timeout: Math.max(0, deadline - Date.now()) + 60_000 }
+    )
+    const committed = nextMainFrameCommit(entry.page)
+    await entry.page.getByRole("button", { name: "Record reference operation" }).focus()
+    await entry.page.keyboard.press("Enter")
+    entry.submission = await submitted
+    if (entry.submission.request().isNavigationRequest()) await committed
+    await entry.page.waitForLoadState("load")
+    await entry.page.unroute(isSubmission)
+    assert.equal(sent.length, 1, "expected one held submission")
+    const [leftAt = Number.POSITIVE_INFINITY] = sent
+    assert.ok(leftAt < deadline - 60_000, `the submission left ${String(deadline - leftAt)} ms before the deadline`)
+  }
+)
+
 Then(
   "the form submission is a {word} request answered with status {int}",
   function(this: AppWorld, kind: string, status: number) {
@@ -331,6 +373,21 @@ Then("the page displays the recovery document explaining {string}", async functi
   const headings = await page.getByRole("heading", { level: 1 }).allTextContents()
   assert.deepEqual(headings, [heading])
   await assertRecoveryCopy(page, heading)
+  assert.equal(await page.getByRole("button", { name: "Record reference operation" }).count(), 0)
+})
+
+/**
+ * The document the submission without scripts loaded is a recovery document, under either session-end heading: the
+ * store keeps an expired record only briefly, so the server may explain the session as expired or as no longer
+ * available. Nothing protected remains.
+ */
+Then("the page displays a recovery document with a Log in again link", async function(this: AppWorld) {
+  const { page } = entryOf(this)
+  const heading = page.getByRole("heading", { level: 1 })
+  await heading.first().waitFor({ state: "visible" })
+  const headings = await heading.allTextContents()
+  assert.equal(headings.length, 1, "expected exactly one top-level heading")
+  await assertRecoveryCopy(page, headings[0] ?? "")
   assert.equal(await page.getByRole("button", { name: "Record reference operation" }).count(), 0)
 })
 
