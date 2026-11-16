@@ -7,8 +7,8 @@ Feature: Validate the selected tenant OIDC callback
   a stale authentication time, a return after the visitor cancels at the provider, and
   untrusted, mismatched, replayed, expired, and denied returns, establish none, and after a
   stale, cancelled, or denied return a new login can begin. Tenant-mismatch denial with a
-  real bound session and expired-session action denial remain without end-to-end
-  evidence here.
+  real bound session and expired-session action denial are not established here;
+  tenant-session-binding.feature and expired-content-recovery.feature hold that evidence.
 
   @preets-session-002
   @preets-session-013

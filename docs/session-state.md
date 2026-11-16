@@ -132,8 +132,11 @@ Server Actions `runReferenceOperation` and `recordFixtureOperation`; protected R
 `POST /session/activity`, `GET /session/status`, and `POST /auth/logout`; public resources as
 designated above.
 
-Known gaps: `/_next/static/**` is publicly served and `/favicon.ico`, metadata routes, and
-`/_next/image` answer 401 without a session until the public-asset decision is made.
+Public assets: `/_next/static/**` is the designated public build-asset class. `/favicon.ico`,
+metadata routes, and `/_next/image` stay protected (401 without a session, never a login redirect)
+until a public page needs one, which is then designated individually
+([#444](https://github.com/PathableAI-org/Pre-ETS/issues/444), PREETS-SESSION-001). The content
+assessment of the public build output is still outstanding.
 "Log in again" in recovery content and in the expiration modal is a plain link to `/`, so no login
 starts until the visitor activates it. The entry then follows fresh entry: the provider is asked for
 fresh authentication (`max_age=0`) even while it holds a single sign-on session, a new session is
