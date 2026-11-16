@@ -75,12 +75,14 @@ Feature: Fresh entry after natural session expiry
   Scenario: After natural expiry in-app back and forward ask the provider again and yield a new session
     The roster opens the participant page in place, through the application's own navigation, so
     those history entries belong to one document. Tab "In-app forward" went back to the roster in place.
+    The click that opens the page in place is activity, so each tab is left until it shows the expiration
+    modal, which it shows once the server has answered that its session ended.
 
     Given the visitor has signed in at "springfield.localhost:3000" and opened tab "In-app back"
     And the visitor has opened the participant page in place from the roster in tab "In-app back"
     And another browser has signed in at "springfield.localhost:3000" and opened tab "In-app forward"
     And the visitor has opened the participant page in place from the roster in tab "In-app forward" and gone back to the roster
-    When the idle deadline of tabs "In-app back" and "In-app forward" passes
+    When the sessions of tabs "In-app back" and "In-app forward" expire and each shows the expiration modal
     And the visitor navigates back in tab "In-app back"
     Then tab "In-app back" follows fresh entry to the provider without the modal or protected content
     And the provider asks the visitor to authenticate in tab "In-app back"

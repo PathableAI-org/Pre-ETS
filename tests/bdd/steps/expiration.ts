@@ -652,26 +652,18 @@ Given("the visitor has left tab {string} for a public page", async function(this
 
 /**
  * Opens the roster by a full navigation, then the participant page in place: the App Router's own navigation, which
- * adds a history entry without loading a document. The click is activity, so the step waits for the renewal it
- * communicates (within a minute, B5) and takes that deadline.
+ * adds a history entry without loading a document. The click is activity, and B5 may communicate part of it only at
+ * its window's end, so the tab's deadline is not predicted here; the scenario waits for the tab to confirm expiry.
  */
 const openParticipantInPlace = async (tab: Tab) => {
   await tab.page.goto(`http://${tab.host}/coordination/roster`)
-  await deadlineAfterLoad(tab)
-  const reported = tab.page.waitForResponse((response) => new URL(response.url()).pathname === "/session/activity", {
-    timeout: 75_000
-  })
+  await tab.page.getByRole("heading", { level: 1, name: "Coordination roster" }).waitFor({ state: "visible" })
   await tab.page.getByRole("button", { name: "Open participant page in place" }).click()
   await tab.page.getByRole("heading", { level: 1, name: "Coordination participant" }).waitFor({ state: "visible" })
-  const answer = await reported
-  assert.equal(answer.status(), 200)
-  const { idleDeadlineEpochMilliseconds } = (await answer.json()) as { idleDeadlineEpochMilliseconds: number }
-  tab.deadline = Math.max(tab.deadline, idleDeadlineEpochMilliseconds)
 }
 
 Given(
   "the visitor has opened the participant page in place from the roster in tab {string}",
-  { timeout: 120_000 },
   async function(this: AppWorld, name: string) {
     await openParticipantInPlace(tabOf(this, name))
   }
@@ -680,13 +672,29 @@ Given(
 /** As above, then back to the roster in place, so the participant page is a forward entry of the same document. */
 Given(
   "the visitor has opened the participant page in place from the roster in tab {string} and gone back to the roster",
-  { timeout: 120_000 },
   async function(this: AppWorld, name: string) {
     const tab = tabOf(this, name)
     await openParticipantInPlace(tab)
     await tab.page.goBack({ waitUntil: "commit" })
     await tab.page.getByRole("heading", { level: 1, name: "Coordination roster" }).waitFor({ state: "visible" })
     assert.equal(new URL(tab.page.url()).pathname, "/coordination/roster")
+  }
+)
+
+/**
+ * Real time passes with no activity until each tab shows the expiration modal, which it shows only once the server
+ * answered that its session ended, however late the session's last renewal was communicated.
+ */
+When(
+  "the sessions of tabs {} expire and each shows the expiration modal",
+  { timeout: 8 * 60_000 },
+  async function(this: AppWorld, list: string) {
+    for (const name of namesOf(list)) {
+      await tabOf(this, name).page.getByRole("dialog", { name: EXPIRED_COPY.heading }).waitFor({
+        state: "visible",
+        timeout: 7 * 60_000
+      })
+    }
   }
 )
 
