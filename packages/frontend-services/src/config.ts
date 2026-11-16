@@ -9,7 +9,7 @@ import { otelConfig } from "./config/otel.js"
 import { TenantResolutionConfig } from "./config/tenant-resolution.js"
 
 export { type AuthenticationSettings, permittedUrl, type TransactionStoreSettings } from "./config/authentication.js"
-export type { BrowserTracingSettings, OtelEnabled, OtelSettings } from "./config/otel.js"
+export type { BrowserTracingSettings, ExportTiming, OtelEnabled, OtelSettings } from "./config/otel.js"
 
 /**
  * Decodes a setting whose supplied value must never appear in an error: a secret, or a setting whose contract
@@ -38,7 +38,7 @@ export const StartupConfig = Config.all({
   authentication: authenticationConfig(withoutEcho),
   env: AppEnv,
   logLevel: Config.LogLevel("LOG_LEVEL").pipe(Config.withDefault("Info")),
-  otel: otelConfig(withoutEcho),
+  otel: otelConfig(withoutEcho, AppEnv),
   /** An absent value uses the local compose instance. */
   redisUrl: Config.String("REDIS_URL").pipe(Config.withDefault("redis://127.0.0.1:6379")),
   session: Config.all({

@@ -12,9 +12,10 @@ requirement, and signals in [Browser export](#browser-export).
 all-or-nothing: `OTEL_SDK_DISABLED=true` installs no SDK, exporters, automatic
 instrumentation, or Effect OpenTelemetry bridges. Otherwise, the endpoint and
 service name are required and traces, metrics, and logs are enabled together.
-The application constructs OTLP/HTTP **protobuf** exporters, batch span and log
-processors, and two periodic metric readers. It does not select signals
-independently or construct JSON HTTP or gRPC exporters.
+The application constructs OTLP/HTTP **protobuf** exporters, batch or simple
+span and log processors chosen by [export timing](#export-timing), and two
+periodic metric readers. It does not select signals independently or construct
+JSON HTTP or gRPC exporters.
 
 **Node SDK + Effect bridge**: The enabled path starts
 `@opentelemetry/sdk-node` to register the global OpenTelemetry providers and
@@ -78,6 +79,7 @@ the disabled setting is applied.
 | `OTEL_EXPORTER_OTLP_HEADERS`  | Optional collector headers. Do not print them. Headers do not replace either required setting             |
 | `OTEL_RESOURCE_ATTRIBUTES`    | Optional resource attributes, read by the Node SDK. Startup also reads `service.instance.id` from it      |
 | `BROWSER_TRACING_ENABLED`     | Optional browser tracing switch. Defaults to off. See [Browser tracing switch](#browser-tracing-switch)   |
+| `TELEMETRY_EXPORT_TIMING`     | Optional `immediate` or `batch`. Defaults by `NODE_ENV`. See [Export timing](#export-timing)              |
 
 For each signal, the application appends `v1/traces`, `v1/metrics`, or
 `v1/logs` directly to the parsed base URL's string form. Use a trailing slash,
@@ -96,6 +98,42 @@ The OTLP exporters read headers from the environment. Signal-specific
 `OTEL_EXPORTER_OTLP_TRACES_HEADERS`, `OTEL_EXPORTER_OTLP_METRICS_HEADERS`, and
 `OTEL_EXPORTER_OTLP_LOGS_HEADERS` values override matching base header keys.
 Never log or commit real header values.
+
+### Export timing
+
+`TELEMETRY_EXPORT_TIMING` selects when finished trace records and emitted log
+records leave the server process. It accepts exactly two values:
+
+- `batch` holds records and sends them in groups, through the SDK's batch span
+  and log processors with their defaults. The trace processor's `OTEL_BSP_*`
+  settings apply only under `batch`.
+- `immediate` sends each ended span and each emitted log record in its own
+  export request as soon as it finishes, through the SDK's simple span and log
+  processors over the same exporters. An OTLP exporter refuses an export once
+  30 requests are in flight, and the simple processors do not retry, so under
+  `immediate` the trace and log exporters have no in-flight limit. Each request
+  still ends at the exporter's own timeout.
+
+When the setting is absent or empty, a process with `NODE_ENV=production`
+batches, and a development or test process, including one with no `NODE_ENV`,
+exports immediately. A production build that needs immediate timing, such as
+the one the verification harness runs, sets `TELEMETRY_EXPORT_TIMING=immediate`
+explicitly. Any other value, including either value in another letter case or
+with surrounding spaces, fails startup with an error that names the setting;
+the application never falls back to a timing. Like the other OTEL settings, a
+supplied value must decode even when `OTEL_SDK_DISABLED=true`, and then has no
+effect.
+
+The setting changes only when records leave the process. Query removal, the
+resource, the endpoint, and the collector headers are the same under both
+timings, and each record is exported once. Metrics ignore the setting: both
+periodic readers keep their 60-second interval. Browser export does not read
+the setting; the page batches as described in [Browser export](#browser-export).
+
+Immediate timing is a local feedback mode that sends one request per record.
+It is assumed never to be set in production: production configuration never
+sets it, and the application does not refuse it in a production build, because
+the verification harness runs one.
 
 ### Browser tracing switch
 
@@ -326,8 +364,10 @@ Delivery failures follow the OpenTelemetry exporters and SDK diagnostics.
 There is no application-defined fixed `telemetry delivery failed` stderr
 message, and the previous custom diagnostic suppression is not installed.
 The application does not set custom batch intervals or exporter timeouts;
-applicable SDK defaults and environment settings apply. The periodic metric
-readers use the SDK default 60-second export interval.
+applicable SDK defaults and environment settings apply. Under immediate
+[export timing](#export-timing) it lifts only the trace and log exporters'
+in-flight limit. The periodic metric readers use the SDK default 60-second
+export interval under both timings.
 
 ## Required span attributes and redaction
 
