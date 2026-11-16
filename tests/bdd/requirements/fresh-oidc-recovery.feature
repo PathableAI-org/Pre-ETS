@@ -104,6 +104,7 @@ Feature: Fresh tenant OIDC recovery with a new session
     When the visitor leaves the provider's authentication step unanswered and opens "/" again
     Then the application starts a new provider login
     And the provider asks the visitor to authenticate
+    And the provider still holds the visitor's single sign-on session
     And no protected content was served before the provider asked
     And the visitor holds no usable application session
     When the visitor authenticates at the provider

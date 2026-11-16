@@ -84,14 +84,14 @@ Feature: Fresh entry after natural session expiry
     And the visitor has opened the participant page in place from the roster in tab "In-app forward" and gone back to the roster
     When the sessions of tabs "In-app back" and "In-app forward" expire and each shows the expiration modal
     And the visitor navigates back in tab "In-app back"
-    Then tab "In-app back" follows fresh entry to the provider without the modal or protected content
+    Then tab "In-app back" leaves for fresh entry at the provider without exposing protected content
     And the provider asks the visitor to authenticate in tab "In-app back"
     And the provider still holds the single sign-on session of tab "In-app back"
     When the visitor authenticates at the provider in tab "In-app back"
     Then tab "In-app back" shows the protected application under a new session
     And a request presenting the earlier session of tab "In-app back" is not admitted
     When the visitor navigates forward in tab "In-app forward"
-    Then tab "In-app forward" follows fresh entry to the provider without the modal or protected content
+    Then tab "In-app forward" leaves for fresh entry at the provider without exposing protected content
     And the provider asks the visitor to authenticate in tab "In-app forward"
     And the provider still holds the single sign-on session of tab "In-app forward"
     When the visitor authenticates at the provider in tab "In-app forward"

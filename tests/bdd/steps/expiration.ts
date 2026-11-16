@@ -814,6 +814,17 @@ Then(
   }
 )
 
+/**
+ * Fresh entry from a tab that showed the expiration modal and then traversed its own in-app history: the traversal
+ * loads no document, so what it can show is protected content exposed in the document on its way to the provider.
+ */
+Then(
+  "tab {string} leaves for fresh entry at the provider without exposing protected content",
+  async function(this: AppWorld, name: string) {
+    await assertFreshEntry(tabOf(this, name))
+  }
+)
+
 /** As fresh entry, after the browser restored the protected page from its back/forward cache rather than loading it. */
 Then(
   "tab {string} is restored from the back-forward cache and follows fresh entry to the provider without the modal or protected content",
