@@ -151,6 +151,26 @@ export const heldDeadline = async (page: Page): Promise<number> => {
   return deadline
 }
 
+/** How long after an event a step waits for a tab to reflect it before failing; any bound is checked separately. */
+export const OBSERVATION_MILLISECONDS = 15_000
+
+/**
+ * Waits until the tab's header holds `deadline`, within the tab's clock-offset estimate, and answers when it first did,
+ * on the test's clock.
+ */
+export const untilHolding = async (page: Page, deadline: number, timeout: number): Promise<number> => {
+  await page.waitForFunction(
+    ({ held, tolerance }) =>
+      Math.abs(
+        Number(document.querySelector("header[data-session-deadline]")?.getAttribute("data-session-deadline")) -
+          held
+      ) <= tolerance,
+    { held: deadline, tolerance: OFFSET_TOLERANCE_MILLISECONDS },
+    { polling: 50, timeout }
+  )
+  return Date.now()
+}
+
 /** Playwright's clock in a tab: `installed` keeps real time but can be set; `suspended` also stops timers after load. */
 interface TabClock {
   readonly clock?: "installed" | "suspended" | undefined

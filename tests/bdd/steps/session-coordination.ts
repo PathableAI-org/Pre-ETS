@@ -14,7 +14,7 @@ import {
   sendRequest,
   type SiteRequest
 } from "../support/server.ts"
-import { heldDeadline, namesOf, OFFSET_TOLERANCE_MILLISECONDS, tabOf } from "./expiration.ts"
+import { namesOf, tabOf, untilHolding } from "./expiration.ts"
 import { actionRequest } from "./http.ts"
 import { configuredIdleTimeout } from "./tenant.ts"
 
@@ -281,12 +281,7 @@ When(
 
 /** The tab has received the latest renewal: the deadline it holds is the session's, within its clock-offset estimate. */
 When("tab {string} holds that renewal", async function(this: AppWorld, name: string) {
-  const { deadline } = observedOf(this)
-  const { page } = tabOf(this, name)
-  for (let attempt = 0; Math.abs(await heldDeadline(page) - deadline) > OFFSET_TOLERANCE_MILLISECONDS; attempt += 1) {
-    assert.ok(attempt < 25, `expected tab "${name}" to hold the renewed deadline`)
-    await delay(POLL_MILLISECONDS)
-  }
+  await untilHolding(tabOf(this, name).page, observedOf(this).deadline, 5_000)
 })
 
 /** Renewed after the latest interaction began and within 2 seconds of it, as a communication sent at once is. */

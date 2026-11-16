@@ -11,12 +11,14 @@ import {
   BOUND_MILLISECONDS,
   heldDeadline,
   namesOf,
+  OBSERVATION_MILLISECONDS,
   OFFSET_TOLERANCE_MILLISECONDS,
   PROTECTED_CONTROL,
   resumptionOf,
   sessionOf,
   type Tab,
-  tabOf
+  tabOf,
+  untilHolding
 } from "./expiration.ts"
 import { type Presentation, sessionStatus, snapshotOf } from "./session-coordination.ts"
 
@@ -26,9 +28,6 @@ import { type Presentation, sessionStatus, snapshotOf } from "./session-coordina
  * through its own status reads, which never renew, and through what each tab shows.
  */
 
-/** How long after an event a step waits for each tab to reflect it before failing; the bound is checked separately. */
-const OBSERVATION_MILLISECONDS = 15_000
-const POLL_MILLISECONDS = 50
 const SIGNED_OUT = "You are signed out"
 
 /** The tab's session as a raw request presents it: the reference its browser held when it opened, at its host. */
@@ -72,16 +71,6 @@ const signedOutAt = async (page: Page): Promise<number> => {
   return Date.now()
 }
 
-/** Waits until the tab holds `deadline`, within its clock-offset estimate, and answers when, on the test's clock. */
-const heldAt = async (page: Page, deadline: number, name: string): Promise<number> => {
-  const until = Date.now() + OBSERVATION_MILLISECONDS
-  while (Math.abs(await heldDeadline(page) - deadline) > OFFSET_TOLERANCE_MILLISECONDS) {
-    assert.ok(Date.now() < until, `expected tab "${name}" to hold the deadline ${String(deadline)}`)
-    await delay(POLL_MILLISECONDS)
-  }
-  return Date.now()
-}
-
 /**
  * PREETS-SESSION-010 AC2: the new tab was served the protected document at once, with no request to the application's
  * login route or to the provider, and its browser presents the reference the earlier tab opened with.
@@ -111,28 +100,36 @@ Then(
     const { deadline } = snapshotOf(await sessionStatus(this, this.port, presentationOf(tabOf(this, source), source)))
     for (const name of namesOf(list)) {
       const tab = tabOf(this, name)
-      await heldAt(tab.page, deadline, name)
+      await untilHolding(tab.page, deadline, OBSERVATION_MILLISECONDS)
       tab.deadline = await heldDeadline(tab.page)
     }
   }
 )
 
 /**
+ * Requires `elapsed`, the time from an event to an outcome, within the B5 bound; on failure the message gives that time
+ * and the bound, so how far past the bound the outcome came is their difference.
+ */
+const assertWithinBound = (elapsed: number, outcome: string, event: string) => {
+  const message = `${outcome} ${String(elapsed)} ms after ${event}; the bound is ${String(BOUND_MILLISECONDS)} ms`
+  assert.ok(elapsed <= BOUND_MILLISECONDS, message)
+}
+
+/**
  * Observes every named tab at once until `observe` answers when it showed the outcome, on the test's clock, and requires
- * each within the B5 bound of `from`.
+ * each within the B5 bound of the event.
  */
 const assertEachWithinBound = async (
   world: AppWorld,
   list: string,
-  from: number,
+  event: { readonly at: number; readonly name: string },
   outcome: string,
   observe: (tab: Tab, name: string) => Promise<number>
 ) => {
   const names = namesOf(list)
   const times = await Promise.all(names.map((name) => observe(tabOf(world, name), name)))
   names.forEach((name, index) => {
-    const late = (times[index] ?? Number.POSITIVE_INFINITY) - from
-    assert.ok(late <= BOUND_MILLISECONDS, `tab "${name}" ${outcome} ${String(late)} ms late`)
+    assertWithinBound((times[index] ?? Number.POSITIVE_INFINITY) - event.at, `tab "${name}" ${outcome}`, event.name)
   })
 }
 
@@ -150,8 +147,9 @@ Then(
       const moved = deadline - tabOf(this, name).deadline
       assert.ok(moved > OFFSET_TOLERANCE_MILLISECONDS, `the renewal did not move "${name}"'s deadline`)
     }
-    await assertEachWithinBound(this, list, renewedAt, "held the renewed deadline", async (tab, name) => {
-      const at = await heldAt(tab.page, deadline, name)
+    const renewal = { at: renewedAt, name: `the renewal response in tab "${source}"` }
+    await assertEachWithinBound(this, list, renewal, "held the renewed deadline", async (tab) => {
+      const at = await untilHolding(tab.page, deadline, OBSERVATION_MILLISECONDS)
       tab.deadline = await heldDeadline(tab.page)
       return at
     })
@@ -168,7 +166,8 @@ Then(
   { timeout: 60_000 },
   async function(this: AppWorld, list: string, source: string) {
     const loggedOutAt = await eventTime(this, "logout", source)
-    await assertEachWithinBound(this, list, loggedOutAt, "showed the signed-out notice", (tab) => signedOutAt(tab.page))
+    const logout = { at: loggedOutAt, name: `the logout request in tab "${source}"` }
+    await assertEachWithinBound(this, list, logout, "showed the signed-out notice", (tab) => signedOutAt(tab.page))
   }
 )
 
@@ -229,11 +228,8 @@ Then(
   { timeout: 60_000 },
   async function(this: AppWorld, name: string) {
     const { page } = tabOf(this, name)
-    const late = await signedOutAt(page) - resumptionOf(this, name).startedAt
-    assert.ok(
-      late <= BOUND_MILLISECONDS,
-      `tab "${name}" showed the signed-out notice ${String(late)} ms after resuming`
-    )
+    const elapsed = await signedOutAt(page) - resumptionOf(this, name).startedAt
+    assertWithinBound(elapsed, `tab "${name}" showed the signed-out notice`, "resuming")
     await assertNoProtectedContent(page, name)
   }
 )
