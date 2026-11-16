@@ -118,6 +118,6 @@ Feature: Expired content concealed behind a blocking expiration modal
     When the clock of tab "Late" is corrected, and the visitor then opens tab "S1"
     And tab "S1" reaches its deadline
     Then tabs "S1" and "Late" each hid their protected content within 2 seconds of their deadline
-    And tab "Late" hid its protected content without a session check of its own
     And tabs "S1" and "Late" each show the expiration modal within 2 seconds of their deadline
+    And tab "Late" hid its protected content without a session check of its own
     And tabs "S1" and "Late" hold no protected content

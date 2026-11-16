@@ -279,12 +279,12 @@ const nextMainFrameCommit = (page: Page) =>
  * arrives before the tab commits the document it carries, and until then the submitting page is still loaded, so the
  * step waits for that commit and then for the new document to load; later steps read only the new document.
  */
-When("the visitor submits the reference form by keyboard", async function(this: AppWorld) {
-  const entry = entryOf(this)
+const submitByKeyboard = async (entry: OpenEntry, timeout = 30_000) => {
   // The form posts to the page itself; the keyboard press also sends an activity report, which is not the submission.
   const page = new URL(entry.page.url()).pathname
-  const submitted = entry.page.waitForResponse((response) =>
-    response.request().method() === "POST" && new URL(response.url()).pathname === page
+  const submitted = entry.page.waitForResponse(
+    (response) => response.request().method() === "POST" && new URL(response.url()).pathname === page,
+    { timeout }
   )
   const committed = nextMainFrameCommit(entry.page)
   await entry.page.getByRole("button", { name: "Record reference operation" }).focus()
@@ -292,6 +292,10 @@ When("the visitor submits the reference form by keyboard", async function(this: 
   entry.submission = await submitted
   if (entry.submission.request().isNavigationRequest()) await committed
   await entry.page.waitForLoadState("load")
+}
+
+When("the visitor submits the reference form by keyboard", async function(this: AppWorld) {
+  await submitByKeyboard(entryOf(this))
 })
 
 /**
@@ -319,16 +323,7 @@ When(
       await delay(Math.max(0, deadline + 5_000 - Date.now()))
       await route.continue()
     })
-    const submitted = entry.page.waitForResponse(
-      (response) => response.request().method() === "POST" && isSubmission(new URL(response.url())),
-      { timeout: Math.max(0, deadline - Date.now()) + 60_000 }
-    )
-    const committed = nextMainFrameCommit(entry.page)
-    await entry.page.getByRole("button", { name: "Record reference operation" }).focus()
-    await entry.page.keyboard.press("Enter")
-    entry.submission = await submitted
-    if (entry.submission.request().isNavigationRequest()) await committed
-    await entry.page.waitForLoadState("load")
+    await submitByKeyboard(entry, Math.max(0, deadline - Date.now()) + 60_000)
     await entry.page.unroute(isSubmission)
     assert.equal(sent.length, 1, "expected one held submission")
     const [leftAt = Number.POSITIVE_INFINITY] = sent
@@ -366,29 +361,29 @@ Then("the page shows the status {string}", async function(this: AppWorld, messag
   await entryOf(this).page.getByRole("status").filter({ hasText: message }).waitFor({ state: "visible" })
 })
 
-/** The document the submission without scripts loaded is the recovery document, and nothing protected remains. */
-Then("the page displays the recovery document explaining {string}", async function(this: AppWorld, heading: string) {
-  const { page } = entryOf(this)
-  await page.getByRole("heading", { level: 1, name: heading }).waitFor({ state: "visible" })
-  const headings = await page.getByRole("heading", { level: 1 }).allTextContents()
-  assert.deepEqual(headings, [heading])
-  await assertRecoveryCopy(page, heading)
+/**
+ * The document the submission without scripts loaded is a recovery document under one top-level heading, `heading`
+ * when given, with that heading's explanation and Log in link; nothing protected remains.
+ */
+const assertRecoveryPage = async (page: Page, heading?: string) => {
+  await page.getByRole("heading", { level: 1 }).first().waitFor({ state: "visible" })
+  const shown = await page.getByRole("heading", { level: 1 }).allTextContents()
+  assert.equal(shown.length, 1, "expected exactly one top-level heading")
+  if (heading !== undefined) assert.deepEqual(shown, [heading])
+  await assertRecoveryCopy(page, shown[0] ?? "")
   assert.equal(await page.getByRole("button", { name: "Record reference operation" }).count(), 0)
+}
+
+Then("the page displays the recovery document explaining {string}", async function(this: AppWorld, heading: string) {
+  await assertRecoveryPage(entryOf(this).page, heading)
 })
 
 /**
- * The document the submission without scripts loaded is a recovery document, under either session-end heading: the
- * store keeps an expired record only briefly, so the server may explain the session as expired or as no longer
- * available. Nothing protected remains.
+ * Either session-end heading is accepted: the store keeps an expired record only briefly, so the server may explain the
+ * session as expired or as no longer available.
  */
 Then("the page displays a recovery document with a Log in again link", async function(this: AppWorld) {
-  const { page } = entryOf(this)
-  const heading = page.getByRole("heading", { level: 1 })
-  await heading.first().waitFor({ state: "visible" })
-  const headings = await heading.allTextContents()
-  assert.equal(headings.length, 1, "expected exactly one top-level heading")
-  await assertRecoveryCopy(page, headings[0] ?? "")
-  assert.equal(await page.getByRole("button", { name: "Record reference operation" }).count(), 0)
+  await assertRecoveryPage(entryOf(this).page)
 })
 
 /**
