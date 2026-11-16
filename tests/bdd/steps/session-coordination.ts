@@ -14,7 +14,7 @@ import {
   sendRequest,
   type SiteRequest
 } from "../support/server.ts"
-import { heldDeadline, namesOf, OFFSET_TOLERANCE_MILLISECONDS, tabOf } from "./expiration.ts"
+import { namesOf, openedSession, type Tab, tabOf, untilHolding } from "./expiration.ts"
 import { actionRequest } from "./http.ts"
 import { configuredIdleTimeout } from "./tenant.ts"
 
@@ -46,6 +46,18 @@ When(
   "a visitor communicates {string} activity at {string}",
   async function(this: AppWorld, activity: string, host: string) {
     await requestSiteWith(this, activityCommunication(host, activity, "synthetic-tag"))
+  }
+)
+
+/**
+ * Sent with the session's own tag, as its page observed it, so a refusal answers the session's state, whichever layer
+ * refuses it (the protection gate before the handler, today), and never a tag mismatch (#442, PREETS-SESSION-010 AC5).
+ */
+When(
+  "the visitor's page communicates {string} activity at {string}",
+  async function(this: AppWorld, activity: string, host: string) {
+    assert.ok(this.coordinationTag, "expected the page to have observed its session's coordination tag")
+    await requestSiteWith(this, activityCommunication(host, activity, this.coordinationTag))
   }
 )
 
@@ -82,6 +94,12 @@ interface Observed {
   windowFrom?: number | undefined
 }
 
+/** The named tab's session as a raw request presents it: the reference its browser held when it opened, at its host. */
+export const presentationOf = (tab: Tab, name: string): Presentation => ({
+  cookie: `pathable-session=${openedSession(tab, name)}`,
+  host: tab.host
+})
+
 /** `GET /session/status` at the instance on `port`, an application request: it reads the session and never renews it. */
 export const sessionStatus = (world: AppWorld, port: number, presented: Presentation): Promise<RecordedResponse> =>
   requestInstance(world, port, presented.host, "/session/status", false, presented.cookie)
@@ -98,7 +116,7 @@ const observations = new WeakMap<AppWorld, Observed>()
 const observedOf = (world: AppWorld): Observed => required(observations, world, "the session's deadline to be read")
 
 /** The session's authoritative deadline from its own status read. */
-const deadlineOf = async (world: AppWorld, presented: Presentation): Promise<number> =>
+export const deadlineOf = async (world: AppWorld, presented: Presentation): Promise<number> =>
   snapshotOf(await sessionStatus(world, world.port, presented)).deadline
 
 /** When the renewal that set `deadline` was written: the server sets a deadline its idle timeout after receipt. */
@@ -129,14 +147,14 @@ const adoptRenewal = async (world: AppWorld, observed: Observed, deadline: numbe
  * session; the deadline is read once every tab shows the page.
  */
 Given("tab(s) {} show(s) the participant page", async function(this: AppWorld, list: string) {
-  const tabs = namesOf(list).map((name) => tabOf(this, name))
-  for (const { host, page } of tabs) {
+  const names = namesOf(list)
+  for (const { host, page } of names.map((name) => tabOf(this, name))) {
     await page.goto(`http://${host}/coordination/participant`)
     await page.getByRole("heading", { level: 1, name: "Coordination participant" }).waitFor({ state: "visible" })
   }
-  const [first] = tabs
-  assert.ok(first?.session, "expected the tabs to hold a session")
-  const presented = { cookie: `pathable-session=${first.session}`, host: first.host }
+  const [first] = names
+  assert.ok(first !== undefined, "expected a tab")
+  const presented = presentationOf(tabOf(this, first), first)
   observations.set(this, { deadline: await deadlineOf(this, presented), interactions: [], presented })
 })
 
@@ -269,12 +287,7 @@ When(
 
 /** The tab has received the latest renewal: the deadline it holds is the session's, within its clock-offset estimate. */
 When("tab {string} holds that renewal", async function(this: AppWorld, name: string) {
-  const { deadline } = observedOf(this)
-  const { page } = tabOf(this, name)
-  for (let attempt = 0; Math.abs(await heldDeadline(page) - deadline) > OFFSET_TOLERANCE_MILLISECONDS; attempt += 1) {
-    assert.ok(attempt < 25, `expected tab "${name}" to hold the renewed deadline`)
-    await delay(POLL_MILLISECONDS)
-  }
+  await untilHolding(tabOf(this, name).page, observedOf(this).deadline, 5_000)
 })
 
 /** Renewed after the latest interaction began and within 2 seconds of it, as a communication sent at once is. */
