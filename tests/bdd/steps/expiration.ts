@@ -408,17 +408,17 @@ const openSharingTab = async (world: AppWorld, name: string, options: TabClock) 
   await openTab(scenario, context, name, SPRINGFIELD, options)
 }
 
-/**
- * The tab leaves the protected entry for a public page that runs no session coordination, so nothing on the session's
- * cross-tab channel evicts the entry from the back/forward cache: a sharing tab's message would (Chromium reports
- * `BroadcastChannelOnMessage`), which is why the tab is in a browser of its own.
- */
 /** The tab leaves for the public login-failure page, which runs no session coordination. */
 const leaveForPublicPage = async (tab: Tab) => {
   await tab.page.goto(`http://${tab.host}/login-unavailable`)
   await tab.page.getByRole("heading", { level: 1, name: "Login cannot start" }).waitFor({ state: "visible" })
 }
 
+/**
+ * The tab leaves the protected entry for a public page that runs no session coordination, so nothing on the session's
+ * cross-tab channel evicts the entry from the back/forward cache: a sharing tab's message would (Chromium reports
+ * `BroadcastChannelOnMessage`), which is why the tab is in a browser of its own.
+ */
 Given(
   "another browser sharing the visitor's session has opened tab {string} and then left it for a public page",
   async function(this: AppWorld, name: string) {
