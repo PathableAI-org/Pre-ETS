@@ -5,6 +5,7 @@ import { setTimeout as delay } from "node:timers/promises"
 import type { AppWorld } from "../support/world.ts"
 
 import { applicationBrowser, signInThroughApplication } from "../support/browser.ts"
+import { namedEntries } from "../support/named.ts"
 import { FETCH_METADATA, type RecordedResponse, requestInstance, sendRequest, startSite } from "../support/server.ts"
 import { namesOf } from "./expiration.ts"
 import { actionRequest, assertNoProtectedContent, assertSameOriginLogin } from "./http.ts"
@@ -53,19 +54,9 @@ interface Written {
   readonly to: number
 }
 
-const sessions = new WeakMap<AppWorld, Map<string, TimedSession>>()
+const sessions = namedEntries<TimedSession>((name) => `expected session ${name} to have been signed in`)
 
-const sessionsOf = (world: AppWorld): Map<string, TimedSession> => {
-  const named = sessions.get(world) ?? new Map<string, TimedSession>()
-  sessions.set(world, named)
-  return named
-}
-
-const sessionOf = (world: AppWorld, name: string): TimedSession => {
-  const session = sessionsOf(world).get(name)
-  assert.ok(session, `expected session ${name} to have been signed in`)
-  return session
-}
+const sessionOf = sessions.get
 
 /** The earliest and latest moments the session is due to end under a timeout of `minutes`, on the test's clock. */
 const dueOf = (session: TimedSession, minutes: number) => ({
@@ -123,7 +114,7 @@ When(
       }
       const presented = { cookie: `pathable-session=${reference}`, host }
       const { coordinationTag } = snapshotOf(await statusRead(this, presented))
-      sessionsOf(this).set(name, { ...presented, coordinationTag, unprompted: [], written })
+      sessions.set(this, name, { ...presented, coordinationTag, unprompted: [], written })
     }
   }
 )
@@ -284,31 +275,41 @@ Then(
   }
 )
 
+/**
+ * A page request, in-page activity, and a protected form submission, each of which would renew a usable session, then a
+ * status read: the page request's answer, and the others' statuses.
+ */
+const presentEach = async (world: AppWorld, name: string) => {
+  const session = sessionOf(world, name)
+  return {
+    page: await pageRequest(world, session),
+    statuses: {
+      activity: (await inPageActivity(world, session)).status,
+      formSubmission: (await formSubmission(world, session)).status,
+      statusRead: (await statusRead(world, session)).status
+    }
+  }
+}
+
 /** The tenant failure comes before any session operation, so no request reads or renews the session. */
 Then(
   "a page request, in-page activity, a protected form submission, and a status read for session {string} are each answered 404, as for a missing tenant",
   async function(this: AppWorld, name: string) {
-    const session = sessionOf(this, name)
-    const page = await pageRequest(this, session)
+    const { page, statuses } = await presentEach(this, name)
     assert.equal(page.status, 404, "the page request")
     assert.equal(page.headers.location, undefined, "the page request redirected")
     assertNoProtectedContent(page)
-    assert.equal((await inPageActivity(this, session)).status, 404, "in-page activity")
-    assert.equal((await formSubmission(this, session)).status, 404, "the protected form submission")
-    assert.equal((await statusRead(this, session)).status, 404, "the status read")
+    assert.deepEqual(statuses, { activity: 404, formSubmission: 404, statusRead: 404 })
   }
 )
 
-/** Each request would renew a usable session under the tenant's current timeout; none may, and a later read agrees. */
+/** None of the requests may renew the ended session under the tenant's current timeout, and the status read agrees. */
 Then(
   "a page request, in-page activity, and a protected form submission for session {string} are each refused, and it stays ended",
   async function(this: AppWorld, name: string) {
-    const session = sessionOf(this, name)
-    const page = await pageRequest(this, session)
+    const { page, statuses } = await presentEach(this, name)
     assertSameOriginLogin(page)
     assertNoProtectedContent(page)
-    assert.equal((await inPageActivity(this, session)).status, 401, "in-page activity")
-    assert.equal((await formSubmission(this, session)).status, 401, "the protected form submission")
-    assert.equal((await statusRead(this, session)).status, 401, "a later status read")
+    assert.deepEqual(statuses, { activity: 401, formSubmission: 401, statusRead: 401 })
   }
 )

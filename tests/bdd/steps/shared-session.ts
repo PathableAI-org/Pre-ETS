@@ -5,6 +5,7 @@ import { setTimeout as delay } from "node:timers/promises"
 import type { AppWorld } from "../support/world.ts"
 
 import { applicationBrowser, signInThroughApplication } from "../support/browser.ts"
+import { namedEntries } from "../support/named.ts"
 import { type RecordedResponse, requestInstance, sendRequest, startSecondSite } from "../support/server.ts"
 import { namesOf } from "./expiration.ts"
 import { assertNoProtectedContent, assertSameOriginLogin } from "./http.ts"
@@ -47,19 +48,9 @@ interface SharedSession extends Presentation {
   renewedDeadline?: number | undefined
 }
 
-const sessions = new WeakMap<AppWorld, Map<string, SharedSession>>()
+const sessions = namedEntries<SharedSession>((name) => `expected session ${name} to have been signed in`)
 
-const sessionsOf = (world: AppWorld): Map<string, SharedSession> => {
-  const named = sessions.get(world) ?? new Map<string, SharedSession>()
-  sessions.set(world, named)
-  return named
-}
-
-const sessionOf = (world: AppWorld, name: string): SharedSession => {
-  const session = sessionsOf(world).get(name)
-  assert.ok(session, `expected session ${name} to have been signed in`)
-  return session
-}
+const sessionOf = sessions.get
 
 const readStatus = (world: AppWorld, instance: string, session: Presentation) =>
   sessionStatus(world, portOf(world, instance), session)
@@ -127,7 +118,7 @@ When(
     const presented = { cookie: `pathable-session=${reference}`, host }
     const establishedIdentity = entryIdentity(await requestEntry(this, instance, presented))
     const { coordinationTag, deadline } = snapshotOf(await readStatus(this, instance, presented))
-    sessionsOf(this).set(name, {
+    sessions.set(this, name, {
       ...presented,
       atDeadline: [],
       coordinationTag,
