@@ -43,7 +43,7 @@ is when the provider's return reached the application. The 30-second tolerance i
 application-wide value with no per-tenant setting, re-prompt fallback, or substitute evidence.
 A missing `auth_time` is denied as missing evidence, and one outside the window as stale
 (`AuthenticationNotFresh`). Both have already consumed the transaction, return the safe
-"No authentication could be established" page with a cleared correlation cookie, and issue no
+"Authentication return" page with a cleared correlation cookie, and issue no
 `pathable-session`. A provider that ignores `max_age=0` or omits `auth_time` therefore fails
 closed. Once freshness is confirmed, the callback derives the tenant's effective session policy,
 establishes a Redis-backed session through `SessionService`, and only then writes the host-only
