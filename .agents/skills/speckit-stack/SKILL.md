@@ -104,9 +104,10 @@ implementation slice, also require that the latest verification report passes
 [the verification gate](../../../docs/engineering/verification-harness.md#gate-and-escalation): every telemetry row
 assigned to the slice is usable, every full claim is `established`, every other result matches a limitation already
 approved in `verification.md` or `plan.md`, and there is no `violated` result or forbidden telemetry finding. The
-report must cover the pushed SHA, or only evidence-only commits may follow its verified SHA:
+report must cover the pushed SHA, or the diff from its verified SHA must be evidence-only:
 `git diff <verified-SHA>..<pushed-SHA>` touches only the feature's `quickstart.md` execution results, and the pull
-request body names the verified SHA. Any other change after the verified SHA, including a change to `quickstart.md`
+request body names the verified SHA. After a restack the verified SHA may be off the branch; `git fetch origin
+<verified-SHA>` brings it in. Any other change after the verified SHA, including a change to `quickstart.md`
 steps, needs a new verification request. For High and Standard work, also require that the latest
 [code review](../../../docs/engineering/code-review.md#gate-and-escalation) has no open blocking finding or
 escalation and covers the pushed SHA under the same evidence-only rule; `pnpm verify:gate` checks both.
@@ -131,7 +132,11 @@ bottom includes it. On a conflict, keep unrelated work. Continue only when the r
 stop and report the files. Use `gh stack rebase --abort` when abandoning the rebase; it restores the pre-rebase
 stack.
 
-After a clean rebase, `gh stack push`. Then validate.
+After a clean rebase, `gh stack push`. Then validate. Restack by rebasing; do not merge lower commits upward to keep
+verified commits as ancestors. Run `pnpm verify:gate` on each restacked implementation slice: a slice whose verified
+and reviewed commits differ from its new head only in `quickstart.md` execution results keeps its evidence, even
+though those commits are now off the branch. Request verification and review again only for the slices the gate
+fails.
 
 ## Validate
 

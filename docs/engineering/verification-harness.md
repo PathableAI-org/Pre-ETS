@@ -176,6 +176,13 @@ the ID of the approved limitation it falls under. It also gives a status for eac
 (`present`, `missing`, or `unusable`), forbidden-data findings by signal and field name only, escalations, cleanup,
 and any unrequested claim the run showed violated. The schema rejects text that looks like a credential.
 
+`verify:record` adds the report's `inputs` itself, computed from the verified SHA, and replaces any value the
+verifier wrote. They are the code tree, which is the git tree of the root without `specs/`, and, when the report
+names a feature directory, a SHA-256 digest of that directory with `quickstart.md` read without its execution
+results. A later commit with the same inputs has the same code and the same verification artifacts, apart from
+recorded results. Sync refuses an imported report whose inputs are not those of its verified SHA. Reports recorded
+before the field existed have none. The gate does not read the inputs yet.
+
 A High fix's report uses slice ID `fix`, takes its claim IDs from the pull request body as
 [Verification by risk tier](#verification-by-risk-tier) says, and may omit the feature directory. Every other report
 names one.
@@ -216,11 +223,16 @@ a change to `quickstart.md` steps, needs a new verification request.
 
 `pnpm verify:gate` applies these rules to the checked-out `{number}-{slug}-impl*` branch. It first syncs the
 branch's pull request comments into the local notes, as [Code review storage](code-review.md#storage) describes. It
-takes the latest report on HEAD, or on the nearest ancestor when the commits since change only the feature's
-`quickstart.md` execution-results section. It regenerates the request at the report's SHA, checks the report's slice
-against the branch, and exits non-zero with every failing reason. A limitation excuses only a claim the slice
+takes the slice's latest report: the one for the branch's feature and slice whose note this clone wrote most
+recently, on whatever commit. The slice is the branch's `-impl-<slice>` suffix, or `plan.md`'s first slice for the
+`-impl` branch. That report's SHA must be HEAD, or the diff from it to HEAD must change only the feature's
+`quickstart.md` execution-results section. The SHA need not be an ancestor. A restack gives every commit a new SHA,
+and a slice whose verified commit differs from the restacked one only in execution results, as when a lower slice
+records its results, keeps its report. The gate never falls back to an earlier report, even one that would cover
+HEAD. It regenerates the request at the report's SHA, checks the report's slice against the branch, and exits
+non-zero with every failing reason. A limitation excuses only a claim the slice
 asserts in part. A report with an open escalation does not pass. The gate also applies the
-[code review gate](code-review.md#gate-and-escalation) to the nearest reviewed commit.
+[code review gate](code-review.md#gate-and-escalation) to the slice's latest review, found the same way.
 
 A High fix's single pull request has no plan, so the gate regenerates no request. On a branch that is not an
 implementation slice, whose open pull request is labelled `risk:high`, `pnpm verify:gate` requires the following of

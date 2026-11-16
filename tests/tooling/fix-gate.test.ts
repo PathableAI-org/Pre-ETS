@@ -168,13 +168,6 @@ void describe("the High fix gate", () => {
     record()
     const gate = runGate(repo.dir)
     assert.ok(!gate.ok)
-    assert.ok(
-      gate.problems.includes("the report is for no feature directory, but this branch belongs to specs/900-sample")
-    )
-    assert.ok(
-      gate.problems.includes(
-        "code review: the review is for no feature directory, but this branch belongs to specs/900-sample"
-      )
-    )
+    assert.deepEqual(gate.problems, ["no verification report for slice A1 of specs/900-sample"])
   })
 })

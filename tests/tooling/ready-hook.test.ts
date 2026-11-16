@@ -116,7 +116,7 @@ void describe("the ready hook's decision", () => {
     const github = fakeGitHub({ pulls: [slicePull()] })
     const blocked = readyDecision(bash("gh pr ready"), github)
     assert.equal(kind(blocked), "block")
-    assert.match(JSON.stringify(blocked), /gate fails[\s\S]*no verification report on HEAD/)
+    assert.match(JSON.stringify(blocked), /gate fails[\s\S]*no verification report for slice A1/)
     recordPassing()
     assert.deepEqual(readyDecision(bash("gh pr ready"), github), { kind: "allow" })
   })

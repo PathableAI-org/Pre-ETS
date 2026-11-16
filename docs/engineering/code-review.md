@@ -96,8 +96,12 @@ comment on the pull request. Never push or fetch `refs/notes/review` itself.
 - **Sync.** `pnpm notes:sync [<pr>]` reads the pull request's comments through the REST API, page by page. It
   validates each marked comment with the same schema as `review:record`, and appends the entries missing from the
   local notes, oldest first and once per entry ID. Running it again changes nothing. A marked comment that does not
-  parse or validate, whose marker disagrees with its entry, or whose commit this clone lacks is rejected with its
-  reason and never written, and the command exits 1.
+  parse or validate, whose marker disagrees with its entry, or whose recorded inputs are not those of its commits is
+  rejected with its reason and never written, and the command exits 1. When this clone lacks an entry's commit,
+  sync fetches that one commit by SHA from `origin`. After a force-push the commit is on no branch, but GitHub
+  serves it by SHA until it garbage-collects it. If the fetch fails, the comment is listed as unavailable and not
+  written. That is not an error, because later entries carry the evidence, and the gate asks for a new request if
+  none does.
 - **Read.** `pnpm review:show`, `pnpm verify:show`, and `pnpm verify:gate` sync the checked-out branch's pull request
   first. Without a branch, an open pull request, or GitHub, they print one line saying so and read the local notes.
   A desktop clone that every session shares therefore keeps working offline.
@@ -111,6 +115,10 @@ pnpm review:record review.json   # validate, append to the reviewed SHA's note, 
 pnpm review:show <sha>           # sync, then print the latest review; exits 1 while a blocking finding or escalation is open
 pnpm notes:sync [<pr>]           # import the pull request's report and review comments into the local notes
 ```
+
+`review:record` adds the review's `inputs` itself: the code trees, the git trees of the root without `specs/`, of
+the base and reviewed SHAs. A later slice with the same two trees has the same reviewed diff. The gate does not read
+them yet.
 
 `review:record` and `review:show` take `--notes-ref <ref>` to use another ref under `refs/notes/`, for trials. A
 review recorded in a trial ref is not posted. `notes:sync` takes `--review-ref <ref>` to import into one. The
@@ -151,7 +159,9 @@ other change after the reviewed SHA needs a new review request.
 
 `pnpm verify:gate` and the ready hook that runs it enforce this on `{number}-{slug}-impl*` branches and on a High
 fix's single pull request: a branch that is not an implementation slice, whose pull request is labelled `risk:high`.
-They take the latest review on the nearest commit at or below HEAD in `refs/notes/review`. They fail with a
+On an implementation slice they take the slice's latest review, on whatever commit, as
+[the verification gate](verification-harness.md#gate-and-escalation) finds the slice's latest report; for a High fix,
+the latest review on the nearest commit at or below HEAD in `refs/notes/review`. They fail with a
 `code review:` reason for an open blocking finding, an open escalation, a review for another feature or slice (a fix
 review must have slice ID `fix`), or a change after the reviewed SHA that is not evidence-only. A fix has no
 quickstart results, so for a fix only a commit that changes no path is evidence-only. Only High and Standard work has

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, it } from "node:test"
 
 import {
   describePublish,
+  describeSync,
   publishReport,
   publishReview,
   syncCheckedOutBranch,
@@ -132,7 +133,7 @@ void describe("syncing pull request comments into local notes", () => {
     const fake = github()
     publishBoth(fake)
     const first = syncPullNotes({ cwd: target.dir, refs, rest: fake }, 7)
-    assert.deepEqual(first, { ok: true, value: { imported: 3, present: 0, rejected: [] } })
+    assert.deepEqual(first, { ok: true, value: { imported: 3, present: 0, rejected: [], unavailable: [] } })
     assert.equal(
       target.git("notes", `--ref=${defaultNotesRef}`, "show", verified),
       source.git("notes", `--ref=${defaultNotesRef}`, "show", verified)
@@ -145,7 +146,7 @@ void describe("syncing pull request comments into local notes", () => {
     assert.equal(latest.ok && latest.value.reviewId, secondReviewId)
     const notesBefore = target.git("rev-parse", defaultNotesRef)
     const again = syncPullNotes({ cwd: target.dir, refs, rest: fake }, 7)
-    assert.deepEqual(again, { ok: true, value: { imported: 0, present: 3, rejected: [] } })
+    assert.deepEqual(again, { ok: true, value: { imported: 0, present: 3, rejected: [], unavailable: [] } })
     assert.equal(target.git("rev-parse", defaultNotesRef), notesBefore)
   })
 
@@ -193,21 +194,60 @@ void describe("syncing pull request comments into local notes", () => {
           "comment 5 by person: $.findings: expected a list",
           "comment 6 by person: its marker does not match the entry's SHA and ID",
           "comment 7 by person: $.closed[0].note: looks like it holds a credential"
-        ]
+        ],
+        unavailable: []
       }
     })
     assert.equal(target.git("notes", `--ref=${defaultNotesRef}`, "list"), "")
   })
 
-  void it("rejects an entry whose commit this clone does not have", () => {
+  void it("lists as unavailable, and does not reject, an entry whose commit it cannot fetch", () => {
     const fake = github()
     const ahead = source.commit("feat: unpushed", { "src/app.ts": "export const app = 9\n" })
     const report = recordReport(source.dir, sampleReport(ahead))
     assert.ok(report.ok)
     assert.ok(publishReport({ cwd: source.dir, pr: 7, rest: fake }, report.value).ok)
     const synced = syncPullNotes({ cwd: target.dir, refs, rest: fake }, 7)
+    assert.deepEqual(synced, {
+      ok: true,
+      value: {
+        imported: 0,
+        present: 0,
+        rejected: [],
+        unavailable: [`comment 1 by person: ${ahead} is not in this clone and could not be fetched from origin`]
+      }
+    })
+    assert.match(
+      describeSync(7, synced.ok ? synced.value : { imported: 0, present: 0, rejected: [], unavailable: [] }),
+      /0 rejected, 1 unavailable\.\n {2}- unavailable comment 1/
+    )
+  })
+
+  void it("fetches a commit a restack left off every branch, and imports its entry", () => {
+    const fake = github()
+    const replaced = source.commit("feat: before restack", { "src/app.ts": "export const app = 9\n" })
+    const report = recordReport(source.dir, sampleReport(replaced))
+    assert.ok(report.ok)
+    assert.ok(publishReport({ cwd: source.dir, pr: 7, rest: fake }, report.value).ok)
+    source.git("update-ref", `refs/heads/${branch}`, verified)
+    target.git("remote", "add", "origin", source.dir)
+    const synced = syncPullNotes({ cwd: target.dir, refs, rest: fake }, 7)
+    assert.deepEqual(synced, { ok: true, value: { imported: 1, present: 0, rejected: [], unavailable: [] } })
+    const imported = reportAt(target.dir, replaced)
+    assert.equal(imported.ok && imported.value?.runId, report.value.runId)
+  })
+
+  void it("rejects an entry whose recorded inputs are not those of its commit", () => {
+    const fake = github()
+    const report = recordedReport()
+    assert.ok(report.inputs !== undefined)
+    assert.ok(publishReport({ cwd: source.dir, pr: 7, rest: fake }, report).ok)
+    const [comment] = fake.comments.get(7) ?? []
+    assert.ok(comment !== undefined)
+    comment.body = String(comment.body).replaceAll(report.inputs.codeTree, "0".repeat(40))
+    const synced = syncPullNotes({ cwd: target.dir, refs, rest: fake }, 7)
     assert.deepEqual(synced.ok ? synced.value.rejected : [], [
-      `comment 1 by person: ${ahead} is not in this clone; fetch the branch first`
+      `comment 1 by person: its recorded inputs are not those of ${verified}`
     ])
   })
 
@@ -217,7 +257,7 @@ void describe("syncing pull request comments into local notes", () => {
     })
     assert.ok(publishReview({ cwd: source.dir, rest: fake }, recordedReview()).ok)
     const synced = syncPullNotes({ cwd: target.dir, refs, rest: fake }, 7)
-    assert.deepEqual(synced, { ok: true, value: { imported: 1, present: 0, rejected: [] } })
+    assert.deepEqual(synced, { ok: true, value: { imported: 1, present: 0, rejected: [], unavailable: [] } })
     assert.ok(fake.requests.includes("repos/{owner}/{repo}/issues/7/comments?per_page=100&page=2"))
   })
 
@@ -381,7 +421,7 @@ void describe("rendering a note comment for people", () => {
     assert.ok(text.includes("Breaks on input ```json { \"reviewId\": \"not this\" } ``` &lt;/details>&lt;!-- note -->"))
     assert.ok(!text.split("\n").some((line) => line.startsWith("```") || line.startsWith("</details>")))
     const synced = syncPullNotes({ cwd: target.dir, refs, rest: fake }, 7)
-    assert.deepEqual(synced, { ok: true, value: { imported: 1, present: 0, rejected: [] } })
+    assert.deepEqual(synced, { ok: true, value: { imported: 1, present: 0, rejected: [], unavailable: [] } })
     const imported = latestReview(target.dir, defaultNotesRef, verified)
     assert.equal(imported.ok && imported.value.findings[0]?.summary, hostile)
   })
@@ -401,7 +441,7 @@ void describe("rendering a note comment for people", () => {
     ].join("\n")
     const fake = github({ comments: { 7: [restComment(1, "person", earlier)] } })
     const synced = syncPullNotes({ cwd: target.dir, refs, rest: fake }, 7)
-    assert.deepEqual(synced, { ok: true, value: { imported: 1, present: 0, rejected: [] } })
+    assert.deepEqual(synced, { ok: true, value: { imported: 1, present: 0, rejected: [], unavailable: [] } })
     const imported = latestReview(target.dir, defaultNotesRef, verified)
     assert.equal(imported.ok && imported.value.reviewId, review.reviewId)
   })

@@ -154,8 +154,9 @@ Stack <number>-<slug> (#<issue>, <tier>)
 ```
 
 PR state is draft, ready, or merged, plus `checks <head-sha>` and `decision <number>`. Blockers name the stop point or
-session the slice waits on. A verified or reviewed SHA that is not the head is fine only when the commits after it are
-evidence-only; the implementation session's gate run decides that, not you. A merged slice shows `merged` and needs
+session the slice waits on. A verified or reviewed SHA that is not the head is fine only when the diff from it to the
+head is evidence-only, including a SHA a restack left off the branch; the implementation session's gate run decides
+that, not you. After a restack, report per slice whether that gate run kept its evidence or needs new rounds. A merged slice shows `merged` and needs
 no note lookup.
 
 ## Wrap-up

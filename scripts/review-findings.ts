@@ -4,8 +4,8 @@
  */
 import type { Validated } from "./schema-checks.ts"
 
-import { ancestorLimit, checkNotesRef, isCommit, nearestAnnotated } from "./git-access.ts"
-import { importEntry, latestEntry, type NoteTarget, recordEntry } from "./note-store.ts"
+import { ancestorLimit, checkNotesRef, codeTree, isCommit, nearestAnnotated } from "./git-access.ts"
+import { importEntry, latestEntry, latestMatching, type NoteTarget, recordEntry } from "./note-store.ts"
 import { reviewNotes } from "./review-findings/notes.ts"
 import { openBlocking, type Review } from "./review-findings/schema.ts"
 
@@ -22,6 +22,22 @@ const commitsExist = (cwd: string) => (review: Review): readonly string[] =>
     `${sha} is not a commit in this repository`
   )
 
+/** The inputs `review:record` records: the code trees of the base and reviewed SHAs. */
+const inputsOf = (cwd: string, review: Review): NonNullable<Review["inputs"]> => ({
+  baseCodeTree: codeTree(cwd, review.baseSha),
+  codeTree: codeTree(cwd, review.reviewedSha)
+})
+
+/** A review's recorded inputs, when it has them, must be those of its base and reviewed SHAs. */
+const inputsMatch = (cwd: string) => (review: Review): readonly string[] => {
+  const missing = commitsExist(cwd)(review)
+  if (missing.length > 0 || review.inputs === undefined) return missing
+  const actual = inputsOf(cwd, review)
+  return actual.codeTree === review.inputs.codeTree && actual.baseCodeTree === review.inputs.baseCodeTree
+    ? []
+    : [`its recorded inputs are not those of ${review.baseSha}..${review.reviewedSha}`]
+}
+
 /** Appends a review to its reviewed SHA's note in `ref`, through `append`, once the ref is known to be a notes ref. */
 const appendReview = <R>(
   cwd: string,
@@ -32,17 +48,30 @@ const appendReview = <R>(
   return notes.ok ? append({ cwd, kind: reviewNotes, ref }, commitsExist(cwd)) : notes
 }
 
-/** Validates a review and appends it to the note on its reviewed SHA in `ref`. */
+/** Validates a review, records its inputs, and appends it to the note on its reviewed SHA in `ref`. */
 export const recordReview = (cwd: string, ref: string, json: string): Validated<Review> =>
-  appendReview(cwd, ref, (target, check) => recordEntry(target, json, check))
+  appendReview(
+    cwd,
+    ref,
+    (target, check) =>
+      recordEntry(
+        target,
+        json,
+        check,
+        (review) => commitsExist(cwd)(review).length === 0 ? { ...review, inputs: inputsOf(cwd, review) } : review
+      )
+  )
 
-/** Validates a review recorded in another clone and appends it in `ref` unless its ID is already there. */
+/**
+ * Validates a review recorded in another clone and appends it in `ref` unless its ID is already there. Recorded
+ * inputs must match its commits.
+ */
 export const importReview = (
   cwd: string,
   ref: string,
   json: string
 ): Validated<{ readonly entry: Review; readonly written: boolean }> =>
-  appendReview(cwd, ref, (target, check) => importEntry(target, json, check))
+  appendReview(cwd, ref, (target) => importEntry(target, json, inputsMatch(cwd)))
 
 /** The latest review on `revision` in `ref`. */
 export const latestReview = (cwd: string, ref: string, revision: string): Validated<Review> => {
@@ -59,6 +88,16 @@ export const nearestReview = (cwd: string, ref: string, head: string): Validated
   return reviewed === undefined
     ? fail(`no review on HEAD or its last ${String(ancestorLimit)} ancestors`)
     : latestReview(cwd, ref, reviewed)
+}
+
+/** The latest review in `ref` that `matches` accepts, from the commit whose note was written most recently. */
+export const latestReviewMatching = (
+  cwd: string,
+  ref: string,
+  matches: (review: Review) => boolean
+): Validated<Review | undefined> => {
+  const notes = checkNotesRef(ref)
+  return notes.ok ? latestMatching({ cwd, kind: reviewNotes, ref }, matches) : notes
 }
 
 /** Why a review does not let the slice be marked ready: open blocking findings and escalations. Empty passes. */

@@ -17,6 +17,7 @@ import {
   sha,
   sliceId,
   text,
+  treeId,
   uuid,
   type Validated
 } from "../schema-checks.ts"
@@ -81,6 +82,7 @@ export interface Review {
   readonly featureDir?: string | undefined
   /** Every finding still open at the reviewed SHA, carried-forward findings included. */
   readonly findings: readonly Finding[]
+  readonly inputs?: ReviewInputs | undefined
   readonly reviewedSha: string
   readonly reviewId: string
   /** 1 for the first review of a slice; each re-review after a fix adds one. */
@@ -89,6 +91,15 @@ export interface Review {
   readonly sliceId: string
   /** The review ID on the same SHA that this review replaces. */
   readonly supersedesReviewId?: string | undefined
+}
+
+/**
+ * What the review covered, recorded by `review:record` from the base and reviewed SHAs rather than written by the
+ * reviewer: each commit's code tree outside `specs/`. Reviews recorded before this field existed have none.
+ */
+export interface ReviewInputs {
+  readonly baseCodeTree: string
+  readonly codeTree: string
 }
 
 const positiveInteger: Check = (value, path) =>
@@ -115,6 +126,7 @@ const shape = object({
   escalations: list(object({ detail: text, findingIds: list(findingId), kind: oneOf(escalationKinds) })),
   featureDir: optional(featureDir),
   findings: list(finding),
+  inputs: optional(object({ baseCodeTree: treeId, codeTree: treeId })),
   reviewedSha: sha,
   reviewId: uuid,
   round: positiveInteger,

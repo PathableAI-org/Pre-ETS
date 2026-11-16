@@ -3,7 +3,8 @@
  *
  *   pnpm notes:sync [<pr>] [--review-ref <ref>]          import the pull request's note comments into the local
  *                                                        notes; the checked-out branch's pull request by default.
- *                                                        Exits 1 when a marked comment is rejected
+ *                                                        Exits 1 when a marked comment is rejected; a comment
+ *                                                        whose commit cannot be fetched is listed as unavailable
  *   pnpm notes:publish verification|review [<rev>]       post the latest local entry on a commit as a comment, for a
  *     [--pr <n>] [--review-ref <ref>]                    record whose posting failed
  *
