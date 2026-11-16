@@ -28,7 +28,7 @@ Feature: One session shared by a browser's tabs, renewed and logged out together
     Given production tenant sites for Springfield and Shelbyville
     And host resolution uses base hostname "localhost"
 
-  Scenario: Every tab reads one session, and a new tab joins it without a login
+  Scenario: Every tab holds one session's deadline, and a new tab joins it without a login
     Given the visitor has signed in at "springfield.localhost:3000" and opened tabs "S1" and "S2"
     When the visitor opens a protected page in a new tab "S3"
     Then tab "S3" started no login and presents the session reference tab "S1" opened with
