@@ -3,8 +3,8 @@
  * `TEST_TELEMETRY` marker the layer is empty and no OpenTelemetry code runs. With it, the application's own
  * `observabilityLayer` is built once per test file from the settings the command prepared, and disposed after the
  * file's tests, so the file's records have left when it finishes. A build failure or an unreachable collector changes
- * no test result. The layer does not replace a test's clock, so a program under `TestClock` or a fixed `Clock` exports
- * records stamped with that clock's time.
+ * no test result. The layer does not replace a test's clock, so a program under `TestClock`, a fixed `Clock`, or a
+ * faked `Date` exports records stamped with that clock's time.
  */
 import { Context, Effect, Layer, ManagedRuntime } from "effect"
 import { afterAll } from "vitest"
@@ -15,12 +15,17 @@ import { observabilityLayer } from "../../src/observability.ts"
 
 const present = (value: string | undefined): string | undefined => value === "" ? undefined : value
 
-/** The plain settings the command prepared, or `undefined` when the run has no marker or no usable endpoint. */
+/**
+ * The plain settings the command prepared, or `undefined` when the run has no marker or lacks a setting the command
+ * fills (endpoint, service name, timing). The command owns their defaults (scripts/test-run.ts); it prepares no
+ * version, so the application's `UNKNOWN` applies.
+ */
 const settings = (env: NodeJS.ProcessEnv): OtelEnabled | undefined => {
   const endpoint = present(env.OTEL_EXPORTER_OTLP_ENDPOINT)
-  const exportTiming = present(env.TELEMETRY_EXPORT_TIMING) ?? "immediate"
+  const serviceName = present(env.OTEL_SERVICE_NAME)
+  const exportTiming = env.TELEMETRY_EXPORT_TIMING
   const usable = env.TEST_TELEMETRY === "true" && endpoint !== undefined && URL.canParse(endpoint) &&
-    (exportTiming === "batch" || exportTiming === "immediate")
+    serviceName !== undefined && (exportTiming === "batch" || exportTiming === "immediate")
   if (!usable) return undefined
   return {
     browserTracing: undefined,
@@ -28,7 +33,7 @@ const settings = (env: NodeJS.ProcessEnv): OtelEnabled | undefined => {
     endpoint: new URL(endpoint),
     exportTiming,
     headers: {},
-    serviceName: present(env.OTEL_SERVICE_NAME) ?? "pre-ets-frontend",
+    serviceName,
     serviceVersion: present(env.OTEL_SERVICE_VERSION) ?? "UNKNOWN"
   }
 }

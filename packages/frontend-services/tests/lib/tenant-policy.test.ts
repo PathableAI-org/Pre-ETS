@@ -33,6 +33,7 @@ const readPolicy = Effect.fnUntraced(
             Path.layer
           ))),
         testTelemetry,
+        // Last, so it silences the output; it also replaces the telemetry logger, so this file exports spans only.
         Logger.layer([])
       ))
     )
