@@ -132,7 +132,7 @@ const newContext = async (scenario: Expiration, hasTouch = false): Promise<Brows
 }
 
 /** The application session reference the tab's browser holds for its host, if any. */
-const sessionOf = async (tab: Tab): Promise<string | undefined> =>
+export const sessionOf = async (tab: Tab): Promise<string | undefined> =>
   (await tab.page.context().cookies(`http://${tab.host}/`)).find((cookie) => cookie.name === "pathable-session")?.value
 
 /** Waits for the protected page and reads the tab's held local deadline from its header. */

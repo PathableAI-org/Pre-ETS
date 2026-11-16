@@ -49,6 +49,18 @@ When(
   }
 )
 
+/**
+ * With the session's own tag, as its page observed it, the communication passes the tag check and reaches the session
+ * store, so its answer is the store's (#442, PREETS-SESSION-010 AC5).
+ */
+When(
+  "the visitor's page communicates {string} activity at {string}",
+  async function(this: AppWorld, activity: string, host: string) {
+    assert.ok(this.coordinationTag, "expected the page to have observed its session's coordination tag")
+    await requestSiteWith(this, activityCommunication(host, activity, this.coordinationTag))
+  }
+)
+
 /*
  * Qualifying activity with a real session (#441, PREETS-SESSION-009). Every observation is the session's authoritative
  * deadline from its own status read, `GET /session/status`, which never renews: a renewal is seen only when the server
