@@ -48,6 +48,11 @@ Existing SSO alone provides weak evidence that the authorized user returned to a
   closed, with no opt-out or `prompt=login` fallback. The configured issuer's `auth_time` is evaluated;
   broker chains need their own evidence. See the [session delivery plan](../../delivery/session-management.md#b6-freshness-comparison-and-provider-handling-2026-11-09).
   This decision establishes no implemented or verified provider behavior and awaits Git/PR approval.
+- Decision: Maintainer direction on 2026-11-16 ([#444](https://github.com/PathableAI-org/Pre-ETS/issues/444))
+  accepts the outstanding Microsoft scenarios as a limitation. Evidence stays provider-neutral, against the local
+  Keycloak environment, until a real client is available for discovery of the Microsoft product, tenant, and any
+  broker topology. Microsoft compatibility remains unverified and unclaimed. See the
+  [shared session context](../context/session-management.md#provider-neutral-compatibility-evidence-2026-10-17).
 
 ## Acceptance criteria
 

@@ -31,7 +31,8 @@ Server rejection alone cannot protect sensitive information already rendered, in
   this policy. This refinement is subject to Git/PR approval.
 
 - Decision: Maintainer direction on 2026-11-09 resolves B5 for expiration. Running sharing tabs conceal
-  protected content within 2 seconds of authoritative expiration and never before the server session ends. On
+  protected content within 2 seconds of authoritative expiration and never enter the expired state before the
+  server session ends (wording clarified on 2026-11-16, below). On
   resume, a tab past its locally known deadline temporarily conceals protected content at once and confirms with
   the server; this temporary concealment is not the expired state, and content is restored if the session was
   renewed in another tab. Otherwise the tab confirms with the server and conceals within 2 seconds if the session
@@ -39,6 +40,15 @@ Server rejection alone cannot protect sensitive information already rendered, in
   PREETS-SESSION-004's fresh-entry policy (AC2) instead of the modal. Pixels painted before page scripts run on
   resume are a recorded limitation. See the [session delivery plan](../../delivery/session-management.md#b5-browser-timing-and-resume-decision-2026-11-09). This decision establishes no implemented or verified behavior
   and awaits Git/PR approval.
+- Decision: Maintainer direction on 2026-11-16 ([#444](https://github.com/PathableAI-org/Pre-ETS/issues/444),
+  decision 3) clarifies the B5 wording above. What must not begin before the server session ends is the expired
+  state, not concealment. A running tab that reaches its locally known deadline may temporarily conceal protected
+  content while it confirms with the server, as on resume. That temporary concealment is not the expired state, and
+  the tab restores its content if the server confirms the session is still valid.
+- Decision: Maintainer direction on 2026-11-16 (#444, decision 2) applies AC1 to the whole document. Once the
+  expired state or PREETS-SESSION-007 recovery content replaces protected content, protected text must not remain
+  in the tab's document, including framework render data serialized in inline scripts. Values that remain only in
+  the page's script memory, which cannot be cleared without loading a new document, are a recorded limitation.
 
 ## Acceptance criteria
 
@@ -61,7 +71,10 @@ None for synchronization latency or suspended/resumed protection: the 2026-11-09
 Browser Gherkin observes actual rendered-content concealment, blocking behavior, focus movement and visible focus, keyboard recovery, multiple tabs, and explicit recovery with controllable time. Assistive-technology observations establish expiration announcement, explanation/action availability, and inability to read or navigate protected background information. Browser evidence must establish blocked in-page navigation while the modal is active and the fresh-entry
 behavior of refresh and browser back/forward navigation under PREETS-SESSION-004.
 Compare the already-open tab’s modal with the Server Action recovery content for equivalent expiration explanation
-and recovery. Server-only denial or modal-string assertions cannot establish concealment. With controllable time, browser evidence must establish concealment in every running sharing tab within 2 seconds of expiration, no expired state in a running tab while the session remains valid, expired-state concealment on resume for tabs suspended across expiration or logout, and, for a tab suspended past its local deadline while another tab renewed the session, temporary resume concealment followed by server confirmation of the renewed session and restoration of its content without the expired state, recording pre-script paint as a limitation.
+and recovery. Server-only denial or modal-string assertions cannot establish concealment. Concealment evidence must
+show that no protected text remains in the document, inline script content included; text checks that skip scripts
+cannot establish it. Script memory that cannot be cleared without a new document is a recorded limitation. With controllable time, browser evidence must establish concealment in every running sharing tab within 2 seconds of expiration, no expired state in a running tab while the session remains valid (temporary concealment at a local deadline,
+followed by restoration once the server confirms the session, is not the expired state), expired-state concealment on resume for tabs suspended across expiration or logout, and, for a tab suspended past its local deadline while another tab renewed the session, temporary resume concealment followed by server confirmation of the renewed session and restoration of its content without the expired state, recording pre-script paint as a limitation.
 
 Evidence assumptions follow the shared session context. Unresolved verification conditions follow the Open questions above; no additional operational monitoring claim is introduced.
 
