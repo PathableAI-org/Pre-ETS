@@ -215,15 +215,19 @@ CI states telemetry off where it sets its environment, the observability documen
 and the other documents link to it and drop the batch-interval wait. Reads T-001 and T-002. Asserts V-003, V-010, and
 V-023 in full. Only this pull request may say `Closes #475`, and only when its report passes the gate.
 
-- [ ] T037 [US4] In `.github/workflows/ci-quality.yml`, `ci-build.yml`, and `ci-bdd.yml`, set `OTEL_SDK_DISABLED: "true"` in the workflow-level `env` block with a comment naming the CI mode; drop `ci-bdd.yml`'s `GITHUB_ENV` line
+- [x] T037 [US4] In `.github/workflows/ci-quality.yml`, `ci-build.yml`, and `ci-bdd.yml`, set `OTEL_SDK_DISABLED: "true"` in the workflow-level `env` block with a comment naming the CI mode; drop `ci-bdd.yml`'s `GITHUB_ENV` line
       (research D9). These edits need a person's confirmation under the guardrails.
-- [ ] T038 [US7] In `docs/observability.md`, add the "Operating modes" section (production, local development and
+- [x] T038 [US7] In `docs/observability.md`, add the "Operating modes" section (production, local development and
       verification, CI; what selects each; the setting's name, values, and defaults; metrics periodic; never
       `immediate` in production) and remove the remaining batch-interval waits (FR-028).
-- [ ] T039 [US7] Link that section and remove batch waits in `docs/docker-compose.md`,
+- [x] T039 [US7] Link that section and remove batch waits in `docs/docker-compose.md`,
       `docs/engineering/verification-harness.md` (the harness environment sets `TELEMETRY_EXPORT_TIMING=immediate`),
       `.agents/skills/verification-harness/SKILL.md`, `docs/engineering/testing/README.md`, `features/README.md`,
       `fe/.env.example`, and `README.md` if its observability pointer needs the link (FR-029).
+      As built: `README.md` is unchanged, because its pointer names `docs/observability.md` as a whole. The Verification
+      section now states the trace store's search delay once, and the other documents link to it rather than give a
+      wait. `docs/docker-compose.md`'s production-build step says a production build batches unless it sets the
+      setting.
 - [ ] T040 Run the checks; self-review; push the draft stacked on E; send both requests (Prerequisites, Receiver,
       Module evidence, §A, §F, Telemetry queries, Cleanup). The verifier repeats §A to §E at this SHA.
 - [ ] T041 Answer results and findings; on a passing gate, render and commit the evidence, write the body with

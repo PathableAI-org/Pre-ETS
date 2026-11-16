@@ -131,7 +131,9 @@ The verification session owns its environment:
 - Its own ports for application instances, and its own key prefix in shared stores. Use a
   `preets:verify:<run-uuid>:` prefix for Redis and delete the owned keys when finished.
 - The shared local observability stack from [Observability](../observability.md#local-grafana--otlp), with OTEL
-  enabled. Generate a run UUID for each verification run, including retries. Set `OTEL_SERVICE_VERSION` to the
+  enabled and `TELEMETRY_EXPORT_TIMING=immediate`, the verification mode of
+  [Operating modes](../observability.md#operating-modes), which a production build must set. Generate a run UUID for
+  each verification run, including retries. Set `OTEL_SERVICE_VERSION` to the
   requested SHA, and add `service.version=<SHA>,service.instance.id=<run-uuid>` to `OTEL_RESOURCE_ATTRIBUTES`,
   keeping any existing entries. The global Node SDK that exports HTTP, Redis, and runtime signals reads only
   `OTEL_RESOURCE_ATTRIBUTES`, so both settings are needed for every signal to carry the revision and run. Every
@@ -143,15 +145,16 @@ For browser journeys without browser tracing, Playwright adds a W3C `traceparent
 for each step. Server spans continue that trace, so each browser step maps to a known trace ID. With browser tracing,
 set `BROWSER_TRACING_ENABLED=true` and keep `service.instance.id=<run-uuid>` in `OTEL_RESOURCE_ATTRIBUTES`, so the page
 exports under the same run filter. Turn the harness's own `traceparent` injection off for the steps that sample browser
-context. Wait for `<html data-preets-browser-tracing="started">` before a sampled step, and keep the page open about
-30 seconds after the last step so the batch exports.
+context. Wait for `<html data-preets-browser-tracing="started">` before a sampled step. Under immediate timing the page
+exports each span as it ends, so no batch wait is needed before closing it.
 
 ### Observation
 
 The verifier runs the requested `quickstart.md` steps and then queries the telemetry with the queries in
-`contracts/telemetry.md`. Use the read-only Grafana MCP server configured in `.mcp.json`. The
-[Observability](../observability.md#verification) export delays apply. An empty result is inconclusive until the
-verifier confirms that OTEL was enabled, traffic occurred, and export had time to complete.
+`contracts/telemetry.md`. Use the read-only Grafana MCP server configured in `.mcp.json`. Read a record by its trace ID
+when the step gives one; a trace search lists a new trace only after the trace store's search delay, as
+[Observability](../observability.md#verification) describes. An empty result is inconclusive until the verifier
+confirms that OTEL was enabled, traffic occurred, and the records had time to reach the collector.
 
 The verifier also checks that no exported attribute or log field falls in a forbidden data class. That finding is
 a violation of the slice, whatever the claim results are.

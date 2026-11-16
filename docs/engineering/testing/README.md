@@ -159,8 +159,10 @@ verification reports, and their transcripts do not become a permanent test suite
 To see what the code did during a test run, run the test command through
 `pnpm test:telemetry` and query that run's records in the local stack, as
 [Telemetry for a test run](../../observability.md#telemetry-for-a-test-run)
-describes. That is observation; it adds no assertion. A requirements BDD run
-exports its owned application's records. A frontend-services unit or
+describes. That is observation; it adds no assertion. Without the command, and in
+CI, a test run exports nothing
+([Operating modes](../../observability.md#operating-modes)). A requirements BDD
+run exports its owned application's records. A frontend-services unit or
 integration test exports only the programs it runs through a point that provides
 the test layer (`testTelemetry` in `tests/helpers/telemetry.ts`): the shared
 session world, its file's layer factory, or its mocked runtime. Tests of pure
