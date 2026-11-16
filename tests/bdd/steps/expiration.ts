@@ -53,6 +53,8 @@ export const BOUND_MILLISECONDS = 2_000
 
 declare global {
   interface Window {
+    /** Exposed by expiration scenarios: reports protected content the page has just exposed, by its text. */
+    preetsProtectedExposed?: (text: string) => Promise<void>
     /** Exposed by expiration scenarios: reports a `pageshow` and whether a dialog was in the document then. */
     preetsRestoreShown?: (persisted: boolean, dialog: boolean) => Promise<void>
   }
@@ -64,6 +66,11 @@ declare global {
  */
 export interface Tab {
   deadline: number
+  /**
+   * Protected content the page reported exposing since a mark, by its text: in a page restored from the back/forward
+   * cache, or once a change to its document exposed content that was concealed or absent.
+   */
+  readonly exposed: string[]
   /** Settles once a failed login's last document has loaded, after a step arranged that failure. */
   failedLogin?: Promise<unknown> | undefined
   readonly host: string
@@ -116,20 +123,55 @@ export const namesOf = (list: string): readonly string[] =>
   [...list.matchAll(/"([^"]+)"/g)].map((match) => match[1] ?? "")
 
 /**
- * A new browser context that watches for dialogs and reports back/forward-cache restores; with `hasTouch`, it has a
- * touch screen as well as a mouse and keyboard.
+ * Runs as the first script of every document: reports protected content (a protected page's heading or control in the
+ * document, not inside `[hidden]` or `[inert]`) when the page is restored from the back/forward cache with it exposed,
+ * and when a change to the document exposes it after it was concealed or absent. It cannot use outer bindings.
+ */
+const watchForExposure = (): void => {
+  const PROTECTED =
+    /^(Reference session|Coordination roster|Coordination participant|Record reference operation|Record attendance note|Open participant page in place)$/
+  const exposedText = () =>
+    [...document.querySelectorAll("h1, button")].find((element) =>
+      PROTECTED.test(element.textContent) && element.closest("[hidden], [inert]") === null
+    )?.textContent
+  let shown = false
+  const report = (restored: boolean) => {
+    const text = exposedText()
+    if (text !== undefined && (restored || !shown)) {
+      void globalThis.window.preetsProtectedExposed?.(text).catch(() => undefined)
+    }
+    shown = text !== undefined
+  }
+  new MutationObserver(() => {
+    report(false)
+  }).observe(document, { attributeFilter: ["hidden", "inert"], childList: true, subtree: true })
+  globalThis.addEventListener("pageshow", (event) => {
+    if (event.persisted) report(true)
+  })
+}
+
+/** The open tab showing `page`, if the scenario has one. */
+const tabShowing = (scenario: Expiration, page: Page): Tab | undefined =>
+  [...scenario.tabs.values()].find((candidate) => candidate.page === page)
+
+/**
+ * A new browser context that watches for dialogs and exposed protected content and reports back/forward-cache restores;
+ * with `hasTouch`, it has a touch screen as well as a mouse and keyboard.
  */
 const newContext = async (scenario: Expiration, hasTouch = false): Promise<BrowserContext> => {
   const context = await scenario.browser.newContext({ hasTouch })
   await context.addInitScript(watchForDialogs)
+  await context.addInitScript(watchForExposure)
+  await context.exposeBinding("preetsProtectedExposed", ({ page }, text: string) => {
+    tabShowing(scenario, page)?.exposed.push(text)
+  })
   await context.addInitScript(() => {
     globalThis.addEventListener("pageshow", (event) => {
       void globalThis.window.preetsRestoreShown?.(event.persisted, document.querySelector("[role=dialog]") !== null)
     })
   })
   await context.exposeBinding("preetsRestoreShown", ({ page }, persisted: boolean, dialog: boolean) => {
-    const tab = [...scenario.tabs.values()].find((candidate) => candidate.page === page)
-    if (persisted) tab?.restored.push(dialog)
+    if (persisted) tabShowing(scenario, page)?.restored.push(dialog)
   })
   return context
 }
@@ -190,6 +232,7 @@ const newTab = async (scenario: Expiration, context: BrowserContext, name: strin
   const page = await context.newPage()
   const tab: Tab = {
     deadline: Number.NaN,
+    exposed: [],
     host,
     loginTraffic: [],
     page,
@@ -370,13 +413,17 @@ const openSharingTab = async (world: AppWorld, name: string, options: TabClock) 
  * cross-tab channel evicts the entry from the back/forward cache: a sharing tab's message would (Chromium reports
  * `BroadcastChannelOnMessage`), which is why the tab is in a browser of its own.
  */
+/** The tab leaves for the public login-failure page, which runs no session coordination. */
+const leaveForPublicPage = async (tab: Tab) => {
+  await tab.page.goto(`http://${tab.host}/login-unavailable`)
+  await tab.page.getByRole("heading", { level: 1, name: "Login cannot start" }).waitFor({ state: "visible" })
+}
+
 Given(
   "another browser sharing the visitor's session has opened tab {string} and then left it for a public page",
   async function(this: AppWorld, name: string) {
     await openSharingTab(this, name, {})
-    const { page } = tabOf(this, name)
-    await page.goto(`http://${SPRINGFIELD}/login-unavailable`)
-    await page.getByRole("heading", { level: 1, name: "Login cannot start" }).waitFor({ state: "visible" })
+    await leaveForPublicPage(tabOf(this, name))
   }
 )
 
@@ -595,6 +642,7 @@ When(
 When("the visitor refreshes tab {string}", async function(this: AppWorld, name: string) {
   const tab = tabOf(this, name)
   tab.protectedDocuments.length = 0
+  tab.exposed.length = 0
   await tab.page.reload()
 })
 
@@ -607,6 +655,7 @@ When("the visitor navigates {word} in tab {string}", async function(this: AppWor
   assert.ok(direction === "back" || direction === "forward", "expected back or forward")
   const tab = tabOf(this, name)
   tab.protectedDocuments.length = 0
+  tab.exposed.length = 0
   const options = { waitUntil: "commit" } as const
   await (direction === "back" ? tab.page.goBack(options) : tab.page.goForward(options))
 })
@@ -645,9 +694,7 @@ Given("the visitor has opened the roster in tab {string}", async function(this: 
  * tab, so nothing on the session's cross-tab channel evicts the entry from the back/forward cache.
  */
 Given("the visitor has left tab {string} for a public page", async function(this: AppWorld, name: string) {
-  const { host, page } = tabOf(this, name)
-  await page.goto(`http://${host}/login-unavailable`)
-  await page.getByRole("heading", { level: 1, name: "Login cannot start" }).waitFor({ state: "visible" })
+  await leaveForPublicPage(tabOf(this, name))
 })
 
 /**
@@ -734,6 +781,7 @@ When("the visitor activates {string} by keyboard in tab {string}", async functio
 ) {
   const tab = tabOf(this, name)
   tab.protectedDocuments.length = 0
+  tab.exposed.length = 0
   tab.loginTraffic.length = 0
   for (let presses = 0; presses < 3 && (await activeElementOf(tab.page)).name !== link; presses += 1) {
     await tab.page.keyboard.press("Tab")
@@ -755,6 +803,7 @@ const awaitProviderForm = async (tab: Tab) => {
 const assertFreshEntry = async (tab: Tab) => {
   await awaitProviderForm(tab)
   assert.deepEqual(tab.protectedDocuments, [])
+  assert.deepEqual(tab.exposed, [], "the tab exposed protected content on the way")
   assert.ok(!tab.restored.includes(true), "a restored page showed the modal")
 }
 
@@ -919,6 +968,7 @@ Given(
 const mark = (tab: Tab) => {
   tab.loginTraffic.length = 0
   tab.protectedDocuments.length = 0
+  tab.exposed.length = 0
 }
 
 Then("tabs {} show the expiration modal and no protected content", async function(this: AppWorld, list: string) {
@@ -1036,17 +1086,20 @@ Then("tab {string} shows the protected application under a new session", async f
   assert.notEqual(current, tab.session)
 })
 
-/** A raw request presenting a session reference: answered with the login delegation, never protected content. */
-const assertNotAdmitted = async (world: AppWorld, tab: Tab, session: string) => {
+/**
+ * A raw document request at `host` presenting a session reference: answered with the login delegation, never protected
+ * content.
+ */
+export const assertNotAdmitted = async (world: AppWorld, host: string, session: string): Promise<void> => {
   const { body, headers, status } = await requestInstance(
     world,
     world.port,
-    tab.host,
+    host,
     "/",
     true,
     `pathable-session=${session}`
   )
-  const delegation = new URL(headers.location ?? "", `http://${tab.host}`).pathname
+  const delegation = new URL(headers.location ?? "", `http://${host}`).pathname
   assert.deepEqual({ delegation, status }, { delegation: "/auth/login", status: 307 })
   assert.doesNotMatch(body, PROTECTED_TEXT)
 }
@@ -1057,7 +1110,7 @@ Then("a request presenting the earlier session of tab {string} is not admitted",
 ) {
   const tab = tabOf(this, name)
   assert.ok(tab.session, "expected the tab to have opened with a session")
-  await assertNotAdmitted(this, tab, tab.session)
+  await assertNotAdmitted(this, tab.host, tab.session)
 })
 
 /**
@@ -1156,7 +1209,7 @@ Then(
     assert.equal(await tab.page.getByRole("button", { name: "Log out" }).count(), 0)
     assert.deepEqual(tab.protectedDocuments.filter((pathname) => !pathname.startsWith("/auth/")), [])
     const held = await sessionOf(tab)
-    if (held !== undefined) await assertNotAdmitted(this, tab, held)
+    if (held !== undefined) await assertNotAdmitted(this, tab.host, held)
   }
 )
 

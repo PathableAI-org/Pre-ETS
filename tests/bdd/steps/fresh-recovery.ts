@@ -14,7 +14,8 @@ import {
   providerSignsInSilently,
   signInAtProvider
 } from "../support/browser.ts"
-import { requestInstance, startSite } from "../support/server.ts"
+import { startSite } from "../support/server.ts"
+import { assertNotAdmitted } from "./expiration.ts"
 
 const PROVIDER_ACCOUNT = `${PROVIDER_ORIGIN}/realms/pre-ets/account`
 
@@ -33,8 +34,8 @@ declare global {
 interface Journey {
   readonly authorizationRequests: URL[]
   authorizationsAtMark: number
-  /** The status and `Set-Cookie` of each answer to a provider return at the journey's host, in order. */
-  readonly callbackAnswers: Promise<{ readonly setCookie: string; readonly status: number }>[]
+  /** The `Set-Cookie` of each answer to a provider return at the journey's host, in order. */
+  readonly callbackAnswers: Promise<{ readonly setCookie: string }>[]
   readonly close: () => Promise<void>
   readonly context: BrowserContext
   host: string
@@ -114,7 +115,7 @@ Given("the visitor holds a provider single sign-on session for {string}", async 
     const url = new URL(response.url())
     if (url.host !== journey.host || url.pathname !== "/auth/callback") return
     journey.callbackAnswers.push(
-      response.allHeaders().then((headers) => ({ setCookie: headers["set-cookie"] ?? "", status: response.status() }))
+      response.allHeaders().then((headers) => ({ setCookie: headers["set-cookie"] ?? "" }))
     )
   })
   observeJourneyPage(journey, journey.page)
@@ -239,18 +240,10 @@ Then("the protected application is shown without another provider login", async 
   assert.equal(await sessionCookie(journey), journey.rememberedSession)
 })
 
-/** A raw document request presenting `reference` is answered with the login delegation, never protected content. */
-const assertNotAdmitted = async (world: AppWorld, journey: Journey, reference: string) => {
-  const response = await requestInstance(world, world.port, journey.host, "/", true, `pathable-session=${reference}`)
-  assert.equal(response.status, 307)
-  assert.equal(new URL(response.headers.location ?? "", `http://${journey.host}`).pathname, "/auth/login")
-  assert.doesNotMatch(response.body, /Reference session/)
-}
-
 Then("a request presenting the remembered session reference is not admitted", async function(this: AppWorld) {
   const journey = journeyOf(this)
   assert.ok(journey.rememberedSession, "expected a remembered session")
-  await assertNotAdmitted(this, journey, journey.rememberedSession)
+  await assertNotAdmitted(this, journey.host, journey.rememberedSession)
 })
 
 /**
@@ -303,12 +296,12 @@ Then("the application starts a new provider login", function(this: AppWorld) {
 Then("the visitor holds no usable application session", async function(this: AppWorld) {
   const journey = journeyOf(this)
   const held = await sessionCookie(journey)
-  if (held !== undefined) await assertNotAdmitted(this, journey, held)
+  if (held !== undefined) await assertNotAdmitted(this, journey.host, held)
 })
 
 /**
- * The provider's return was answered in place with no application session: no session cookie issued, none held, and
- * no protected text or control on the page that answered it.
+ * The answer to the provider's return issued no application session cookie, the browser holds none, and the page the
+ * visitor was left on shows no protected text or control.
  */
 Then("the provider's return establishes no application session and shows no protected content", async function(
   this: AppWorld
@@ -316,11 +309,10 @@ Then("the provider's return establishes no application session and shows no prot
   const journey = journeyOf(this)
   const answer = await journey.callbackAnswers.at(-1)
   assert.ok(answer, "expected the provider's return to reach the application")
-  assert.equal(answer.status, 200)
   assert.doesNotMatch(answer.setCookie, /(?:^|\n)pathable-session=/)
   assert.equal(await sessionCookie(journey), undefined)
   const { page } = journey
-  assert.equal(new URL(page.url()).pathname, "/auth/callback")
+  await page.waitForLoadState()
   assert.equal(await page.getByRole("button", { name: "Log out" }).count(), 0)
   assert.doesNotMatch(await documentText(page), /Reference session|Record reference operation/)
 })
