@@ -7,9 +7,11 @@ Feature: Each tenant's warning policy holds end to end, and a change reaches a s
   in, and an explicit 0 under five or six minutes never shows a dialog before the session expires at
   its deadline. Under the default policy a session warns 25 minutes in, and an explicit 0 at the
   30-minute default never warns. A lead that is negative, fractional, text, or not below the timeout
-  makes the tenant an ordinary missing tenant that sets no cookie and starts no login. A changed
-  lead reaches a session only when it renews, in every tab that shares it, while a session that is
-  not renewed keeps its lead.
+  makes the tenant an ordinary missing tenant that sets no cookie and starts no login, whether the
+  tenant is resolved from the host or selected statically. A changed lead reaches a session only
+  when it renews, in every tab that shares it, while a session that is not renewed keeps its lead.
+  With no lead set, a renewal under a five-minute timeout disables the warning and a later renewal
+  under a six-minute timeout enables it again.
   Not established here: the warning's presentation, blocking, focus, and Continue, resumed tabs, and
   the late Continue (expiration-warning.feature); what assistive technology announces, which needs
   a person (L-3).
@@ -41,7 +43,7 @@ Feature: Each tenant's warning policy holds end to end, and a change reaches a s
     And tabs "P1" and "P2" replaced the warning with the expiration modal, never closing it as renewed
 
   Scenario Outline: An invalid warning lead makes the tenant an ordinary missing tenant
-    Given tenant resolution uses "host" mode
+    Given tenant resolution uses "<mode>" mode
     And the selected Springfield tenant file is "<setting>"
     When a visitor requests the document at "springfield.example.test"
     Then the response status is 404
@@ -53,12 +55,17 @@ Feature: Each tenant's warning policy holds end to end, and a change reaches a s
     And the response issues no application or correlation cookie
 
     Examples:
-      | setting                                  |
-      | a warning lead of -1                     |
-      | a warning lead of 1.5                    |
-      | a warning lead of five, as text          |
-      | a warning lead equal to its idle timeout |
-      | a warning lead above its idle timeout    |
+      | mode   | setting                                  |
+      | host   | a warning lead of -1                     |
+      | static | a warning lead of -1                     |
+      | host   | a warning lead of 1.5                    |
+      | static | a warning lead of 1.5                    |
+      | host   | a warning lead of five, as text          |
+      | static | a warning lead of five, as text          |
+      | host   | a warning lead equal to its idle timeout |
+      | static | a warning lead equal to its idle timeout |
+      | host   | a warning lead above its idle timeout    |
+      | static | a warning lead above its idle timeout    |
 
   Scenario: A changed lead reaches a session only when it renews
     The visitor's session has tabs "T1" and "T2"; another browser's session has tab "U1". Both start
@@ -95,6 +102,33 @@ Feature: Each tenant's warning policy holds end to end, and a change reaches a s
     And the visitor activates Continue with Enter in tab "T1"
     Then tabs "T1" and "T2" close their warning within 2 seconds of the renewal and hold its later deadline
     And tabs "T1" and "T2" hold a warning lead of 2
+    When tabs "T1" and "T2" reach their warning threshold
+    Then tabs "T1" and "T2" each show the warning within 2 seconds of their warning threshold, with focus on Continue
+
+  Scenario: A renewal under the five-minute default disables the warning, and one under a longer timeout enables it
+    No warning lead is ever set, so each change is to the timeout alone. The visitor's tabs sign in
+    under a six-minute timeout, which warns 5 minutes before the deadline. The timeout changes to
+    five minutes before their threshold; the open warning is from the earlier policy, and the
+    visitor waits 10 seconds before Continue so the renewal moves the deadline. After that renewal
+    a tab still using a lead of 5 would warn at once; the visitor waits 75 seconds, past the activity
+    window, before typing again under a six-minute timeout.
+
+    Given host resolution uses base hostname "localhost"
+    And Springfield's tenant file changes to a 6-minute timeout with no warning lead set
+    And the visitor has signed in at "springfield.localhost:3000" and opened tabs "T1" and "T2"
+    Then tabs "T1" and "T2" hold a warning lead of 5
+    When Springfield's tenant file changes to a 5-minute timeout with no warning lead set
+    And tabs "T1" and "T2" reach their warning threshold
+    Then tabs "T1" and "T2" each show the warning within 2 seconds of their warning threshold, with focus on Continue
+    When the visitor waits 10 seconds without acting
+    And the visitor activates Continue with Enter in tab "T1"
+    Then tabs "T1" and "T2" close their warning within 2 seconds of the renewal and hold its later deadline
+    And tabs "T1" and "T2" hold a warning lead of 0
+    When the visitor waits 75 seconds without acting
+    Then tabs "T1" and "T2" opened no warning since Continue renewed the session
+    When Springfield's tenant file changes to a 6-minute timeout with no warning lead set
+    And the visitor types in tab "T1"
+    Then tabs "T1" and "T2" adopt that renewal with a warning lead of 5
     When tabs "T1" and "T2" reach their warning threshold
     Then tabs "T1" and "T2" each show the warning within 2 seconds of their warning threshold, with focus on Continue
 
