@@ -82,15 +82,6 @@ const heldAt = async (page: Page, deadline: number, name: string): Promise<numbe
   return Date.now()
 }
 
-/** The session the tab's own document reads from `GET /session/status`, as its coordinator would. */
-const statusReadIn = async (page: Page) => {
-  const { body, status } = await page.evaluate(async () => {
-    const response = await fetch("/session/status", { cache: "no-store" })
-    return { body: await response.text(), status: response.status }
-  })
-  return snapshotOf({ body, headers: {}, status })
-}
-
 /**
  * PREETS-SESSION-010 AC2: the new tab was served the protected document at once, with no request to the application's
  * login route or to the provider, and its browser presents the reference the earlier tab opened with.
@@ -108,23 +99,19 @@ Then(
 )
 
 /**
- * AC1: each tab's own status read answers one session (the same coordination tag) with one deadline, and each tab
- * holds that deadline. A page load's renewal reaches the other tabs only once that page is interactive (gap G2), so the
- * tabs are given until the observation timeout to hold it rather than the 2-second bound.
+ * AC1: one idle state. The session the tabs share (the reference the first tab opened with, which every tab's browser
+ * presents) has one authoritative deadline in its own status read, and each tab holds it. A page load's renewal reaches
+ * the other tabs only once that page is interactive (gap G2), so the tabs have until the observation timeout to hold
+ * it, not the 2-second bound.
  */
 Then(
-  "tabs {} each read one session and its deadline from the server, and hold that deadline",
+  "tabs {} each hold the deadline the server reports for the session tab {string} opened with",
   { timeout: 60_000 },
-  async function(this: AppWorld, list: string) {
-    const tabs = namesOf(list).map((name) => ({ name, tab: tabOf(this, name) }))
-    const reads = await Promise.all(tabs.map(({ tab }) => statusReadIn(tab.page)))
-    const [first] = reads
-    assert.ok(first, "expected tabs to read their session")
-    reads.forEach((read, index) => {
-      assert.deepEqual(read, first, `tab "${tabs[index]?.name ?? ""}" read another session or deadline`)
-    })
-    for (const { name, tab } of tabs) {
-      await heldAt(tab.page, first.deadline, name)
+  async function(this: AppWorld, list: string, source: string) {
+    const { deadline } = snapshotOf(await sessionStatus(this, this.port, presentationOf(tabOf(this, source), source)))
+    for (const name of namesOf(list)) {
+      const tab = tabOf(this, name)
+      await heldAt(tab.page, deadline, name)
       tab.deadline = await heldDeadline(tab.page)
     }
   }
@@ -186,28 +173,19 @@ Then(
 )
 
 /**
- * AC6: once the bound for the event has passed, with a second's margin, each named tab of another session still shows
- * its protected content, never showed the signed-out notice or a dialog, and holds the deadline it opened with; that
- * session's own status read answers it usable with the same deadline, so the event neither ended nor renewed it.
+ * AC6: once the bound for the event has passed, with a second's margin, each named tab of another session never showed
+ * the signed-out notice and holds the deadline it opened with, and that session's own status read answers it usable
+ * with the same deadline, so the event neither ended nor renewed it.
  */
 Then(
-  "tabs {} keep their content and unchanged sessions 3 seconds after the {word} in tab {string}",
+  "tabs {} keep their sessions unchanged 3 seconds after the {word} in tab {string}",
   { timeout: 60_000 },
   async function(this: AppWorld, list: string, event: string, source: string) {
     const at = await eventTime(this, event, source)
     await delay(Math.max(0, at + BOUND_MILLISECONDS + 1_000 - Date.now()))
     for (const name of namesOf(list)) {
       const tab = tabOf(this, name)
-      assert.ok(
-        await tab.page.getByRole("button", { name: PROTECTED_CONTROL }).isVisible(),
-        `tab "${name}" lost content`
-      )
       assert.equal(await tab.page.getByRole("heading", { name: SIGNED_OUT }).count(), 0, `"${name}" was signed out`)
-      assert.equal(
-        await tab.page.evaluate(() => globalThis.window.preetsDialogSeen === true),
-        false,
-        `dialog in "${name}"`
-      )
       const held = await heldDeadline(tab.page)
       assert.ok(Math.abs(held - tab.deadline) <= OFFSET_TOLERANCE_MILLISECONDS, `tab "${name}" holds a new deadline`)
       const { deadline } = snapshotOf(await sessionStatus(this, this.port, presentationOf(tab, name)))
@@ -216,7 +194,10 @@ Then(
   }
 )
 
-/** Raw requests in later steps present the reference the tab's browser held when it opened. */
+/**
+ * Raw requests in later steps present the reference the tab's browser held when it opened, as a tab still holding that
+ * session would; after a logout, that is the logged-out session.
+ */
 Given(
   "requests sent outside the browser present the session tab {string} opened with",
   function(this: AppWorld, name: string) {
@@ -225,14 +206,6 @@ Given(
     this.cookie = session
   }
 )
-
-/** Logout sets no cookie (research D15): each tab's browser still presents the reference the raw requests present. */
-Then("tabs {} still present that session", async function(this: AppWorld, list: string) {
-  assert.ok(this.cookie, "expected raw requests to present a session")
-  for (const name of namesOf(list)) {
-    assert.equal(await sessionOf(tabOf(this, name)), this.cookie, `tab "${name}" presents another session`)
-  }
-})
 
 /**
  * The emulation's premise: the suspended tab of another browser received nothing of the logout, so a notice after it

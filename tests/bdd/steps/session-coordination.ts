@@ -50,8 +50,8 @@ When(
 )
 
 /**
- * With the session's own tag, as its page observed it, the communication passes the tag check and reaches the session
- * store, so its answer is the store's (#442, PREETS-SESSION-010 AC5).
+ * Sent with the session's own tag, as its page observed it, so a refusal answers the session's state, whichever layer
+ * refuses it (the protection gate before the handler, today), and never a tag mismatch (#442, PREETS-SESSION-010 AC5).
  */
 When(
   "the visitor's page communicates {string} activity at {string}",

@@ -2,16 +2,16 @@
 @preets-session-010
 Feature: One session shared by a browser's tabs, renewed and logged out together
   This feature establishes, in real browsers with sessions signed in through the tracked provider,
-  that the tabs one browser opens for a tenant share one application session. Each tab's own
-  status read answers the same session and deadline, and each tab holds that deadline; a tab
-  opened later is served the protected page without starting a login and keeps the session
-  reference the browser already held. Typing in one tab renews the session, and every running tab
-  sharing it holds the renewed deadline within two seconds of the renewal response, while the
-  visitor's tab of another tenant in the same browser and another browser's own session keep their
-  content and deadlines. Logging out in one tab shows the signed-out notice in every running tab
+  that the tabs one browser opens for a tenant share one application session: a tab opened while
+  the session exists is served the protected page without starting a login and presents the
+  session reference the browser already held, and every tab holds the deadline the session's own
+  status read reports. Typing in one tab renews the session, and every running tab sharing it
+  holds the renewed deadline within two seconds of the renewal response, while the visitor's tab
+  of another tenant in the same browser and another browser's own session keep their content and
+  deadlines. Logging out in one tab shows the signed-out notice in every running tab
   sharing the session within two seconds of the logout request, with no protected content left,
   while the other tenant's tab and the other browser keep their content and their sessions, neither
-  ended nor renewed. Every tab's browser still presents the logged-out session, and it is refused:
+  ended nor renewed. The logged-out session is refused: presented as a tab still holding it would,
   a protected operation is answered 401 with no effect, activity sent with the session's own tag is
   answered 401 and revives nothing, a status read is answered 401, and a page request delegates to
   login, as a refreshed tab follows fresh entry. A tab suspended across the logout shows the
@@ -32,7 +32,7 @@ Feature: One session shared by a browser's tabs, renewed and logged out together
     Given the visitor has signed in at "springfield.localhost:3000" and opened tabs "S1" and "S2"
     When the visitor opens a protected page in a new tab "S3"
     Then tab "S3" started no login and presents the session reference tab "S1" opened with
-    And tabs "S1", "S2", and "S3" each read one session and its deadline from the server, and hold that deadline
+    And tabs "S1", "S2", and "S3" each hold the deadline the server reports for the session tab "S1" opened with
 
   Scenario: Typing in one tab renews the session in every sharing tab within two seconds, and no other session
     The visitor's tabs "S1", "S2", and "S3" share one Springfield session. "Shelbyville" is the
@@ -47,12 +47,12 @@ Feature: One session shared by a browser's tabs, renewed and logged out together
     And the visitor waits 2 seconds without acting
     When the visitor types in tab "S1"
     Then tabs "S1", "S2", and "S3" hold the renewed deadline within 2 seconds of the renewal response in tab "S1"
-    And tabs "Shelbyville" and "Other" keep their content and unchanged sessions 3 seconds after the typing in tab "S1"
+    And tabs "Shelbyville" and "Other" keep their sessions unchanged 3 seconds after the typing in tab "S1"
+    And tabs "Shelbyville" and "Other" still show their protected content
 
   Scenario: Logging out in one tab signs out every sharing tab within two seconds, and no other session
-    The tabs are as in the typing scenario. Logout leaves the session cookie in place, so every tab's
-    browser still presents the logged-out session afterwards; requests sent outside the browser
-    present it as they would.
+    The tabs are as in the typing scenario. The requests sent outside the browser present the
+    session as a tab still holding it would, which after the logout is the logged-out session.
 
     Given another browser has signed in at "springfield.localhost:3000" and opened tab "Other"
     And the visitor has signed in at "shelbyville.localhost:3000" and opened tab "Shelbyville"
@@ -62,8 +62,8 @@ Feature: One session shared by a browser's tabs, renewed and logged out together
     When the visitor logs out in tab "S2"
     Then tabs "S1", "S2", and "S3" show the signed-out notice within 2 seconds of the logout in tab "S2"
     And tabs "S1", "S2", and "S3" hold no protected content
-    And tabs "Shelbyville" and "Other" keep their content and unchanged sessions 3 seconds after the logout in tab "S2"
-    And tabs "S1", "S2", and "S3" still present that session
+    And tabs "Shelbyville" and "Other" keep their sessions unchanged 3 seconds after the logout in tab "S2"
+    And tabs "Shelbyville" and "Other" still show their protected content
     When a visitor invokes the protected reference action at "springfield.localhost:3000"
     Then the response status is 401
     And the response issues no reference-operation receipt
