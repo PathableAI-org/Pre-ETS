@@ -49,6 +49,14 @@ A person reading without interacting needs an opportunity to keep working.
   2 seconds of the renewal response. Resumed tabs apply the same local-check-then-confirm rule as expiration.
   See the [session delivery plan](../../delivery/session-management.md#b5-browser-timing-and-resume-decision-2026-11-09). This decision establishes no implemented or verified behavior and awaits Git/PR approval.
 
+- Decision: Maintainer direction on 2026-11-17 ([#497](https://github.com/PathableAI-org/Pre-ETS/issues/497),
+  confirmed during review of [#511](https://github.com/PathableAI-org/Pre-ETS/pull/511)) removes the requirement for
+  screen-reader and other assistive-technology observations because no screen-reader testing capability is
+  available, and restates the assistive-technology criteria as programmatic contracts: what the markup must
+  expose, verified through the accessibility tree, rather than an observed announcement. Keyboard, pointer,
+  and accessibility-tree evidence remains required. It changes AC5. This refinement establishes no implemented or verified
+  behavior and is subject to Git/PR approval.
+
 ## Acceptance criteria
 
 1. The warning setting expresses minutes before idle expiration. An explicit `0` disables the warning at
@@ -63,7 +71,7 @@ A person reading without interacting needs an opportunity to keep working.
    not affect all sessions simultaneously.
 3. Activating Continue or Keep working before expiration constitutes qualifying activity, renews the authoritative deadline, and dismisses warnings across the other tabs.
 4. A continuation reaching the server at or after expiration cannot restore the expired session.
-5. Assistive-technology users receive an announcement of the warning and can perceive its explanation and Continue action. Focus moves into the warning when it opens; keyboard users can activate Continue with visible focus. While the warning is blocking, focus and interaction cannot reach background application content. After successful continuation, focus returns to an appropriate application control.
+5. The warning is exposed programmatically so that assistive technology can announce and present it: when it opens, it is exposed as a modal dialog whose accessible name identifies it and whose accessible description carries its explanation, Continue is exposed as a button with an accessible name, and focus moves into the warning; keyboard users can activate Continue with visible focus. While the warning is blocking, focus and interaction cannot reach background application content. After successful continuation, focus returns to an appropriate application control.
 
 ## Open questions
 
@@ -80,7 +88,7 @@ Verify that default-disabled warnings also retain normal expiration. Configurati
 the effective timeout, and rejection of negative, fractional, nonnumeric, and equal-to-or-greater-than-timeout
 values. Actual tenant-consuming application requests must demonstrate schema-invalid tenant rejection under
 PREETS-TENANT-004, with no default substitution or fallback. Enabled warnings must occur at the accepted lead
-time before expiration. Browser Gherkin uses controllable time to establish focus movement into the warning, visible focus, keyboard continuation, blocked background interaction, appropriate focus restoration, cross-tab opening and dismissal within 2 seconds, resumed-tab warning behavior, and authoritative renewal. Supplement browser assertions with assistive-technology observations of warning announcement and accessible explanation/action. Integrated boundary checks cover late continuation races. Application and multi-tab evidence must establish
+time before expiration. Browser Gherkin uses controllable time to establish focus movement into the warning, visible focus, keyboard continuation, blocked keyboard and pointer interaction with background content, appropriate focus restoration, cross-tab opening and dismissal within 2 seconds, resumed-tab warning behavior, and authoritative renewal. Browser evidence reads the rendered accessibility tree to establish AC5's programmatic exposure: a modal dialog whose accessible name identifies it and whose accessible description carries its explanation, and Continue as a button with an accessible name. Screen-reader and other assistive-technology observations are not required, by the 2026-11-17 maintainer decision above; the accessibility tree does not establish what a particular screen reader announces, and the contract does not claim it. Integrated boundary checks cover late continuation races. Application and multi-tab evidence must establish
 adoption of changed warning settings on an authoritative server timer refresh, including transitions into
 or out of disabled warnings through explicit `0` and the five-minute-timeout default. Independent sessions may retain
 different settings until their respective refreshes, as explicitly accepted by the maintainer.
