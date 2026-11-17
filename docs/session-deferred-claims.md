@@ -227,6 +227,13 @@ verifier report.
 
 **Result:** no protected information in the public build output at `9322cfe`.
 
+### Requirements BDD at `9322cfe`
+
+Production build of `9322cfe`, `OTEL_SDK_DISABLED=true`, Playwright 1.65.1 Chromium (headless).
+
+- B1 to B5 in one run with `BDD_PARALLEL=4`: 33 scenarios and 602 steps passed.
+- B6 with `BDD_PARALLEL=3`: 3 scenarios and 75 steps passed.
+
 ### Module tests at `9322cfe`
 
 - T1: 7 test files, 156 tests passed.
