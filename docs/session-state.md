@@ -260,7 +260,7 @@ content before the history guard reloads it into fresh entry. Server Action form
 they settle, so other tabs learn of the gate's renewal.
 
 When a tab unmounts its header and protected content, for the expiration modal, recovery, or the signed-out
-notice, the same commit removes every inline script from the document
+notice, the same render removes every inline script from the document, before the browser paints it
 ([#498](https://github.com/PathableAI-org/Pre-ETS/issues/498)). Next leaves its serialized render data for the page,
 protected text included, in inline scripts after they run, and reads it from a global rather than from those nodes.
 Scripts still streaming into a loading document are removed once it has loaded. Values held only in the page's

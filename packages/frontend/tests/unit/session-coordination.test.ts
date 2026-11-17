@@ -1542,27 +1542,27 @@ describe("focusRestorationStep (#156 FR-017, review R-001) [PREETS-SESSION-011]"
 })
 
 /**
- * A document in `readyState` whose `scripts` lists every script element, inline or with a `src`, in document order.
- * `stream` adds one, as the parser does while the server is still streaming the document; `remaining` names those left.
+ * A document in `readyState` whose `scripts` lists every script element, inline or with a `src`, in document order. The
+ * list is live, as `document.scripts` is: removing a script shifts the later ones down at once. `stream` adds one, as
+ * the parser does while the server is still streaming the document; `remaining` names those left.
  */
 const scriptDocument = (readyState: DocumentReadyState) => {
-  const elements: { readonly name: string; readonly src?: string | undefined }[] = []
+  const scripts: { hasAttribute(name: string): boolean; readonly name: string; remove(): void }[] = []
   const page = Object.defineProperties(new EventTarget(), {
     readyState: { value: readyState },
-    scripts: {
-      get: () =>
-        elements.map((element) => ({
-          hasAttribute: (name: string) => name === "src" && element.src !== undefined,
-          remove: () => {
-            elements.splice(elements.indexOf(element), 1)
-          }
-        }))
-    }
+    scripts: { get: () => scripts }
   })
   const stream = (name: string, src?: string) => {
-    elements.push({ name, src })
+    const script = {
+      hasAttribute: (attribute: string) => attribute === "src" && src !== undefined,
+      name,
+      remove: () => {
+        scripts.splice(scripts.indexOf(script), 1)
+      }
+    }
+    scripts.push(script)
   }
-  return { page, remaining: () => elements.map(({ name }) => name), stream }
+  return { page, remaining: () => scripts.map(({ name }) => name), stream }
 }
 
 describe("removeInlineScripts (#498) [PREETS-SESSION-007, PREETS-SESSION-012]", () => {
@@ -1570,11 +1570,12 @@ describe("removeInlineScripts (#498) [PREETS-SESSION-007, PREETS-SESSION-012]", 
     vi.unstubAllGlobals()
   })
 
-  it("removes a loaded document's inline scripts at once and keeps those with a src", () => {
+  it("removes a loaded document's inline scripts at once, adjacent ones included, and keeps those with a src", () => {
     const { page, remaining, stream } = scriptDocument("complete")
     stream("render data")
-    stream("chunk", "/_next/static/chunks/app.js")
     stream("more render data")
+    stream("chunk", "/_next/static/chunks/app.js")
+    stream("last render data")
     vi.stubGlobal("document", page)
 
     removeInlineScripts()
@@ -1590,6 +1591,7 @@ describe("removeInlineScripts (#498) [PREETS-SESSION-007, PREETS-SESSION-012]", 
     removeInlineScripts()
     expect(remaining()).toStrictEqual([])
     stream("streamed render data")
+    stream("more streamed render data")
     stream("streamed chunk", "/_next/static/chunks/late.js")
     page.dispatchEvent(new Event("DOMContentLoaded"))
 
