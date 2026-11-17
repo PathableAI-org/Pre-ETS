@@ -1542,24 +1542,27 @@ describe("focusRestorationStep (#156 FR-017, review R-001) [PREETS-SESSION-011]"
 })
 
 /**
- * A document in `readyState` that lists its inline scripts, as `script:not([src])` selects them. `stream` adds one, as
- * the parser does while the server is still streaming the document.
+ * A document in `readyState` whose `scripts` lists every script element, inline or with a `src`, in document order.
+ * `stream` adds one, as the parser does while the server is still streaming the document; `remaining` names those left.
  */
 const scriptDocument = (readyState: DocumentReadyState) => {
-  const scripts = new Set<object>()
-  const page = Object.assign(new EventTarget(), {
-    querySelectorAll: () => [...scripts],
-    readyState
-  })
-  const stream = () => {
-    const script = {
-      remove: () => {
-        scripts.delete(script)
-      }
+  const elements: { readonly name: string; readonly src?: string | undefined }[] = []
+  const page = Object.defineProperties(new EventTarget(), {
+    readyState: { value: readyState },
+    scripts: {
+      get: () =>
+        elements.map((element) => ({
+          hasAttribute: (name: string) => name === "src" && element.src !== undefined,
+          remove: () => {
+            elements.splice(elements.indexOf(element), 1)
+          }
+        }))
     }
-    scripts.add(script)
+  })
+  const stream = (name: string, src?: string) => {
+    elements.push({ name, src })
   }
-  return { page, scripts, stream }
+  return { page, remaining: () => elements.map(({ name }) => name), stream }
 }
 
 describe("removeInlineScripts (#498) [PREETS-SESSION-007, PREETS-SESSION-012]", () => {
@@ -1567,28 +1570,29 @@ describe("removeInlineScripts (#498) [PREETS-SESSION-007, PREETS-SESSION-012]", 
     vi.unstubAllGlobals()
   })
 
-  it("removes a loaded document's inline scripts at once", () => {
-    const { page, scripts, stream } = scriptDocument("complete")
-    stream()
-    stream()
+  it("removes a loaded document's inline scripts at once and keeps those with a src", () => {
+    const { page, remaining, stream } = scriptDocument("complete")
+    stream("render data")
+    stream("chunk", "/_next/static/chunks/app.js")
+    stream("more render data")
     vi.stubGlobal("document", page)
 
     removeInlineScripts()
 
-    expect(scripts.size).toBe(0)
+    expect(remaining()).toStrictEqual(["chunk"])
   })
 
-  it("removes the scripts a loading document receives afterwards once it has loaded", () => {
-    const { page, scripts, stream } = scriptDocument("loading")
-    stream()
+  it("removes the inline scripts a loading document receives afterwards once it has loaded", () => {
+    const { page, remaining, stream } = scriptDocument("loading")
+    stream("render data")
     vi.stubGlobal("document", page)
 
     removeInlineScripts()
-    expect(scripts.size).toBe(0)
-    stream()
-    stream()
+    expect(remaining()).toStrictEqual([])
+    stream("streamed render data")
+    stream("streamed chunk", "/_next/static/chunks/late.js")
     page.dispatchEvent(new Event("DOMContentLoaded"))
 
-    expect(scripts.size).toBe(0)
+    expect(remaining()).toStrictEqual(["streamed chunk"])
   })
 })

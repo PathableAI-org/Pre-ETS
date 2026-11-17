@@ -5,12 +5,13 @@
  *
  * Every inline script in the document has already run, and nothing reads one again: Next takes its render data from
  * the global the scripts fill, not from the nodes. The application renders no inline script of its own, so React owns
- * none of them. While the document is still loading the server can stream more, so those are removed once it has
- * loaded. What the page's script memory holds stays until a new document loads, a recorded limitation.
+ * none of them. Scripts with a `src` hold no text and stay. While the document is still loading the server can stream
+ * more, so those are removed once it has loaded. What the page's script memory holds stays until a new document loads,
+ * a recorded limitation.
  */
 export const removeInlineScripts = (): void => {
   const remove = () => {
-    for (const script of document.querySelectorAll("script:not([src])")) script.remove()
+    for (const script of [...document.scripts]) if (!script.hasAttribute("src")) script.remove()
   }
   remove()
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", remove, { once: true })
