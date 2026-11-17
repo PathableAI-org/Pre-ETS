@@ -141,20 +141,25 @@ const finishRun = (state: ProgressState, event: NonNullable<Envelope["testRunFin
   log(state, `run finished (success: ${String(event.success)}) after ${String(state.finished)} scenarios, ${failures}`)
 }
 
-const recordDefinitions = (state: ProgressState, envelope: Envelope) => {
-  if (envelope.pickle) recordPickle(state, envelope.pickle)
-  if (envelope.testCase) recordTestCase(state, envelope.testCase)
+/** Hands the envelope's `key` message, when it carries one, to `handle`. */
+const when = <K extends keyof Envelope>(
+  state: ProgressState,
+  envelope: Envelope,
+  key: K,
+  handle: (state: ProgressState, message: NonNullable<Envelope[K]>) => void
+) => {
+  const message = envelope[key]
+  if (message !== undefined) handle(state, message)
 }
 
-const reportSteps = (state: ProgressState, envelope: Envelope) => {
-  if (envelope.testStepStarted) enterStep(state, envelope.testStepStarted)
-  if (envelope.testStepFinished) finishStep(state, envelope.testStepFinished)
-}
-
-const reportCases = (state: ProgressState, envelope: Envelope) => {
-  if (envelope.testCaseStarted) startCase(state, envelope.testCaseStarted)
-  if (envelope.testCaseFinished) finishCase(state, envelope.testCaseFinished)
-  if (envelope.testRunFinished) finishRun(state, envelope.testRunFinished)
+const report = (state: ProgressState, envelope: Envelope) => {
+  when(state, envelope, "pickle", recordPickle)
+  when(state, envelope, "testCase", recordTestCase)
+  when(state, envelope, "testCaseStarted", startCase)
+  when(state, envelope, "testStepStarted", enterStep)
+  when(state, envelope, "testStepFinished", finishStep)
+  when(state, envelope, "testCaseFinished", finishCase)
+  when(state, envelope, "testRunFinished", finishRun)
 }
 
 const progressLog: Plugin = {
@@ -174,9 +179,7 @@ const progressLog: Plugin = {
     }, HEARTBEAT_MS)
     timer.unref()
     on("message", (envelope) => {
-      recordDefinitions(state, envelope)
-      reportCases(state, envelope)
-      reportSteps(state, envelope)
+      report(state, envelope)
     })
     return () => {
       clearInterval(timer)
