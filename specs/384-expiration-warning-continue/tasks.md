@@ -187,6 +187,11 @@ satisfied.
 - [ ] T032 Run the D checks and module evidence, commit, push the draft, request verification of §D plus the full
       [verification.md procedure](verification.md#procedure), and record the final report as in T016. The
       screen-reader steps stay an outstanding manual check for a person (L-3).
+      Status (#497): verification of §D and the procedure ran on `main` at `0a899af` (run
+      `af113191-593c-462a-8afc-159a143b664d`, `refs/notes/verification`). V-001 to V-005 were established, and the 19
+      `@preets-session-011` scenarios passed. V-014 and V-015 are recorded on their accessibility-tree, keyboard, and
+      pointer parts only. By the person's decision on #497, the screen-reader observations (L-3) are no longer
+      required for this evidence.
 
 ## Traceability
 
