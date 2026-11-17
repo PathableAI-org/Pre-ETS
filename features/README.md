@@ -99,7 +99,12 @@ the setup checks that access is actually denied before asserting an application 
 See [step guidance](../tests/bdd/steps/README.md).
 
 CI provisions the pinned real Keycloak realm with bounded readiness and cleanup. It runs requirements BDD
-and the production safeguard smoke nightly at 06:17 UTC on `main`.
+and the production safeguard smoke nightly at 06:17 UTC on `main`. The nightly run sets `BDD_PARALLEL=4`, so four
+Cucumber workers run scenarios at once; `cucumber.mjs` lists the features that wait longest first so they start early,
+and a feature whose scenarios wait for minutes belongs in that list. Workers never run two `@development` scenarios
+together. CI also loads `--plugin ./tests/bdd/support/progress-log.ts`, which logs each scenario's start, steps, and
+result to stderr as they happen, with a heartbeat every two minutes; add the same flag to a local run to see the same
+log. Runs are serial unless `BDD_PARALLEL` is set.
 Manual dispatch may also run it on another branch, for example to show a harness fix before it merges;
 there is no CI dry-run job.
 
