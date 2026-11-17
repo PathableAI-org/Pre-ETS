@@ -137,7 +137,8 @@ export const fixReportFindings = (report: VerificationReport): readonly string[]
   ...reportBlockers(report)
 ]
 
-const executionResults = /^execution results$/i
+/** The quickstart section evidence-only commits may change. */
+export const executionResults = /^execution results$/i
 
 /**
  * Whether the commits from the verified or reviewed SHA to HEAD are evidence-only: they change nothing but the

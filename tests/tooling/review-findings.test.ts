@@ -163,6 +163,8 @@ void describe("review notes", () => {
     )
     assert.ok(retry.ok)
     assert.equal(retry.value.supersedesReviewId, "4b0e6a52-3c1f-4d7e-9f0a-6c2b8d1e5a90")
+    assert.match(retry.value.inputs?.codeTree ?? "", /^[0-9a-f]{40}$/)
+    assert.notEqual(retry.value.inputs?.codeTree, retry.value.inputs?.baseCodeTree)
     const latest = latestReview(dir, ref, "HEAD")
     assert.ok(latest.ok)
     assert.equal(latest.value.reviewId, "9d3c2b1a-0f4e-4a5b-8c7d-1e2f3a4b5c6d")

@@ -19,8 +19,14 @@ import {
   repositoryRoot,
   resolveSha
 } from "./git-access.ts"
-import { importEntry, latestEntry, recordEntry } from "./note-store.ts"
-import { nearestReview, type Review, defaultNotesRef as reviewNotesRef, reviewProblems } from "./review-findings.ts"
+import { importEntry, latestEntry, latestMatching, recordEntry } from "./note-store.ts"
+import {
+  latestReviewMatching,
+  nearestReview,
+  type Review,
+  defaultNotesRef as reviewNotesRef,
+  reviewProblems
+} from "./review-findings.ts"
 import { isFixSlice } from "./schema-checks.ts"
 import {
   evidenceOnlyFindings,
@@ -32,9 +38,10 @@ import {
   sliceMatchesBranch
 } from "./verification/gate.ts"
 import { featureArtifactsAt } from "./verification/git.ts"
+import { reportInputs } from "./verification/inputs.ts"
 import { notesRef, reportNotes } from "./verification/notes.ts"
 import { earlierResultSha, insertResults, renderReport } from "./verification/render.ts"
-import { buildRequest, type VerificationRequest } from "./verification/request.ts"
+import { buildRequest, firstSliceId, type VerificationRequest } from "./verification/request.ts"
 
 export { notesRef } from "./verification/notes.ts"
 export { validateReport, type VerificationReport } from "./verification/report.ts"
@@ -73,16 +80,32 @@ const reports = (cwd: string) => ({ cwd, kind: reportNotes, ref: notesRef })
 const verifiedShaExists = (cwd: string) => (report: VerificationReport): readonly string[] =>
   isCommit(cwd, report.verifiedSha) ? [] : [`${report.verifiedSha} is not a commit in this repository`]
 
-/** Validates a report and appends it to the note on its verified SHA. */
-export const recordReport = (cwd: string, json: string): Outcome<VerificationReport> =>
-  recordEntry(reports(cwd), json, verifiedShaExists(cwd))
+/** A report's recorded inputs, when it has them, must be the inputs of its verified SHA. */
+const inputsMatch = (cwd: string) => (report: VerificationReport): readonly string[] => {
+  const missing = verifiedShaExists(cwd)(report)
+  if (missing.length > 0 || report.inputs === undefined) return missing
+  const actual = reportInputs(cwd, report.verifiedSha, report.featureDir)
+  return actual.codeTree === report.inputs.codeTree && actual.featureInputs === report.inputs.featureInputs
+    ? []
+    : [`its recorded inputs are not those of ${report.verifiedSha}`]
+}
 
-/** Validates a report recorded in another clone and appends it unless its run ID is already on that SHA. */
+/** Validates a report, records its inputs from the verified SHA, and appends it to the note on that SHA. */
+export const recordReport = (cwd: string, json: string): Outcome<VerificationReport> =>
+  recordEntry(reports(cwd), json, verifiedShaExists(cwd), (report) =>
+    isCommit(cwd, report.verifiedSha)
+      ? { ...report, inputs: reportInputs(cwd, report.verifiedSha, report.featureDir) }
+      : report)
+
+/**
+ * Validates a report recorded in another clone and appends it unless its run ID is already on that SHA. Recorded
+ * inputs must match the verified SHA.
+ */
 export const importReport = (
   cwd: string,
   json: string
 ): Outcome<{ readonly entry: VerificationReport; readonly written: boolean }> =>
-  importEntry(reports(cwd), json, verifiedShaExists(cwd))
+  importEntry(reports(cwd), json, inputsMatch(cwd))
 
 /** The latest report on `revision`, if its note is valid. */
 export const reportAt = (cwd: string, revision: string): Outcome<undefined | VerificationReport> =>
@@ -105,6 +128,39 @@ const nearestReport = (cwd: string, head: string): Outcome<VerificationReport> =
   return report.value === undefined ? fail(`the note on ${verified} has no report`) : { ok: true, value: report.value }
 }
 
+/** The slice an implementation branch carries: its suffix, or for the first slice's `-impl` branch, plan.md's first. */
+const branchSlice = (cwd: string, branch: ImplementationBranch, head: string): string | undefined =>
+  branch.sliceSuffix ?? firstSliceId(readAtSha(cwd, head, `${branch.featureDir}/plan.md`) ?? "")
+
+/** Whether a report or review is for this feature and slice. */
+const forSlice =
+  (featureDir: string, sliceId: string) =>
+  (entry: { readonly featureDir?: string | undefined; readonly sliceId: string }): boolean =>
+    entry.featureDir === featureDir && entry.sliceId.toLowerCase() === sliceId.toLowerCase()
+
+/**
+ * The slice's latest report, whatever commit it is on: a restack leaves the verified commit off the branch, and
+ * the drift check then decides whether it still covers HEAD. Without a slice ID, the nearest annotated ancestor.
+ */
+const sliceReport = (cwd: string, featureDir: string, sliceId: string | undefined, head: string) => {
+  if (sliceId === undefined) return nearestReport(cwd, head)
+  const latest = latestMatching(reports(cwd), forSlice(featureDir, sliceId))
+  if (!latest.ok) return latest
+  return latest.value === undefined
+    ? fail(`no verification report for slice ${sliceId} of ${featureDir}`)
+    : { ok: true as const, value: latest.value }
+}
+
+/** The slice's latest review, found like `sliceReport`. */
+const sliceReview = (cwd: string, featureDir: string, sliceId: string | undefined, head: string) => {
+  if (sliceId === undefined) return nearestReview(cwd, reviewNotesRef, head)
+  const latest = latestReviewMatching(cwd, reviewNotesRef, forSlice(featureDir, sliceId))
+  if (!latest.ok) return latest
+  return latest.value === undefined
+    ? fail(`no review for slice ${sliceId} of ${featureDir}`)
+    : { ok: true as const, value: latest.value }
+}
+
 /** Findings for commits after `evidence.sha` other than the feature's quickstart execution results. */
 const driftFindings = (
   cwd: string,
@@ -119,21 +175,23 @@ const driftFindings = (
   })
 }
 
-/** The code review half of the gate: the nearest review passes, matches the branch, and covers HEAD. */
+/** The code review half of the gate: the review found passes, matches the branch, and covers HEAD. */
 const reviewFindings = (
   cwd: string,
   head: string,
-  matches: (review: Review) => readonly string[],
-  featureDir: (review: Review) => string | undefined
+  review: Outcome<Review>,
+  checks: {
+    readonly featureDir: (review: Review) => string | undefined
+    readonly matches: (review: Review) => readonly string[]
+  }
 ): readonly string[] => {
-  const review = nearestReview(cwd, reviewNotesRef, head)
   if (!review.ok) return review.problems.map((problem) => `code review: ${problem}`)
   return [
     ...reviewProblems(review.value),
-    ...matches(review.value),
+    ...checks.matches(review.value),
     ...driftFindings(
       cwd,
-      { featureDir: featureDir(review.value), label: "reviewed", sha: review.value.reviewedSha },
+      { featureDir: checks.featureDir(review.value), label: "reviewed", sha: review.value.reviewedSha },
       head
     )
   ].map((problem) => `code review: ${problem}`)
@@ -173,7 +231,8 @@ export const gateApplies = (cwd: string, target: GateTarget): boolean =>
   || (target.labels?.includes(highFixLabel) === true && !isPhaseBranch(cwd, target))
 
 const slicePass = (cwd: string, branch: ImplementationBranch, target: GateTarget): Outcome<VerificationReport> => {
-  const report = nearestReport(cwd, target.head)
+  const sliceId = branchSlice(cwd, branch, target.head)
+  const report = sliceReport(cwd, branch.featureDir, sliceId, target.head)
   if (!report.ok) return report
   const { featureDir, verifiedSha } = report.value
   // A report without a feature directory fails gateForBranch's branch check; the branch's own one builds the request.
@@ -186,13 +245,11 @@ const slicePass = (cwd: string, branch: ImplementationBranch, target: GateTarget
   const problems = [
     ...driftFindings(cwd, { featureDir, label: "verified", sha: verifiedSha }, target.head),
     ...gateForBranch(report.value, request.value, branch),
-    ...reviewFindings(
-      cwd,
-      target.head,
-      (review) =>
-        sliceMatchesBranch({ featureDir: review.featureDir, label: "review", sliceId: review.sliceId }, branch),
-      (review) => review.featureDir
-    )
+    ...reviewFindings(cwd, target.head, sliceReview(cwd, branch.featureDir, sliceId, target.head), {
+      featureDir: (review) => review.featureDir,
+      matches: (review) =>
+        sliceMatchesBranch({ featureDir: review.featureDir, label: "review", sliceId: review.sliceId }, branch)
+    })
   ]
   return problems.length > 0 ? fail(...problems) : report
 }
@@ -207,13 +264,11 @@ const fixPass = (cwd: string, target: GateTarget): Outcome<VerificationReport> =
   const problems = [
     ...driftFindings(cwd, { featureDir: undefined, label: "verified", sha: report.value.verifiedSha }, target.head),
     ...fixReportFindings(report.value),
-    ...reviewFindings(
-      cwd,
-      target.head,
-      (review) =>
-        isFixSlice(review.sliceId) ? [] : [`the review is for slice ${review.sliceId}, not a High fix (slice fix)`],
-      () => undefined
-    )
+    ...reviewFindings(cwd, target.head, nearestReview(cwd, reviewNotesRef, target.head), {
+      featureDir: () => undefined,
+      matches: (review) =>
+        isFixSlice(review.sliceId) ? [] : [`the review is for slice ${review.sliceId}, not a High fix (slice fix)`]
+    })
   ]
   return problems.length > 0 ? fail(...problems) : report
 }

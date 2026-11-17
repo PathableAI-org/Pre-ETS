@@ -366,9 +366,13 @@ history. If the correction is small, merge it first and then rebase the open sta
 in progress depends on the old decision, insert the correction as the new bottom of that stack so reviewers see it
 before the upper pull request changes. Do not hide the correction inside the implementation branch.
 
-A successful rebase does not renew approval or evidence. Report which decisions changed, which downstream assumptions
-and public contracts are affected, which automated or manual verification must be repeated, and which earlier evidence
-no longer applies.
+A successful rebase does not renew approval, and by itself does not renew evidence. A slice keeps its verification
+report and code review only when [the gate](verification-harness.md#gate-and-escalation) finds that the diff from
+the verified or reviewed commit to the restacked head changes nothing but the feature's `quickstart.md` execution
+results. That is the case when a lower slice only recorded its results, and never when a correction changed the
+feature's artifacts or any code. Report which decisions changed, which downstream assumptions and public contracts
+are affected, which automated or manual verification must be repeated, and which earlier evidence no longer
+applies.
 
 ## Concurrent work and recovery
 

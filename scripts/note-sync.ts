@@ -10,7 +10,7 @@
  */
 import type { Validated } from "./schema-checks.ts"
 
-import { branchesAt, currentBranch, isCommit } from "./git-access.ts"
+import { branchesAt, currentBranch, fetchCommit, isCommit } from "./git-access.ts"
 import {
   authenticatedLogin,
   issueComments,
@@ -250,24 +250,34 @@ export const describePublish = (
 export interface SyncResult {
   readonly imported: number
   readonly present: number
-  /** One reason per marked comment that was not imported. */
+  /** One reason per marked comment that was not imported because it is damaged, foreign, or inconsistent. */
   readonly rejected: readonly string[]
+  /**
+   * One line per valid comment whose commit this clone lacks and could not fetch, such as a slice tip a restack
+   * replaced that GitHub no longer serves. Not imported, and not an error: later entries carry the evidence.
+   */
+  readonly unavailable: readonly string[]
 }
 
-type CommentOutcome = "imported" | "present" | { readonly rejected: string }
+type CommentOutcome = "imported" | "present" | { readonly rejected: string } | { readonly unavailable: string }
 
 const importComment = <T>(
   channel: Channel<T>,
   target: { readonly cwd: string; readonly refs: NoteRefs },
   comment: { readonly entry: unknown; readonly id: string; readonly sha: string }
-): Validated<{ readonly written: boolean }> => {
+): Validated<"imported" | "present" | "unavailable"> => {
   const entry = channel.validate(comment.entry)
   if (!entry.ok) return entry
   if (channel.sha(entry.value) !== comment.sha || channel.id(entry.value) !== comment.id) {
     return fail("its marker does not match the entry's SHA and ID")
   }
-  if (!isCommit(target.cwd, comment.sha)) return fail(`${comment.sha} is not in this clone; fetch the branch first`)
-  return channel.import(target.cwd, target.refs, JSON.stringify(entry.value))
+  // A restack leaves the annotated commit off every branch; GitHub still serves it by SHA until it is collected.
+  if (!isCommit(target.cwd, comment.sha) && !fetchCommit(target.cwd, comment.sha)) {
+    return { ok: true, value: "unavailable" }
+  }
+  const imported = channel.import(target.cwd, target.refs, JSON.stringify(entry.value))
+  if (!imported.ok) return imported
+  return { ok: true, value: imported.value.written ? "imported" : "present" }
 }
 
 const syncComment = (
@@ -285,7 +295,9 @@ const syncComment = (
     ? importComment(review, target, parsed.value)
     : importComment(verification, target, parsed.value)
   if (!outcome.ok) return { rejected: `${label}: ${outcome.problems.join("; ")}` }
-  return outcome.value.written ? "imported" : "present"
+  return outcome.value === "unavailable"
+    ? { unavailable: `${label}: ${parsed.value.sha} is not in this clone and could not be fetched from origin` }
+    : outcome.value
 }
 
 /**
@@ -310,18 +322,26 @@ export const syncPullNotes = (
     value: {
       imported: outcomes.filter((outcome) => outcome === "imported").length,
       present: outcomes.filter((outcome) => outcome === "present").length,
-      rejected: outcomes.flatMap((outcome) => typeof outcome === "string" ? [] : [outcome.rejected])
+      rejected: outcomes.flatMap((outcome) =>
+        typeof outcome !== "string" && "rejected" in outcome ? [outcome.rejected] : []
+      ),
+      unavailable: outcomes.flatMap((outcome) =>
+        typeof outcome !== "string" && "unavailable" in outcome ? [outcome.unavailable] : []
+      )
     }
   }
 }
 
-/** One line on a sync's result, then one line per rejected comment. */
+/** One line on a sync's result, then one line per rejected or unavailable comment. */
 export const describeSync = (pr: number, result: SyncResult): string =>
   [
     `Notes: synced pull request #${String(pr)}: ${String(result.imported)} imported, ${
       String(result.present)
-    } already present, ${String(result.rejected.length)} rejected.`,
-    ...result.rejected.map((reason) => `  - rejected ${reason}`)
+    } already present, ${String(result.rejected.length)} rejected${
+      result.unavailable.length > 0 ? `, ${String(result.unavailable.length)} unavailable` : ""
+    }.`,
+    ...result.rejected.map((reason) => `  - rejected ${reason}`),
+    ...result.unavailable.map((reason) => `  - unavailable ${reason}`)
   ].join("\n") + "\n"
 
 const localOnly = (reason: string): string => `Notes: ${reason}; reading local notes only.\n`
