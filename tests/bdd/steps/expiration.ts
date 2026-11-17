@@ -122,6 +122,13 @@ export const tabOf = (world: AppWorld, name: string): Tab => {
 export const namesOf = (list: string): readonly string[] =>
   [...list.matchAll(/"([^"]+)"/g)].map((match) => match[1] ?? "")
 
+/** The quoted names in a list, which must name at least one: a list without any would leave a step checking nothing. */
+export const listedNames = (list: string): readonly string[] => {
+  const names = namesOf(list)
+  assert.ok(names.length > 0, `expected quoted names in ${list}`)
+  return names
+}
+
 /**
  * Runs as the first script of every document: reports protected content (a protected page's heading or control in the
  * document, not inside `[hidden]` or `[inert]`) when the page is restored from the back/forward cache with it exposed,

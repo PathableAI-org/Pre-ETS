@@ -92,7 +92,9 @@ const record = (): number => {
 
 const gate = (): number =>
   finish(runGate(cwd, checkedOut(cwd, syncFirst())), (pass) => {
-    const via = pass.report.verifiedSha === pass.head ? "HEAD" : `${pass.report.verifiedSha} plus evidence-only commits`
+    const via = pass.report.verifiedSha === pass.head
+      ? "HEAD"
+      : `${pass.report.verifiedSha}, whose diff to HEAD is evidence-only`
     print(
       `Verification gate passed for ${pass.branch}: slice ${pass.report.sliceId}, run ${pass.report.runId}, via ${via}.\n`
     )

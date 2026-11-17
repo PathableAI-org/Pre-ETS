@@ -4,11 +4,12 @@ import { setTimeout as delay } from "node:timers/promises"
 
 import type { AppWorld } from "../support/world.ts"
 
-import { applicationBrowser, signInThroughApplication } from "../support/browser.ts"
-import { type RecordedResponse, requestInstance, sendRequest, startSecondSite } from "../support/server.ts"
-import { namesOf } from "./expiration.ts"
+import { signInAndClose } from "../support/browser.ts"
+import { namedEntries } from "../support/named.ts"
+import { type RecordedResponse, startSecondSite } from "../support/server.ts"
+import { listedNames } from "./expiration.ts"
 import { assertNoProtectedContent, assertSameOriginLogin } from "./http.ts"
-import { activityCommunication, type Presentation, sessionStatus, snapshotOf } from "./session-coordination.ts"
+import { type Presentation, sessionActivity, sessionEntry, sessionStatus, snapshotOf } from "./session-coordination.ts"
 
 /**
  * The port of one of the two independently started application processes: A is the world's site, B its second site.
@@ -47,34 +48,18 @@ interface SharedSession extends Presentation {
   renewedDeadline?: number | undefined
 }
 
-const sessions = new WeakMap<AppWorld, Map<string, SharedSession>>()
+const sessions = namedEntries<SharedSession>((name) => `expected session ${name} to have been signed in`)
 
-const sessionsOf = (world: AppWorld): Map<string, SharedSession> => {
-  const named = sessions.get(world) ?? new Map<string, SharedSession>()
-  sessions.set(world, named)
-  return named
-}
-
-const sessionOf = (world: AppWorld, name: string): SharedSession => {
-  const session = sessionsOf(world).get(name)
-  assert.ok(session, `expected session ${name} to have been signed in`)
-  return session
-}
+const sessionOf = sessions.get
 
 const readStatus = (world: AppWorld, instance: string, session: Presentation) =>
   sessionStatus(world, portOf(world, instance), session)
 
-/** A document entry: the gate renews a usable session for it, and the page reads the session. */
 const requestEntry = (world: AppWorld, instance: string, session: Presentation) =>
-  requestInstance(world, portOf(world, instance), session.host, "/", true, session.cookie)
+  sessionEntry(world, portOf(world, instance), session)
 
-/** Qualifying in-page activity as the session's own tab sends it, carrying the session's tag. */
 const communicateActivity = (world: AppWorld, instance: string, session: SharedSession) =>
-  sendRequest(world, {
-    ...activityCommunication(session.host, "keyboard-interaction", session.coordinationTag),
-    cookie: session.cookie,
-    port: portOf(world, instance)
-  })
+  sessionActivity(world, portOf(world, instance), session)
 
 /**
  * The reference entry displays the session's subject, issuer, and tenant alias as the first texts after its heading;
@@ -97,8 +82,7 @@ const renewedDeadlineOf = (session: SharedSession): number => {
 
 /** Waits until two seconds after the latest of the listed sessions' chosen deadlines. */
 const waitPast = async (world: AppWorld, list: string, deadlineOf: (session: SharedSession) => number) => {
-  const names = namesOf(list)
-  assert.ok(names.length > 0, `expected quoted session names in ${list}`)
+  const names = listedNames(list)
   const latest = Math.max(...names.map((name) => deadlineOf(sessionOf(world, name))))
   await delay(Math.max(0, latest + 2_000 - Date.now()))
 }
@@ -117,17 +101,11 @@ When(
   "the visitor signs in to session {string} at {string} through instance {word}",
   async function(this: AppWorld, name: string, host: string, instance: string) {
     await startSecondSite(this)
-    const owned = await applicationBrowser(portOf(this, instance), [host])
-    let reference: string
-    try {
-      reference = await signInThroughApplication(await owned.browser.newContext(), host)
-    } finally {
-      await owned.close()
-    }
+    const { reference } = await signInAndClose(portOf(this, instance), host)
     const presented = { cookie: `pathable-session=${reference}`, host }
     const establishedIdentity = entryIdentity(await requestEntry(this, instance, presented))
     const { coordinationTag, deadline } = snapshotOf(await readStatus(this, instance, presented))
-    sessionsOf(this).set(name, {
+    sessions.set(this, name, {
       ...presented,
       atDeadline: [],
       coordinationTag,

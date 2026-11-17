@@ -67,10 +67,19 @@ Given(
   }
 )
 
-/** A script-driven invocation of the built Server Action `exportedName` at `path`, as its form posts it. */
-export const actionRequest = async (world: AppWorld, exportedName: string, host: string, path: string) => {
+/**
+ * A script-driven invocation of the built Server Action `exportedName` at `path`, as its form posts it with the
+ * coordination tag its page observed: by default, the one the world's page observed.
+ */
+export const actionRequest = async (
+  world: AppWorld,
+  exportedName: string,
+  host: string,
+  path: string,
+  coordinationTag = world.coordinationTag
+) => {
   const action = await serverActionId(exportedName)
-  const { body, contentType } = await multipartBody(referenceActionArguments(world.coordinationTag))
+  const { body, contentType } = await multipartBody(referenceActionArguments(coordinationTag))
   return {
     body,
     headers: {
@@ -104,9 +113,13 @@ When(
 Then("the response status is {int}", function(this: AppWorld, status: number) {
   assert.equal(this.response?.status, status)
 })
+/** Neither an authentication, authorization, nor server failure: the request was let through and handled. */
+export const isAdmitted = (status: number | undefined): boolean =>
+  status !== undefined && status < 500 && status !== 401 && status !== 403
+
 Then("the response is not an authentication, authorization, or server failure", function(this: AppWorld) {
   const status = this.response?.status
-  assert.ok(status !== undefined && status < 500 && ![401, 403].includes(status), `unexpected status ${String(status)}`)
+  assert.ok(isAdmitted(status), `unexpected status ${String(status)}`)
 })
 Then("the earlier callback status is {int}", function(this: AppWorld, status: number) {
   assert.equal(this.earlierResponse?.status, status)

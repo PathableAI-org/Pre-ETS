@@ -35,6 +35,7 @@ frontend, recording the last HTTP response, the scoped browser transport, and th
 | `expired-recovery.ts`     | Recovery from an expired or removed session: recovery documents, form submissions, and second tabs                           |
 | `fresh-recovery.ts`       | Fresh authentication with a provider single sign-on session: logout, history, abandoned and stale logins, new sessions       |
 | `shared-session.ts`       | Named sessions presented to two instances: admission, renewal, and expiration through either                                 |
+| `idle-timeout.ts`         | Named sessions under the tenant idle timeout: deadlines judged by the test's clock, renewal after a change, and enforcement  |
 | `tab-sharing.ts`          | One session shared by named tabs: joining, a renewal reaching every tab, shared logout, and isolation from other sessions    |
 
 Add a step to the file that owns its journey. A browser journey that keeps state across steps (its browser, named

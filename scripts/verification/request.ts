@@ -116,6 +116,12 @@ const sliceTable = (plan: string): Table | undefined =>
     && (column(table, /^claim ids advanced$/i) >= 0 || column(table, /^full claims$/i) >= 0)
   )
 
+/** The first slice in `plan.md`'s slice table, which the first implementation branch (`-impl`) carries. */
+export const firstSliceId = (plan: string): string | undefined => {
+  const first = sliceTable(plan)?.rows[0]?.[0]
+  return first === undefined || plain(first).length === 0 ? undefined : plain(first)
+}
+
 const sliceRow = (table: Table, sliceId: string): readonly string[] | undefined =>
   table.rows.find((row) => plain(row[0] ?? "").toLowerCase() === sliceId.toLowerCase())
 

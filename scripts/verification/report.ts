@@ -6,6 +6,7 @@ import type { ClaimScope } from "./request.ts"
  */
 import {
   type Check,
+  digest,
   featureDir,
   featureDirUnlessFix,
   isRecord,
@@ -19,6 +20,7 @@ import {
   sha,
   sliceId,
   text,
+  treeId,
   uuid,
   type Validated
 } from "../schema-checks.ts"
@@ -61,6 +63,17 @@ export interface ForbiddenDataFinding {
   readonly signal: string
 }
 
+/**
+ * What the report was observed against, recorded by `verify:record` from the verified SHA rather than written by the
+ * verifier: the code tree outside `specs/`, and a digest of the feature's artifacts without its execution results.
+ * Reports recorded before this field existed have none.
+ */
+export interface ReportInputs {
+  readonly codeTree: string
+  /** Absent for a High fix, which has no feature directory. */
+  readonly featureInputs?: string | undefined
+}
+
 export interface TelemetryRowReport {
   readonly detail?: string | undefined
   readonly id: string
@@ -76,6 +89,7 @@ export interface VerificationReport {
   /** The feature's `specs/{number}-{slug}`. A High fix (slice ID `fix`) may omit it. */
   readonly featureDir?: string | undefined
   readonly forbiddenData: readonly ForbiddenDataFinding[]
+  readonly inputs?: ReportInputs | undefined
   readonly runId: string
   readonly schemaVersion: 1
   readonly sliceId: string
@@ -134,6 +148,7 @@ const report = object({
   escalations: list(object({ detail: text, kind: oneOf(escalationKinds) })),
   featureDir: optional(featureDir),
   forbiddenData: list(object({ field: fieldName, signal: text })),
+  inputs: optional(object({ codeTree: treeId, featureInputs: optional(digest) })),
   runId: uuid,
   schemaVersion: schemaVersion1,
   sliceId,

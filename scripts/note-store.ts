@@ -5,7 +5,7 @@ import type { Validated } from "./schema-checks.ts"
  * so a retry supersedes the earlier entry without erasing it; the latest entry is the last one. Verification reports
  * and code reviews are the two kinds.
  */
-import { readNote, resolveSha, writeNote } from "./git-access.ts"
+import { annotatedByRecency, readNote, resolveSha, writeNote } from "./git-access.ts"
 
 export interface NoteKind<T> {
   /** What one entry is called in messages: "report" or "review". */
@@ -70,6 +70,28 @@ export interface NoteTarget<T> {
   readonly ref: string
 }
 
+interface AppendOptions<T> {
+  readonly check: (entry: T) => readonly string[]
+  /** Fills in what the tool records itself, such as the entry's inputs, once the entry is valid. */
+  readonly complete?: ((entry: T) => T) | undefined
+  readonly duplicate: "refuse" | "skip"
+}
+
+/** Parses and validates `json` as one entry, applies `complete`, and runs `check` on the result. */
+const checkedEntry = <T>(kind: NoteKind<T>, json: string, options: AppendOptions<T>): Validated<T> => {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(json)
+  } catch {
+    return fail(`the ${kind.entry} is not JSON`)
+  }
+  const validated = kind.validate(parsed)
+  if (!validated.ok) return validated
+  const entry = options.complete?.(validated.value) ?? validated.value
+  const problems = options.check(entry)
+  return problems.length > 0 ? fail(...problems) : { ok: true, value: entry }
+}
+
 /**
  * Validates `json` as one entry, runs `check` on it, and appends it to the note on its SHA in `ref`. With `skip`, an
  * entry whose ID is already on that SHA is left as it is instead of refused.
@@ -77,39 +99,36 @@ export interface NoteTarget<T> {
 const appendJson = <T>(
   target: NoteTarget<T>,
   json: string,
-  options: { readonly check: (entry: T) => readonly string[]; readonly duplicate: "refuse" | "skip" }
+  options: AppendOptions<T>
 ): Validated<{ readonly entry: T; readonly written: boolean }> => {
   const { cwd, kind, ref } = target
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(json)
-  } catch {
-    return fail(`the ${kind.entry} is not JSON`)
-  }
-  const entry = kind.validate(parsed)
-  if (!entry.ok) return entry
-  const problems = options.check(entry.value)
-  if (problems.length > 0) return fail(...problems)
-  const sha = kind.sha(entry.value)
+  const checked = checkedEntry(kind, json, options)
+  if (!checked.ok) return checked
+  const entry = checked.value
+  const sha = kind.sha(entry)
   const existing = parseEntries(kind, readNote(cwd, ref, sha))
   if (!existing.ok) return existing
-  const present = existing.value.find((recorded) => kind.id(recorded) === kind.id(entry.value))
+  const present = existing.value.find((recorded) => kind.id(recorded) === kind.id(entry))
   if (present !== undefined && options.duplicate === "skip") {
     return { ok: true, value: { entry: present, written: false } }
   }
-  const next = appendEntry(kind, existing.value, entry.value)
+  const next = appendEntry(kind, existing.value, entry)
   if (!next.ok) return next
   writeNote(cwd, ref, sha, `${JSON.stringify({ [kind.listKey]: next.value, schemaVersion: 1 }, null, 2)}\n`)
-  return { ok: true, value: { entry: next.value.at(-1) ?? entry.value, written: true } }
+  return { ok: true, value: { entry: next.value.at(-1) ?? entry, written: true } }
 }
 
-/** Appends an entry and returns it as recorded, with the entry it supersedes filled in. A repeated ID is refused. */
+/**
+ * Appends an entry and returns it as recorded, with the entry it supersedes filled in, and `complete` applied to
+ * the valid entry first. A repeated ID is refused.
+ */
 export const recordEntry = <T>(
   target: NoteTarget<T>,
   json: string,
-  check: (entry: T) => readonly string[] = () => []
+  check: (entry: T) => readonly string[] = () => [],
+  complete?: (entry: T) => T
 ): Validated<T> => {
-  const recorded = appendJson(target, json, { check, duplicate: "refuse" })
+  const recorded = appendJson(target, json, { check, complete, duplicate: "refuse" })
   return recorded.ok ? { ok: true, value: recorded.value.entry } : recorded
 }
 
@@ -130,4 +149,20 @@ export const latestEntry = <T>(
 ): Validated<T | undefined> => {
   const entries = parseEntries(target.kind, readNote(target.cwd, target.ref, resolveSha(target.cwd, revision)))
   return entries.ok ? { ok: true, value: entries.value.at(-1) } : entries
+}
+
+/**
+ * The latest entry that `matches` accepts, from the commit whose note was written most recently, or undefined when
+ * no note holds one. Only each commit's latest entry is considered, as `latestEntry` reads it.
+ */
+export const latestMatching = <T>(
+  target: NoteTarget<T>,
+  matches: (entry: T) => boolean
+): Validated<T | undefined> => {
+  for (const sha of annotatedByRecency(target.cwd, target.ref)) {
+    const latest = latestEntry(target, sha)
+    if (!latest.ok) return latest
+    if (latest.value !== undefined && matches(latest.value)) return latest
+  }
+  return { ok: true, value: undefined }
 }
