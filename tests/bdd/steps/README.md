@@ -10,8 +10,11 @@ missing-page and forbidden-page presentation, provider arrival and callback deli
 renewal by qualifying activity, cross-tab expiration and logout, history protection, and recovery after expiry. They must not open Redis clients, session
 stores, or mock identity providers. Setup may sign in at the real provider without the application, to arrange a
 provider session or to check a fixture client's prerequisite, as the Stale tenant step does with
-`providerIdTokenClaims`; that is not evidence about the application. Redis is observed only through application
-outcomes. Browser requests preserve
+`providerIdTokenClaims`; that is not evidence about the application. While the provider asks for fresh authentication,
+a step may ask it, from the browser's own context, whether it would answer the same authorization without `max_age` at
+once (`providerSignsInSilently`), which shows directly that the browser still holds a provider single sign-on session.
+That answer is read without being followed, so its code never reaches the application and is never redeemed. Redis
+is observed only through application outcomes. Browser requests preserve
 the logical Host header while routing to the owned loopback process, so no step establishes infrastructure ingress
 behavior.
 
@@ -28,9 +31,9 @@ frontend, recording the last HTTP response, the scoped browser transport, and th
 | `presentation.ts`         | Rendered missing-page and forbidden-page content after navigation                                                            |
 | `authentication.ts`       | Provider destination/protocol, callback delivery, and public sign-in observations                                            |
 | `session-coordination.ts` | In-page activity sent without a browser, and what renews a real session: tab interactions and requests, read from its status |
-| `expiration.ts`           | Idle expiration across named tabs: concealment, the expiration modal, resumed tabs, logout, and history                      |
+| `expiration.ts`           | Idle expiration across named tabs: concealment, the expiration modal, resumed tabs, logout, history, fresh entry after it    |
 | `expired-recovery.ts`     | Recovery from an expired or removed session: recovery documents, form submissions, and second tabs                           |
-| `fresh-recovery.ts`       | Fresh authentication with a provider single sign-on session: logout, history, and session replacement                        |
+| `fresh-recovery.ts`       | Fresh authentication with a provider single sign-on session: logout, history, abandoned and stale logins, new sessions       |
 | `shared-session.ts`       | Named sessions presented to two instances: admission, renewal, and expiration through either                                 |
 | `idle-timeout.ts`         | Named sessions under the tenant idle timeout: deadlines judged by the test's clock, renewal after a change, and enforcement  |
 | `tab-sharing.ts`          | One session shared by named tabs: joining, a renewal reaching every tab, shared logout, and isolation from other sessions    |

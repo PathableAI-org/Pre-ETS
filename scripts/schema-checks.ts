@@ -49,6 +49,8 @@ export const object = (fields: Readonly<Record<string, Check>>): Check => (value
 }
 
 export const sha = matching(/^[0-9a-f]{40}$/, "a full 40-character commit SHA")
+export const treeId = matching(/^[0-9a-f]{40}$/, "a 40-character git tree ID")
+export const digest = matching(/^[0-9a-f]{64}$/, "a 64-character SHA-256 digest")
 export const uuid = matching(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, "a UUID")
 export const featureDir = matching(/^specs\/\d+-[a-z0-9-]+$/, "specs/{number}-{slug}")
 export const sliceId = matching(/^[A-Za-z0-9]+$/, "a slice ID such as A1")

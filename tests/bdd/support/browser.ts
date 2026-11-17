@@ -120,6 +120,57 @@ export const providerIdTokenClaims = async (request: {
 }
 
 /**
+ * The same authorization as `authorization`, asking the provider not to prompt and without `max_age`. The state, nonce,
+ * and code challenge are new, so nothing of the application's transaction is reused.
+ */
+const silentAuthorization = (authorization: URL): URL => {
+  const silent = new URL(authorization.href)
+  silent.searchParams.delete("max_age")
+  silent.searchParams.set("prompt", "none")
+  silent.searchParams.set("state", randomBytes(16).toString("base64url"))
+  silent.searchParams.set("nonce", randomBytes(16).toString("base64url"))
+  silent.searchParams.set(
+    "code_challenge",
+    createHash("sha256").update(randomBytes(32).toString("base64url")).digest("base64url")
+  )
+  return silent
+}
+
+/** Where the provider's answer to `authorization`, requested in a new page of `context`, leads, without following it. */
+const authorizationAnswer = async (context: BrowserContext, authorization: URL): Promise<string> => {
+  const page = await context.newPage()
+  try {
+    const answers: string[] = []
+    await page.route(isAuthorization, async (route) => {
+      answers.push((await route.fetch({ maxRedirects: 0 })).headers().location ?? "")
+      await route.fulfill({ body: "", contentType: "text/plain", status: 200 })
+    }, { times: 1 })
+    await page.goto(authorization.href)
+    return answers.join("")
+  } finally {
+    await page.close()
+  }
+}
+
+/**
+ * Whether the tracked provider would still sign the browser of `context` in without asking: the same authorization as
+ * `authorization`, but with `prompt=none` and without `max_age`, made with the provider cookies `context` holds, is
+ * answered with a code for its redirect URI rather than an error. The answer is read without being followed, so the
+ * code never reaches the redirect URI and is never redeemed. A pending authentication step in another page of
+ * `context` stays as it was.
+ */
+export const providerSignsInSilently = async (context: BrowserContext, authorization: URL): Promise<boolean> => {
+  if (!isAuthorization(authorization)) assert.fail(`expected an authorization at ${PROVIDER_ORIGIN}`)
+  const redirectUri = String(authorization.searchParams.get("redirect_uri"))
+  const answer = await authorizationAnswer(context, silentAuthorization(authorization))
+  if (!answer.startsWith(`${redirectUri}?`)) {
+    assert.fail("expected the provider to answer a silent authorization at the redirect URI")
+  }
+  const { searchParams } = new URL(answer)
+  return !searchParams.has("error") && searchParams.has("code")
+}
+
+/**
  * Signs in at `host` through the application and the tracked provider in a new page of `context`, waits until the
  * signed-in entry shows, and answers the application session cookie's value.
  */

@@ -61,6 +61,32 @@ void describe("recording reports in git notes", () => {
     ])
   })
 
+  void it("records the code tree and feature inputs, which evidence-only commits leave unchanged", () => {
+    const inputsAt = (sha: string, runId: string) => {
+      const recorded = recordReport(
+        repo.dir,
+        sampleReport(sha, (report) => {
+          report.runId = runId
+        })
+      )
+      assert.ok(recorded.ok, recorded.ok ? "" : recorded.problems.join("\n"))
+      return recorded.value.inputs
+    }
+    const first = inputsAt(verified, "79b28959-742b-4ba0-84dc-e25bb8a345dc")
+    assert.match(first?.codeTree ?? "", /^[0-9a-f]{40}$/)
+    assert.match(first?.featureInputs ?? "", /^[0-9a-f]{64}$/)
+    const results = fixture("quickstart.md").replace("No results recorded yet.", "### Slice A1 — results\n\nDone.")
+    const evidence = repo.commit("docs: record A1 results", { [`${featureDir}/quickstart.md`]: results })
+    assert.deepEqual(inputsAt(evidence, "59161d0e-59d5-4379-8d7c-736a2fd48c5b"), first)
+    const steps = results.replace("Post the action after the deadline.", "Post it twice.")
+    const changed = inputsAt(
+      repo.commit("docs: change a step", { [`${featureDir}/quickstart.md`]: steps }),
+      "6a4f0f7e-3c2b-4d1a-9e8f-7b6c5d4e3f2a"
+    )
+    assert.equal(changed?.codeTree, first?.codeTree)
+    assert.notEqual(changed?.featureInputs, first?.featureInputs)
+  })
+
   void it("refuses a second report with the same run ID and an invalid report", () => {
     record()
     const again = recordReport(repo.dir, sampleReport(verified))
@@ -79,7 +105,7 @@ void describe("the verification gate", () => {
   })
 
   void it("fails with no report", () => {
-    assert.deepEqual(gateProblems(), ["no verification report on HEAD or its last 200 ancestors"])
+    assert.deepEqual(gateProblems(), [`no verification report for slice A1 of ${featureDir}`])
   })
 
   void it("judges only the latest report on the SHA", () => {
@@ -136,17 +162,48 @@ void describe("the verification gate", () => {
     ])
   })
 
-  void it("fails a report for a different slice than the branch", () => {
+  void it("keeps a report and review through a restack that changes only quickstart execution results", () => {
+    record()
+    const results = fixture("quickstart.md").replace("No results recorded yet.", "### Slice A0 — results\n\nDone.")
+    repo.git("checkout", "--quiet", "-B", "900-sample-impl", "main")
+    repo.commit("docs: record a lower slice's results", { [`${featureDir}/quickstart.md`]: results })
+    repo.commit("feat: A1", { "src/app.ts": "export const app = 2\n" })
+    assert.throws(() => repo.git("merge-base", "--is-ancestor", verified, "HEAD"), "the verified SHA is off the branch")
+    assert.deepEqual(gateProblems(), [])
+  })
+
+  void it("fails after a restack that changes code, and never falls back to an older report that covers HEAD", () => {
+    record()
+    repo.git("checkout", "--quiet", "-B", "900-sample-impl", "main")
+    repo.commit("feat: A1, resolved differently", { "src/app.ts": "export const app = 3\n" })
+    assert.deepEqual(gateProblems(), [
+      "commits after the verified SHA change src/app.ts",
+      "code review: commits after the reviewed SHA change src/app.ts"
+    ])
+    const later = repo.git("rev-parse", "HEAD")
+    assert.ok(
+      recordReport(
+        repo.dir,
+        sampleReport(later, (report) => {
+          report.runId = "59161d0e-59d5-4379-8d7c-736a2fd48c5b"
+        })
+      ).ok
+    )
+    repo.commit("revert to the first resolution", { "src/app.ts": "export const app = 2\n" })
+    assert.ok(gateProblems().includes("commits after the verified SHA change src/app.ts"))
+  })
+
+  void it("does not count a report for a different slice than the branch", () => {
     repo.git("checkout", "--quiet", "-b", "900-sample-impl-a2")
     record()
-    assert.ok(gateProblems().includes("the report is for slice A1, but this branch is slice a2"))
+    assert.ok(gateProblems().includes(`no verification report for slice a2 of ${featureDir}`))
   })
 })
 
 void describe("the code review half of the gate", () => {
   void it("fails a verified slice with no code review", () => {
     assert.ok(recordReport(repo.dir, sampleReport(verified)).ok)
-    assert.deepEqual(gateProblems(), ["code review: no review on HEAD or its last 200 ancestors"])
+    assert.deepEqual(gateProblems(), [`code review: no review for slice A1 of ${featureDir}`])
   })
 
   void it("fails while the latest review has an open blocking finding or escalation, and passes once closed", () => {
@@ -173,10 +230,12 @@ void describe("the code review half of the gate", () => {
     assert.deepEqual(gateProblems(), [])
   })
 
-  void it("fails a review for a different slice than the branch", () => {
+  void it("does not count a review for a different slice than the branch", () => {
     repo.git("checkout", "--quiet", "-b", "900-sample-impl-a2")
-    record()
-    assert.ok(gateProblems().includes("code review: the review is for slice A1, but this branch is slice a2"))
+    record((report) => {
+      report.sliceId = "A2"
+    })
+    assert.ok(gateProblems().includes(`code review: no review for slice a2 of ${featureDir}`))
   })
 })
 

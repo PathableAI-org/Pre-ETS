@@ -12,6 +12,7 @@ import {
   isAuthentication,
   isAuthorization,
   PROVIDER_ORIGIN,
+  providerSignsInSilently,
   resumeAt,
   showsFocusIndicator,
   signInAtProvider,
@@ -52,6 +53,8 @@ export const BOUND_MILLISECONDS = 2_000
 
 declare global {
   interface Window {
+    /** Exposed by expiration scenarios: reports protected content the page has just exposed, by its text. */
+    preetsProtectedExposed?: (text: string) => Promise<void>
     /** Exposed by expiration scenarios: reports a `pageshow` and whether a dialog was in the document then. */
     preetsRestoreShown?: (persisted: boolean, dialog: boolean) => Promise<void>
   }
@@ -63,6 +66,11 @@ declare global {
  */
 export interface Tab {
   deadline: number
+  /**
+   * Protected content the page reported exposing since a mark, by its text: in a page restored from the back/forward
+   * cache, or once a change to its document exposed content that was concealed or absent.
+   */
+  readonly exposed: string[]
   /** Settles once a failed login's last document has loaded, after a step arranged that failure. */
   failedLogin?: Promise<unknown> | undefined
   readonly host: string
@@ -122,20 +130,55 @@ export const listedNames = (list: string): readonly string[] => {
 }
 
 /**
- * A new browser context that watches for dialogs and reports back/forward-cache restores; with `hasTouch`, it has a
- * touch screen as well as a mouse and keyboard.
+ * Runs as the first script of every document: reports protected content (a protected page's heading or control in the
+ * document, not inside `[hidden]` or `[inert]`) when the page is restored from the back/forward cache with it exposed,
+ * and when a change to the document exposes it after it was concealed or absent. It cannot use outer bindings.
+ */
+const watchForExposure = (): void => {
+  const PROTECTED =
+    /^(Reference session|Coordination roster|Coordination participant|Record reference operation|Record attendance note|Open participant page in place)$/
+  const exposedText = () =>
+    [...document.querySelectorAll("h1, button")].find((element) =>
+      PROTECTED.test(element.textContent) && element.closest("[hidden], [inert]") === null
+    )?.textContent
+  let shown = false
+  const report = (restored: boolean) => {
+    const text = exposedText()
+    if (text !== undefined && (restored || !shown)) {
+      void globalThis.window.preetsProtectedExposed?.(text).catch(() => undefined)
+    }
+    shown = text !== undefined
+  }
+  new MutationObserver(() => {
+    report(false)
+  }).observe(document, { attributeFilter: ["hidden", "inert"], childList: true, subtree: true })
+  globalThis.addEventListener("pageshow", (event) => {
+    if (event.persisted) report(true)
+  })
+}
+
+/** The open tab showing `page`, if the scenario has one. */
+const tabShowing = (scenario: Expiration, page: Page): Tab | undefined =>
+  [...scenario.tabs.values()].find((candidate) => candidate.page === page)
+
+/**
+ * A new browser context that watches for dialogs and exposed protected content and reports back/forward-cache restores;
+ * with `hasTouch`, it has a touch screen as well as a mouse and keyboard.
  */
 const newContext = async (scenario: Expiration, hasTouch = false): Promise<BrowserContext> => {
   const context = await scenario.browser.newContext({ hasTouch })
   await context.addInitScript(watchForDialogs)
+  await context.addInitScript(watchForExposure)
+  await context.exposeBinding("preetsProtectedExposed", ({ page }, text: string) => {
+    tabShowing(scenario, page)?.exposed.push(text)
+  })
   await context.addInitScript(() => {
     globalThis.addEventListener("pageshow", (event) => {
       void globalThis.window.preetsRestoreShown?.(event.persisted, document.querySelector("[role=dialog]") !== null)
     })
   })
   await context.exposeBinding("preetsRestoreShown", ({ page }, persisted: boolean, dialog: boolean) => {
-    const tab = [...scenario.tabs.values()].find((candidate) => candidate.page === page)
-    if (persisted) tab?.restored.push(dialog)
+    if (persisted) tabShowing(scenario, page)?.restored.push(dialog)
   })
   return context
 }
@@ -199,17 +242,12 @@ interface TabClock {
   readonly fastBy?: number | undefined
 }
 
-/** Opens a named tab at `host` in `context`, optionally under Playwright's clock. */
-const openTab = async (
-  scenario: Expiration,
-  context: BrowserContext,
-  name: string,
-  host: string,
-  options: TabClock = {}
-): Promise<Tab> => {
+/** A new named page at `host` in `context`, recording what a tab records, before it has opened anything. */
+const newTab = async (scenario: Expiration, context: BrowserContext, name: string, host: string): Promise<Tab> => {
   const page = await context.newPage()
   const tab: Tab = {
     deadline: Number.NaN,
+    exposed: [],
     host,
     loginTraffic: [],
     page,
@@ -235,6 +273,19 @@ const openTab = async (
     if (new URL(response.url()).pathname !== "/session/status") return
     tab.statusAnswers.push({ at: Date.now(), status: response.status() })
   })
+  return tab
+}
+
+/** Opens a named tab at `host` in `context`, optionally under Playwright's clock. */
+const openTab = async (
+  scenario: Expiration,
+  context: BrowserContext,
+  name: string,
+  host: string,
+  options: TabClock = {}
+): Promise<Tab> => {
+  const tab = await newTab(scenario, context, name, host)
+  const { page } = tab
   if (options.clock !== undefined) await suspendTimers.beforeLoad(page)
   if (options.fastBy !== undefined) {
     assert.equal(options.clock, "installed", "expected an installed clock to set ahead")
@@ -376,6 +427,12 @@ const openSharingTab = async (world: AppWorld, name: string, options: TabClock) 
   await openTab(scenario, context, name, SPRINGFIELD, options)
 }
 
+/** The tab leaves for the public login-failure page, which runs no session coordination. */
+const leaveForPublicPage = async (tab: Tab) => {
+  await tab.page.goto(`http://${tab.host}/login-unavailable`)
+  await tab.page.getByRole("heading", { level: 1, name: "Login cannot start" }).waitFor({ state: "visible" })
+}
+
 /**
  * The tab leaves the protected entry for a public page that runs no session coordination, so nothing on the session's
  * cross-tab channel evicts the entry from the back/forward cache: a sharing tab's message would (Chromium reports
@@ -385,9 +442,7 @@ Given(
   "another browser sharing the visitor's session has opened tab {string} and then left it for a public page",
   async function(this: AppWorld, name: string) {
     await openSharingTab(this, name, {})
-    const { page } = tabOf(this, name)
-    await page.goto(`http://${SPRINGFIELD}/login-unavailable`)
-    await page.getByRole("heading", { level: 1, name: "Login cannot start" }).waitFor({ state: "visible" })
+    await leaveForPublicPage(tabOf(this, name))
   }
 )
 
@@ -661,6 +716,7 @@ When(
 When("the visitor refreshes tab {string}", async function(this: AppWorld, name: string) {
   const tab = tabOf(this, name)
   tab.protectedDocuments.length = 0
+  tab.exposed.length = 0
   await tab.page.reload()
 })
 
@@ -673,6 +729,7 @@ When("the visitor navigates {word} in tab {string}", async function(this: AppWor
   assert.ok(direction === "back" || direction === "forward", "expected back or forward")
   const tab = tabOf(this, name)
   tab.protectedDocuments.length = 0
+  tab.exposed.length = 0
   const options = { waitUntil: "commit" } as const
   await (direction === "back" ? tab.page.goBack(options) : tab.page.goForward(options))
 })
@@ -693,6 +750,125 @@ Given("the visitor has opened the roster in tab {string} and returned to the ent
   await settleDeadlines(sharing)
 })
 
+/** The deadline the protected page now in the tab holds, after the page load that renewed the session. */
+const deadlineAfterLoad = async (tab: Tab) => {
+  await tab.page.getByRole("button", { name: "Log out" }).waitFor({ state: "visible" })
+  tab.deadline = await heldDeadline(tab.page)
+}
+
+/** A full navigation from the entry, so the entry is the page before; the page load renews the session. */
+Given("the visitor has opened the roster in tab {string}", async function(this: AppWorld, name: string) {
+  const tab = tabOf(this, name)
+  await tab.page.goto(`http://${tab.host}/coordination/roster`)
+  await deadlineAfterLoad(tab)
+})
+
+/**
+ * The tab leaves the protected entry for a public page that runs no session coordination. Its browser has no other
+ * tab, so nothing on the session's cross-tab channel evicts the entry from the back/forward cache.
+ */
+Given("the visitor has left tab {string} for a public page", async function(this: AppWorld, name: string) {
+  await leaveForPublicPage(tabOf(this, name))
+})
+
+/**
+ * Opens the roster by a full navigation, then the participant page in place: the App Router's own navigation, which
+ * adds a history entry without loading a document. The click is activity, and B5 may communicate part of it only at
+ * its window's end, so the tab's deadline is not predicted here; the scenario waits for the tab to confirm expiry.
+ */
+const openParticipantInPlace = async (tab: Tab) => {
+  tab.exposed.length = 0
+  await tab.page.goto(`http://${tab.host}/coordination/roster`)
+  await tab.page.getByRole("heading", { level: 1, name: "Coordination roster" }).waitFor({ state: "visible" })
+  // Fresh entry later relies on this document's exposure watcher staying silent, so it must be seen to report here.
+  await untilReported(tab, "Coordination roster")
+  await inPlace(tab, async () => {
+    await tab.page.getByRole("button", { name: "Open participant page in place" }).click()
+    await tab.page.getByRole("heading", { level: 1, name: "Coordination participant" }).waitFor({ state: "visible" })
+  })
+}
+
+/** Waits until the tab's page has reported exposing `text`, so its exposure watcher is known to run in that document. */
+const untilReported = async (tab: Tab, text: string) => {
+  for (let waited = 0; !tab.exposed.includes(text); waited += 100) {
+    if (waited >= OBSERVATION_MILLISECONDS) assert.fail(`expected the page to report exposing "${text}"`)
+    await delay(100)
+  }
+}
+
+/** Runs `navigate` and requires that it loaded no document in the tab: the App Router's own navigation. */
+const inPlace = async (tab: Tab, navigate: () => Promise<void>) => {
+  const before = tab.protectedDocuments.length
+  await navigate()
+  assert.deepEqual(tab.protectedDocuments.slice(before), [], "expected the navigation to load no document")
+}
+
+Given(
+  "the visitor has opened the participant page in place from the roster in tab {string}",
+  async function(this: AppWorld, name: string) {
+    await openParticipantInPlace(tabOf(this, name))
+  }
+)
+
+/** As above, then back to the roster in place, so the participant page is a forward entry of the same document. */
+Given(
+  "the visitor has opened the participant page in place from the roster in tab {string} and gone back to the roster",
+  async function(this: AppWorld, name: string) {
+    const tab = tabOf(this, name)
+    await openParticipantInPlace(tab)
+    await inPlace(tab, async () => {
+      await tab.page.goBack({ waitUntil: "commit" })
+      await tab.page.getByRole("heading", { level: 1, name: "Coordination roster" }).waitFor({ state: "visible" })
+    })
+    assert.equal(new URL(tab.page.url()).pathname, "/coordination/roster")
+  }
+)
+
+/**
+ * Real time passes with no activity until each tab shows the expiration modal, which it shows only once the server
+ * answered that its session ended, however late the session's last renewal was communicated.
+ */
+When(
+  "the sessions of tabs {} expire and each shows the expiration modal",
+  { timeout: 8 * 60_000 },
+  async function(this: AppWorld, list: string) {
+    for (const name of namesOf(list)) {
+      await tabOf(this, name).page.getByRole("dialog", { name: EXPIRED_COPY.heading }).waitFor({
+        state: "visible",
+        timeout: 7 * 60_000
+      })
+    }
+  }
+)
+
+/** A new tab in the same browser opens the application entry; its earlier session is the one that browser held. */
+When(
+  "the visitor opens a new tab {string} in the browser of tab {string}",
+  async function(this: AppWorld, name: string, source: string) {
+    const from = tabOf(this, source)
+    const tab = await newTab(await scenarioOf(this), from.page.context(), name, from.host)
+    tab.session = openedSession(from, source)
+    await tab.page.goto(`http://${tab.host}/`)
+  }
+)
+
+/**
+ * PREETS-SESSION-013 AC3, observed directly: while the provider asks, the tab's browser still holds a provider single
+ * sign-on session that would answer the same authorization without `max_age` at once.
+ */
+Then("the provider still holds the single sign-on session of tab {string}", async function(
+  this: AppWorld,
+  name: string
+) {
+  const tab = tabOf(this, name)
+  const authorization = tab.loginTraffic.filter(isAuthorization).at(-1)
+  assert.ok(authorization, "expected the application to start a provider login")
+  assert.ok(
+    await providerSignsInSilently(tab.page.context(), authorization),
+    `expected the provider to sign tab "${name}" in without asking`
+  )
+})
+
 /** Tabs to the link within the modal, then presses Enter. */
 When("the visitor activates {string} by keyboard in tab {string}", async function(
   this: AppWorld,
@@ -701,6 +877,7 @@ When("the visitor activates {string} by keyboard in tab {string}", async functio
 ) {
   const tab = tabOf(this, name)
   tab.protectedDocuments.length = 0
+  tab.exposed.length = 0
   tab.loginTraffic.length = 0
   for (let presses = 0; presses < 3 && (await activeElementOf(tab.page)).name !== link; presses += 1) {
     await tab.page.keyboard.press("Tab")
@@ -722,11 +899,23 @@ const awaitProviderForm = async (tab: Tab) => {
 const assertFreshEntry = async (tab: Tab) => {
   await awaitProviderForm(tab)
   assert.deepEqual(tab.protectedDocuments, [])
+  assert.deepEqual(tab.exposed, [], "the tab exposed protected content on the way")
   assert.ok(!tab.restored.includes(true), "a restored page showed the modal")
 }
 
 Then(
   "tab {string} follows fresh entry to the provider without the modal or protected content",
+  async function(this: AppWorld, name: string) {
+    await assertFreshEntry(tabOf(this, name))
+  }
+)
+
+/**
+ * Fresh entry from a tab that showed the expiration modal and then traversed its own in-app history: the traversal
+ * loads no document, so what it can show is protected content exposed in the document on its way to the provider.
+ */
+Then(
+  "tab {string} leaves for fresh entry at the provider without exposing protected content",
   async function(this: AppWorld, name: string) {
     await assertFreshEntry(tabOf(this, name))
   }
@@ -929,6 +1118,7 @@ Given(
 const mark = (tab: Tab) => {
   tab.loginTraffic.length = 0
   tab.protectedDocuments.length = 0
+  tab.exposed.length = 0
 }
 
 Then("tabs {} show the expiration modal and no protected content", async function(this: AppWorld, list: string) {
@@ -1046,17 +1236,20 @@ Then("tab {string} shows the protected application under a new session", async f
   assert.notEqual(current, tab.session)
 })
 
-/** A raw request presenting a session reference: answered with the login delegation, never protected content. */
-const assertNotAdmitted = async (world: AppWorld, tab: Tab, session: string) => {
+/**
+ * A raw document request at `host` presenting a session reference: answered with the login delegation, never protected
+ * content.
+ */
+export const assertNotAdmitted = async (world: AppWorld, host: string, session: string): Promise<void> => {
   const { body, headers, status } = await requestInstance(
     world,
     world.port,
-    tab.host,
+    host,
     "/",
     true,
     `pathable-session=${session}`
   )
-  const delegation = new URL(headers.location ?? "", `http://${tab.host}`).pathname
+  const delegation = new URL(headers.location ?? "", `http://${host}`).pathname
   assert.deepEqual({ delegation, status }, { delegation: "/auth/login", status: 307 })
   assert.doesNotMatch(body, PROTECTED_TEXT)
 }
@@ -1067,7 +1260,7 @@ Then("a request presenting the earlier session of tab {string} is not admitted",
 ) {
   const tab = tabOf(this, name)
   assert.ok(tab.session, "expected the tab to have opened with a session")
-  await assertNotAdmitted(this, tab, tab.session)
+  await assertNotAdmitted(this, tab.host, tab.session)
 })
 
 /**
@@ -1166,7 +1359,7 @@ Then(
     assert.equal(await tab.page.getByRole("button", { name: "Log out" }).count(), 0)
     assert.deepEqual(tab.protectedDocuments.filter((pathname) => !pathname.startsWith("/auth/")), [])
     const held = await sessionOf(tab)
-    if (held !== undefined) await assertNotAdmitted(this, tab, held)
+    if (held !== undefined) await assertNotAdmitted(this, tab.host, held)
   }
 )
 
