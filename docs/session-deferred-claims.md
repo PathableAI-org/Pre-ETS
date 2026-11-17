@@ -16,10 +16,11 @@ violation, and its procedure. This page does not restate or change them. Current
 ## Revision and conditions
 
 - **Application revision:** `main` at `9322cfe` (`9322cfe5a2ee94ac57a93386c3d2c1d90f179b84`). The pull request that adds
-  this page changes nothing else, so its verified revision runs the same application, tests, and fixtures.
+  this page changes only documentation, so its verified revision runs the same application, tests, and fixtures.
 - **Environment:** production `next start` build, local Redis 8.10.3 and Keycloak 26.8.2 from Compose (realm
-  `pre-ets`), Playwright's Chromium. Synthetic tenants `springfield` and `shelbyville` from
-  [`fixtures/tenant-config/`](../fixtures/tenant-config/) and the realm's synthetic user. Every session comes from real
+  `pre-ets`), Playwright's Chromium, and for real suspension a separately launched Chromium driven over raw CDP.
+  Synthetic tenants `springfield` and `shelbyville` from [`fixtures/tenant-config/`](../fixtures/tenant-config/) and the
+  realm's synthetic user. Every session comes from real
   sign-in through the application and the provider; no prepared session record stands in for a login.
 - **Not established here:** provider logout, Microsoft compatibility (an accepted limitation since #444), what a screen
   reader announces, and the acknowledged gaps G1 and G2 of feature 163 (a tab still loading during logout, and a
@@ -101,6 +102,8 @@ the `data-session-deadline` and `data-session-warning-lead` attributes of its `h
 session is its own. Suspend a tab with the CDP command `Page.setWebLifecycleState` (`frozen`, then `active`) and
 bring it to the front; do not dispatch a synthetic `visibilitychange`
 ([163 quickstart §4](../specs/163-coordinate-tab-activity/quickstart.md#4-requirements-backed-bdd-and-browser-evidence)).
+Chromium launched by Playwright ignores that command and keeps every page visible, so drive a separately launched
+Chromium over raw CDP for these steps, and hide the tab, by bringing another to the front, before freezing it.
 To see whether a resumed tab hides its content at once, install a `MutationObserver` before suspending it that records
 when its protected content gains or loses `hidden` or `inert`.
 
@@ -255,14 +258,70 @@ Production build of `9322cfe`, `OTEL_SDK_DISABLED=true`, Playwright 1.65.1 Chrom
 
 ## Verification run
 
-The verification session records its report on this page's pull request, under the IDs above, at that pull request's
-verified revision. Its results are added here when it completes.
+Verification report: `refs/notes/verification` at `01ee6ef` (`01ee6ef57659e7ec1f8671c3f1253b92befd94bd`), run
+`26e28922-b555-4954-a7e3-9f7b9e7b17fe`, 2026-11-17 18:47 to 19:34 UTC, slice `fix`, posted on
+[#512](https://github.com/PathableAI-org/Pre-ETS/pull/512). `01ee6ef` runs `main`'s application at `9322cfe`; it
+differs only in this page.
+
+- **Conditions:** production build at `01ee6ef`. BDD with `OTEL_SDK_DISABLED=true`. The manual procedures ran against
+  instance A with telemetry exported to the local stack under the run's `service.version` and `service.instance.id`,
+  an owned tenant directory, owned key prefixes, and only synthetic tenants and users. M6 step 2, M7, M8 steps 1 and 2,
+  and M9's resume ran on a separately launched Chromium driven over raw CDP, because Playwright's Chromium ignores
+  `Page.setWebLifecycleState`. The implementation session's corrections to M5, M6, T3, and the V-014, V-021, and V-022
+  procedures reached the verifier before M5 ran and were applied; this page states them.
+- **BDD:** B1 to B5 passed, 33 scenarios, after one rerun: a B3 scenario failed its provider single sign-on precondition
+  on the first attempt, 14 seconds after Keycloak started, and passed when run again. B6 passed, 3 scenarios.
+- **Forbidden data:** none. **Escalations:** one, for V-018. **Cleanup:** complete.
+
+| ID    | Result       | Observed                                                                                                                                                                                                                                                                                                                           |
+| ----- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| V-001 | established  | A1 repeated: 65 files, no source map, no protected information; `pre-ets` matched only the browser tracer's name. All 65 files load without a cookie; the protected asset routes answer 401 to the browser's requests                                                                                                              |
+| V-002 | established  | B1: the fresh return establishes a session; the stale returns, with and without single sign-on held, and the cancelled return establish none                                                                                                                                                                                       |
+| V-003 | established  | B1, B2: the next protected request after real sign-in shows the provider subject, the tenant's issuer, and the alias                                                                                                                                                                                                               |
+| V-004 | established  | B2: identity, renewal, expiry, and no revival hold across instances in both directions                                                                                                                                                                                                                                             |
+| V-005 | established  | B3, B4; M1: the new tab made no request to the login route or the provider and held the status deadline                                                                                                                                                                                                                            |
+| V-006 | established  | B3, B6: refresh, document and in-app back and forward, and a back/forward-cache restore after expiry or logout reach the provider with nothing protected served or shown                                                                                                                                                           |
+| V-007 | established  | B4                                                                                                                                                                                                                                                                                                                                 |
+| V-008 | established  | B4; M1: the new tab held the status deadline and warning lead; typing in it reached the earlier tab 69 ms after the response                                                                                                                                                                                                       |
+| V-009 | established  | M3: 5 seconds past its former deadline the untouched tab showed its content, and "Record attendance note" from it was accepted                                                                                                                                                                                                     |
+| V-010 | established  | M1: renewed deadline in the other tab 69 ms after the response. M2: changed warning lead 73 ms, renewed deadline 78 ms after the response                                                                                                                                                                                          |
+| V-011 | established  | B5                                                                                                                                                                                                                                                                                                                                 |
+| V-012 | established  | B5; M4: with only pointer movement and script focus, the deadline never moved; after it, status 401, the expiration modal, and a document request answered 307 to `/auth/login`                                                                                                                                                    |
+| V-013 | established  | B5; T1                                                                                                                                                                                                                                                                                                                             |
+| V-014 | established  | B2, B4, B5 over HTTP; M6 step 1: the activity a tab held across the logout was never sent; B6: an expired tab stays expired after a click                                                                                                                                                                                          |
+| V-015 | established  | M5: Log out reached by one Tab with a visible focus ring; the logout request started 5 ms after Enter and answered 204; afterwards the action answered 401 `session-unavailable`, activity and status 401 with empty bodies                                                                                                        |
+| V-016 | established  | M5: the notice showed in the three tabs 38, 93, and 151 ms after the logout request started, with nothing protected in the document or the accessibility tree, and Tab reached only the notice                                                                                                                                     |
+| V-017 | established  | B4; M6: the held activity was never sent and the new session kept its deadline; the stale tab ended signed out 4 to 6 ms after resuming, and its tag's logout answered 409 with an empty body, leaving the new session's deadline unchanged                                                                                        |
+| V-018 | **violated** | B6's emulated resume passed. M7 with real suspension, twice: the tab, resumed 11.4 to 11.5 seconds past its held deadline, adopted the renewals queued while it was frozen 4 to 9 ms after resuming and never hid its content, which showed before its status read (sent at 13 ms) answered. See [Follow-up work](#follow-up-work) |
+| V-019 | established  | M8: resumed before its deadline, the tab hid its content and showed the notice 26 ms later; resumed 5 seconds past it, already hidden, the notice 24 ms later, not the expiration modal. Back after logout was not a back/forward-cache restore and reached the provider; B3 and B6 cover a restored page without a session        |
+| V-020 | established  | M9, store paused: the tab past its deadline stayed hidden, a resumed tab stayed hidden, and Log out answered 503 with neither content nor the notice shown; T2, T4                                                                                                                                                                 |
+| V-021 | established  | M5: every message and record held only tags, times, revisions, the warning lead, activity kinds, end causes, attempt identifiers, or message types; the Shelbyville tab and the other browser received nothing; refusals carried no cookie value or tag. M6: empty 409 body; T3                                                    |
+| V-022 | established  | M5: the notice in every tab, exposed with its heading, explanation, and Log in link; no automatic sign-in through the former deadline; keyboard Log in reached the provider with `max_age=0`. M8; B3, B4, B6. No screen reader observed, as the person accepted                                                                    |
 
 ## Follow-up work
 
 A claim the verification run finds violated or not established blocks this page's pull request, whose gate requires
 every claim established. It goes to a person with a drafted follow-up issue here; the person files it and decides how
-the pull request proceeds. No claim has a result yet.
+the pull request proceeds. V-018 is violated; this draft is for a person to file:
+
+> **Title:** A tab resumed from suspension past its deadline shows content before confirming when queued renewals
+> arrive first
+>
+> Feature 163's V-013 (the B5 resume rule under PREETS-SESSION-010) requires a tab resumed past its known deadline to
+> hide its content at once, confirm with the server, and only then show it again when the session was renewed
+> elsewhere. Verification run `26e28922` on #512, at `01ee6ef` (`main`'s application at `9322cfe`), observed twice:
+> a tab frozen with the CDP command `Page.setWebLifecycleState` while hidden adopted none of four renewals made by
+> another tab of the same browser; when resumed 11.4 to 11.5 seconds past its held deadline, Chromium delivered the
+> coordination messages queued while it was frozen, the tab adopted the renewed deadline 4 to 9 ms after resuming,
+> and it never hid its content, which showed before its status read, sent at 13 ms, answered. The emulated suspension
+> in `expiration-protection.feature` (Playwright's clock, a dispatched visibility event, and a tab of another browser)
+> passes, because no message is queued there. A queued logout behaves correctly: the resumed tab hides at once and
+> shows the signed-out notice (V-017, V-019 on #512).
+>
+> Decide whether this is a defect, so that a resumed tab past its deadline hides its content before it adopts queued
+> messages, or acceptable because the queued renewal was issued by the server, in which case 163 V-013's observation
+> is corrected through the specification path. Risk tier: High (trigger 1, PREETS-SESSION-010; trigger 3 if the
+> coordinator changes). Related: #155, #499, #512.
 
 One discrepancy outside the claims was found and is resolved here.
 [Session state](session-state.md#default-entry-point-protection) said `/favicon.ico`, metadata routes, and
