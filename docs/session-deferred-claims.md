@@ -53,7 +53,7 @@ procedures are under [Procedures](#procedures).
 | V-018 | 163 V-013 (resume after renewal)              | A tab suspended past its known deadline while the session was renewed elsewhere hides its content at once on resuming, confirms, and shows its content again with the current deadline and no expired state                                                                                                                                                                                                                                                     | #509 run `c0b05fda` at `fbda151` (suspension emulated with Playwright's clock and a dispatched visibility event)                                                                                                                        | B6, M7         |
 | V-019 | 163 V-014 (resume across logout, history)     | A tab suspended across a logout conceals within 2 seconds of resuming before its deadline, and at once past it, with no protected use; back or forward to a page without a session, including one restored from the back/forward cache, leads to tenant sign-in rather than the expiration modal                                                                                                                                                                | #442 run `9e5adba5` at `4eb5327` (resume before the deadline); #502 run `08fe1e9a` at `438e620` (history after logout)                                                                                                                  | B3, B4, M8     |
 | V-020 | 163 V-015 (undeterminable state)              | While the session store cannot answer, a tab confirming at its deadline, a resumed tab, and a tab logging out keep protected content hidden and never present a usable session or a completed logout                                                                                                                                                                                                                                                            | Server part only, for the implementation before later contract changes (163 quickstart, "V-015 server part")                                                                                                                            | M9, T2, T4     |
-| V-021 | 163 V-016 (no data in coordination)           | Coordination messages and stored records hold only tags, times, the warning lead, an activity kind, and an end cause; no outcome a tab shows, and no refusal body, carries a session reference, token, or protected content; another browser receives nothing                                                                                                                                                                                                   | None executed                                                                                                                                                                                                                           | M5, M6, T3     |
+| V-021 | 163 V-016 (no data in coordination)           | No coordination message or stored record, no outcome a tab shows, and no refusal answer carries a session reference, token, or protected content; another browser receives nothing                                                                                                                                                                                                                                                                              | None executed                                                                                                                                                                                                                           | M5, M6, T3     |
 | V-022 | 163 V-017 (signed-out notice)                 | After logout every running sharing tab shows the signed-out notice, exposed in the accessibility tree with its heading, explanation, and a Log in link; no tab starts authentication on its own, through the session's former deadline; Log in, activated by keyboard with visible focus, reaches tenant sign-in with a fresh-authentication request; later navigation, refresh, and history follow fresh entry. A screen reader's announcement is not observed | #442 run `9e5adba5` at `4eb5327` (notice in every tab); #502 run `08fe1e9a` at `438e620` (keyboard Log in from the notice, history); #509 run `c0b05fda` at `fbda151` (a tab that logged out keeps its notice past its former deadline) | B3, B4, B6, M5 |
 
 ## Procedures
@@ -135,8 +135,10 @@ when its protected content gains or loses `hidden` or `inert`.
   - after the logout, from tab 1's context: the roster action, activity with the session's tag, and a status read, each
     refused; record each answer's status, that its body is empty, and that none of its headers sets a cookie or carries
     the session cookie's value or the tag
-  - every message and stored value: only tags, times, the warning lead, an activity kind, and an end cause; none equal
-    to or containing the session cookie's value; nothing received by the other context, whose session stays usable
+  - every message and stored value, field by field: each is a tag, a time, a revision, the warning lead, an activity
+    kind, an end cause, a logout attempt identifier, a message type, or a telemetry identifier when browser tracing is
+    on; none is or contains the session cookie's value or protected content; nothing reaches the other context, whose
+    session stays usable
   - until 5 seconds past the session's former deadline, no request from any tab to `/auth/login` or the provider, each
     tab's address unchanged, and the notice still shown
   - then, in tab 1, Log in reached by Tab with visible focus and activated with Enter, leading through `/` and
@@ -214,11 +216,13 @@ verifier report.
 
 - 65 files under `/_next/static/`: 18 JavaScript chunks, 4 stylesheets, 31 SVG images, 11 fonts, and 1 JPEG image.
   No source map and no `sourceMappingURL` reference.
-- No match for any tenant configuration value or alias, the synthetic user's ID, email address, or name, any
-  environment setting name, `process.env.`, `NEXT_PUBLIC_`, any server internal, "Reference session", or the checkout
-  path. `next.config.ts` sets no `env`, and no source file reads a `NEXT_PUBLIC_` setting, so the build inlines no
-  environment value whatever the environment it runs in. The only page prerendered at build, `/_not-found`, is written
-  under `.next/server/`, not `/_next/static/`.
+- No match for any tenant configuration value or alias, the synthetic user's ID, email address, or name, any of the
+  application's own setting names, `process.env.`, `NEXT_PUBLIC_`, any server internal, "Reference session", or the
+  checkout path. Two setting names appear without values: `NODE_ENV`, in Next.js's own warning about a non-standard
+  value, and the browser tracing SDK's own `OTEL_BSP_*`, `OTEL_SPAN_*`, and `OTEL_TRACES_SAMPLER*` names, none of which
+  the server reads. `next.config.ts` sets no `env`, and no source file reads a `NEXT_PUBLIC_` setting, so the build
+  inlines no environment value whatever the environment it runs in. The two pages prerendered at build,
+  `/_global-error` and `/_not-found`, are written under `.next/server/app/`, not `/_next/static/`.
 - The synthetic user's password is a common four-letter word. It matches only a design-system class name and the
   public `/_test/onsite` prototype's labels, never as a credential.
 - The client chunks hold the labels of protected pages' client components, such as the roster fixture's placeholder
@@ -253,5 +257,20 @@ verified revision. Its results are added here when it completes.
 
 ## Follow-up work
 
-None is drafted yet. Each claim the verification run finds violated or not established gets a drafted follow-up issue
-here, for a person to file.
+A claim the verification run finds violated or not established blocks this page's pull request, whose gate requires
+every claim established. It goes to a person with a drafted follow-up issue here; the person files it and decides how
+the pull request proceeds. No claim has a result yet.
+
+One discrepancy outside the claims is drafted now, for a person to file:
+
+> **Title:** Reconcile "never a login redirect" for protected browser assets with fresh entry
+>
+> [Session state](session-state.md#default-entry-point-protection) says `/favicon.ico`, metadata routes, and
+> `/_next/image` answer "401 without a session, never a login redirect". At `9322cfe` they answer 401 to the requests
+> a browser makes for them (`sec-fetch-dest: image`, or an application request), but a top-level navigation to
+> `/favicon.ico` without a session is answered 307 to `/auth/login`, because any protected page navigation starts
+> fresh entry (PREETS-SESSION-004). PREETS-SESSION-001 says only that these assets "stay protected". Decide whether
+> the documentation should name the request kinds it means, or whether navigations to these paths should also answer
+> 401. The same paragraph still says the content assessment of the public build output is outstanding; it is recorded
+> in [Session claims deferred until #158](session-deferred-claims.md#a1-at-9322cfe). Evidence only; no requirement
+> changes. Related: #444 decision 5, #499.
