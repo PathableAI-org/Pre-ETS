@@ -560,14 +560,15 @@ refresh does not wait for S4 UI.
 **Observable increment:** Sharing tabs display an enabled blocking warning; keyboard Continue renews the actual authoritative
 deadline and dismisses sharing-tab warnings. Disabled warnings still lead to protected expiration and recovery.
 
-**Evidence progression:** Extend S3/S5 retained tab/isolation and expiration/recovery journeys with warnings/Continue and assistive-
-technology observations. Configuration evidence from S2 is extended with browser-policy adoption. Reuse S5 concealment
+**Evidence progression:** Extend S3/S5 retained tab/isolation and expiration/recovery journeys with warnings/Continue and
+accessibility-tree observations. Configuration evidence from S2 is extended with browser-policy adoption. Reuse S5 concealment
 for late Continue and disabled-warning outcomes; if S4 merges first, those final claims stay explicit shipping gaps.
 
 **Planned evidence:** Observe omitted defaults (including warning at 25 minutes for default 30-minute idle), default/explicit
 disabling, invalid settings rejected at tenant consumption, policy changes adopted on individual refreshes, enabled
-thresholds, cross-tab dismissal, authoritative renewal, and continuation races. Browser and assistive-technology
-evidence establishes announcements, meaningful explanation/action, keyboard operation, and focus behavior. Dialog
+thresholds, cross-tab dismissal, authoritative renewal, and continuation races. Browser evidence, including the
+accessibility tree, establishes the programmatically exposed explanation/action, keyboard operation, and focus
+behavior; screen-reader observations are not required (2026-11-17 maintainer decision in PREETS-SESSION-011). Dialog
 strings alone do not establish usability or background protection.
 
 **Proposed issue revision:** Warn before expiration and continue accessibly across tabs — retain [#156](https://github.com/PathableAI-org/Pre-ETS/issues/156).

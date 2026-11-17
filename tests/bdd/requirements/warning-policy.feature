@@ -13,8 +13,8 @@ Feature: Each tenant's warning policy holds end to end, and a change reaches a s
   With no lead set, a renewal under a five-minute timeout disables the warning and a later renewal
   under a six-minute timeout enables it again.
   Not established here: the warning's presentation, blocking, focus, and Continue, resumed tabs, and
-  the late Continue (expiration-warning.feature); what assistive technology announces, which needs
-  a person (L-3).
+  the late Continue (expiration-warning.feature); what assistive technology announces, which, by the
+  2026-11-17 maintainer decision, no evidence is required to observe (L-3).
 
   Background:
     Given production tenant sites for Springfield and Shelbyville

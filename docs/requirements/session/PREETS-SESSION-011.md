@@ -49,6 +49,12 @@ A person reading without interacting needs an opportunity to keep working.
   2 seconds of the renewal response. Resumed tabs apply the same local-check-then-confirm rule as expiration.
   See the [session delivery plan](../../delivery/session-management.md#b5-browser-timing-and-resume-decision-2026-11-09). This decision establishes no implemented or verified behavior and awaits Git/PR approval.
 
+- Decision: Maintainer direction on 2026-11-17, recorded on delivery issue
+  [#497](https://github.com/PathableAI-org/Pre-ETS/issues/497), removes the requirement for screen-reader and
+  other assistive-technology observations because no screen-reader testing capability is available. The
+  acceptance criteria are unchanged; accessibility-tree, keyboard, and pointer evidence remains required. This
+  refinement establishes no implemented or verified behavior and is subject to Git/PR approval.
+
 ## Acceptance criteria
 
 1. The warning setting expresses minutes before idle expiration. An explicit `0` disables the warning at
@@ -80,7 +86,7 @@ Verify that default-disabled warnings also retain normal expiration. Configurati
 the effective timeout, and rejection of negative, fractional, nonnumeric, and equal-to-or-greater-than-timeout
 values. Actual tenant-consuming application requests must demonstrate schema-invalid tenant rejection under
 PREETS-TENANT-004, with no default substitution or fallback. Enabled warnings must occur at the accepted lead
-time before expiration. Browser Gherkin uses controllable time to establish focus movement into the warning, visible focus, keyboard continuation, blocked background interaction, appropriate focus restoration, cross-tab opening and dismissal within 2 seconds, resumed-tab warning behavior, and authoritative renewal. Supplement browser assertions with assistive-technology observations of warning announcement and accessible explanation/action. Integrated boundary checks cover late continuation races. Application and multi-tab evidence must establish
+time before expiration. Browser Gherkin uses controllable time to establish focus movement into the warning, visible focus, keyboard continuation, blocked keyboard and pointer interaction with background content, appropriate focus restoration, cross-tab opening and dismissal within 2 seconds, resumed-tab warning behavior, and authoritative renewal. Browser evidence reads the rendered accessibility tree to establish that the open warning is exposed as a modal dialog whose accessible name identifies it and whose accessible description carries its explanation, and that Continue is exposed as a button with an accessible name. Dialog exposure together with focus moving into the warning is the programmatic basis for AC5's announcement. Screen-reader and other assistive-technology observations are not required, by the 2026-11-17 maintainer decision above, so the announcement itself remains unestablished; that limitation is accepted. Integrated boundary checks cover late continuation races. Application and multi-tab evidence must establish
 adoption of changed warning settings on an authoritative server timer refresh, including transitions into
 or out of disabled warnings through explicit `0` and the five-minute-timeout default. Independent sessions may retain
 different settings until their respective refreshes, as explicitly accepted by the maintainer.

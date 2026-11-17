@@ -22,7 +22,8 @@ Feature: Expiration warning in every sharing tab, closed only by a renewal
   the warning disabled, by an omitted lead under a five-minute timeout or by an explicit 0, sessions
   end at their deadline with no dialog before it.
   Not established here: the default and disabled policies' other settings, invalid settings, and
-  policy adoption (slice D); what assistive technology announces, which needs a person (L-3).
+  policy adoption (slice D); what assistive technology announces, which the accessibility tree does
+  not show and which, by the 2026-11-17 maintainer decision, no evidence is required to observe (L-3).
 
   Background:
     Given production tenant sites for Springfield and Shelbyville
