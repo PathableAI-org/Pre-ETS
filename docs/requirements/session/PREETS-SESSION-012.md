@@ -49,6 +49,13 @@ Server rejection alone cannot protect sensitive information already rendered, in
   expired state or PREETS-SESSION-007 recovery content replaces protected content, protected text must not remain
   in the tab's document, including framework render data serialized in inline scripts. Values that remain only in
   the page's script memory, which cannot be cleared without loading a new document, are a recorded limitation.
+- Decision: Maintainer direction on 2026-11-17 ([#497](https://github.com/PathableAI-org/Pre-ETS/issues/497),
+  confirmed during review of [#511](https://github.com/PathableAI-org/Pre-ETS/pull/511)) removes the requirement for
+  screen-reader and other assistive-technology observations because no screen-reader testing capability is
+  available, and restates the assistive-technology criteria as programmatic contracts: what the markup must
+  expose, verified through the accessibility tree, rather than an observed announcement. Keyboard, pointer,
+  and accessibility-tree evidence remains required. It changes AC5. This refinement establishes no implemented or verified
+  behavior and is subject to Git/PR approval.
 
 ## Acceptance criteria
 
@@ -60,15 +67,15 @@ Server rejection alone cannot protect sensitive information already rendered, in
 3. Expired state propagates across session-sharing tabs.
 4. The modal shown in an already-open authenticated tab and PREETS-SESSION-007’s recovery content displayed after a
    protected Server Action encounters expiration convey equivalent expiration explanations and explicit recovery actions.
-5. Assistive-technology users receive an announcement of expiration and can perceive its explanation and authenticate-again action. Focus moves into the modal; keyboard users can activate reauthentication with visible focus. Protected background information is unavailable to keyboard interaction and assistive-technology reading or navigation while the expired state remains.
+5. The expiration modal is exposed programmatically so that assistive technology can announce and present it: when it opens, it is exposed as a modal dialog whose accessible name identifies it and whose accessible description carries the expiration explanation, the authenticate-again action is exposed as a control with an accessible name, and focus moves into the modal. Keyboard users can activate reauthentication with visible focus. While the expired state remains, protected background information is unavailable to keyboard interaction and is not exposed in the accessibility tree.
 
 ## Open questions
 
-None for synchronization latency or suspended/resumed protection: the 2026-11-09 B5 decision above sets the 2-second bound and resume rule. Server-unreachable behavior belongs to the separate pending heartbeat/connection-loss requirement. Keyboard and assistive-technology protection is required by AC5.
+None for synchronization latency or suspended/resumed protection: the 2026-11-09 B5 decision above sets the 2-second bound and resume rule. Server-unreachable behavior belongs to the separate pending heartbeat/connection-loss requirement. Keyboard and accessibility-tree protection is required by AC5.
 
 ## Verification Plan
 
-Browser Gherkin observes actual rendered-content concealment, blocking behavior, focus movement and visible focus, keyboard recovery, multiple tabs, and explicit recovery with controllable time. Assistive-technology observations establish expiration announcement, explanation/action availability, and inability to read or navigate protected background information. Browser evidence must establish blocked in-page navigation while the modal is active and the fresh-entry
+Browser Gherkin observes actual rendered-content concealment, blocking behavior, focus movement and visible focus, keyboard recovery, multiple tabs, and explicit recovery with controllable time. Browser evidence reads the rendered accessibility tree to establish AC5's programmatic exposure: a modal dialog whose accessible name and description carry the expiration explanation, a named authenticate-again control, and no protected background information exposed while the expired state remains. Screen-reader and other assistive-technology observations are not required, by the 2026-11-17 maintainer decision above; the accessibility tree does not establish what a particular screen reader announces, and the contract does not claim it. Browser evidence must establish blocked in-page navigation while the modal is active and the fresh-entry
 behavior of refresh and browser back/forward navigation under PREETS-SESSION-004.
 Compare the already-open tab’s modal with the Server Action recovery content for equivalent expiration explanation
 and recovery. Server-only denial or modal-string assertions cannot establish concealment. Concealment evidence must

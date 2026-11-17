@@ -49,6 +49,13 @@ prevents interaction, or when browser timers do not run as expected.
   framework render data serialized in inline scripts. Values that remain only in the page's script memory, which
   cannot be cleared without loading a new document, are a recorded limitation. PREETS-SESSION-012 records the
   same decision for expiration.
+- Decision: Maintainer direction on 2026-11-17 ([#497](https://github.com/PathableAI-org/Pre-ETS/issues/497),
+  confirmed during review of [#511](https://github.com/PathableAI-org/Pre-ETS/pull/511)) removes the requirement for
+  screen-reader and other assistive-technology observations because no screen-reader testing capability is
+  available, and restates the assistive-technology criteria as programmatic contracts: what the markup must
+  expose, verified through the accessibility tree, rather than an observed announcement. Keyboard, pointer,
+  and accessibility-tree evidence remains required. It changes AC4. This refinement establishes no implemented or verified
+  behavior and is subject to Git/PR approval.
 
 ## Acceptance criteria
 
@@ -58,7 +65,7 @@ prevents interaction, or when browser timers do not run as expected.
 2. The recovery content is available without authentication, explains expiration when known or that the
    session is no longer available when its cause is unknown, and provides an explicit Login action.
 3. Protected content is not returned or exposed in the expired- or missing-session recovery response.
-4. Keyboard and assistive-technology users can perceive the expiration explanation, locate the authenticate-again action, and activate it with visible focus and appropriate focus movement.
+4. The recovery content is exposed programmatically so that assistive technology can present it: its explanation is exposed in the accessibility tree, and the authenticate-again action is exposed as a control with an accessible name. Keyboard users can locate and activate that action with visible focus and appropriate focus movement.
 
 ## Open questions
 
@@ -79,8 +86,8 @@ runs.
 Browser Gherkin establishes that the denied action displays unauthenticated recovery content, explains known
 expiration or an unavailable session without inventing its cause, and offers explicit Login without automatic
 OIDC, and that no earlier protected text remains in the document, inline script content included. Complete
-keyboard recovery with visible focus and appropriate focus movement, supplemented by
-assistive-technology observations. Semantic markup alone does not establish the complete experience. Compare
+keyboard recovery with visible focus and appropriate focus movement, and read the rendered accessibility tree to
+establish that the explanation and the named authenticate-again control are exposed. Screen-reader and other assistive-technology observations are not required, by the 2026-11-17 maintainer decision above; the accessibility tree does not establish what a particular screen reader announces, and the contract does not claim it. Compare
 known-expiration recovery content with PREETS-SESSION-012’s modal for equivalent explanation and recovery.
 Fresh entry through a new tab, refresh, or browser back/forward navigation belongs to PREETS-SESSION-004’s
 automatic-login evidence. Framework-specific rendering and transport behavior must be exercised at the actual

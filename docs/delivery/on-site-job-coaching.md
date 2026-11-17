@@ -298,8 +298,8 @@ A coach must find the same incomplete record after leaving, browser closure, log
 and after replacing the backend process. Browser/HTTP observations independently compare participant, coach,
 captured start and absent optional values, list omission/direct denial for non-owners and cross-tenant requests.
 Inject actual heartbeat communication failure/recovery and show input edits prevented through pointer, keyboard
-and touch; demonstrate usable valid recovery and denied recovery after logout/expiry. Manual assistive-technology
-evidence checks announcement/focus under B6. Keep heartbeat successful while a controlled creation write fails:
+and touch; demonstrate usable valid recovery and denied recovery after logout/expiry. Accessibility-tree and keyboard
+evidence checks the programmatic announcement and focus under B6. Keep heartbeat successful while a controlled creation write fails:
 no successful-save claim or durable-created-record claim follows from heartbeat alone. Observe protected display,
 cache and incomplete-value handling through access loss. Creation evidence leaves successful-update and
 mutation-denial claims for S4/S5; it does not verify every network failure or any other adopting workflow.
@@ -670,7 +670,7 @@ until those increments are composed. No selected criterion is silently deferred.
 | [PREETS-ONSITE-008](../requirements/data-input/PREETS-ONSITE-008.md)           | 4  | Planned — S5; affected B gates unresolved                | Restore in current workflow without navigating a trash/recovery interface; B5.                                                                                |
 | [PREETS-ONSITE-009](../requirements/data-input/PREETS-ONSITE-009.md)           | 1  | Planned — S2/S3/S4/S5; affected B gates unresolved       | S2 live endpoint; S3 monitors during actual form use; B6.                                                                                                     |
 | [PREETS-ONSITE-009](../requirements/data-input/PREETS-ONSITE-009.md)           | 2  | Planned — S2/S3/S4/S5; affected B gates unresolved       | S3 actual pointer/keyboard/touch edits prevented; S4 additional time/text inputs covered; B6.                                                                 |
-| [PREETS-ONSITE-009](../requirements/data-input/PREETS-ONSITE-009.md)           | 3  | Planned — S2/S3/S4/S5; affected B gates unresolved       | S3 manual assistive-technology announcement and accessible state/focus evidence; B6.                                                                          |
+| [PREETS-ONSITE-009](../requirements/data-input/PREETS-ONSITE-009.md)           | 3  | Planned — S2/S3/S4/S5; affected B gates unresolved       | S3 accessibility-tree announcement and accessible state/focus evidence; B6.                                                                                   |
 | [PREETS-ONSITE-009](../requirements/data-input/PREETS-ONSITE-009.md)           | 4  | Planned — S2/S3/S4/S5; affected B gates unresolved       | S2 access denial; S3 valid recovery and logout/expiry non-recovery, carried to S4/S5; B4/B6/B10.                                                              |
 | [PREETS-ONSITE-009](../requirements/data-input/PREETS-ONSITE-009.md)           | 5  | Planned — S2/S3/S4/S5; affected B gates unresolved       | S2/S3 real authoritative idle deadline unchanged by automatic heartbeat; consume #153/#155.                                                                   |
 | [PREETS-ONSITE-009](../requirements/data-input/PREETS-ONSITE-009.md)           | 6  | Planned — S2/S3/S4/S5; affected B gates unresolved       | S3/S4 reachable heartbeat with independently failed creation/update and no false acknowledgement; S5 write handling follows B2/B5.                            |
