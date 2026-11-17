@@ -133,10 +133,13 @@ Server Actions `runReferenceOperation` and `recordFixtureOperation`; protected R
 designated above.
 
 Public assets: `/_next/static/**` is the designated public build-asset class. `/favicon.ico`,
-metadata routes, and `/_next/image` stay protected (401 without a session, never a login redirect)
-until a public page needs one, which is then designated individually
-([#444](https://github.com/PathableAI-org/Pre-ETS/issues/444), PREETS-SESSION-001). The content
-assessment of the public build output is still outstanding.
+metadata routes, and `/_next/image` stay protected until a public page needs one, which is then
+designated individually ([#444](https://github.com/PathableAI-org/Pre-ETS/issues/444),
+PREETS-SESSION-001). Without a session, the requests a browser makes for them, such as an image
+request, answer 401 and never start a login; a top-level navigation to one is a protected page
+navigation and follows fresh entry, like any other. The content assessment of the public build
+output found no protected information at `9322cfe`; see
+[Session claims deferred until #158](session-deferred-claims.md#a1-at-9322cfe).
 "Log in again" in recovery content and in the expiration modal is a plain link to `/`, so no login
 starts until the visitor activates it. The entry then follows fresh entry: the provider is asked for
 fresh authentication (`max_age=0`) even while it holds a single sign-on session, a new session is
@@ -207,8 +210,9 @@ when its revision is higher than the one they hold; equal revisions are ignored.
 `preets-session-current:v1`, the tag of the most recently mounted protected document, and
 one `preets-session-ended:v1:<tag>` → `{ cause, endedAt }` key per tag the server confirmed ended
 (`cause` is `expired` or `ended`), pruned
-after 24 hours. Messages and records hold
-only tags, times, the warning lead, and an activity kind.
+after 24 hours. Messages and records hold only tags, times, revisions, the warning lead, activity
+kinds, end causes, logout attempt identifiers, and message types, plus a telemetry-only identifier
+while browser tracing runs; never a session reference or protected content.
 
 When the coordinator mounts after hydration, it subscribes first and replays the ended record; if
 its tag ended, it unmounts the protected content. Otherwise it adopts the server-rendered snapshot,
@@ -230,10 +234,15 @@ held local deadline) and `data-session-warning-lead` for evidence; they hold no 
 A tab confirms with `GET /session/status` before acting on its local deadline and on resume. At
 its local deadline, and past it on resume, it first hides content ("Checking your session…"),
 setting `hidden` and `inert` on the DOM at once rather than waiting for React to render. This
-temporary concealment is not the expired state. Concealment also applies while a logout is in progress,
-which keeps its busy state. A usable answer reveals content when its read started after
-concealment began, even if a newer renewal from another tab was adopted meanwhile. An unanswered or failed
-confirmation (1.5 seconds) hides content and retries. When the deadline check is answered as still usable,
+temporary concealment is not the expired state. On resume it is best effort: a browser that froze the
+tab can deliver the coordination messages queued meanwhile before the resume check, and a renewal
+among them moves the tab's deadline, so the tab shows its content without hiding it first. A session
+that has ended still serves it nothing new. The maintainer accepted this on 2026-11-17
+([#512](https://github.com/PathableAI-org/Pre-ETS/pull/512); V-018 in
+[Session claims deferred until #158](session-deferred-claims.md#follow-up-work)). Concealment also
+applies while a logout is in progress, which keeps its busy state. A usable answer reveals content
+when its read started after concealment began, even if a newer renewal from another tab was adopted
+meanwhile. An unanswered or failed confirmation (1.5 seconds) hides content and retries. When the deadline check is answered as still usable,
 as when the local estimate runs slightly early or the timer fires before the tab's clock reaches its
 local deadline under load, the tab confirms again when the server's own deadline arrives (at least
 250 ms, at most 5 seconds later). A page entering
