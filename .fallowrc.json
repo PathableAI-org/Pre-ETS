@@ -8,6 +8,7 @@
     "tests/tooling/*.test.ts",
     "tests/bdd/steps/*.ts",
     "tests/bdd/support/hooks.ts",
+    "tests/bdd/support/progress-log.ts",
     "tests/bdd/support/world.ts"
   ],
   "ignorePatterns": [

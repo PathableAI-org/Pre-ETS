@@ -27,8 +27,9 @@ jobs:
     name: CI / BDD
     runs-on: ubuntu-latest
     # The expiration-warning scenarios wait in real time (#156 research D13); the @long-idle one alone takes about
-    # 31 minutes.
-    timeout-minutes: 150
+    # 31 minutes and bounds the run. Serially the suite took over two hours; four Cucumber workers, with the
+    # longest-waiting features queued first in cucumber.mjs, bring it to about 35 minutes.
+    timeout-minutes: 90
     services:
       redis:
         image: redis:8.10.3
@@ -81,7 +82,12 @@ jobs:
           docker logs "pre-ets-bdd-keycloak-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           exit 1
       - name: Run requirements BDD
-        run: pnpm exec cucumber-js --config cucumber.mjs
+        # The scenarios mostly wait in real time and each owns its Next process, browser, ports, Redis prefixes, and
+        # tenant directory, so four workers share the runner's four CPUs. The progress plugin logs each scenario's
+        # start, steps, and result to stderr as they happen, with a heartbeat every two minutes.
+        env:
+          BDD_PARALLEL: "4"
+        run: pnpm exec cucumber-js --config cucumber.mjs --plugin ./tests/bdd/support/progress-log.ts
       - name: Smoke check production on-site preview
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: pnpm test:bdd:smoke
