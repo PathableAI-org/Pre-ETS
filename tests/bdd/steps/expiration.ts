@@ -229,9 +229,17 @@ export const untilHolding = async (page: Page, deadline: number, timeout: number
   return Date.now()
 }
 
-/** Playwright's clock in a tab: `installed` keeps real time but can be set; `suspended` also stops timers after load. */
+/**
+ * Playwright's clock in a tab: `installed` keeps real time but can be set; `suspended` also stops timers after load. The
+ * clock belongs to the tab's browser context, so every tab of that browser shares it.
+ */
 interface TabClock {
   readonly clock?: "installed" | "suspended" | undefined
+  /**
+   * With an installed clock, how far ahead of the current time it is set before the tab loads. It stays that far ahead,
+   * for every tab of the browser, until a step corrects it.
+   */
+  readonly fastBy?: number | undefined
 }
 
 /** A new named page at `host` in `context`, recording what a tab records, before it has opened anything. */
@@ -279,6 +287,10 @@ const openTab = async (
   const tab = await newTab(scenario, context, name, host)
   const { page } = tab
   if (options.clock !== undefined) await suspendTimers.beforeLoad(page)
+  if (options.fastBy !== undefined) {
+    assert.equal(options.clock, "installed", "expected an installed clock to set ahead")
+    await page.clock.setSystemTime(Date.now() + options.fastBy)
+  }
   await page.goto(`http://${host}/`)
   tab.deadline = await readDeadline(page)
   tab.session = await sessionOf(tab)
@@ -469,15 +481,25 @@ export const untilBefore = async (deadline: number, lead: number): Promise<void>
   await delay(Math.max(0, deadline - lead - Date.now()))
 }
 
-/** Waits until a dialog is in each named tab and answers when each appeared, on the test's clock. */
-const dialogTimes = (world: AppWorld, names: readonly string[], timeout: number) =>
+/**
+ * Waits until `holds` is true in each named tab and answers when each first was seen to hold, on the test's clock.
+ * Polling sees a change only at or after it happened, so a measured delay is never shorter than the real one.
+ */
+const timesWhen = (
+  world: AppWorld,
+  names: readonly string[],
+  holds: (argument: string) => boolean,
+  argument: string,
+  timeout: number
+) =>
   Promise.all(names.map(async (name) => {
-    await tabOf(world, name).page.waitForFunction(() => document.querySelector("[role=dialog]") !== null, undefined, {
-      polling: 50,
-      timeout
-    })
+    await tabOf(world, name).page.waitForFunction(holds, argument, { polling: 50, timeout })
     return Date.now()
   }))
+
+/** Waits until a dialog is in each named tab and answers when each appeared, on the test's clock. */
+const dialogTimes = (world: AppWorld, names: readonly string[], timeout: number) =>
+  timesWhen(world, names, () => document.querySelector("[role=dialog]") !== null, "", timeout)
 
 When(
   "the idle deadline of tab {string} passes while tab {string} stays active",
@@ -502,6 +524,51 @@ Then(
     })
   }
 )
+
+/**
+ * Waits until the protected content is no longer readable in each named tab, and answers when each first was, on the
+ * test's clock: the protected control is gone from the document or not rendered, as when the content is hidden or
+ * unmounted.
+ */
+const concealmentTimes = (world: AppWorld, names: readonly string[], timeout: number) =>
+  timesWhen(
+    world,
+    names,
+    (control) => {
+      const button = [...document.querySelectorAll("button")].find((candidate) => candidate.textContent === control)
+      return button?.checkVisibility() !== true
+    },
+    PROTECTED_CONTROL,
+    timeout
+  )
+
+/** PREETS-SESSION-012 AC1 and B5: the bound is measured on concealment itself, whatever presentation follows it. */
+Then(
+  "tabs {} each hid their protected content within 2 seconds of their deadline",
+  { timeout: 60_000 },
+  async function(this: AppWorld, list: string) {
+    const names = listedNames(list)
+    const hidden = await concealmentTimes(this, names, OBSERVATION_MILLISECONDS)
+    names.forEach((name, index) => {
+      const late = (hidden[index] ?? Number.POSITIVE_INFINITY) - tabOf(this, name).deadline
+      assert.ok(late <= BOUND_MILLISECONDS, `tab "${name}" hid its content ${String(late)} ms after its deadline`)
+    })
+  }
+)
+
+/**
+ * PREETS-SESSION-012 AC3: a tab whose own deadline check is due late hid its content with no session check of its own
+ * answered from 30 seconds before its deadline until now, so the expiry another tab confirmed reached it. Its own check
+ * would have concealed and then asked the server; run this after the expiration modal, so such an answer has arrived.
+ */
+Then("tab {string} hid its protected content without a session check of its own", function(
+  this: AppWorld,
+  name: string
+) {
+  const tab = tabOf(this, name)
+  const own = tab.statusAnswers.filter((answer) => answer.at >= tab.deadline - 30_000)
+  assert.deepEqual(own, [], `tab "${name}" checked the session itself`)
+})
 
 /** No protected text remains in the document or its accessibility tree, and no protected control remains. */
 export const assertNoProtectedContent = async (page: Page, name: string): Promise<void> => {
@@ -942,6 +1009,49 @@ Given(
   "the visitor has signed in at {string} and opened tab {string} under a settable clock",
   async function(this: AppWorld, host: string, name: string) {
     await signInAndOpen(this, "visitor", host, [name], { clock: "installed" })
+  }
+)
+
+/**
+ * The browser's clock runs `seconds` fast while the tab loads, so the tab estimates the server's clock to be that far
+ * behind its own. Playwright's clock belongs to the whole browser, so every tab of the browser shares it.
+ */
+Given(
+  "the visitor has signed in at {string} and opened tab {string} under a clock {int} seconds fast",
+  async function(this: AppWorld, host: string, name: string, seconds: number) {
+    await signInAndOpen(this, "visitor", host, [name], { clock: "installed", fastBy: seconds * 1_000 })
+  }
+)
+
+/** How late a tab's own deadline check must be for its concealment to be the work of another tab. */
+const OWN_CHECK_LATE_MILLISECONDS = 30_000
+
+/**
+ * The browser's clock is corrected to the current time, as a clock synchronization would, and a new tab of the visitor
+ * opens: its page load renews the session, and it estimates the server's clock from the corrected clock. The first tab
+ * adopts that renewal through the browser, keeping the estimate it made while its clock ran fast, so its own deadline
+ * check is due late by as much as the clock ran fast. The session's deadline on the test's clock is the new tab's.
+ */
+When(
+  "the clock of tab {string} is corrected, and the visitor then opens tab {string}",
+  async function(this: AppWorld, name: string, opened: string) {
+    const tab = tabOf(this, name)
+    const before = await heldDeadline(tab.page)
+    await tab.page.clock.setSystemTime(Date.now())
+    const renewing = await openTabIn(this, "visitor", opened, tab.host)
+    await tab.page.waitForFunction(
+      (held) => document.querySelector("header")?.getAttribute("data-session-deadline") !== String(held),
+      before,
+      { polling: 50, timeout: 5_000 }
+    )
+    // The tab's own check is due at its held deadline, later than the session's by its stale estimate. It must be late
+    // enough that no step before the expiration modal could see that check.
+    const own = await heldDeadline(tab.page)
+    assert.ok(
+      own - renewing.deadline >= OWN_CHECK_LATE_MILLISECONDS,
+      `tab "${name}" checks only ${String(own - renewing.deadline)} ms after the session's deadline`
+    )
+    tab.deadline = renewing.deadline
   }
 )
 

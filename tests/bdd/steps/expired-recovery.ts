@@ -18,7 +18,7 @@ import {
 import { multipartBody, serverActionId } from "../support/server-actions.ts"
 import { FETCH_METADATA, requestSiteWith, startSite } from "../support/server.ts"
 import { SESSION_END_COPY } from "./expiration.ts"
-import { setTenantPolicy } from "./tenant.ts"
+import { configuredIdleTimeout, setTenantPolicy } from "./tenant.ts"
 
 /**
  * One visitor's real application session: the browser that signed in through the tracked provider, the host it
@@ -279,12 +279,12 @@ const nextMainFrameCommit = (page: Page) =>
  * arrives before the tab commits the document it carries, and until then the submitting page is still loaded, so the
  * step waits for that commit and then for the new document to load; later steps read only the new document.
  */
-When("the visitor submits the reference form by keyboard", async function(this: AppWorld) {
-  const entry = entryOf(this)
+const submitByKeyboard = async (entry: OpenEntry, timeout = 30_000) => {
   // The form posts to the page itself; the keyboard press also sends an activity report, which is not the submission.
   const page = new URL(entry.page.url()).pathname
-  const submitted = entry.page.waitForResponse((response) =>
-    response.request().method() === "POST" && new URL(response.url()).pathname === page
+  const submitted = entry.page.waitForResponse(
+    (response) => response.request().method() === "POST" && new URL(response.url()).pathname === page,
+    { timeout }
   )
   const committed = nextMainFrameCommit(entry.page)
   await entry.page.getByRole("button", { name: "Record reference operation" }).focus()
@@ -292,7 +292,44 @@ When("the visitor submits the reference form by keyboard", async function(this: 
   entry.submission = await submitted
   if (entry.submission.request().isNavigationRequest()) await committed
   await entry.page.waitForLoadState("load")
+}
+
+When("the visitor submits the reference form by keyboard", async function(this: AppWorld) {
+  await submitByKeyboard(entryOf(this))
 })
+
+/**
+ * PREETS-SESSION-007 AC1, expiry between browser interaction and server receipt: the keyboard submission leaves the
+ * browser well before the session's idle deadline, and request routing holds it there until 5 seconds after the
+ * deadline before sending it on, so the server receives it only once the session has expired. The deadline counts
+ * from the entry's own page load, which renewed the session; that renewal answered before `renewedAt`, so the server's
+ * deadline is no later than the one used here, and the submission must leave at least a minute before it.
+ */
+When(
+  "the visitor submits the reference form by keyboard before the session's idle deadline, and it reaches the server after it",
+  { timeout: 8 * 60_000 },
+  async function(this: AppWorld) {
+    const entry = entryOf(this)
+    const deadline = visitorOf(this).renewedAt + await configuredIdleTimeout(this, "springfield")
+    const page = new URL(entry.page.url()).pathname
+    const isSubmission = (url: URL) => url.pathname === page
+    const sent: number[] = []
+    await entry.page.route(isSubmission, async (route) => {
+      if (route.request().method() !== "POST") {
+        await route.fallback()
+        return
+      }
+      sent.push(Date.now())
+      await delay(Math.max(0, deadline + 5_000 - Date.now()))
+      await route.continue()
+    })
+    await submitByKeyboard(entry, Math.max(0, deadline - Date.now()) + 60_000)
+    await entry.page.unroute(isSubmission)
+    assert.equal(sent.length, 1, "expected one held submission")
+    const [leftAt = Number.POSITIVE_INFINITY] = sent
+    assert.ok(leftAt < deadline - 60_000, `the submission left ${String(deadline - leftAt)} ms before the deadline`)
+  }
+)
 
 Then(
   "the form submission is a {word} request answered with status {int}",
@@ -324,14 +361,29 @@ Then("the page shows the status {string}", async function(this: AppWorld, messag
   await entryOf(this).page.getByRole("status").filter({ hasText: message }).waitFor({ state: "visible" })
 })
 
-/** The document the submission without scripts loaded is the recovery document, and nothing protected remains. */
-Then("the page displays the recovery document explaining {string}", async function(this: AppWorld, heading: string) {
-  const { page } = entryOf(this)
-  await page.getByRole("heading", { level: 1, name: heading }).waitFor({ state: "visible" })
-  const headings = await page.getByRole("heading", { level: 1 }).allTextContents()
-  assert.deepEqual(headings, [heading])
-  await assertRecoveryCopy(page, heading)
+/**
+ * The document the submission without scripts loaded is a recovery document under one top-level heading, `heading`
+ * when given, with that heading's explanation and Log in link; nothing protected remains.
+ */
+const assertRecoveryPage = async (page: Page, heading?: string) => {
+  await page.getByRole("heading", { level: 1 }).first().waitFor({ state: "visible" })
+  const shown = await page.getByRole("heading", { level: 1 }).allTextContents()
+  assert.equal(shown.length, 1, "expected exactly one top-level heading")
+  if (heading !== undefined) assert.deepEqual(shown, [heading])
+  await assertRecoveryCopy(page, shown[0] ?? "")
   assert.equal(await page.getByRole("button", { name: "Record reference operation" }).count(), 0)
+}
+
+Then("the page displays the recovery document explaining {string}", async function(this: AppWorld, heading: string) {
+  await assertRecoveryPage(entryOf(this).page, heading)
+})
+
+/**
+ * Either session-end heading is accepted: the store keeps an expired record only briefly, so the server may explain the
+ * session as expired or as no longer available.
+ */
+Then("the page displays a recovery document with a Log in again link", async function(this: AppWorld) {
+  await assertRecoveryPage(entryOf(this).page)
 })
 
 /**

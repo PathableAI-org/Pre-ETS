@@ -3,8 +3,9 @@
 Feature: Expired content concealed behind a blocking expiration modal
   This feature establishes, in real browsers with sessions signed in through the tracked provider
   and a tenant whose idle timeout is five minutes, that when a session expires every running tab
-  sharing it hides its protected content and shows a blocking expiration modal within two seconds
-  of the deadline, while a tab of another tenant and a browser with its own session keep their
+  sharing it hides its protected content within two seconds of the deadline, measured on the
+  content itself, and shows a blocking expiration modal within two seconds of it, while a tab of another tenant and a
+  browser with its own session keep their
   content. The modal explains expiration with the same words and the same Log in again action as
   in-tab recovery after a denied action, takes focus on Log in again, keeps keyboard focus within
   itself, and cannot be dismissed by Escape, a click outside, or its close control; no protected
@@ -17,7 +18,9 @@ Feature: Expired content concealed behind a blocking expiration modal
   shows its content again when the session was renewed meanwhile, or the modal within two seconds
   when it expired, also when the tab's clock lags behind the server. A tab whose deadline check
   reaches the server while the session is still valid checks again and shows the modal within
-  two seconds of the deadline.
+  two seconds of the deadline. A tab whose own deadline check is due a minute late still hides its
+  content within two seconds of the deadline, without a check of its own, because another tab of
+  its browser confirmed the expiry.
   Suspension is emulated with Playwright's clock and a visibility change; pixels painted before
   scripts run and assistive-technology announcements are not established here. The library modal
   shows an inert close control until a non-dismissible mode exists (#400). What happens after Log
@@ -41,7 +44,8 @@ Feature: Expired content concealed behind a blocking expiration modal
     And another browser has signed in at "springfield.localhost:3000" and opened tab "Signed out"
     When the visitor logs out in tab "Signed out"
     And the idle deadline of tab "S1" passes while tab "Other" stays active
-    Then tabs "S1", "S2", and "S3" each show the expiration modal within 2 seconds of their deadline
+    Then tabs "S1", "S2", and "S3" each hid their protected content within 2 seconds of their deadline
+    And tabs "S1", "S2", and "S3" each show the expiration modal within 2 seconds of their deadline
     And tabs "S1", "S2", and "S3" hold no protected content
     And tabs "Shelbyville" and "Other" still show their protected content
     And focus in tab "S1" is on "Log in again" in the expiration modal
@@ -103,3 +107,17 @@ Feature: Expired content concealed behind a blocking expiration modal
     And tab "Early" reaches its deadline
     Then tabs "Early" each show the expiration modal within 2 seconds of their deadline
     And tab "Early" had a session check answered as still valid before its deadline
+
+  Scenario: Expiry another tab confirms conceals a tab whose own deadline check is late, within two seconds
+    Both tabs share one browser. "Late" loads while the browser's clock runs a minute fast, and the
+    clock is then corrected before "S1" opens. "Late" keeps the estimate of the server's clock it
+    made while its clock ran fast, so its own deadline check is due a minute after the deadline;
+    only the expiry that "S1" confirms with the server can reach it in time.
+
+    Given the visitor has signed in at "springfield.localhost:3000" and opened tab "Late" under a clock 60 seconds fast
+    When the clock of tab "Late" is corrected, and the visitor then opens tab "S1"
+    And tab "S1" reaches its deadline
+    Then tabs "S1" and "Late" each hid their protected content within 2 seconds of their deadline
+    And tabs "S1" and "Late" each show the expiration modal within 2 seconds of their deadline
+    And tab "Late" hid its protected content without a session check of its own
+    And tabs "S1" and "Late" hold no protected content
