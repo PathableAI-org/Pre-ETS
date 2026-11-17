@@ -16,6 +16,7 @@ import {
   restoreFocus
 } from "../../src/features/session-coordination/blocking.ts"
 import { calibrateClockOffset } from "../../src/features/session-coordination/clock-offset.ts"
+import { removeInlineScripts } from "../../src/features/session-coordination/inline-scripts.ts"
 import { knownExpiration } from "../../src/features/session-coordination/known-expiration.ts"
 import { adoptSnapshot } from "../../src/features/session-coordination/snapshot-order.ts"
 import { openTabChannel, type TabMessage } from "../../src/features/session-coordination/tab-channel.ts"
@@ -1537,5 +1538,57 @@ describe("focusRestorationStep (#156 FR-017, review R-001) [PREETS-SESSION-011]"
     ["owes nothing when no warning closed", false, {}, false, false]
   ])("%s", (_label, owed, render, owesAfter, restores) => {
     expect(focusRestorationStep(owed, { ...shown, ...render })).toStrictEqual({ owed: owesAfter, restore: restores })
+  })
+})
+
+/**
+ * A document in `readyState` that lists its inline scripts, as `script:not([src])` selects them. `stream` adds one, as
+ * the parser does while the server is still streaming the document.
+ */
+const scriptDocument = (readyState: DocumentReadyState) => {
+  const scripts = new Set<object>()
+  const page = Object.assign(new EventTarget(), {
+    querySelectorAll: () => [...scripts],
+    readyState
+  })
+  const stream = () => {
+    const script = {
+      remove: () => {
+        scripts.delete(script)
+      }
+    }
+    scripts.add(script)
+  }
+  return { page, scripts, stream }
+}
+
+describe("removeInlineScripts (#498) [PREETS-SESSION-007, PREETS-SESSION-012]", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it("removes a loaded document's inline scripts at once", () => {
+    const { page, scripts, stream } = scriptDocument("complete")
+    stream()
+    stream()
+    vi.stubGlobal("document", page)
+
+    removeInlineScripts()
+
+    expect(scripts.size).toBe(0)
+  })
+
+  it("removes the scripts a loading document receives afterwards once it has loaded", () => {
+    const { page, scripts, stream } = scriptDocument("loading")
+    stream()
+    vi.stubGlobal("document", page)
+
+    removeInlineScripts()
+    expect(scripts.size).toBe(0)
+    stream()
+    stream()
+    page.dispatchEvent(new Event("DOMContentLoaded"))
+
+    expect(scripts.size).toBe(0)
   })
 })
