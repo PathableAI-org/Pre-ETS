@@ -96,9 +96,9 @@ export function SessionCoordinator({
     }
   }, [noteFocus, tag])
 
-  // The commit that unmounts the header and protected content also removes the render data that still holds their text
-  // (#498).
-  const unmounted = state.view === "ended" || state.view === "expired" || state.view === "recovery"
+  // A view without a running presentation unmounts the header and protected content. That commit also removes the render
+  // data that still holds their text (#498).
+  const unmounted = !(state.view in VIEW_PRESENTATION)
   useLayoutEffect(() => {
     if (unmounted) removeInlineScripts()
   }, [unmounted])
