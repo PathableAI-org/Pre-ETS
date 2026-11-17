@@ -26,6 +26,7 @@ import {
 import { SessionEndNotice } from "../../shared/session-recovery.ts"
 import { focusRestorationStep, restoreFocus } from "./blocking.ts"
 import { ExpirationModal } from "./expiration-modal.tsx"
+import { removeInlineScripts } from "./inline-scripts.ts"
 import { LogoutControl } from "./logout-control.tsx"
 import { SignedOutNotice } from "./signed-out-notice.tsx"
 import { TabCoordination, type TabView, type TabViewState } from "./tab-coordination.ts"
@@ -94,6 +95,13 @@ export function SessionCoordinator({
       controller.current = undefined
     }
   }, [noteFocus, tag])
+
+  // The commit that unmounts the header and protected content also removes the render data that still holds their text
+  // (#498).
+  const unmounted = state.view === "ended" || state.view === "expired" || state.view === "recovery"
+  useLayoutEffect(() => {
+    if (unmounted) removeInlineScripts()
+  }, [unmounted])
 
   const actions = useMemo(() => ({
     confirm: async () => {
