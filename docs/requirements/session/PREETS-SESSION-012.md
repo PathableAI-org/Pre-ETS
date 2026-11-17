@@ -56,6 +56,13 @@ Server rejection alone cannot protect sensitive information already rendered, in
   expose, verified through the accessibility tree, rather than an observed announcement. Keyboard, pointer,
   and accessibility-tree evidence remains required. It changes AC5. This refinement establishes no implemented or verified
   behavior and is subject to Git/PR approval.
+- Decision: Maintainer direction on 2026-11-17, during delivery of [#499](https://github.com/PathableAI-org/Pre-ETS/issues/499),
+  amends the B5 resume rule above, as recorded in PREETS-SESSION-010. Concealing protected content at once on resume, in
+  a tab past its locally known deadline, is best effort and a recorded limitation: a tab frozen while hidden can apply
+  cross-tab updates queued while it was suspended and show protected content before its confirmation with the server
+  answers. The guarantee is that a resumed tab whose session has ended obtains no new protected information, because
+  the server refuses it (PREETS-SESSION-008 AC4; PREETS-SESSION-010 AC5 for logout). Once the server confirms the session ended, the tab enters the expired
+  state as before. This refinement establishes no implemented or verified behavior and is subject to Git/PR approval.
 
 ## Acceptance criteria
 
@@ -71,7 +78,7 @@ Server rejection alone cannot protect sensitive information already rendered, in
 
 ## Open questions
 
-None for synchronization latency or suspended/resumed protection: the 2026-11-09 B5 decision above sets the 2-second bound and resume rule. Server-unreachable behavior belongs to the separate pending heartbeat/connection-loss requirement. Keyboard and accessibility-tree protection is required by AC5.
+None for synchronization latency or suspended/resumed protection: the 2026-11-09 B5 decision above sets the 2-second bound and resume rule, and the 2026-11-17 decision makes concealment at once on resume best effort. Server-unreachable behavior belongs to the separate pending heartbeat/connection-loss requirement. Keyboard and accessibility-tree protection is required by AC5.
 
 ## Verification Plan
 
@@ -81,7 +88,7 @@ Compare the already-open tab’s modal with the Server Action recovery content f
 and recovery. Server-only denial or modal-string assertions cannot establish concealment. Concealment evidence must
 show that no protected text remains in the document, inline script content included; text checks that skip scripts
 cannot establish it. Script memory that cannot be cleared without a new document is a recorded limitation. With controllable time, browser evidence must establish concealment in every running sharing tab within 2 seconds of expiration, no expired state in a running tab while the session remains valid (temporary concealment at a local deadline,
-followed by restoration once the server confirms the session, is not the expired state), expired-state concealment on resume for tabs suspended across expiration or logout, and, for a tab suspended past its local deadline while another tab renewed the session, temporary resume concealment followed by server confirmation of the renewed session and restoration of its content without the expired state, recording pre-script paint as a limitation.
+followed by restoration once the server confirms the session, is not the expired state), expired-state concealment on resume, once the server confirms the session ended, for tabs suspended across expiration or logout, and, for a tab suspended past its local deadline while another tab renewed the session, server confirmation of the renewed session with its content kept or restored and without the expired state. Concealment before that confirmation, in a tab resumed past its local deadline, is best effort under the 2026-11-17 decision and not a required observation; evidence must instead establish that the resumed tab obtains no new protected information once its session has ended. Pre-script paint is a recorded limitation.
 
 Evidence assumptions follow the shared session context. Unresolved verification conditions follow the Open questions above; no additional operational monitoring claim is introduced.
 
