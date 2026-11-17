@@ -264,16 +264,8 @@ A claim the verification run finds violated or not established blocks this page'
 every claim established. It goes to a person with a drafted follow-up issue here; the person files it and decides how
 the pull request proceeds. No claim has a result yet.
 
-One discrepancy outside the claims is drafted now, for a person to file:
-
-> **Title:** Reconcile "never a login redirect" for protected browser assets with fresh entry
->
-> [Session state](session-state.md#default-entry-point-protection) says `/favicon.ico`, metadata routes, and
-> `/_next/image` answer "401 without a session, never a login redirect". At `9322cfe` they answer 401 to the requests
-> a browser makes for them (`sec-fetch-dest: image`, or an application request), but a top-level navigation to
-> `/favicon.ico` without a session is answered 307 to `/auth/login`, because any protected page navigation starts
-> fresh entry (PREETS-SESSION-004). PREETS-SESSION-001 says only that these assets "stay protected". Decide whether
-> the documentation should name the request kinds it means, or whether navigations to these paths should also answer
-> 401. The same paragraph still says the content assessment of the public build output is outstanding; it is recorded
-> in [Session claims deferred until #158](session-deferred-claims.md#a1-at-9322cfe). Evidence only; no requirement
-> changes. Related: #444 decision 5, #499.
+One discrepancy outside the claims was found and is resolved here.
+[Session state](session-state.md#default-entry-point-protection) said `/favicon.ico`, metadata routes, and
+`/_next/image` are "never a login redirect". The requests a browser makes for these assets answer 401, but a top-level
+navigation to `/favicon.ico` without a session follows fresh entry, as every protected page navigation does. By the
+person's decision on #512, that page now says so and points to the assessment above.
