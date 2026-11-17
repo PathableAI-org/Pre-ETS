@@ -176,15 +176,17 @@ when its protected content gains or loses `hidden` or `inert`.
      no protected content was shown, and that the tab reaches the provider rather than the expiration modal.
 - **M9, the store cannot answer (V-020).** Stop A and start a dedicated instance in its place, on the same port and
   callback origins, with `REDIS_URL` pointing at a Redis container this run owns on a free port, as the 162
-  quickstart's store outage does. Sign in through it in one context with tabs 1, 2, and 3 on the participant page,
-  then `docker pause` that Redis.
-  - Confirmation: in tab 1, whose page clock was installed before load, run the clock past its held deadline. Record
-    that its content stays hidden while its status reads fail or go unanswered, with no expiration modal, signed-out
-    notice, or restored content.
+  quickstart's store outage does. Sign in through it, then open three tabs on the participant page that present that
+  one session, each in its own browser context so that no leg's clock or messages reach another: tab 1 in a context
+  whose clock is installed before load, tab 2 in the separately launched Chromium driven over raw CDP, and tab 3 in a
+  third context. Copy the session cookie into the other contexts as `tab-sharing.feature`'s "another browser sharing
+  the visitor's session" does, and never record its value. Then `docker pause` that Redis.
+  - Confirmation: in tab 1, run the clock past its held deadline. Record that its content stays hidden while its status
+    reads fail or go unanswered, with no expiration modal, signed-out notice, or restored content.
   - Resume: suspend and resume tab 2. Record that a failed or unanswered confirmation leaves its content hidden.
-  - Logout: in tab 3, which no other step has touched, record that it still shows its protected content, then
-    activate Log out. Record the request's answer, and that the tab then hides its content and shows neither protected
-    content nor the signed-out notice while the store cannot answer.
+  - Logout: record that tab 3 still shows its protected content, then activate Log out there. Record the request's
+    answer, and that the tab then hides its content and shows neither protected content nor the signed-out notice
+    while the store cannot answer.
   - Unpause, and restart the instance if it does not reconnect (the 162 quickstart's Finding 2). Record whether the
     session still exists, and what tab 3 then shows. Remove the container.
 
@@ -264,8 +266,10 @@ Verification report: `refs/notes/verification` at `01ee6ef` (`01ee6ef57659e7ec1f
 `26e28922-b555-4954-a7e3-9f7b9e7b17fe`, 2026-11-17 18:47 to 19:34 UTC, slice `fix`, posted on
 [#512](https://github.com/PathableAI-org/Pre-ETS/pull/512). `01ee6ef` runs `main`'s application at `9322cfe`; it
 differs only in this page. The report covers that commit with the corrections the verifier applied, listed under
-conditions. The later commits on #512 change only documentation, and the person waived verifying them again. The
-table below summarizes the report, which is the record.
+conditions. The later commits on #512 change only documentation, and the person waived running the procedures again
+for them, except M9's logout leg, which this run did not perform from a tab still showing its content. The table below
+summarizes this report, which is the record for every row but that leg. A second report, on #512's final revision,
+records the person's decision on V-018 and the repeated logout leg; it is posted on #512 and is not summarized here.
 
 - **Conditions:** production build at `01ee6ef`. BDD with `OTEL_SDK_DISABLED=true`. The manual procedures ran against
   instance A with telemetry exported to the local stack under the run's `service.version` and `service.instance.id`,
@@ -298,7 +302,7 @@ table below summarizes the report, which is the record.
 | V-017 | established                       | B4; M6: the held activity was never sent and the new session kept its deadline; the stale tab ended signed out 4 to 6 ms after resuming, and its tag's logout answered 409 with an empty body, leaving the new session's deadline unchanged                                                                                                                                                |
 | V-018 | **violated**, accepted limitation | B6's emulated resume passed. M7 with real suspension, twice: the tab, resumed 11.4 to 11.5 seconds past its held deadline, adopted the renewals queued while it was frozen 4 to 9 ms after resuming and never hid its content, which showed before its status read (sent at 13 ms) answered. Accepted as a limitation; see [Follow-up work](#follow-up-work)                               |
 | V-019 | established                       | M8: resumed before its deadline, the tab hid its content and showed the notice 26 ms later; resumed 5 seconds past it, already hidden, the notice 24 ms later, not the expiration modal. Back after logout was not a back/forward-cache restore and reached the provider. The restore of a page without a session is B3's restored tab, a browser of its own restored after natural expiry |
-| V-020 | established                       | M9, store paused: the tab past its deadline stayed hidden, a resumed tab stayed hidden, and Log out answered 503 with neither content nor the notice shown; T2, T4. The record does not say whether the logout tab still showed its content; the verification run on the final revision of #512 repeats that leg from tab 3, which does, and its report holds the result                   |
+| V-020 | established                       | M9, store paused: the tab past its deadline stayed hidden, a resumed tab stayed hidden, and Log out answered 503 with neither content nor the notice shown; T2, T4. This run does not record whether the logout tab still showed its content; #512's second report repeats that leg                                                                                                        |
 | V-021 | established                       | M5: every message and record held only tags, times, revisions, the warning lead, activity kinds, end causes, attempt identifiers, or message types; the Shelbyville tab and the other browser received nothing; refusals carried no cookie value or tag. M6: empty 409 body; T3                                                                                                            |
 | V-022 | established                       | M5: the notice in every tab, exposed with its heading, explanation, and Log in link; no automatic sign-in through the former deadline; keyboard Log in reached the provider with `max_age=0`. M8; B3, B4, B6. No screen reader observed: the report records the substitution as pending; the person accepted it on #512 the same day                                                       |
 
@@ -316,8 +320,8 @@ private data, but if a sleeping tab gets missed it won't be able to fetch any ne
 session". Concealment on resume is therefore best effort, and an expired session obtains nothing new. Making that the
 requirement changes the B5 resume rule in PREETS-SESSION-010 and PREETS-SESSION-012, the resume observation in
 PREETS-SESSION-012's Verification Plan, and 163 V-013's observation. Those belong to the requirements workflow and a
-separate corrective pull request; nothing here changes them, and nothing is filed. [Session state](session-state.md)
-describes the behavior as it is.
+separate corrective pull request, which the orchestrator of #499 takes to the requirements workflow by the person's
+decision; nothing here changes them. [Session state](session-state.md) describes the behavior as it is.
 
 Three statements in [Session state](session-state.md) that this evidence contradicted are corrected there, by the
 person's decisions on #512:
