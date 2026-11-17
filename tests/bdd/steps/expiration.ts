@@ -570,7 +570,10 @@ Then("tab {string} hid its protected content without a session check of its own"
   assert.deepEqual(own, [], `tab "${name}" checked the session itself`)
 })
 
-/** No protected text remains in the document or its accessibility tree, and no protected control remains. */
+/**
+ * No protected text remains in the document, inline scripts included, or in its accessibility tree, and no protected
+ * control remains.
+ */
 export const assertNoProtectedContent = async (page: Page, name: string): Promise<void> => {
   assert.doesNotMatch(await documentText(page), PROTECTED_TEXT, `tab "${name}" still holds protected text`)
   assert.doesNotMatch(await page.locator("body").ariaSnapshot(), PROTECTED_TEXT)

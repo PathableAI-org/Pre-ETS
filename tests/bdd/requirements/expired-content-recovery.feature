@@ -17,7 +17,9 @@ Feature: Expired-content protection for denied Server Actions
   answered with the fresh-entry login redirect instead, is not reproduced here: a held submission
   reaches the gate after the deadline. With scripts enabled, a denied submission replaces that tab's header and content
   with
-  recovery content and moves focus to its heading. The content says the session expired when the
+  recovery content and moves focus to its heading; no earlier protected text remains in the
+  document, inline scripts included, or in its accessibility tree, though values left only in the
+  page's script memory are not checked. The content says the session expired when the
   tab's held deadline had passed on the server clock, even while the tab's timers were suspended,
   and that it is no longer available otherwise. Another tab sharing the session keeps its content.
   It does not establish the expiration modal or what happens after Log in; those are later slices
