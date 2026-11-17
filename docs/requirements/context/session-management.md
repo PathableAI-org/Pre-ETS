@@ -141,7 +141,7 @@ The maintainer selected the B5 browser communication, synchronization, and resum
   restoration is browser history navigation: it keeps concealment during confirmation, but when no valid session
   remains it follows PREETS-SESSION-004's fresh-entry policy (tenant OIDC) rather than showing the expiration
   modal, as PREETS-SESSION-012 AC2 requires. The expired state on resume applies to visibility and unfreeze.
-  Concealment at once on resume became best effort on 2026-11-17; see the amendment below.
+  Concealment at once on resume became best effort for one case on 2026-11-17; see the amendment below.
 
 Server authority and session/tenant/browser-context isolation remain required. This resolves B5. It selects no
 implementation structure or browser mechanism and claims no implemented or verified behavior. Limitations: pixels
@@ -149,13 +149,15 @@ painted by the browser or operating system before page scripts run on resume (fo
 outside application control. Behavior when the server is unreachable at a local deadline or on resume belongs to
 the separate pending heartbeat/connection-loss requirement. This decision awaits Git/PR approval.
 
-**Amendment (2026-11-17, [#499](https://github.com/PathableAI-org/Pre-ETS/issues/499)):** the maintainer made
-concealment at once on resume best effort. A tab past its locally known deadline should still conceal protected
-content on resume and must still confirm with the server, but a tab the browser froze while hidden can apply
-cross-tab updates queued while it was suspended and show protected content before that confirmation answers; this
-is a recorded limitation. The guarantee is server authority: a resumed tab whose session has ended obtains no new
-protected information, because the server refuses it (PREETS-SESSION-008 AC4). The rest of this decision is
-unchanged. This amendment awaits Git/PR approval.
+**Amendment (2026-11-17, [#499](https://github.com/PathableAI-org/Pre-ETS/issues/499), limited in [#513](https://github.com/PathableAI-org/Pre-ETS/pull/513)):** the maintainer made concealment at once
+on resume best effort for one case. A tab the browser froze while hidden can apply cross-tab renewal messages queued
+while it was suspended and show protected content before its confirmation with the server answers. For a tab resumed
+past its locally known deadline that does so, concealment at once is best effort and a recorded limitation; every
+other tab resumed past its locally known deadline still conceals at once. Every such tab still confirms with the
+server. A tab covered by this exception that did not conceal at once enters the expired state within 2 seconds of
+resuming if the session has ended; this bound does not relieve any other tab of concealing at once. The guarantee is server authority: a resumed tab whose session has ended obtains no new protected
+information, because the server refuses it (PREETS-SESSION-008 AC4). The rest of this decision is unchanged. This
+amendment awaits Git/PR approval.
 
 ## Historical implementation context
 
