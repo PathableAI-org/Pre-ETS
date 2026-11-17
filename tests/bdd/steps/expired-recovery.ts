@@ -426,7 +426,7 @@ const PROTECTED_TEXT = /Reference session|Record reference operation|springfield
 
 /**
  * Recovery replaced the header and protected content: one top-level heading with the explanation, the Log in again
- * link, and no earlier protected text or control left in the document, visible or not.
+ * link, and no earlier protected text or control left in the document, visible or not, inline scripts included.
  */
 Then(
   "the tab shows recovery explaining {string} in place of its content",

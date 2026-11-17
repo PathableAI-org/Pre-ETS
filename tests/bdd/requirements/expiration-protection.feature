@@ -9,7 +9,8 @@ Feature: Expired content concealed behind a blocking expiration modal
   content. The modal explains expiration with the same words and the same Log in again action as
   in-tab recovery after a denied action, takes focus on Log in again, keeps keyboard focus within
   itself, and cannot be dismissed by Escape, a click outside, or its close control; no protected
-  text, header, or form remains in the document or its accessibility tree. Refresh, browser back
+  text, header, or form remains in the document, inline scripts included, or in its accessibility
+  tree. Refresh, browser back
   and forward, and Log in again follow fresh entry at the provider, as does a page the browser
   restores from its back/forward cache. A tab that showed the
   signed-out notice stays there across its former deadline. A tab is never expired while the
@@ -22,7 +23,8 @@ Feature: Expired content concealed behind a blocking expiration modal
   content within two seconds of the deadline, without a check of its own, because another tab of
   its browser confirmed the expiry.
   Suspension is emulated with Playwright's clock and a visibility change; pixels painted before
-  scripts run and assistive-technology announcements are not established here. The library modal
+  scripts run, assistive-technology announcements, and values left only in the page's script memory
+  are not established here. The library modal
   shows an inert close control until a non-dismissible mode exists (#400). What happens after Log
   in is a later slice of #157.
 

@@ -16,6 +16,7 @@ import {
   restoreFocus
 } from "../../src/features/session-coordination/blocking.ts"
 import { calibrateClockOffset } from "../../src/features/session-coordination/clock-offset.ts"
+import { removeInlineScripts } from "../../src/features/session-coordination/inline-scripts.ts"
 import { knownExpiration } from "../../src/features/session-coordination/known-expiration.ts"
 import { adoptSnapshot } from "../../src/features/session-coordination/snapshot-order.ts"
 import { openTabChannel, type TabMessage } from "../../src/features/session-coordination/tab-channel.ts"
@@ -1537,5 +1538,63 @@ describe("focusRestorationStep (#156 FR-017, review R-001) [PREETS-SESSION-011]"
     ["owes nothing when no warning closed", false, {}, false, false]
   ])("%s", (_label, owed, render, owesAfter, restores) => {
     expect(focusRestorationStep(owed, { ...shown, ...render })).toStrictEqual({ owed: owesAfter, restore: restores })
+  })
+})
+
+/**
+ * A document in `readyState` whose `scripts` lists every script element, inline or with a `src`, in document order. The
+ * list is live, as `document.scripts` is: removing a script shifts the later ones down at once. `stream` adds one, as
+ * the parser does while the server is still streaming the document; `remaining` names those left.
+ */
+const scriptDocument = (readyState: DocumentReadyState) => {
+  const scripts: { hasAttribute(name: string): boolean; readonly name: string; remove(): void }[] = []
+  const page = Object.defineProperties(new EventTarget(), {
+    readyState: { value: readyState },
+    scripts: { get: () => scripts }
+  })
+  const stream = (name: string, src?: string) => {
+    const script = {
+      hasAttribute: (attribute: string) => attribute === "src" && src !== undefined,
+      name,
+      remove: () => {
+        scripts.splice(scripts.indexOf(script), 1)
+      }
+    }
+    scripts.push(script)
+  }
+  return { page, remaining: () => scripts.map(({ name }) => name), stream }
+}
+
+describe("removeInlineScripts (#498) [PREETS-SESSION-007, PREETS-SESSION-012]", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it("removes a loaded document's inline scripts at once, adjacent ones included, and keeps those with a src", () => {
+    const { page, remaining, stream } = scriptDocument("complete")
+    stream("render data")
+    stream("more render data")
+    stream("chunk", "/_next/static/chunks/app.js")
+    stream("last render data")
+    vi.stubGlobal("document", page)
+
+    removeInlineScripts()
+
+    expect(remaining()).toStrictEqual(["chunk"])
+  })
+
+  it("removes the inline scripts a loading document receives afterwards once it has loaded", () => {
+    const { page, remaining, stream } = scriptDocument("loading")
+    stream("render data")
+    vi.stubGlobal("document", page)
+
+    removeInlineScripts()
+    expect(remaining()).toStrictEqual([])
+    stream("streamed render data")
+    stream("more streamed render data")
+    stream("streamed chunk", "/_next/static/chunks/late.js")
+    page.dispatchEvent(new Event("DOMContentLoaded"))
+
+    expect(remaining()).toStrictEqual(["streamed chunk"])
   })
 })

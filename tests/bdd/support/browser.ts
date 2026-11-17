@@ -219,16 +219,12 @@ export const showsFocusIndicator = (page: Page): Promise<boolean> =>
   })
 
 /**
- * Every element's text, hidden or not. Inline scripts are excluded: they hold Next's serialized render data, which is
- * never displayed, focusable, or exposed to assistive technology.
+ * The document's full text, hidden or not: every node's text from the root element down, the head and inline scripts
+ * included. Next's serialized render data stays in inline scripts after they run, so a check that skips them would miss
+ * protected text left there (PREETS-SESSION-012 AC1, PREETS-SESSION-007 AC3). Values held only in the page's script
+ * memory are not in the document.
  */
-export const documentText = (page: Page): Promise<string> =>
-  page.evaluate(() => {
-    const body = document.body.cloneNode(true)
-    if (!(body instanceof HTMLElement)) return ""
-    for (const script of body.querySelectorAll("script")) script.remove()
-    return body.textContent
-  })
+export const documentText = (page: Page): Promise<string> => page.evaluate(() => document.documentElement.textContent)
 
 /**
  * Stops the page's timers under Playwright's clock: installed before the page loads, paused right after it, so no
