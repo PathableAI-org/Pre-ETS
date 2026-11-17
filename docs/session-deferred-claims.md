@@ -176,16 +176,17 @@ when its protected content gains or loses `hidden` or `inert`.
      no protected content was shown, and that the tab reaches the provider rather than the expiration modal.
 - **M9, the store cannot answer (V-020).** Stop A and start a dedicated instance in its place, on the same port and
   callback origins, with `REDIS_URL` pointing at a Redis container this run owns on a free port, as the 162
-  quickstart's store outage does. Sign in through it in one context with tabs 1 and 2 on the participant page, then
-  `docker pause` that Redis.
-  - Confirmation: in a tab whose page clock was installed before load, run the clock past its held deadline. Record
+  quickstart's store outage does. Sign in through it in one context with tabs 1, 2, and 3 on the participant page,
+  then `docker pause` that Redis.
+  - Confirmation: in tab 1, whose page clock was installed before load, run the clock past its held deadline. Record
     that its content stays hidden while its status reads fail or go unanswered, with no expiration modal, signed-out
     notice, or restored content.
   - Resume: suspend and resume tab 2. Record that a failed or unanswered confirmation leaves its content hidden.
-  - Logout: activate Log out in tab 1. Record the request's answer, and that the tab shows neither protected content
-    nor the signed-out notice while the store cannot answer.
+  - Logout: in tab 3, which no other step has touched, record that it still shows its protected content, then
+    activate Log out. Record the request's answer, and that the tab then hides its content and shows neither protected
+    content nor the signed-out notice while the store cannot answer.
   - Unpause, and restart the instance if it does not reconnect (the 162 quickstart's Finding 2). Record whether the
-    session still exists, and what tab 1 then shows. Remove the container.
+    session still exists, and what tab 3 then shows. Remove the container.
 
 Remove only owned keys afterwards, close every browser context, stop the instances, and remove any owned container.
 
@@ -297,7 +298,7 @@ table below summarizes the report, which is the record.
 | V-017 | established                       | B4; M6: the held activity was never sent and the new session kept its deadline; the stale tab ended signed out 4 to 6 ms after resuming, and its tag's logout answered 409 with an empty body, leaving the new session's deadline unchanged                                                                                                                                                |
 | V-018 | **violated**, accepted limitation | B6's emulated resume passed. M7 with real suspension, twice: the tab, resumed 11.4 to 11.5 seconds past its held deadline, adopted the renewals queued while it was frozen 4 to 9 ms after resuming and never hid its content, which showed before its status read (sent at 13 ms) answered. Accepted as a limitation; see [Follow-up work](#follow-up-work)                               |
 | V-019 | established                       | M8: resumed before its deadline, the tab hid its content and showed the notice 26 ms later; resumed 5 seconds past it, already hidden, the notice 24 ms later, not the expiration modal. Back after logout was not a back/forward-cache restore and reached the provider. The restore of a page without a session is B3's restored tab, a browser of its own restored after natural expiry |
-| V-020 | established                       | M9, store paused: the tab past its deadline stayed hidden, a resumed tab stayed hidden, and Log out answered 503 with neither content nor the notice shown; T2, T4                                                                                                                                                                                                                         |
+| V-020 | established                       | M9, store paused: the tab past its deadline stayed hidden, a resumed tab stayed hidden, and Log out answered 503 with neither content nor the notice shown; T2, T4. The record does not say whether the logout tab still showed its content; the verification run on the final revision of #512 repeats that leg from tab 3, which does, and its report holds the result                   |
 | V-021 | established                       | M5: every message and record held only tags, times, revisions, the warning lead, activity kinds, end causes, attempt identifiers, or message types; the Shelbyville tab and the other browser received nothing; refusals carried no cookie value or tag. M6: empty 409 body; T3                                                                                                            |
 | V-022 | established                       | M5: the notice in every tab, exposed with its heading, explanation, and Log in link; no automatic sign-in through the former deadline; keyboard Log in reached the provider with `max_age=0`. M8; B3, B4, B6. No screen reader observed: the report records the substitution as pending; the person accepted it on #512 the same day                                                       |
 
