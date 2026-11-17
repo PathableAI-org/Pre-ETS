@@ -187,6 +187,11 @@ satisfied.
 - [ ] T032 Run the D checks and module evidence, commit, push the draft, request verification of §D plus the full
       [verification.md procedure](verification.md#procedure), and record the final report as in T016. The
       screen-reader steps stay an outstanding manual check for a person (L-3).
+      Status (#497): verification of §D and the procedure ran on `main` at `0a899af` (run
+      `af113191-593c-462a-8afc-159a143b664d`, `refs/notes/verification`). V-001 to V-005 were established; V-014 and
+      V-015 are partial, with only their screen-reader parts deferred by a person's decision on #497 because no
+      screen-reader capability was available. The 19 `@preets-session-011` scenarios passed. T032 stays open until a
+      person records the L-3 observations.
 
 ## Traceability
 
