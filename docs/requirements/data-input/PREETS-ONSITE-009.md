@@ -35,7 +35,7 @@ The user needs to know when the application cannot communicate with the server b
 
 1. The application provides a heartbeat endpoint and monitors communication with it while the data-input form is in use.
 2. When heartbeat monitoring detects a connectivity failure, form inputs become disabled and cannot be edited through pointer, keyboard, or touch interaction.
-3. The form communicates the connectivity problem and disabled state accessibly. The connectivity problem is exposed through a programmatic announcement that assistive technology can convey, in the form the open focus/announcement decision selects, and each disabled input's disabled state is exposed in the accessibility tree.
+3. The form communicates the connectivity problem and disabled state accessibly. The connectivity problem is exposed through a programmatic announcement that assistive technology can convey: the connectivity message is exposed in the accessibility tree through the mechanism the open focus/announcement decision selects, and each disabled input's disabled state is exposed in the accessibility tree.
 4. Once heartbeat monitoring establishes restored connectivity, form inputs become usable again if authenticated access remains valid; recovery does not bypass logout or session expiration.
 5. Automatic heartbeat requests do not renew the idle deadline, consistent with [PREETS-SESSION-009](../session/PREETS-SESSION-009.md).
 6. A successful heartbeat does not represent confirmation that a record creation or update has been saved; write success remains independently established under the adopting workflow’s save contract, including PREETS-ONSITE-004 where adopted.

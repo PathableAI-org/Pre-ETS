@@ -640,7 +640,7 @@ perform no protected operation, and expose no protected content. Display dedicat
 an expiration explanation when known, otherwise session-unavailable meaning, and an explicit accessible Login
 action; never start OIDC automatically. **S5-B — Browser expiration protection:** after S3, conceal previously
 rendered protected information in every sharing tab and show a synchronized blocking expiration modal. Prevent
-dismissal/bypass, in-page navigation, keyboard interaction, and assistive-technology reading/navigation of protected
+dismissal/bypass, in-page navigation, keyboard interaction, and accessibility-tree exposure of protected
 background information. Its known-expiration meaning and explicit recovery match S5-A. Both Login paths use S1's
 delivered authentication boundary and S6's fresh-auth capability; no legacy generic recovery is assumed.
 

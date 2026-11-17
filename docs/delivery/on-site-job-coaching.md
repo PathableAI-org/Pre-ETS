@@ -615,8 +615,8 @@ migrations to become the real domain schema. Record schema/test-store lifecycle 
 Apply [Testing as evidence](../engineering/testing/README.md). Later BDD authoring/scaffolding/review must use
 the repository skills and current main sources with requirement-ID tags and feature-level `@partial` for bounded
 claims. This plan adds no scenarios or test implementations. Real process/storage observations establish durability;
-real-provider journeys establish new authentication; manual assistive-technology observations address announcement
-and focus. Do not repeat private-helper assertions or present discovery/dry-run as executed behavior.
+real-provider journeys establish new authentication; keyboard and accessibility-tree evidence addresses ONSITE-009 announcement and focus, and manual
+assistive-technology observations remain for the ONSITE-008 undo opportunity. Do not repeat private-helper assertions or present discovery/dry-run as executed behavior.
 
 Infrastructure backup recovery, deployed storage/transport/keys and protected-copy retention/disposal stay under
 their accepted infrastructure requirements and B9. B8 preserves separate application emergency, rights and final
