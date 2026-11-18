@@ -135,6 +135,7 @@ editing its row.
 | Orchestrator                 | `claude-sonnet-5-5`                                                                   | `medium`                      |
 | Drift review                 | `claude-opus-5-5`                                                                     | `high`                        |
 | Lookups, read-only subagents | `claude-haiku-5-5`, or `claude-sonnet-5-5` when the lookup needs judgment             | `low`                         |
+| Guidance retrospective       | `claude-fable-5-2`                                                                    | `high`                        |
 
 Set effort explicitly. `claude-opus-5-5` defaults to `medium`.
 
