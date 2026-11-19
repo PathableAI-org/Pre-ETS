@@ -399,8 +399,8 @@ importers:
         specifier: workspace:*
         version: link:../frontend-services
       '@pathableai/react':
-        specifier: 0.3.0
-        version: 0.3.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+        specifier: 0.5.1
+        version: 0.5.1(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       next:
         specifier: 16.4.6
         version: 16.4.6(@babel/core@7.29.7(supports-color@11.0.0))(@opentelemetry/api@1.9.1)(@types/node@26.6.6)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
@@ -1473,14 +1473,14 @@ packages:
   '@oxc-project/types@0.155.0':
     resolution: {integrity: sha512-SeE8JPwW1xs1tHeNycjUtUBdhorRa8o4jlvjwk49R7/Z291i+4DQa7JJIgOm/TaYQZx+QrPQbVJ/9c8dMIZN8Q==}
 
-  '@pathableai/react@0.3.0':
-    resolution: {integrity: sha512-60+lnAc1NE1wmwNxe4jWEhvNkSlOieQWX1BogNL3C7SZZm+elhJFHQal+24MOAzoVicr4wRWt8zCxYGTXZUKGg==}
+  '@pathableai/react@0.5.1':
+    resolution: {integrity: sha512-u966P07IIqa96QRChHaFun0QswrcgCbXyj3ur6vS33waLQ9RVg6MW1Z9BDLu/QV4F8X1xMgM+zLhJRxSg1xzRA==}
     peerDependencies:
       react: ^18.0.0 || ^19.0.0
       react-dom: ^18.0.0 || ^19.0.0
 
-  '@pathableai/styles@0.2.0':
-    resolution: {integrity: sha512-M4FGZXmNtxNR7wNYRIhaSBx1kzZSf44qePVyEec5dpD9xjirfE/AKcIGsa7GMo5X/xnYCSFKdgPUfs4XBFs7cQ==}
+  '@pathableai/styles@0.5.0':
+    resolution: {integrity: sha512-S1F3ENqHWeNf0rIK77ca2P9RQKbwL4bFiidTRkjDauYkhHHlmDZWLZNoOZMItbxFO2bDOsorxG7+QbtJ0kkSlw==}
 
   '@protobufjs/aspromise@1.1.2':
     resolution: {integrity: sha512-j+gKExEuLmKwvz3OgROXtrJ2UG2x8Ch2YZUxahh+s1F2HZ+wAceUNLkvy6zKCPVRkU++ZWQrdxsUeQXmcg4uoQ==}
@@ -4054,13 +4054,13 @@ snapshots:
 
   '@oxc-project/types@0.155.0': {}
 
-  '@pathableai/react@0.3.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+  '@pathableai/react@0.5.1(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
     dependencies:
-      '@pathableai/styles': 0.2.0
+      '@pathableai/styles': 0.5.0
       react: 19.3.1
       react-dom: 19.3.1(react@19.3.1)
 
-  '@pathableai/styles@0.2.0':
+  '@pathableai/styles@0.5.0':
     dependencies:
       '@uswds/uswds': 3.14.0
 
