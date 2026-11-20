@@ -27,6 +27,6 @@
   },
   "devDependencies": {
     "@effect/language-service": "0.87.5",
-    "vitest": "5.1.0"
+    "vitest": "5.1.1"
   }
 }
