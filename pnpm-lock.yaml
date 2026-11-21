@@ -2635,8 +2635,8 @@ packages:
     resolution: {integrity: sha512-RWk+PI433eESQ7ounYxIp67CYuVsS1uYSonX3kA6ps/3LWfjVQa/ptEg6Y3T6uAMq1mWpX9PQ+qx+QaHpsc7gQ==}
     engines: {node: ^20.17.0 || >=22.9.0}
 
-  oauth4webapi@3.8.8:
-    resolution: {integrity: sha512-8N28E+a/oxfXWBgOMt+ZP/JUf/XR+IFbvkAEPP3gznXOMv9BpAAwiIj0TFNz3tGTPc0ZQ8zmWBNgN1nAys0gng==}
+  oauth4webapi@3.8.9:
+    resolution: {integrity: sha512-gyn4jpaxyYFm1epl3mwqc1sFShLjT9eq/63JW+Nvk286Lz6FC72pVv/SyhJHxo+sQiHEcjIHs4TtFKX/+Md07A==}
 
   obug@3.0.0:
     resolution: {integrity: sha512-5vvB5+W7ePv+p3uqxi+RcW1XAzLW0/hxt3/4X4Lc4qHudzOhmBiBwOY6DRob4WnanAEGvNcLjF+KNOufrUoEQw==}
@@ -3040,8 +3040,8 @@ packages:
   undici-types@8.9.0:
     resolution: {integrity: sha512-KTDyRTYX8sWmKXAikPHHSyc63CRPETMctyjKFupcC6OBLXT3xsN0e9aF7m+mIXutFWpUXuedtowG7iLOzp0kQg==}
 
-  undici@8.12.4:
-    resolution: {integrity: sha512-8Mx+uNKKER2bA4AdtedkqRbwUCIJFr2nJckXRe5yrDqzePqwLP7VNcctN8/XdmDSbF7mS+jJKIszlL+vbam1VA==}
+  undici@8.13.0:
+    resolution: {integrity: sha512-mxbeyRlRhHUTWE1zf/FwDOXTKMhE1vMQRz/o2oOir/5fIWsB79TeZrByMkj019EdDuxPg03jprCjFLxLkmxTCQ==}
     engines: {node: '>=22.19.0'}
 
   unicorn-magic@0.4.1:
@@ -3540,7 +3540,7 @@ snapshots:
       '@effect/platform-node-shared': 4.1.4(effect@4.1.4)
       effect: 4.1.4
       redis: 6.3.1(@opentelemetry/api@1.9.1)
-      undici: 8.12.4
+      undici: 8.13.0
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
@@ -5167,14 +5167,14 @@ snapshots:
       semver: 7.8.5
       validate-npm-package-license: 3.0.4
 
-  oauth4webapi@3.8.8: {}
+  oauth4webapi@3.8.9: {}
 
   obug@3.0.0: {}
 
   openid-client@6.9.0:
     dependencies:
       jose: 6.2.18
-      oauth4webapi: 3.8.8
+      oauth4webapi: 3.8.9
 
   optionator@0.9.4:
     dependencies:
@@ -5596,7 +5596,7 @@ snapshots:
 
   undici-types@8.9.0: {}
 
-  undici@8.12.4: {}
+  undici@8.13.0: {}
 
   unicorn-magic@0.4.1: {}
 
