@@ -6,6 +6,7 @@ compatibility: Requires spec-kit project structure with .specify/ directory
 metadata:
   author: arunt14
   source: extension:critique
+  version: 1.0.0
 user-invocable: true
 disable-model-invocation: false
 ---

@@ -6,6 +6,7 @@ compatibility: Requires spec-kit project structure with .specify/ directory
 metadata:
   author: spec-kit-core
   source: extension:assess
+  version: 1.0.2
 user-invocable: true
 disable-model-invocation: false
 ---

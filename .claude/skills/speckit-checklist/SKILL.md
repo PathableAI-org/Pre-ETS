@@ -6,6 +6,7 @@ compatibility: Requires spec-kit project structure with .specify/ directory
 metadata:
   author: github-spec-kit
   source: preset:pre-ets-specification-planning
+  version: 1.1.0
 user-invocable: true
 disable-model-invocation: false
 ---
