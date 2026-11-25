@@ -158,7 +158,7 @@ When("the visitor authenticates at the provider", async function(this: AppWorld)
   // With a provider session held, the provider re-authenticates the known user with a password-only form.
   const page = journey.page
   await page.getByRole("textbox", { exact: true, name: "Password" }).fill("demo")
-  await page.getByRole("button", { name: /sign in/i }).click({ noWaitAfter: true })
+  await page.getByRole("button", { name: /sign in/i }).click()
   await page.waitForURL((url) => url.host === journey.host)
 })
 

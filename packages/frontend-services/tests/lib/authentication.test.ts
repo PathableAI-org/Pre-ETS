@@ -751,8 +751,8 @@ describe("AuthenticationService callback recovery [PREETS-SESSION-002]", () => {
   })
 
   it.effect.each([
-    { cause: () => new ClientOfflineError(), label: "offline" },
-    { cause: () => new ClientClosedError(), label: "closed" }
+    { cause: (): ClientClosedError | ClientOfflineError => new ClientOfflineError(), label: "offline" },
+    { cause: (): ClientClosedError | ClientOfflineError => new ClientClosedError(), label: "closed" }
   ])("preserves the attempt when Redis is $label before GETDEL", ({ cause }) => {
     const redis = makeMemoryRedis()
     let nonce = ""

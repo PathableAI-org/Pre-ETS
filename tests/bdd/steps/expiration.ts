@@ -314,7 +314,7 @@ const signIn = async (page: Page, host: string) => {
     await signInAtProvider(page)
   } else {
     await password.fill("demo")
-    await page.getByRole("button", { name: /sign in/i }).click({ noWaitAfter: true })
+    await page.getByRole("button", { name: /sign in/i }).click()
   }
   await page.waitForURL((url) => url.host === host)
   await logOut.waitFor({ state: "visible" })
@@ -1199,7 +1199,7 @@ When(
 /** Answers the provider's password-only authentication step for the synthetic user. */
 const submitPassword = async (page: Page) => {
   await page.getByRole("textbox", { exact: true, name: "Password" }).fill("demo")
-  await page.getByRole("button", { name: /sign in/i }).click({ noWaitAfter: true })
+  await page.getByRole("button", { name: /sign in/i }).click()
 }
 
 /** The tab shows the protected application at its own host. */

@@ -263,7 +263,7 @@ When("the visitor signs in and then cancels at the real provider at {string}", a
     const decline = page.getByRole("button", { name: "No" })
     await decline.waitFor({ state: "visible" })
     const callbackResponse = page.waitForResponse((response) => new URL(response.url()).pathname === "/auth/callback")
-    await decline.click({ noWaitAfter: true })
+    await decline.click()
     const response = await callbackResponse
     assert.equal(new URL(response.url()).searchParams.get("error"), "access_denied")
     this.response = await recordBrowserResponse(response)

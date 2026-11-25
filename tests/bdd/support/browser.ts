@@ -43,7 +43,7 @@ export const isAuthentication = providerEndpoint("/login-actions/authenticate")
 export const signInAtProvider = async (page: Page): Promise<void> => {
   await page.getByRole("textbox", { name: /username|email/i }).fill("demo")
   await page.getByRole("textbox", { exact: true, name: "Password" }).fill("demo")
-  await page.getByRole("button", { name: /sign in/i }).click({ noWaitAfter: true })
+  await page.getByRole("button", { name: /sign in/i }).click()
 }
 
 /**
