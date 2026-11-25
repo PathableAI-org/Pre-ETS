@@ -269,7 +269,7 @@ importers:
     dependencies:
       '@effect/platform-node':
         specifier: catalog:effect
-        version: 4.1.5(effect@4.1.5)(redis@6.3.1(@opentelemetry/api@1.9.1))
+        version: 4.1.5(effect@4.1.5)(redis@6.4.0(@opentelemetry/api@1.9.1))
       effect:
         specifier: catalog:effect
         version: 4.1.5
@@ -308,14 +308,14 @@ importers:
         specifier: 5.14.0
         version: 5.14.0(eslint@10.15.0(supports-color@11.0.0))(supports-color@11.0.0)(typescript@6.0.3)
       fallow:
-        specifier: 3.47.0
-        version: 3.47.0
+        specifier: 3.48.0
+        version: 3.48.0
       fallow-type-aware:
-        specifier: 3.47.0
-        version: 3.47.0
+        specifier: 3.48.0
+        version: 3.48.0
       gherkin-refine:
-        specifier: 1.4.8
-        version: 1.4.8
+        specifier: 1.4.9
+        version: 1.4.9
       globals:
         specifier: 17.14.0
         version: 17.14.0
@@ -345,7 +345,7 @@ importers:
     dependencies:
       '@effect/platform-node':
         specifier: catalog:effect
-        version: 4.1.5(effect@4.1.5)(redis@6.3.1(@opentelemetry/api@1.9.1))
+        version: 4.1.5(effect@4.1.5)(redis@6.4.0(@opentelemetry/api@1.9.1))
       '@pathableai/pre-ets-domain':
         specifier: workspace:*
         version: link:../domain
@@ -453,7 +453,7 @@ importers:
         version: 4.1.5(@opentelemetry/api-logs@0.223.0)(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.12.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-logs@0.223.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.12.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.12.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-node@2.12.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-web@2.12.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.43.0)(effect@4.1.5)
       '@effect/platform-node':
         specifier: catalog:effect
-        version: 4.1.5(effect@4.1.5)(redis@6.3.1(@opentelemetry/api@1.9.1))
+        version: 4.1.5(effect@4.1.5)(redis@6.4.0(@opentelemetry/api@1.9.1))
       '@opentelemetry/api':
         specifier: catalog:opentelemetry
         version: 1.9.1
@@ -509,8 +509,8 @@ importers:
         specifier: 6.9.1
         version: 6.9.1
       redis:
-        specifier: 6.3.1
-        version: 6.3.1(@opentelemetry/api@1.9.1)
+        specifier: 6.4.0
+        version: 6.4.0(@opentelemetry/api@1.9.1)
       server-only:
         specifier: 0.0.1
         version: 0.0.1
@@ -650,6 +650,9 @@ packages:
 
   '@cucumber/gherkin@42.0.1':
     resolution: {integrity: sha512-Kqg0ULhWqbXp/a1c04ND4sS4KTlIL831tQ0NhZLXWdEhT6LiNsZ5LFRzy/lBy7QQpcKhroKp/i3C2WdEnRBKNg==}
+
+  '@cucumber/gherkin@43.0.0':
+    resolution: {integrity: sha512-WaEgGoOVJ8yU2kyMBLxhdlSXmF/zOjdH6EUIzxEZV1UrgAekuOFjDzqYoC5LuN3PGWjjBYX9pu8l9MBn6mFMow==}
 
   '@cucumber/html-formatter@24.2.0':
     resolution: {integrity: sha512-6Y5ijKyFeNiaMdcYna/fo1Bluzebm8L+vSAyuymIt7Dxu5Fq1sDYMGqR1rYeuNdJmXyu/YRtGLOsrZdCJCQGIg==}
@@ -917,47 +920,47 @@ packages:
     resolution: {integrity: sha512-IkO+/KEUvwbVpiURZg+P7zF74z5Jxe0UgJxVni+RtoHQ6IZieXaO02kmadomap/q+l6bc/jdPGGqTjhuZnuz1Q==}
     engines: {node: ^20.19.0 || ^22.13.0 || >=24}
 
-  '@fallow-cli/darwin-arm64@3.47.0':
-    resolution: {integrity: sha512-31MPo4aAjm8zd3h20OSDwL+n/SnfMLymSkYkdEGV7xOfO/Vd1juHii9xLoZmPUhp9YgYGEpMk/15tN2uQePGjQ==}
+  '@fallow-cli/darwin-arm64@3.48.0':
+    resolution: {integrity: sha512-02Q+EE78MQXiv6mAE+8NuGPFn1xUs6GdUqGpce5EtX57yudJxUqWYW/kK1Fp6Jv+weU1YHE5+ydk274FcUocBQ==}
     cpu: [arm64]
     os: [darwin]
 
-  '@fallow-cli/darwin-x64@3.47.0':
-    resolution: {integrity: sha512-xeR5lEPPkjnf3brYVu7PjQCxvzNiOU/se6MGUHvNQqyMqqzdF3wyfO6msQc2hYp9tTJHQpVIb+KpP+aEYki64A==}
+  '@fallow-cli/darwin-x64@3.48.0':
+    resolution: {integrity: sha512-wFz6fnDIVIY/k3TTV9Ltoq6tdw9NQvtMImUL+f1td6lWHqJo8hZIe25bjk/2Va9JFi5Z52gLNC/3C+qyLSlcHg==}
     cpu: [x64]
     os: [darwin]
 
-  '@fallow-cli/linux-arm64-gnu@3.47.0':
-    resolution: {integrity: sha512-f+YglL2thbPNtxARY/jkfOr/voyEi+zDr2VAsy/ujH4DOeA/kjKoeiXbRwy19EgYYnXP2HKjRCEtVvjNZ0nBng==}
+  '@fallow-cli/linux-arm64-gnu@3.48.0':
+    resolution: {integrity: sha512-0iHv/wZKez0sAxGCwA0vd3Wj+fS4N1uXeJHwwKgrABvdJjQxGlWZlg81Ztqp9IiUHQGz9DVxWDGBxLZegBUZBA==}
     cpu: [arm64]
     os: [linux]
     libc: [glibc]
 
-  '@fallow-cli/linux-arm64-musl@3.47.0':
-    resolution: {integrity: sha512-D/f2K6ZPeK7vhwu96yuInxym5jIIzwm4OPCJLoZp4onmVG/1xJqi5Wd/cdu5yCItmaBhc0+xh+bmqtYZZQjuGg==}
+  '@fallow-cli/linux-arm64-musl@3.48.0':
+    resolution: {integrity: sha512-d+gSF4plv3BLfd4EnyMyJjoc6d2E/NUTe2x+A5jLZrtpvHDP7pzYyS/Lfw4EXdNYjmB1LIfXGsXsevWJN14eiw==}
     cpu: [arm64]
     os: [linux]
     libc: [musl]
 
-  '@fallow-cli/linux-x64-gnu@3.47.0':
-    resolution: {integrity: sha512-6xSuigE7b3QSnl2wEfNSiHMtPfqNyfuMqKL71Rczq9C3Snu4raRHYrNmWrqm1tWedM8/IIfB3cySUZLMAznEVw==}
+  '@fallow-cli/linux-x64-gnu@3.48.0':
+    resolution: {integrity: sha512-tVochAHFXDs9iGSeyXOQhuZ8xcfguvP7KEdZqQtY8CRKWQuL0zTdqda/hc3L0EjWjw7TC6/wyGGZUisj3OtolA==}
     cpu: [x64]
     os: [linux]
     libc: [glibc]
 
-  '@fallow-cli/linux-x64-musl@3.47.0':
-    resolution: {integrity: sha512-aP+HOT3N52yd72Qa9SGNn1InbnuX2C+2/hfN+Cyv/wCNiBXabZxNx6W/AQJ9HQw7z4GJpnnY5vbTN3ro2gSM/g==}
+  '@fallow-cli/linux-x64-musl@3.48.0':
+    resolution: {integrity: sha512-kZCYhPYBlbZr1CZANggVDV/0V0RwiUegBH6Ob81tpn0AE8tDfPc1oRgs74QjTzbc5KbuvZRjoAh0mi//6JU2og==}
     cpu: [x64]
     os: [linux]
     libc: [musl]
 
-  '@fallow-cli/win32-arm64-msvc@3.47.0':
-    resolution: {integrity: sha512-UozbQKPbtnKGEffZrwMq5v0W6gPRJ9PNnRCE6mfgCe1AHBpclrz/czVFJYrbnq+70Q636ABmMzyLsODhbulnxg==}
+  '@fallow-cli/win32-arm64-msvc@3.48.0':
+    resolution: {integrity: sha512-/PVTif9Im4AcFjZsamFi2SHrWV9gLjpRcjEbam7W5+lXX/J8L25kDMRchW9hVDqxspII8r0dhV5UOY8YER8yAA==}
     cpu: [arm64]
     os: [win32]
 
-  '@fallow-cli/win32-x64-msvc@3.47.0':
-    resolution: {integrity: sha512-2QlK9Sqp3RmEYrH9rGXplkAH4kdjyTrbvwsv57vjLaRNTHstS5WYjHN0wNb17foNGQTKWp0VhzM7WCNMdyRyOA==}
+  '@fallow-cli/win32-x64-msvc@3.48.0':
+    resolution: {integrity: sha512-WRUCOGocIlqKCTH7LxbVBE8dDobuvauoO4HHw4mENs96XefXue2rmIo/nb7cniBYs4DSGBox2fH1eU5LuRTc7A==}
     cpu: [x64]
     os: [win32]
 
@@ -1540,14 +1543,14 @@ packages:
   '@protobufjs/utf8@1.1.2':
     resolution: {integrity: sha512-b1UQwcEZ4yCnMCD8DAL1VlbvBJE9/IX4FTIp7BG1xYpf29SLazLSrqUkj4w7Y5y7cCVP6E5tcqqcI0xemPkHug==}
 
-  '@redis/bloom@6.3.1':
-    resolution: {integrity: sha512-dpF9j2yJDoPzSCaZn0MSB3xzmnXQVJeTSAWJcQVcgbmluwhpFeemmII0cF1t+WYfoVS+shEFq79+MmUItgzJLg==}
+  '@redis/bloom@6.4.0':
+    resolution: {integrity: sha512-haBv1OKeJoKxoAxwKEHPDKdoZaLIuWAKNr4VFRF2C3Rjjn7Ese5fijEW6295rMBIyddZfuIOcvH1aZ/yKzy8vQ==}
     engines: {node: '>= 20.0.0'}
     peerDependencies:
-      '@redis/client': ^6.3.1
+      '@redis/client': ^6.4.0
 
-  '@redis/client@6.3.1':
-    resolution: {integrity: sha512-masbfVKULdoAofwddepZxRhWa4w6zvBHn6TRn90TRPrRkVIlGCur3pFqwWaCbMxtYI9twepkz63e/T/tEH8GjA==}
+  '@redis/client@6.4.0':
+    resolution: {integrity: sha512-XEFSX0W1BUVFwtWC41vk5P/U5CqvacBWypFbmYHdF1gJeIYWWmEzsM2R5mPb+65SdODFQk7xuuMPFP6s1t9nhw==}
     engines: {node: '>= 20.0.0'}
     peerDependencies:
       '@node-rs/xxhash': ^1.1.0
@@ -1558,23 +1561,23 @@ packages:
       '@opentelemetry/api':
         optional: true
 
-  '@redis/json@6.3.1':
-    resolution: {integrity: sha512-fMz4kUwJzEftcU9EMaqsjZcUwzpTQLOYRqhQsAD6uKvZWeamblK13ZhgO5SzVSZVk31jmwLeTRpU5GAl5egfUw==}
+  '@redis/json@6.4.0':
+    resolution: {integrity: sha512-Dtxn3c2u5H5r3MA6kMrFI6iSOo4BIwibwkep94BMBD5ba1Eik1UYIwInX9lZ10RdUT4+BD7ZS9lAoORBvXUEYg==}
     engines: {node: '>= 20.0.0'}
     peerDependencies:
-      '@redis/client': ^6.3.1
+      '@redis/client': ^6.4.0
 
-  '@redis/search@6.3.1':
-    resolution: {integrity: sha512-T67pvPUpW82VrZLvihO8O2DFMC7eY2oMAzMzapCbiPZn7mdWqHMEIlohYim12gIawT5kn6qT/Cvmm4WulKB+kQ==}
+  '@redis/search@6.4.0':
+    resolution: {integrity: sha512-B4L2OD5BMwbOYewQ9KGJfukLUkRQz1gc91TEOxz76KLeJsLbHB0XXa7sKMNoB3JURPWvhuY0PE04fHQVYZPZKg==}
     engines: {node: '>= 20.0.0'}
     peerDependencies:
-      '@redis/client': ^6.3.1
+      '@redis/client': ^6.4.0
 
-  '@redis/time-series@6.3.1':
-    resolution: {integrity: sha512-MNDgrm+i63M/1a+XA+HcDsScwt4uBh/fGGJ84swTQZTFK5K5wMmxdlTRa4ZgmNJzjxMaszW/ipPScMUGV3aAMg==}
+  '@redis/time-series@6.4.0':
+    resolution: {integrity: sha512-5QpeIlX/r0h0//JfJ8h4/Il9i0SGHhnOkdcocOhFDp0pb8VgVCEkxeCkUx8IR3g3rlq+uiPIf4NCueveHS9Vbw==}
     engines: {node: '>= 20.0.0'}
     peerDependencies:
-      '@redis/client': ^6.3.1
+      '@redis/client': ^6.4.0
 
   '@rolldown/binding-android-arm-eabi@1.2.19':
     resolution: {integrity: sha512-e+Ebe0WT+9tbXmNKPIiC8YrWAHYwug3m6i4p3rZGGulfZri1jtI4HslT+OZnFf/OIHowWF71DTlHwXBP2SiA7A==}
@@ -2171,8 +2174,8 @@ packages:
     resolution: {integrity: sha512-KfYbmpRm0VbLjEvVa9yGwCi9GI34xvi7A/HXYWQO65CSD2u3MczUJSuwXKFIxlGsgBQizV9q5J9NHj4VG0n+pA==}
     engines: {node: '>=12.0.0'}
 
-  fallow-type-aware@3.47.0:
-    resolution: {integrity: sha512-dNqpTh3g+Cxno0ah1nenlgpNQpApHQcHwCB+9HCBDsfeO8FXOm70uYVcX2QuFozDNCCnxAC/8h/oFgOeisXCdA==}
+  fallow-type-aware@3.48.0:
+    resolution: {integrity: sha512-iBY7VlKv1v2CWkrKEsw0HhhIOaQY0ljBmm6w9jpX86AGkDTzB+eHUdTLnYV6IAYuWsKkq9PLZCW1uWmCWN9J/g==}
     engines: {node: '>=20'}
     hasBin: true
     peerDependencies:
@@ -2181,8 +2184,8 @@ packages:
       tsrs:
         optional: true
 
-  fallow@3.47.0:
-    resolution: {integrity: sha512-V4LDua/DnO4elpHMnvMLuVyz90Kz66pqDvJxpE993Gaq4ajbxtA9AYRpB6ijtPoStDuEHszV09buY6Dw7BL5Nw==}
+  fallow@3.48.0:
+    resolution: {integrity: sha512-HtxB5bT7SORwgZ3pbq3BOTfKBHQbPZOwSapDFNljJXepzMVS+Z8H/9CMjTq4GZopVTNBRGIrxNzWaF5bYvs8Yg==}
     engines: {node: '>=22'}
     hasBin: true
 
@@ -2259,8 +2262,8 @@ packages:
     resolution: {integrity: sha512-DyFP3BM/3YHTQOCUL/w0OZHR0lpKeGrxotcHWcqNEdnltqFwXVfhEBQ94eIo34AfQpo0rGki4cyIiftY06h2Fg==}
     engines: {node: 6.* || 8.* || >= 10.*}
 
-  gherkin-refine@1.4.8:
-    resolution: {integrity: sha512-HFrk+cG+pfLdvnlML9Xx3/v5Y7YtlQxUqI/1t+yT1JaXn4rcz+sL8+URgitucCxNCvdQFyxC4K4GBjWZzZewmg==}
+  gherkin-refine@1.4.9:
+    resolution: {integrity: sha512-mzGxPcBxtnf/E2jEFarq1V1ZE47QKKIPC5PEuPKx2kfZpZRAmTxNIgHcyaITWFWfrHLnwq1rKoBa1qn4VodP+g==}
     engines: {node: '>=22.18.0'}
     hasBin: true
 
@@ -2778,8 +2781,8 @@ packages:
     resolution: {integrity: sha512-I8g2lArQiP78ll51UeMZojewtYgIRCKCWqZEgOO8c/uefTI+XDXvCSXu3+YNUaTNvZzobrL5+SqHjBrByRRTdg==}
     engines: {node: '>=20'}
 
-  redis@6.3.1:
-    resolution: {integrity: sha512-mV96ZKxQ4CGn3SyEGaY0Lb9YA443mdVey3c+mdr0NAUaBxiOZGoYCWX8PoM55kictSOmxlJRtZJxIsmZm3jL+w==}
+  redis@6.4.0:
+    resolution: {integrity: sha512-8Xk9zRovBNDzIO3xRi036QFgijIZKeIPjQJ5VhgxV8nxkxDP5GlE5se71G1I4TnUTojbCtmfKzXpioxlDhHJvg==}
     engines: {node: '>= 20.0.0'}
 
   reflect-metadata@0.2.2:
@@ -3372,6 +3375,10 @@ snapshots:
     dependencies:
       '@cucumber/messages': 34.2.1
 
+  '@cucumber/gherkin@43.0.0':
+    dependencies:
+      '@cucumber/messages': 34.2.1
+
   '@cucumber/html-formatter@24.2.0(@cucumber/messages@34.2.1)':
     dependencies:
       '@cucumber/messages': 34.2.1
@@ -3504,11 +3511,11 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
-  '@effect/platform-node@4.1.5(effect@4.1.5)(redis@6.3.1(@opentelemetry/api@1.9.1))':
+  '@effect/platform-node@4.1.5(effect@4.1.5)(redis@6.4.0(@opentelemetry/api@1.9.1))':
     dependencies:
       '@effect/platform-node-shared': 4.1.5(effect@4.1.5)
       effect: 4.1.5
-      redis: 6.3.1(@opentelemetry/api@1.9.1)
+      redis: 6.4.0(@opentelemetry/api@1.9.1)
       undici: 8.13.1
     transitivePeerDependencies:
       - bufferutil
@@ -3579,28 +3586,28 @@ snapshots:
       '@eslint/core': 1.2.1
       levn: 0.4.1
 
-  '@fallow-cli/darwin-arm64@3.47.0':
+  '@fallow-cli/darwin-arm64@3.48.0':
     optional: true
 
-  '@fallow-cli/darwin-x64@3.47.0':
+  '@fallow-cli/darwin-x64@3.48.0':
     optional: true
 
-  '@fallow-cli/linux-arm64-gnu@3.47.0':
+  '@fallow-cli/linux-arm64-gnu@3.48.0':
     optional: true
 
-  '@fallow-cli/linux-arm64-musl@3.47.0':
+  '@fallow-cli/linux-arm64-musl@3.48.0':
     optional: true
 
-  '@fallow-cli/linux-x64-gnu@3.47.0':
+  '@fallow-cli/linux-x64-gnu@3.48.0':
     optional: true
 
-  '@fallow-cli/linux-x64-musl@3.47.0':
+  '@fallow-cli/linux-x64-musl@3.48.0':
     optional: true
 
-  '@fallow-cli/win32-arm64-msvc@3.47.0':
+  '@fallow-cli/win32-arm64-msvc@3.48.0':
     optional: true
 
-  '@fallow-cli/win32-x64-msvc@3.47.0':
+  '@fallow-cli/win32-x64-msvc@3.48.0':
     optional: true
 
   '@fast-check/vitest@0.5.0(vitest@5.1.1(@opentelemetry/api@1.9.1)(@types/node@26.6.6)(vite@8.3.8(@types/node@26.6.6)(yaml@2.9.1)))':
@@ -4161,25 +4168,25 @@ snapshots:
 
   '@protobufjs/utf8@1.1.2': {}
 
-  '@redis/bloom@6.3.1(@redis/client@6.3.1(@opentelemetry/api@1.9.1))':
+  '@redis/bloom@6.4.0(@redis/client@6.4.0(@opentelemetry/api@1.9.1))':
     dependencies:
-      '@redis/client': 6.3.1(@opentelemetry/api@1.9.1)
+      '@redis/client': 6.4.0(@opentelemetry/api@1.9.1)
 
-  '@redis/client@6.3.1(@opentelemetry/api@1.9.1)':
+  '@redis/client@6.4.0(@opentelemetry/api@1.9.1)':
     optionalDependencies:
       '@opentelemetry/api': 1.9.1
 
-  '@redis/json@6.3.1(@redis/client@6.3.1(@opentelemetry/api@1.9.1))':
+  '@redis/json@6.4.0(@redis/client@6.4.0(@opentelemetry/api@1.9.1))':
     dependencies:
-      '@redis/client': 6.3.1(@opentelemetry/api@1.9.1)
+      '@redis/client': 6.4.0(@opentelemetry/api@1.9.1)
 
-  '@redis/search@6.3.1(@redis/client@6.3.1(@opentelemetry/api@1.9.1))':
+  '@redis/search@6.4.0(@redis/client@6.4.0(@opentelemetry/api@1.9.1))':
     dependencies:
-      '@redis/client': 6.3.1(@opentelemetry/api@1.9.1)
+      '@redis/client': 6.4.0(@opentelemetry/api@1.9.1)
 
-  '@redis/time-series@6.3.1(@redis/client@6.3.1(@opentelemetry/api@1.9.1))':
+  '@redis/time-series@6.4.0(@redis/client@6.4.0(@opentelemetry/api@1.9.1))':
     dependencies:
-      '@redis/client': 6.3.1(@opentelemetry/api@1.9.1)
+      '@redis/client': 6.4.0(@opentelemetry/api@1.9.1)
 
   '@rolldown/binding-android-arm-eabi@1.2.19':
     optional: true
@@ -4713,22 +4720,22 @@ snapshots:
 
   expect-type@1.4.0: {}
 
-  fallow-type-aware@3.47.0:
+  fallow-type-aware@3.48.0:
     dependencies:
       typescript: 7.0.2
 
-  fallow@3.47.0:
+  fallow@3.48.0:
     dependencies:
       detect-libc: 2.1.2
     optionalDependencies:
-      '@fallow-cli/darwin-arm64': 3.47.0
-      '@fallow-cli/darwin-x64': 3.47.0
-      '@fallow-cli/linux-arm64-gnu': 3.47.0
-      '@fallow-cli/linux-arm64-musl': 3.47.0
-      '@fallow-cli/linux-x64-gnu': 3.47.0
-      '@fallow-cli/linux-x64-musl': 3.47.0
-      '@fallow-cli/win32-arm64-msvc': 3.47.0
-      '@fallow-cli/win32-x64-msvc': 3.47.0
+      '@fallow-cli/darwin-arm64': 3.48.0
+      '@fallow-cli/darwin-x64': 3.48.0
+      '@fallow-cli/linux-arm64-gnu': 3.48.0
+      '@fallow-cli/linux-arm64-musl': 3.48.0
+      '@fallow-cli/linux-x64-gnu': 3.48.0
+      '@fallow-cli/linux-x64-musl': 3.48.0
+      '@fallow-cli/win32-arm64-msvc': 3.48.0
+      '@fallow-cli/win32-x64-msvc': 3.48.0
 
   fast-check@4.10.3:
     dependencies:
@@ -4794,9 +4801,9 @@ snapshots:
 
   get-caller-file@2.0.5: {}
 
-  gherkin-refine@1.4.8:
+  gherkin-refine@1.4.9:
     dependencies:
-      '@cucumber/gherkin': 42.0.1
+      '@cucumber/gherkin': 43.0.0
       '@cucumber/messages': 34.2.1
       commander: 15.1.0
       glob: 14.0.6
@@ -5257,13 +5264,13 @@ snapshots:
       type-fest: 5.10.0
       unicorn-magic: 0.4.1
 
-  redis@6.3.1(@opentelemetry/api@1.9.1):
+  redis@6.4.0(@opentelemetry/api@1.9.1):
     dependencies:
-      '@redis/bloom': 6.3.1(@redis/client@6.3.1(@opentelemetry/api@1.9.1))
-      '@redis/client': 6.3.1(@opentelemetry/api@1.9.1)
-      '@redis/json': 6.3.1(@redis/client@6.3.1(@opentelemetry/api@1.9.1))
-      '@redis/search': 6.3.1(@redis/client@6.3.1(@opentelemetry/api@1.9.1))
-      '@redis/time-series': 6.3.1(@redis/client@6.3.1(@opentelemetry/api@1.9.1))
+      '@redis/bloom': 6.4.0(@redis/client@6.4.0(@opentelemetry/api@1.9.1))
+      '@redis/client': 6.4.0(@opentelemetry/api@1.9.1)
+      '@redis/json': 6.4.0(@redis/client@6.4.0(@opentelemetry/api@1.9.1))
+      '@redis/search': 6.4.0(@redis/client@6.4.0(@opentelemetry/api@1.9.1))
+      '@redis/time-series': 6.4.0(@redis/client@6.4.0(@opentelemetry/api@1.9.1))
     transitivePeerDependencies:
       - '@node-rs/xxhash'
       - '@opentelemetry/api'
