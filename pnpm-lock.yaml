@@ -184,17 +184,17 @@ settings:
 catalogs:
   effect:
     '@effect/opentelemetry':
-      specifier: 4.1.5
-      version: 4.1.5
+      specifier: 4.1.6
+      version: 4.1.6
     '@effect/platform-node':
-      specifier: 4.1.5
-      version: 4.1.5
+      specifier: 4.1.6
+      version: 4.1.6
     '@effect/vitest':
-      specifier: 4.1.5
-      version: 4.1.5
+      specifier: 4.1.6
+      version: 4.1.6
     effect:
-      specifier: 4.1.5
-      version: 4.1.5
+      specifier: 4.1.6
+      version: 4.1.6
   opentelemetry:
     '@opentelemetry/api':
       specifier: 1.9.1
@@ -261,7 +261,7 @@ catalogs:
       version: 1.43.0
 
 overrides:
-  '@effect/platform-node>@effect/platform-node-shared': 4.1.5
+  '@effect/platform-node>@effect/platform-node-shared': 4.1.6
 
 importers:
 
@@ -269,10 +269,10 @@ importers:
     dependencies:
       '@effect/platform-node':
         specifier: catalog:effect
-        version: 4.1.5(effect@4.1.5)(redis@6.4.0(@opentelemetry/api@1.9.1))
+        version: 4.1.6(effect@4.1.6)(redis@6.4.0(@opentelemetry/api@1.9.1))
       effect:
         specifier: catalog:effect
-        version: 4.1.5
+        version: 4.1.6
     devDependencies:
       '@cucumber/cucumber':
         specifier: 13.3.0
@@ -345,13 +345,13 @@ importers:
     dependencies:
       '@effect/platform-node':
         specifier: catalog:effect
-        version: 4.1.5(effect@4.1.5)(redis@6.4.0(@opentelemetry/api@1.9.1))
+        version: 4.1.6(effect@4.1.6)(redis@6.4.0(@opentelemetry/api@1.9.1))
       '@pathableai/pre-ets-domain':
         specifier: workspace:*
         version: link:../domain
       effect:
         specifier: catalog:effect
-        version: 4.1.5
+        version: 4.1.6
       pg:
         specifier: 8.23.1
         version: 8.23.1
@@ -367,7 +367,7 @@ importers:
     dependencies:
       effect:
         specifier: catalog:effect
-        version: 4.1.5
+        version: 4.1.6
     devDependencies:
       '@effect/language-service':
         specifier: 0.87.5
@@ -450,10 +450,10 @@ importers:
     dependencies:
       '@effect/opentelemetry':
         specifier: catalog:effect
-        version: 4.1.5(@opentelemetry/api-logs@0.223.0)(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.12.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-logs@0.223.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.12.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.12.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-node@2.12.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-web@2.12.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.43.0)(effect@4.1.5)
+        version: 4.1.6(@opentelemetry/api-logs@0.223.0)(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.12.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-logs@0.223.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.12.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.12.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-node@2.12.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-web@2.12.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.43.0)(effect@4.1.6)
       '@effect/platform-node':
         specifier: catalog:effect
-        version: 4.1.5(effect@4.1.5)(redis@6.4.0(@opentelemetry/api@1.9.1))
+        version: 4.1.6(effect@4.1.6)(redis@6.4.0(@opentelemetry/api@1.9.1))
       '@opentelemetry/api':
         specifier: catalog:opentelemetry
         version: 1.9.1
@@ -504,7 +504,7 @@ importers:
         version: 1.43.0
       effect:
         specifier: catalog:effect
-        version: 4.1.5
+        version: 4.1.6
       openid-client:
         specifier: 6.9.1
         version: 6.9.1
@@ -520,7 +520,7 @@ importers:
         version: 0.87.5
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.1.5(effect@4.1.5)(vitest@5.1.1(@opentelemetry/api@1.9.1)(@types/node@26.6.11)(vite@8.3.8(@types/node@26.6.11)(yaml@2.9.1)))
+        version: 4.1.6(effect@4.1.6)(vitest@5.1.1(@opentelemetry/api@1.9.1)(@types/node@26.6.11)(vite@8.3.8(@types/node@26.6.11)(yaml@2.9.1)))
       '@fast-check/vitest':
         specifier: 0.5.0
         version: 0.5.0(vitest@5.1.1(@opentelemetry/api@1.9.1)(@types/node@26.6.11)(vite@8.3.8(@types/node@26.6.11)(yaml@2.9.1)))
@@ -812,8 +812,8 @@ packages:
     resolution: {integrity: sha512-np/zJgk71/PyHxtoqyUKLYcpQhoRBI+L6+1Z0ILk35JSQ/lvXzwlwOwddYZLDkeC4bdF2ukKekqKlla/F88R5w==}
     hasBin: true
 
-  '@effect/opentelemetry@4.1.5':
-    resolution: {integrity: sha512-npD5KIkqIh754Rofno3qdKvbAyaNVfl777fTZkdgtUlZE6VycwCng+49aWK+sGpo4B4wKDSQLsbjAoDf/13Wew==}
+  '@effect/opentelemetry@4.1.6':
+    resolution: {integrity: sha512-e4T1AguV/C4FHm97DPMHeBuQjPBFWd6iaOMuanUhiILbdQq22xt8Zfqys1Ew9uqT9ttV4gKAw5ktCDFiVmjGIw==}
     engines: {node: '>=22.19.0'}
     peerDependencies:
       '@opentelemetry/api': '>=1.9.0 <2.0.0'
@@ -825,7 +825,7 @@ packages:
       '@opentelemetry/sdk-trace-node': '>=2.0.0 <3.0.0'
       '@opentelemetry/sdk-trace-web': '>=2.0.0 <3.0.0'
       '@opentelemetry/semantic-conventions': '>=1.33.0 <2.0.0'
-      effect: ^4.1.5
+      effect: ^4.1.6
     peerDependenciesMeta:
       '@opentelemetry/api':
         optional: true
@@ -844,23 +844,23 @@ packages:
       '@opentelemetry/sdk-trace-web':
         optional: true
 
-  '@effect/platform-node-shared@4.1.5':
-    resolution: {integrity: sha512-JzlrYe4uKaBFTWihBRXo2pDjkUVB39kQpKdGfXdbp7Co5sKT8hbcjOmdB5pg/WOYESdGTddd3fxD4lwlZELbZQ==}
+  '@effect/platform-node-shared@4.1.6':
+    resolution: {integrity: sha512-RWKHX5TEZet2KC/NlBu5prBkZT30m6h8YTSWfJM0wIw0BNMkfEzCuH6N5HOw8mUudclWp5z1XTzsZ7xg0h+6Qw==}
     engines: {node: '>=22.19.0'}
     peerDependencies:
-      effect: ^4.1.5
+      effect: ^4.1.6
 
-  '@effect/platform-node@4.1.5':
-    resolution: {integrity: sha512-tFnRvxF9EKc3oU17sDHj1JeLP+TL/IkaOEl3IUk2EjgMS0x7AWs0ioUXjdNKLb3Z1LdjVfMf/DxsNh9PW5FFAg==}
+  '@effect/platform-node@4.1.6':
+    resolution: {integrity: sha512-DNHzWIRARCCoK6Ez5MOqJ6H81e5FbQecH8GY41ftJGqATENUOVOLkT1iNgxBt6zPi36iF1EpraBen+MjKUqHpw==}
     engines: {node: '>=22.19.0'}
     peerDependencies:
-      effect: ^4.1.5
+      effect: ^4.1.6
       redis: '>=5.1.0 <7.0.0'
 
-  '@effect/vitest@4.1.5':
-    resolution: {integrity: sha512-18u1013wkJtSelk1ZYLc/5aUnluTQyDfi2hAemkJW1GQ9qXw4mtPSiSf0AXZPhesmGCvG1Dk2C4JYD2sz+R72w==}
+  '@effect/vitest@4.1.6':
+    resolution: {integrity: sha512-Knb13gPhDbtOuNUnPXE/Sl+UvrKFHRATwU2vy+DGQCpjK1yI3oy1feQo1g2X8ZdOdc63sJB7HJXCMNsDy8xYvg==}
     peerDependencies:
-      effect: ^4.1.5
+      effect: ^4.1.6
       vitest: '>=5.0.0 <6.0.0'
 
   '@emnapi/core@2.0.0-beta.2':
@@ -2080,8 +2080,8 @@ packages:
     resolution: {integrity: sha512-K7z0wMfGYAQejZ7T4iOMlEaqLtCKnueJsZ4HVjBP9VCik/zS2opp2qxO4lU1zJDhPsyfm3vSoZwulvSDGV0RVw==}
     hasBin: true
 
-  effect@4.1.5:
-    resolution: {integrity: sha512-xyR20KhQI0vg2gD8ILUSQRTTESEYJ0JKdP+QD8J37xbwPTqXRxFM/l0+vUVD9fuSvoYruoTqyt33C4FZv1s4TQ==}
+  effect@4.1.6:
+    resolution: {integrity: sha512-P3CxMsdcSCle/7/FnPILd9GJkNqGtduKam2LX9Xsb8LoOjmeQ9Kmsuh16JwtIthaxLyiTCOzUUt+PZsXIohl+A==}
 
   electron-to-chromium@1.5.492:
     resolution: {integrity: sha512-4uMs7omhajKiud0GqALLTazS/zyvHLTLmDWVTR+e6BnyJo5bSNrph/JoRWEFJJmY75ct9hCiSGsbFF9fLe5gDw==}
@@ -3488,10 +3488,10 @@ snapshots:
 
   '@effect/language-service@0.87.5': {}
 
-  '@effect/opentelemetry@4.1.5(@opentelemetry/api-logs@0.223.0)(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.12.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-logs@0.223.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.12.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.12.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-node@2.12.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-web@2.12.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.43.0)(effect@4.1.5)':
+  '@effect/opentelemetry@4.1.6(@opentelemetry/api-logs@0.223.0)(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.12.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-logs@0.223.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.12.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.12.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-node@2.12.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-web@2.12.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.43.0)(effect@4.1.6)':
     dependencies:
       '@opentelemetry/semantic-conventions': 1.43.0
-      effect: 4.1.5
+      effect: 4.1.6
     optionalDependencies:
       '@opentelemetry/api': 1.9.1
       '@opentelemetry/api-logs': 0.223.0
@@ -3502,28 +3502,28 @@ snapshots:
       '@opentelemetry/sdk-trace-node': 2.12.0(@opentelemetry/api@1.9.1)
       '@opentelemetry/sdk-trace-web': 2.12.0(@opentelemetry/api@1.9.1)
 
-  '@effect/platform-node-shared@4.1.5(effect@4.1.5)':
+  '@effect/platform-node-shared@4.1.6(effect@4.1.6)':
     dependencies:
       '@types/ws': 8.18.2
-      effect: 4.1.5
+      effect: 4.1.6
       ws: 8.23.0
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
 
-  '@effect/platform-node@4.1.5(effect@4.1.5)(redis@6.4.0(@opentelemetry/api@1.9.1))':
+  '@effect/platform-node@4.1.6(effect@4.1.6)(redis@6.4.0(@opentelemetry/api@1.9.1))':
     dependencies:
-      '@effect/platform-node-shared': 4.1.5(effect@4.1.5)
-      effect: 4.1.5
+      '@effect/platform-node-shared': 4.1.6(effect@4.1.6)
+      effect: 4.1.6
       redis: 6.4.0(@opentelemetry/api@1.9.1)
       undici: 8.13.1
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
 
-  '@effect/vitest@4.1.5(effect@4.1.5)(vitest@5.1.1(@opentelemetry/api@1.9.1)(@types/node@26.6.11)(vite@8.3.8(@types/node@26.6.11)(yaml@2.9.1)))':
+  '@effect/vitest@4.1.6(effect@4.1.6)(vitest@5.1.1(@opentelemetry/api@1.9.1)(@types/node@26.6.11)(vite@8.3.8(@types/node@26.6.11)(yaml@2.9.1)))':
     dependencies:
-      effect: 4.1.5
+      effect: 4.1.6
       vitest: 5.1.1(@opentelemetry/api@1.9.1)(@types/node@26.6.11)(vite@8.3.8(@types/node@26.6.11)(yaml@2.9.1))
 
   '@emnapi/core@2.0.0-beta.2':
@@ -4607,7 +4607,7 @@ snapshots:
       '@dprint/win32-arm64': 0.65.0
       '@dprint/win32-x64': 0.65.0
 
-  effect@4.1.5: {}
+  effect@4.1.6: {}
 
   electron-to-chromium@1.5.492: {}
 
