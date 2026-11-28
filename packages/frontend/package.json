@@ -34,12 +34,12 @@
     "server-only": "0.0.1"
   },
   "devDependencies": {
-    "@fast-check/vitest": "0.5.0",
+    "@fast-check/vitest": "0.6.0",
     "@next/eslint-plugin-next": "16.4.6",
     "@types/react": "19.3.3",
     "@types/react-dom": "19.3.0",
     "eslint-plugin-react-hooks": "7.1.1",
     "globals": "17.14.0",
-    "vitest": "5.1.1"
+    "vitest": "5.1.2"
   }
 }
